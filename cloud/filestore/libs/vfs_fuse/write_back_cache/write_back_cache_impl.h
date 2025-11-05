@@ -3,6 +3,7 @@
 #include "write_back_cache.h"
 
 #include <cloud/filestore/libs/service/filestore.h>
+#include <cloud/filestore/libs/storage/core/helpers.h>
 
 #include <cloud/storage/core/libs/common/disjoint_interval_map.h>
 
@@ -107,14 +108,10 @@ public:
 
     TStringBuf GetBuffer() const
     {
-        if (CachedRequest) {
-            return CachedRequest->GetBuffer();
-        }
-        if (PendingRequest) {
-            return TStringBuf(PendingRequest->GetBuffer())
-                .Skip(PendingRequest->GetBufferOffset());
-        }
-        Y_ABORT("The request is in the invalid state (GetBuffer)");
+        Y_ABORT_UNLESS(
+            CachedRequest != nullptr,
+            "The buffer can be referenced only for cached requests");
+        return CachedRequest->GetBuffer();
     }
 
     ui64 Offset() const
@@ -128,17 +125,21 @@ public:
         Y_ABORT("The request is in the invalid state (Offset)");
     }
 
-    ui64 End() const
+    ui64 GetByteCount() const
     {
         if (CachedRequest) {
-            return CachedRequest->Offset + CachedRequest->Length;
+            return CachedRequest->Length;
         }
         if (PendingRequest) {
-            return PendingRequest->GetOffset() +
-                   PendingRequest->GetBuffer().size() -
+            return NStorage::CalculateByteCount(*PendingRequest) -
                    PendingRequest->GetBufferOffset();
         }
-        Y_ABORT("The request is in the invalid state (End)");
+        Y_ABORT("The request is in the invalid state (GetLength)");
+    }
+
+    ui64 End() const
+    {
+        return Offset() + GetByteCount();
     }
 
     bool IsCached() const
