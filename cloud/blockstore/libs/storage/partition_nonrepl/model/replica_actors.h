@@ -1,6 +1,6 @@
 #pragma once
 
-#include <ydb/library/actors/core/actorid.h>
+#include <contrib/ydb/library/actors/core/actorid.h>
 
 #include <util/generic/vector.h>
 

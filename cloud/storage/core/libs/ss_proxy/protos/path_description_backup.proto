@@ -1,6 +1,6 @@
 syntax = "proto2";
 
-import "ydb/core/protos/flat_scheme_op.proto";
+import "contrib/ydb/core/protos/flat_scheme_op.proto";
 
 package NCloud.NStorage.NSSProxy.NProto;
 

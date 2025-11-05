@@ -90,8 +90,8 @@ PEERDIR(
 
     library/cpp/containers/ring_buffer
 
-    ydb/core/base
-    ydb/library/actors/core
+    contrib/ydb/core/base
+    contrib/ydb/library/actors/core
 )
 
 END()

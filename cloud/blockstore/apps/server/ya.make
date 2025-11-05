@@ -21,8 +21,8 @@ PEERDIR(
     cloud/storage/core/libs/iam/iface
     cloud/storage/core/libs/opentelemetry/impl
 
-    ydb/core/security
-    ydb/library/keys
+    contrib/ydb/core/security
+    contrib/ydb/library/keys
 
     library/cpp/getopt
 )

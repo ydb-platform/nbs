@@ -1,6 +1,6 @@
 #include "disk_agent_actor.h"
 
-#include <ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/appdata.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

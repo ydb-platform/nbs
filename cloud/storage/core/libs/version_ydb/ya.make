@@ -5,7 +5,7 @@ SRCS(
 )
 
 PEERDIR(
-    ydb/core/driver_lib/version
+    contrib/ydb/core/driver_lib/version
 )
 
 END()

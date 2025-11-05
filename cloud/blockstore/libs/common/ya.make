@@ -21,7 +21,7 @@ PEERDIR(
     library/cpp/threading/future
     library/cpp/deprecated/atomic
 
-    ydb/library/actors/prof
+    contrib/ydb/library/actors/prof
 )
 
 IF (PROFILE_MEMORY_ALLOCATIONS)

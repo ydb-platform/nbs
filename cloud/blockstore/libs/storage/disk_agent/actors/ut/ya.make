@@ -9,7 +9,7 @@ SRCS(
 PEERDIR(
     cloud/blockstore/libs/kikimr
 
-    ydb/library/actors/testlib
+    contrib/ydb/library/actors/testlib
 )
 
 END()

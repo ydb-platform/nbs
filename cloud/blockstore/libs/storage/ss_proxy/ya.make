@@ -19,12 +19,12 @@ PEERDIR(
     cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/ss_proxy/protos
 
-    ydb/core/base
-    ydb/core/tablet
-    ydb/core/tx/schemeshard
-    ydb/core/tx/tx_proxy
+    contrib/ydb/core/base
+    contrib/ydb/core/tablet
+    contrib/ydb/core/tx/schemeshard
+    contrib/ydb/core/tx/tx_proxy
 
-    ydb/library/actors/core
+    contrib/ydb/library/actors/core
 )
 
 END()

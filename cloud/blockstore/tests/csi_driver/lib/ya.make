@@ -5,8 +5,8 @@ PEERDIR(
     cloud/blockstore/tests/python/lib
     cloud/filestore/tests/python/lib
     cloud/storage/core/protos
-    ydb/core/protos
-    ydb/tests/library
+    contrib/ydb/core/protos
+    contrib/ydb/tests/library
 )
 
 PY_SRCS(

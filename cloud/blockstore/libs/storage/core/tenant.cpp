@@ -2,7 +2,7 @@
 
 #include <cloud/storage/core/libs/kikimr/tenant.h>
 
-#include <ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/appdata.h>
 
 namespace NCloud::NBlockStore::NStorage {
 

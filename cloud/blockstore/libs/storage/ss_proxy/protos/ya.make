@@ -5,7 +5,7 @@ SRCS(
 )
 
 PEERDIR(
-    ydb/core/protos
+    contrib/ydb/core/protos
 )
 
 ONLY_TAGS(CPP_PROTO)

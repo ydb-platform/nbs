@@ -3,7 +3,7 @@
 #include "path_description_backup.h"
 #include "ss_proxy_events_private.h"
 
-#include <ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/appdata.h>
 
 namespace NCloud::NStorage {
 

@@ -12,8 +12,8 @@ PEERDIR(
     cloud/storage/core/libs/grpc
     cloud/storage/core/libs/common
 
-    ydb/public/api/client/yc_private/kms
-    ydb/public/api/client/yc_private/compute/inner
+    contrib/ydb/public/api/client/yc_private/kms
+    contrib/ydb/public/api/client/yc_private/compute/inner
 
     library/cpp/threading/future
 

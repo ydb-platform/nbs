@@ -10,9 +10,9 @@ SRCS(
 PEERDIR(
     cloud/storage/core/libs/kikimr
 
-    ydb/core/base
+    contrib/ydb/core/base
 
-    ydb/library/actors/core
+    contrib/ydb/library/actors/core
 )
 
 END()

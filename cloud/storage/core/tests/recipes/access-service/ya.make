@@ -10,7 +10,7 @@ PEERDIR(
     cloud/storage/core/tools/testing/access_service/lib
     cloud/storage/core/tests/common
 
-    ydb/tests/library
+    contrib/ydb/tests/library
 
     library/python/testing/recipe
 )

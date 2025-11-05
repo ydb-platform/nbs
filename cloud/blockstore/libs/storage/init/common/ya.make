@@ -11,12 +11,12 @@ PEERDIR(
     cloud/storage/core/libs/kikimr
     cloud/storage/core/libs/version_ydb
 
-    ydb/library/actors/core
-    ydb/library/actors/util
+    contrib/ydb/library/actors/core
+    contrib/ydb/library/actors/util
     library/cpp/logger
     library/cpp/monlib/service/pages
 
-    ydb/core/driver_lib/run
+    contrib/ydb/core/driver_lib/run
 )
 
 YQL_LAST_ABI_VERSION()

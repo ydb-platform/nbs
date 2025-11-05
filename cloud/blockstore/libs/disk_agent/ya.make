@@ -26,12 +26,12 @@ PEERDIR(
     cloud/storage/core/libs/io_uring
     cloud/storage/core/libs/version
 
-    ydb/core/protos
-    ydb/library/yql/public/udf/service/exception_policy
+    contrib/ydb/core/protos
+    contrib/ydb/library/yql/public/udf/service/exception_policy
 
     library/cpp/lwtrace/mon
 
-    ydb/library/actors/util
+    contrib/ydb/library/actors/util
     library/cpp/getopt/small
     library/cpp/logger
     library/cpp/monlib/dynamic_counters

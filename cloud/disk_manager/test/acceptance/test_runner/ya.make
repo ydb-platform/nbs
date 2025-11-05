@@ -12,7 +12,7 @@ PY_SRCS(
 
 PEERDIR(
     cloud/disk_manager/test/acceptance/test_runner/lib
-    ydb/tests/library
+    contrib/ydb/tests/library
 )
 
 END()

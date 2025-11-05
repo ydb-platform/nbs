@@ -1,6 +1,6 @@
 #include "disk_registry_actor.h"
 
-#include <ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/appdata.h>
 
 #include <util/generic/algorithm.h>
 #include <util/string/join.h>

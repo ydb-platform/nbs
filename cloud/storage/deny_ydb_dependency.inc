@@ -1,20 +1,20 @@
 CHECK_DEPENDENT_DIRS(
     DENY ALL
-        ydb
+        contrib/ydb
 
-    EXCEPT ydb/library/actors
-    EXCEPT ydb/library/services
-    EXCEPT ydb/library/yql/providers/generic/connector/api/common
-    EXCEPT ydb/library/yql/public/types
+    EXCEPT contrib/ydb/library/actors
+    EXCEPT contrib/ydb/library/services
+    EXCEPT contrib/ydb/library/yql/providers/generic/connector/api/common
+    EXCEPT contrib/ydb/library/yql/public/types
 
-    EXCEPT ydb/public/lib/protobuf # base for validation and config_proto_plugin
-    EXCEPT ydb/public/lib/validation
+    EXCEPT contrib/ydb/public/lib/protobuf # base for validation and config_proto_plugin
+    EXCEPT contrib/ydb/public/lib/validation
 
-    EXCEPT ydb/core/config
-    EXCEPT ydb/core/protos/nbs
+    EXCEPT contrib/ydb/core/config
+    EXCEPT contrib/ydb/core/protos/nbs
 
-    EXCEPT GLOB ydb/**/proto
-    EXCEPT GLOB ydb/**/protos
-    EXCEPT GLOB ydb/**/protos/annotations
-    EXCEPT GLOB ydb/**/protos/schemeshard
+    EXCEPT GLOB contrib/ydb/**/proto
+    EXCEPT GLOB contrib/ydb/**/protos
+    EXCEPT GLOB contrib/ydb/**/protos/annotations
+    EXCEPT GLOB contrib/ydb/**/protos/schemeshard
 )

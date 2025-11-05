@@ -11,7 +11,7 @@ SRCS(
 PEERDIR(
     cloud/storage/core/libs/common
 
-    ydb/library/actors/core
+    contrib/ydb/library/actors/core
 )
 
 END()

@@ -36,16 +36,16 @@ PEERDIR(
     cloud/storage/core/libs/kikimr
     cloud/storage/core/libs/user_stats
 
-    ydb/library/actors/core
-    ydb/library/actors/util
+    contrib/ydb/library/actors/core
+    contrib/ydb/library/actors/util
 
-    ydb/core/base
-    ydb/core/load_test
-    ydb/core/mind
-    ydb/core/mon
-    ydb/core/node_whiteboard
-    ydb/core/protos
-    ydb/core/tablet
+    contrib/ydb/core/base
+    contrib/ydb/core/load_test
+    contrib/ydb/core/mind
+    contrib/ydb/core/mon
+    contrib/ydb/core/node_whiteboard
+    contrib/ydb/core/protos
+    contrib/ydb/core/tablet
 )
 
 YQL_LAST_ABI_VERSION()

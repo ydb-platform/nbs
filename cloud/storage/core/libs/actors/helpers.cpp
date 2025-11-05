@@ -1,6 +1,6 @@
 #include "helpers.h"
 
-#include <ydb/library/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/log.h>
 
 namespace NCloud {
 

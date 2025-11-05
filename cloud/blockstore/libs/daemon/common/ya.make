@@ -49,7 +49,7 @@ PEERDIR(
     cloud/storage/core/libs/opentelemetry/impl
     cloud/storage/core/libs/version
 
-    ydb/library/actors/util
+    contrib/ydb/library/actors/util
     library/cpp/getopt/small
     library/cpp/json
     library/cpp/json/writer

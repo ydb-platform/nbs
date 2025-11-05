@@ -27,21 +27,21 @@ PEERDIR(
     library/cpp/getopt/small
     library/cpp/lwtrace
 
-    ydb/library/actors/core
-    ydb/library/actors/util
-    ydb/library/actors/protos
-    ydb/library/actors/wilson
-    ydb/library/yql/public/udf
-    ydb/library/yql/public/udf/service/exception_policy
-    ydb/library/yql/sql/pg_dummy
+    contrib/ydb/library/actors/core
+    contrib/ydb/library/actors/util
+    contrib/ydb/library/actors/protos
+    contrib/ydb/library/actors/wilson
+    contrib/ydb/library/yql/public/udf
+    contrib/ydb/library/yql/public/udf/service/exception_policy
+    contrib/ydb/library/yql/sql/pg_dummy
 
-    ydb/core/base
-    ydb/core/config/init
-    ydb/core/mind
-    ydb/core/protos
-    ydb/core/tx/coordinator
-    ydb/core/tx/mediator
-    ydb/core/tx/schemeshard
+    contrib/ydb/core/base
+    contrib/ydb/core/config/init
+    contrib/ydb/core/mind
+    contrib/ydb/core/protos
+    contrib/ydb/core/tx/coordinator
+    contrib/ydb/core/tx/mediator
+    contrib/ydb/core/tx/schemeshard
 )
 
 YQL_LAST_ABI_VERSION()

@@ -15,8 +15,8 @@ PEERDIR(
     cloud/blockstore/config
     contrib/python/jsondiff
     contrib/python/requests/py3
-    ydb/core/protos
-    ydb/public/api/protos
+    contrib/ydb/core/protos
+    contrib/ydb/public/api/protos
 )
 
 END()

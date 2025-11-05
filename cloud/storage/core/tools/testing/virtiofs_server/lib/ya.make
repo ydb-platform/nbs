@@ -3,7 +3,7 @@ PY3_LIBRARY()
 PY_SRCS(__init__.py)
 
 PEERDIR(
-    ydb/tests/library
+    contrib/ydb/tests/library
 )
 
 END()

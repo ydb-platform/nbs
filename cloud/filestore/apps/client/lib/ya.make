@@ -49,7 +49,7 @@ PEERDIR(
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
 
-    ydb/library/actors/util
+    contrib/ydb/library/actors/util
     library/cpp/colorizer
     library/cpp/digest/md5
     library/cpp/getopt

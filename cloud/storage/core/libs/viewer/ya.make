@@ -7,7 +7,7 @@ SRCS(
 PEERDIR(
     library/cpp/monlib/service/pages
 
-    ydb/core/base
+    contrib/ydb/core/base
 )
 
 END()

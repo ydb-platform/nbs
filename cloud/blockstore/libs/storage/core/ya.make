@@ -56,7 +56,7 @@ PEERDIR(
 
     contrib/libs/openssl
 
-    ydb/library/actors/core
+    contrib/ydb/library/actors/core
     library/cpp/cgiparam
     library/cpp/containers/intrusive_rb_tree
     library/cpp/deprecated/atomic
@@ -68,14 +68,14 @@ PEERDIR(
     library/cpp/string_utils/base64
     library/cpp/string_utils/quote
 
-    ydb/core/base
-    ydb/core/control
-    ydb/core/engine/minikql
-    ydb/core/mon
-    ydb/core/protos
-    ydb/core/tablet
-    ydb/core/tablet_flat
-    ydb/library/yql/sql/pg_dummy
+    contrib/ydb/core/base
+    contrib/ydb/core/control
+    contrib/ydb/core/engine/minikql
+    contrib/ydb/core/mon
+    contrib/ydb/core/protos
+    contrib/ydb/core/tablet
+    contrib/ydb/core/tablet_flat
+    contrib/ydb/library/yql/sql/pg_dummy
 )
 
 END()

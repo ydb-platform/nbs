@@ -21,7 +21,7 @@ IF (OPENSOURCE)
     )
 ELSE()
     DEPENDS(
-        ydb/apps/ydbd
+        contrib/ydb/apps/ydbd
     )
 ENDIF()
 

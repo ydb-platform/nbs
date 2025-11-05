@@ -7,7 +7,7 @@ PY_SRCS(
 )
 
 PEERDIR(
-    ydb/public/api/client/yc_private/servicecontrol
+    contrib/ydb/public/api/client/yc_private/servicecontrol
 
     contrib/python/Flask
 )

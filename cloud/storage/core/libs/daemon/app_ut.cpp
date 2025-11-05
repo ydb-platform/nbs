@@ -1,6 +1,6 @@
 #include "app.h"
 
-#include <ydb/library/actors/util/should_continue.h>
+#include <contrib/ydb/library/actors/util/should_continue.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 

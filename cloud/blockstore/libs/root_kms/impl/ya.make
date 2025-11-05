@@ -14,7 +14,7 @@ PEERDIR(
 
     library/cpp/threading/future
 
-    ydb/public/api/client/yc_private/kms
+    contrib/ydb/public/api/client/yc_private/kms
 )
 
 END()
