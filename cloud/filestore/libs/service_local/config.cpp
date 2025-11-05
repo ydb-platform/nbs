@@ -42,6 +42,10 @@ namespace {
     xxx(MaxFuseLoopThreads,          ui32,          1                         )\
     xxx(ZeroCopyWriteEnabled,        bool,          false                     )\
     xxx(FSyncQueueDisabled,          bool,          false                     )\
+    xxx(EntryTimeout,                TDuration,     TDuration::Seconds(15)    )\
+    xxx(NegativeEntryTimeout,        TDuration,     TDuration::Zero()         )\
+    xxx(AttrTimeout,                 TDuration,     TDuration::Seconds(15)    )\
+    xxx(XAttrCacheTimeout,           TDuration,     TDuration::Seconds(15)    )\
 // FILESTORE_SERVICE_CONFIG
 
 #define FILESTORE_SERVICE_NULL_FILE_IO_CONFIG(xxx)                             \

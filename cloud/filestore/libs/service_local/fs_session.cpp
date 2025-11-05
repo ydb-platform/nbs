@@ -46,6 +46,13 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         features->SetMaxFuseLoopThreads(
             Config->GetMaxFuseLoopThreads());
         features->SetFSyncQueueDisabled(Config->GetFSyncQueueDisabled());
+        features->SetEntryTimeout(Config->GetEntryTimeout().MilliSeconds());
+        features->SetNegativeEntryTimeout(
+            Config->GetNegativeEntryTimeout().MilliSeconds());
+        features->SetAttrTimeout(Config->GetAttrTimeout().MilliSeconds());
+        features->SetXAttrCacheTimeout(
+            Config->GetXAttrCacheTimeout().MilliSeconds());
+
         return response;
     };
 
