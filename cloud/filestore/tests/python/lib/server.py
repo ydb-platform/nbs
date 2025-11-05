@@ -5,8 +5,8 @@ import cloud.filestore.public.sdk.python.client as client
 import cloud.filestore.public.sdk.python.protos as protos
 
 from cloud.filestore.tests.python.lib.common import daemon_log_files, is_grpc_error
-from ydb.tests.library.harness.daemon import Daemon
-import ydb.tests.library.common.yatest_common as yatest_common
+from contrib.ydb.tests.library.harness.daemon import Daemon
+import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
 
 class FilestoreServer(Daemon):

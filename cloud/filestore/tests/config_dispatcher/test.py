@@ -8,11 +8,11 @@ from cloud.filestore.tests.python.lib.server import wait_for_filestore_vhost
 from cloud.filestore.tests.python.lib.daemon_config import FilestoreServerConfigGenerator
 from cloud.filestore.tests.python.lib.daemon_config import FilestoreVhostConfigGenerator
 
-from ydb.core.protos import config_pb2
-from ydb.core.protos.config_pb2 import TLogConfig
+from contrib.ydb.core.protos import config_pb2
+from contrib.ydb.core.protos.config_pb2 import TLogConfig
 
-from ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 
 import yatest.common as yatest_common
 

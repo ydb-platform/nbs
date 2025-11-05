@@ -1,7 +1,7 @@
 import grpc
 
-from ydb.public.api.client.yc_private.servicecontrol import access_service_pb2_grpc
-from ydb.public.api.client.yc_private.servicecontrol.access_service_pb2 import \
+from contrib.ydb.public.api.client.yc_private.servicecontrol import access_service_pb2_grpc
+from contrib.ydb.public.api.client.yc_private.servicecontrol.access_service_pb2 import \
     AuthenticateResponse, AuthorizeResponse, Subject
 
 

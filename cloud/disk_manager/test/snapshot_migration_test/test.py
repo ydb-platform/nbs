@@ -10,9 +10,9 @@ from typing import NamedTuple
 
 import pytest
 
-import ydb.tests.library.common.yatest_common as yatest_common
+import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
-from ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
+from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 
 from cloud.disk_manager.test.recipe.common import get_ydb_binary_path
 from cloud.disk_manager.test.recipe.disk_manager_launcher import DiskManagerLauncher

@@ -20,8 +20,8 @@ from cloud.blockstore.tests.python.lib.test_base import thread_count, wait_for_n
 from cloud.blockstore.tests.python.lib.nonreplicated_setup import setup_nonreplicated, \
     create_file_devices, setup_disk_registry_config_simple, enable_writable_state
 
-from ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 
 from google.protobuf.json_format import MessageToDict
 

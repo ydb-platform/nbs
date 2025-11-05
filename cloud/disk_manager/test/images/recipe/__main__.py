@@ -2,8 +2,8 @@ import os
 
 from yatest.common import process
 
-from ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
-import ydb.tests.library.common.yatest_common as yatest_common
+from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
+import contrib.ydb.tests.library.common.yatest_common as yatest_common
 from library.python.testing.recipe import declare_recipe, set_env
 
 from cloud.disk_manager.test.images.recipe.image_file_server_launcher import ImageFileServerLauncher

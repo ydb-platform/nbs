@@ -7,7 +7,7 @@ import signal
 import subprocess
 import time
 
-from ydb.tests.library.common.yatest_common import PortManager
+from contrib.ydb.tests.library.common.yatest_common import PortManager
 
 from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig
 from cloud.blockstore.config.server_pb2 import TServerConfig, TServerAppConfig, \
@@ -21,12 +21,12 @@ from cloud.blockstore.tests.python.lib.test_base import thread_count, wait_for_n
 from cloud.blockstore.tests.python.lib.nonreplicated_setup import setup_nonreplicated, \
     create_file_devices, setup_disk_registry_config_simple, enable_writable_state
 
-from ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 
-from ydb.core.protos import console_config_pb2 as console
-from ydb.core.protos import msgbus_pb2 as msgbus
-from ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
+from contrib.ydb.core.protos import console_config_pb2 as console
+from contrib.ydb.core.protos import msgbus_pb2 as msgbus
+from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
 
 import yatest.common as yatest_common
 

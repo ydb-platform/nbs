@@ -1,6 +1,6 @@
 import os
 
-from ydb.tests.library.harness.daemon import Daemon
+from contrib.ydb.tests.library.harness.daemon import Daemon
 
 
 def daemon_log_files(prefix, cwd):

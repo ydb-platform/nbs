@@ -4,8 +4,8 @@ import time
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator, generate_disk_agent_txt
 from cloud.blockstore.tests.python.lib.daemon import start_ydb, start_nbs, start_disk_agent
 
-from ydb.core.protos import config_pb2
-from ydb.core.protos.config_pb2 import TLogConfig
+from contrib.ydb.core.protos import config_pb2
+from contrib.ydb.core.protos.config_pb2 import TLogConfig
 
 
 def verify_config_update(ydb, mon_port):

@@ -3,7 +3,7 @@ import subprocess
 import time
 
 import yatest.common as common
-import ydb.tests.library.common.yatest_common as yatest_common
+import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig, TKikimrServiceConfig
 from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest

@@ -32,11 +32,11 @@ from cloud.blockstore.tests.python.lib.nonreplicated_setup import (
     DeviceInfo
 )
 
-from ydb.tests.library.harness.kikimr_cluster import \
+from contrib.ydb.tests.library.harness.kikimr_cluster import \
     kikimr_cluster_factory
-from ydb.tests.library.harness.kikimr_config import \
+from contrib.ydb.tests.library.harness.kikimr_config import \
     KikimrConfigGenerator
-from ydb.tests.library.harness.kikimr_runner import \
+from contrib.ydb.tests.library.harness.kikimr_runner import \
     get_unique_path_for_current_test, ensure_path_exists
 
 import yatest.common as yatest_common

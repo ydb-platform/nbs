@@ -2,10 +2,10 @@ import copy
 import os
 import logging
 import subprocess
-import ydb.tests.library.common.yatest_common as yatest_common
+import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
-from ydb.tests.library.harness.daemon import Daemon
-from ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
+from contrib.ydb.tests.library.harness.daemon import Daemon
+from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 from cloud.blockstore.config.diagnostics_pb2 import TDiagnosticsConfig
 from cloud.blockstore.config.disk_pb2 import TDiskRegistryProxyConfig
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
@@ -13,14 +13,14 @@ from cloud.blockstore.config.server_pb2 import TServerAppConfig, TKikimrServiceC
 from cloud.storage.core.config.features_pb2 import TFeaturesConfig
 from cloud.storage.core.tools.common.python.core_pattern import core_pattern
 from cloud.storage.core.tools.testing.access_service.lib import AccessService
-from ydb.core.protos.auth_pb2 import TAuthConfig
-from ydb.core.protos.config_pb2 import TActorSystemConfig
-from ydb.core.protos.config_pb2 import TDynamicNameserviceConfig
-from ydb.core.protos.config_pb2 import TLogConfig
-from ydb.core.protos import console_config_pb2 as console
-from ydb.core.protos import msgbus_pb2 as msgbus
+from contrib.ydb.core.protos.auth_pb2 import TAuthConfig
+from contrib.ydb.core.protos.config_pb2 import TActorSystemConfig
+from contrib.ydb.core.protos.config_pb2 import TDynamicNameserviceConfig
+from contrib.ydb.core.protos.config_pb2 import TLogConfig
+from contrib.ydb.core.protos import console_config_pb2 as console
+from contrib.ydb.core.protos import msgbus_pb2 as msgbus
 from google.protobuf.text_format import MessageToBytes, MessageToString
-from ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
+from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
 
 logger = logging.getLogger(__name__)
 

@@ -17,7 +17,7 @@ from cloud.blockstore.tests.python.lib.config import NbsConfigurator, \
     generate_disk_agent_txt
 from cloud.storage.core.config.features_pb2 import TFeaturesConfig
 
-from ydb.tests.library.harness.kikimr_runner import \
+from contrib.ydb.tests.library.harness.kikimr_runner import \
     get_unique_path_for_current_test, ensure_path_exists
 
 

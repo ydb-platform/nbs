@@ -11,8 +11,8 @@ from cloud.blockstore.tests.python.lib.test_base import \
     thread_count, wait_for_nbs_server, get_utils_counters, get_sensor
 from cloud.blockstore.tests.python.lib.nonreplicated_setup import \
     setup_nonreplicated, enable_writable_state
-from ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
+from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 
 
 class CommonPaths:

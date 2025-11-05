@@ -4,16 +4,16 @@ import yatest.common as common
 
 from google.protobuf.text_format import MessageToString
 
-from ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
-from ydb.core.protos.config_pb2 import (
+from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
+from contrib.ydb.core.protos.config_pb2 import (
     TDomainsConfig,
     TStaticNameserviceConfig,
     TLogConfig,
     TActorSystemConfig,
     TDynamicNameserviceConfig,
 )
-from ydb.core.protos.auth_pb2 import TAuthConfig
-import ydb.tests.library.common.yatest_common as yatest_common
+from contrib.ydb.core.protos.auth_pb2 import TAuthConfig
+import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
 from cloud.filestore.config.diagnostics_pb2 import TDiagnosticsConfig
 from cloud.filestore.config.storage_pb2 import TStorageConfig

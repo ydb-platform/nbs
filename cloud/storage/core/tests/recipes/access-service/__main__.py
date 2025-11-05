@@ -3,7 +3,7 @@ import logging
 import signal
 import argparse
 
-import ydb.tests.library.common.yatest_common as yatest_common
+import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
 from cloud.storage.core.tools.testing.access_service.lib import AccessService
 from library.python.testing.recipe import declare_recipe, set_env

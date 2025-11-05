@@ -13,8 +13,8 @@ import urllib3
 import uuid
 
 import yatest.common as common
-import ydb.tests.library.common.yatest_common as yatest_common
-from ydb.tests.library.harness.daemon import Daemon
+import contrib.ydb.tests.library.common.yatest_common as yatest_common
+from contrib.ydb.tests.library.harness.daemon import Daemon
 
 import cloud.blockstore.public.sdk.python.protos as protos
 
