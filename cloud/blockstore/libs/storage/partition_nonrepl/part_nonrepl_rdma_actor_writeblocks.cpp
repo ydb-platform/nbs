@@ -92,6 +92,7 @@ public:
             size_t requestCount,
             bool replyLocal,
             ui32 requestBlockCount,
+            NActors::TActorId volumeActorId,
             NActors::TActorId parentActorId,
             ui64 requestId)
         : TBase(
@@ -99,6 +100,7 @@ public:
               std::move(partConfig),
               std::move(requestInfo),
               requestId,
+              volumeActorId,
               parentActorId,
               requestBlockCount,
               requestCount)
@@ -209,6 +211,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
             deviceRequests.size(),
             false,
             blockRange.Size(),
+            VolumeActorId,
             SelfId(),
             requestId);
 
@@ -383,6 +386,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
             deviceRequests.size(),
             true,
             blockRange.Size(),
+            VolumeActorId,
             SelfId(),
             requestId);
 

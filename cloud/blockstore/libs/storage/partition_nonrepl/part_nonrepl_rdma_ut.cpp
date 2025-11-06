@@ -155,6 +155,7 @@ struct TTestEnv
             CreateDiagnosticsConfig(),
             std::move(partConfig),
             RdmaClient,
+            VolumeActorId,
             VolumeActorId
         );
 

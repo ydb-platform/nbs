@@ -39,6 +39,7 @@ private:
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const TRequestInfoPtr RequestInfo;
     const ui64 RequestId;
+    const NActors::TActorId VolumeActorId;
     const NActors::TActorId ParentActorId;
     const ui32 RequestBlockCount;
     ui32 ResponseCount;
@@ -55,6 +56,7 @@ public:
         TNonreplicatedPartitionConfigPtr partConfig,
         TRequestInfoPtr requestInfo,
         ui64 requestId,
+        NActors::TActorId volumeActorId,
         NActors::TActorId parentActorId,
         ui32 requestBlockCount,
         ui32 responseCount);
@@ -140,6 +142,7 @@ TRdmaDeviceRequestHandlerBase<TDerived>::TRdmaDeviceRequestHandlerBase(
         TNonreplicatedPartitionConfigPtr partConfig,
         TRequestInfoPtr requestInfo,
         ui64 requestId,
+        NActors::TActorId volumeActorId,
         NActors::TActorId parentActorId,
         ui32 requestBlockCount,
         ui32 responseCount)
@@ -147,6 +150,7 @@ TRdmaDeviceRequestHandlerBase<TDerived>::TRdmaDeviceRequestHandlerBase(
     , PartConfig(std::move(partConfig))
     , RequestInfo(std::move(requestInfo))
     , RequestId(requestId)
+    , VolumeActorId(volumeActorId)
     , ParentActorId(parentActorId)
     , RequestBlockCount(requestBlockCount)
     , ResponseCount(responseCount)

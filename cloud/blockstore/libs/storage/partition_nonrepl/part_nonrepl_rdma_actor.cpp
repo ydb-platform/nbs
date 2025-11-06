@@ -44,20 +44,20 @@ TNonreplicatedPartitionRdmaActor::TNonreplicatedPartitionRdmaActor(
         TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
         NRdma::IClientPtr rdmaClient,
+        TActorId volumeActorId,
         TActorId statActorId)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , PartConfig(std::move(partConfig))
     , RdmaClient(std::move(rdmaClient))
+    , VolumeActorId(volumeActorId)
     , StatActorId(statActorId)
     , PartCounters(CreatePartitionDiskCounters(
           EPublishingPolicy::DiskRegistryBased,
           DiagnosticsConfig->GetHistogramCounterOptions()))
 {}
 
-TNonreplicatedPartitionRdmaActor::~TNonreplicatedPartitionRdmaActor()
-{
-}
+TNonreplicatedPartitionRdmaActor::~TNonreplicatedPartitionRdmaActor() = default;
 
 void TNonreplicatedPartitionRdmaActor::Bootstrap(const TActorContext& ctx)
 {
