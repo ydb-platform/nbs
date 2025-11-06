@@ -121,7 +121,10 @@ private:
 
     void Enqueue(STFUNC_SIG) override
     {
-        Y_ABORT("Unexpected event %x", ev->GetTypeRewrite());
+        Y_ABORT(
+            "Unexpected event %x %s",
+            ev->GetTypeRewrite(),
+            ev->GetTypeName().c_str());
     }
 
     STFUNC(StateInit)
@@ -144,7 +147,10 @@ private:
             IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
             default:
                 if (!HandleDefaultEvents(ev, SelfId())) {
-                    Y_ABORT("Unexpected event %u", ev->GetTypeRewrite());
+                    Y_ABORT(
+                        "Unexpected event %x %s",
+                        ev->GetTypeRewrite(),
+                        ev->GetTypeName().c_str());
                 }
         }
     }
