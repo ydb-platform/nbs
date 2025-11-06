@@ -171,6 +171,20 @@ message TLocalServiceConfig
 
     // Disable fsync queue which is used to synchronize data/metadata ops during fsync
     optional bool FSyncQueueDisabled = 29;
+
+    // Inode entry timeout.
+    optional uint32 EntryTimeout = 30;
+
+    // Inode entry timeout for negative responses (responses with errors).
+    // The most notable one is ENOENT for getattr.
+    optional uint32 NegativeEntryTimeout = 31;
+
+    // Node attributes timeout.
+    optional uint32 AttrTimeout = 32;
+
+    // X Attrs cache timeout
+    optional uint32 XAttrCacheTimeout = 33;
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////
