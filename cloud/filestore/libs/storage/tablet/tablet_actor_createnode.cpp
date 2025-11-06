@@ -320,6 +320,7 @@ void TCreateNodeInShardActor::HandleGetNodeAttrResponse(
             GetNodeAttr(ctx);
             return;
         }
+
         if (msg->GetError().GetCode() == E_FS_INVALID_SESSION &&
             SyncSessionsAttempts < MaxSyncSessionsAttempts)
         {
