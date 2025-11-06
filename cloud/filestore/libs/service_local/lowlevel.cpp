@@ -374,12 +374,12 @@ TListDirResult ListDirAt(
     return res;
 }
 
-void Fsync(const TFileHandle& handle, bool dataSync)
+void Fsync(const TFileHandle& handle, bool datasync)
 {
-    int res = dataSync ? fdatasync(Fd(handle)) : fsync(Fd(handle));
+    int res = datasync ? fdatasync(Fd(handle)) : fsync(Fd(handle));
     if (res != 0) {
         ythrow TServiceError(GetSystemErrorCode())
-            << "failed to fsync, dataSync=" << dataSync << " "
+            << "failed to fsync, datasync=" << datasync << " "
             << LastSystemErrorText();
     }
 }
