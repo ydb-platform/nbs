@@ -555,7 +555,7 @@ public:
 
     ~TRdmaDataEndpoint() override
     {
-        Stop();
+        DoStopEndpoint();
     }
 
     void Init(NRdma::IClientEndpointPtr endpoint)
@@ -636,6 +636,8 @@ private:
         NRdma::TClientRequestPtr req,
         ui32 status,
         size_t responseBytes) override;
+
+    void DoStopEndpoint();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -697,7 +699,7 @@ void TRdmaDataEndpoint::Start()
 
 void TRdmaDataEndpoint::Stop()
 {
-    Endpoint->Stop().Wait();
+    DoStopEndpoint();
 }
 
 TStorageBuffer TRdmaDataEndpoint::AllocateBuffer(size_t bytesCount)
@@ -765,6 +767,12 @@ void TRdmaDataEndpoint::HandleResponse(
     });
 }
 
+void TRdmaDataEndpoint::DoStopEndpoint()
+{
+    if (Endpoint) {
+        Endpoint->Stop().Wait();
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
