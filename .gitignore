@@ -110,7 +110,7 @@ test-results
 .vars
 
 # ydb files
-/ydb/apps/ydbd/ydbd
-/ydb/apps/ydb/ydb
-/ydb/library/yql/providers/generic/style/ydb-library-yql-providers-generic-style
-/ydb/library/yql/public/udf/tz/gen/tz_gen
+contrib/ydb/apps/ydbd/ydbd
+contrib/ydb/apps/ydb/ydb
+contrib/ydb/library/yql/providers/generic/style/ydb-library-yql-providers-generic-style
+contrib/ydb/library/yql/public/udf/tz/gen/tz_gen
