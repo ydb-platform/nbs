@@ -1,5 +1,7 @@
 #include "lowlevel.h"
 
+#include <cloud/storage/core/libs/common/error.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/tempdir.h>
@@ -65,6 +67,22 @@ Y_UNIT_TEST_SUITE(TLowlevelTest)
         res = NLowLevel::ListDirAt(rootNode, 0, 0, false);
         checkListDirResult(res, 10);
 
+    }
+
+    Y_UNIT_TEST(ShouldPropagateFsyncErrors)
+    {
+        TFileHandle handle(9999);
+        Y_DEFER
+        {
+            handle.Release();
+        };
+
+        for (auto dataSync: {true, false}) {
+            UNIT_ASSERT_EXCEPTION_SATISFIES(
+                NLowLevel::Fsync(handle, dataSync),
+                TServiceError,
+                [](auto const& e) { return e.GetCode() == E_FS_BADHANDLE; });
+        }
     }
 };
 
