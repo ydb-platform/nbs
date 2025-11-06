@@ -15,7 +15,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::atomic<ui32> TrackingFrequency = 1;
+std::atomic<ui32> TrackingFrequency = 0;
 
 }   // namespace
 
