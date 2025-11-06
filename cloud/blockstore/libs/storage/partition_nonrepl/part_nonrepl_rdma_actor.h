@@ -31,9 +31,20 @@ namespace NCloud::NBlockStore::NStorage {
 
 struct TDeviceReadRequestContext: public TDeviceRequestRdmaContext
 {
-    ui64 StartIndexOffset = 0;
-    ui64 BlockCount = 0;
-    ui32 RequestIndex = 0;
+    const ui64 StartIndexOffset = 0;
+    const ui64 BlockCount = 0;
+    const ui32 RequestIndex = 0;
+
+    TDeviceReadRequestContext(
+            ui32 deviceIdx,
+            ui64 startIndexOffset,
+            ui64 blockCount,
+            ui32 requestIndex)
+        : TDeviceRequestRdmaContext(deviceIdx)
+        , StartIndexOffset(startIndexOffset)
+        , BlockCount(blockCount)
+        , RequestIndex(requestIndex)
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -41,13 +52,7 @@ struct TDeviceReadRequestContext: public TDeviceRequestRdmaContext
 class TNonreplicatedPartitionRdmaActor final
     : public NActors::TActorBootstrapped<TNonreplicatedPartitionRdmaActor>
 {
-    struct TDeviceRequestContext
-    {
-        ui32 DeviceIndex = 0;
-        ui64 SentRequestId = 0;
-    };
-
-    using TRequestContext = TStackVec<TDeviceRequestContext, 2>;
+    using TRequestContext = TStackVec<TRunningRdmaRequestInfo, 2>;
 
 private:
     const TStorageConfigPtr Config;

@@ -129,8 +129,7 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
                 msg->Record.GetHeaders().GetVolumeRequestId());
         }
 
-        auto context = std::make_unique<TDeviceRequestRdmaContext>();
-        context->DeviceIdx = r.DeviceIdx;
+        auto context = std::make_unique<TDeviceRequestRdmaContext>(r.DeviceIdx);
 
         auto [req, err] = ep->AllocateRequest(
             requestContext,
@@ -160,7 +159,8 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
             0,   // flags
             deviceRequest);
 
-        requests.push_back({std::move(ep), std::move(req)});
+        requests.push_back(
+            {.Endpoint = std::move(ep), .ClientRequest = std::move(req)});
     }
 
     for (size_t i = 0; i < requests.size(); ++i) {

@@ -108,7 +108,7 @@ void TDiskAgentBaseRequestActor::Done(
 
     for (const auto& dr: DeviceRequests) {
         completion.Body->RequestResults.push_back(
-            {.DeviceIndex = dr.DeviceIdx, .Error = {}});
+            {.DeviceIdx = dr.DeviceIdx, .Error = {}});
     }
 
     NCloud::Send(ctx, Part, std::move(completion.Event));
