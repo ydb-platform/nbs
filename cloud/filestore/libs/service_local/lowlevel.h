@@ -164,6 +164,8 @@ TListDirResult ListDirAt(
     size_t entriesLimit,
     bool ignoreErrors);
 
+void Fsync(const TFileHandle& handle, bool datasync);
+
 //
 // Attrs
 //

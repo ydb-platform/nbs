@@ -374,6 +374,16 @@ TListDirResult ListDirAt(
     return res;
 }
 
+void Fsync(const TFileHandle& handle, bool datasync)
+{
+    int res = datasync ? fdatasync(Fd(handle)) : fsync(Fd(handle));
+    if (res != 0) {
+        ythrow TServiceError(GetSystemErrorCode())
+            << "failed to fsync, datasync=" << datasync << " "
+            << LastSystemErrorText();
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void Access(const TFileHandle& handle, int mode)
