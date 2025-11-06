@@ -37,16 +37,16 @@ class TMirrorCheckRangeActor final: public TCheckRangeActor
 public:
     using TCheckRangeActor::TCheckRangeActor;
     template <typename... TArgs>
-    TMirrorCheckRangeActor(TVector<TString>&& replicasNames, TArgs&&... args)
+    explicit TMirrorCheckRangeActor(
+        TVector<TString> replicasNames,
+        TArgs&&... args)
         : TCheckRangeActor(std::forward<TArgs>(args)...)
         , ReplicasNames(std::move(replicasNames))
     {}
 
-    void Bootstrap(const TActorContext& ctx) override;
-
 protected:
-    STFUNC(StateWork);
-    void SendReadBlocksRequest(const TActorContext& ctx);
+    bool OnMessage(TAutoPtr<NActors::IEventHandle>& ev) override;
+    void SendReadBlocksRequest(const TActorContext& ctx) override;
     void HandleReadBlocksResponse(
         const TEvService::TEvReadBlocksResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -58,29 +58,19 @@ private:
         const TEvService::TEvReadBlocksResponse::TPtr& ev,
         const TActorContext& ctx,
         const ::NCloud::NProto::TError& error);
-    static ui32 GetReplicaIdx(
-        const TEvService::TEvReadBlocksResponse::TPtr& ev);
 };
 
-void TMirrorCheckRangeActor::Bootstrap(const TActorContext& ctx)
-{
-    SendReadBlocksRequest(ctx);
-    Become(&TMirrorCheckRangeActor::StateWork);
-}
-
-STFUNC(TMirrorCheckRangeActor::StateWork)
+bool TMirrorCheckRangeActor::OnMessage(TAutoPtr<NActors::IEventHandle>& ev)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvService::TEvReadBlocksResponse, HandleReadBlocksResponse);
         default:
-            HandleUnexpectedEvent(
-                ev,
-                TBlockStoreComponents::PARTITION_WORKER,
-                __PRETTY_FUNCTION__);
-            break;
+            return false;
     }
+
+    return true;
 }
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TMirrorCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
@@ -112,25 +102,19 @@ void TMirrorCheckRangeActor::HandleReadBlocksResponseError(
     LOG_ERROR_S(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "reading error has been occurred: " << FormatError(error));
+        "reading error has occurred: " << FormatError(error));
 
     // 1 result error for all replicas
     ErrorOnReplicaReading = true;
     Response.MutableStatus()->SetCode(error.GetCode());
     *Response.MutableStatus()->MutableMessage() +=
-        ReplicasNames[GetReplicaIdx(ev)] + " ";
-}
-
-ui32 TMirrorCheckRangeActor::GetReplicaIdx(
-    const TEvService::TEvReadBlocksResponse::TPtr& ev)
-{
-    return ev->Cookie - 1;
+        ReplicasNames[ev->Cookie - 1] + " ";
 }
 
 void TMirrorCheckRangeActor::CalculateChecksums(
     const TEvService::TEvReadBlocksResponse::TPtr& ev)
 {
-    ui32 replicaIdx = GetReplicaIdx(ev);
+    ui32 replicaIdx = ev->Cookie - 1;
     auto& mirrorChecksums = (*Response.MutableMirrorChecksums())[replicaIdx];
     auto* replicaChecksums = mirrorChecksums.MutableChecksums();
     mirrorChecksums.SetReplicaName(std::move(ReplicasNames[replicaIdx]));

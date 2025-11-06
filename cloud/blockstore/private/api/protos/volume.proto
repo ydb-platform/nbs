@@ -301,13 +301,17 @@ message TFinishFillDiskResponse
 
 message TMirrorChecksums
 {
+    // Checksum of blocks
     repeated uint32 Checksums = 1;
+
+    // Name of replica which checksum belongs to
     string ReplicaName = 2;
 }
 
 message TCheckRangeRequest
 {
     reserved 4,5;
+
     string DiskId = 1;
 
     // First block index.

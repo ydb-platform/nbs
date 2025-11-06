@@ -401,13 +401,14 @@ std::unique_ptr<TEvService::TEvReadBlocksRequest> TVolumeClient::CreateReadBlock
     return request;
 }
 
-std::unique_ptr<TEvVolume::TEvCheckRangeRequest> TVolumeClient::CreateCheckRangeRequest(
-    TString id,
+std::unique_ptr<TEvVolume::TEvCheckRangeRequest>
+TVolumeClient::CreateCheckRangeRequest(
+    const TString& diskId,
     ui32 startIndex,
     ui32 size)
 {
     auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>();
-    request->Record.SetDiskId(id);
+    request->Record.SetDiskId(diskId);
     request->Record.SetStartIndex(startIndex);
     request->Record.SetBlocksCount(size);
     return request;

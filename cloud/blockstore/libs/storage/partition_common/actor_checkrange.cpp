@@ -85,12 +85,27 @@ void TCheckRangeActor::ReplyAndDie(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+bool TCheckRangeActor::OnMessage(TAutoPtr<NActors::IEventHandle>& ev)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvService::TEvReadBlocksLocalResponse, HandleReadBlocksResponse);
+        default:
+            return false;
+    }
+
+    return true;
+}
 
 STFUNC(TCheckRangeActor::StateWork)
 {
+    TRequestScope timer(*RequestInfo);
+
+    if (OnMessage(ev)) {
+        return;
+    }
+
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvService::TEvReadBlocksLocalResponse, HandleReadBlocksResponse);
         default:
             HandleUnexpectedEvent(
                 ev,
@@ -121,7 +136,7 @@ void TCheckRangeActor::HandleReadBlocksResponseError(
     LOG_ERROR_S(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "reading error has been occurred: " << FormatError(error));
+        "reading error has occurred: " << FormatError(error));
 
     responseStatus->CopyFrom(error);
     if (!msg->Record.FailInfo.FailedRanges.empty()) {

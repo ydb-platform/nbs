@@ -31,7 +31,7 @@ public:
         TRequestInfoPtr requestInfo,
         ui64 blockSize);
 
-    virtual void Bootstrap(const NActors::TActorContext& ctx);
+    void Bootstrap(const NActors::TActorContext& ctx);
 
 protected:
     void ReplyAndDie(
@@ -51,7 +51,8 @@ protected:
         const ::NCloud::NProto::TError &error,
         NProto::TError *responseStatus);
 
-    void SendReadBlocksRequest(const NActors::TActorContext& ctx);
+    virtual void SendReadBlocksRequest(const NActors::TActorContext& ctx);
+    virtual bool OnMessage(TAutoPtr<NActors::IEventHandle>& ev);
 
 private:
     STFUNC(StateWork);

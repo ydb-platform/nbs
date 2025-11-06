@@ -693,7 +693,10 @@ message TGracefulShutdownResponse
 
 message TMirrorChecksums
 {
+    // Checksum of blocks
     repeated uint32 Checksums = 1;
+
+    // Name of replica which checksum belongs to
     string ReplicaName = 2;
 }
 

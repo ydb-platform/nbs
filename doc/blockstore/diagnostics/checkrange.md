@@ -1,151 +1,158 @@
-# Утилита checkarange
+# Utility checkarange
 
-## Описание
-Является частью blockstore-client приложения и запускается стандартным для него образом: `blockstore-client.sh checkrange`.
-Утилита подсчитывает чексуммы каждого запрощенного блока и проверяет целостность данных указанных блоков для каждого поддерживаемого типа диска:
-- non replicated disk (чтение данных)
-  - посчитать чексуммы
-  - проверить возможность чтения
-- mirror2 / mirror3 (чтение данных + сверка чексумм реплик)
-  - проверка чтения данных с каждой реплики
-  - сравнение и вывод чексумм данных между репликами
-- replication
-  - проверка чтения данных (в ydb будет своя неявная проверка целостности)
-  - TODO для проверки ssd диска запланирована отдельная команда в ydb - https://github.com/ydb-platform/ydb/issues/8189
+## Description
 
+This is a part of the blockstore-client application and is launched in the standard way for it: `blockstore-client checkrange`. The utility calculates the checksums of each requested block and checks the integrity of the data of the specified blocks for each supported disk type:
+- non replicated disk (data reading):
+  - calculate checksums;
+  - check the possibility of reading.
+- mirror2 / mirror3 (data reading + replica checksums verification):
+  - check data reading from each replica;
+  - compare and display checksums of data between replicas.
+-  block-4-2(hdd + ssd) and mirror-3of4 (hdd + ssd):
+  - check data reading (YDB will have its own implicit integrity check);
+  - TODO: a separate command for SSD disk verification is planned in YDB — https://github.com/ydb-platform/ydb/issues/8189.
 
-## Возможности
-Утилита поддерживает следующие опции:
-### в любом слуае выполняется
-- запрос на подсчёт чексуммы каждого указанного блока. Например, на диапазон из 1024 блоков вернется 1024 чексуммы
-### обязательные параметры
-- "disk-id" - указание идентификатора диска
-### Стандартные опции запуска
-- "start-index" - стартовый индекс блока. По умолчанию: 0.
-- "blocks-count" - количество блоков. По умолчанию: количество блоков до конца диска, начиная со start-index
-- "blocks-per-request" - количество блоков в 1 запросе. По умолчанию: 1024
-- "output" - файл для сохранения результатов. По умолчанию: stdout
+## Features
+The utility supports the following options:
 
-## Базовые сценарии использования
-- миграция данных и сравение чексумм
-  - остановили запись на диск
-  - посчтитали чексуммы
-  - смигрировали данные на другой диск (мб даже другого типа)
-  - сравнили чексуммы
+### Always performed
+- a request to calculate the checksum of each specified block. For example, for a range of 1024 blocks, 1024 checksums will be returned.
 
-TODO добавить примерный парсер на питоне или чем-то подобном
+### Mandatory parameters
+- "disk-id" — disk identifier specification.
 
-## Формат ответа
+### Standard launch options
+- "start-index" — starting block index. Default: 0.
+- "blocks-count" — number of blocks. Default: the number of blocks to the end of the disk, starting from start-index.
+- "blocks-per-request" — the number of blocks in 1 request. Default: 1024.
+- "output" — file to save the results. Default: stdout.
+
+## Basic use cases
+- data migration and checksum comparison:
+  - stop writing to the disk;
+  - calculate checksums;
+  - migrate data to another disk (maybe even of a different type);
+  - compare checksums.
+
+- TODO: add an example parser in Python or something similar.
+
+## Response format
+```json
 {
   "ranges": [
     {
-      "r_start":0,
-      "r_end":1023,
-      "error": {}, // если была ошибка
-      "checksums": [], // если их удалось получить
-      "mirror_checksums": [ //для mirror дисков в случае расхождения чексумм хотя бы для 2 реплик
+      "r_start": 0,
+      "r_end": 1023,
+      "error": {}, // if there was an error
+      "checksums": [], // if they were obtained
+      "mirror_checksums": [ // for mirror disks in case of checksum difference for at least 2 replicas
         {
-          "ReplicaName":"name",
-          "Checksums": [1,2,3,4,5]
+          "ReplicaName": "name",
+          "Checksums": [1, 2, 3, 4, 5]
         }
       ]
     }
   ],
   "summary": {
-    "requests_num":1,
-    "errors_num":0,
-    "problem_ranges": [ // если ошибки были в 2 последовательных диапазонах, они мёржатся в 1 большой
+    "requests_num": 1,
+    "errors_num": 0,
+    "problem_ranges": [ // if there were errors in 2 consecutive ranges, they are merged into 1 large one
       {
-        "r_start":0,
-        "r_end":2046
+        "r_start": 0,
+        "r_end": 2046
       }
     ],
     "global_error": {
       "Code": int,
       "CodeString": string,
-      "Message": srting,
+      "Message": string,
       "Flags": int
-    },
+    }
   }
 }
+```
 
-## Внутреннее устройство / логика работы
-### На стороне утилиты
-* получение информации о диске
-  * на основе размера диска и изначально запрошенного количества блоков выставляется нужное количество блоков
-* для каждого диапазона блоков последовательно выполняется запрос checkRange, который далее будет обрабатываться соответсвующим актором на сервере (например, начальной точкой обработки может быть part_mirror_actor_checkrange.cpp: HandleCheckRange)
-* обработка ответа
-  * проверка "верхнеуровневых" ошибок обработки аргументов
-  * проверка ошибок чтения
-  * выставление чексумм для каждого требуемого диапазона
+## Internal structure / logic of work
+### Utility's side
+* getting disk information:
+  * based on the disk size and the initially requested number of blocks, the required number of blocks is set;
+* for each range of blocks, a checkRange request is sequentially executed. It will then be processed by the corresponding actor on the server (for example, the starting point of processing may be part_mirror_actor_checkrange.cpp: HandleCheckRange);
+* response processing:
+  * checking «high-level» argument processing errors;
+  * checking read errors;
+  * setting checksums for each required range.
 
-### На стороне сервера
+### Server's side
 
-### nonreplicated disk
-* TNonreplicatedPartitionActor::HandleCheckRange
-  * проверяет, что запрошенное количество блоков меньше максимально допустимого размера
-  * регистрирует актор TNonreplCheckRangeActor, работающий через методы родительского актора (в partition_common), используемого для partition
+#### Nonreplicated disk
+* TNonreplicatedPartitionActor::HandleCheckRange:
+  * checks that the requested number of blocks is less than the maximum allowed size;
+  * registers the actor TNonreplCheckRangeActor, which works through the methods of the parent actor (in partition_common).
 
-#### mirror диски
-* TMirrorPartitionActor::HandleCheckRange
-  * проверяет, что запрошенное количество блоков меньше максимально допустимого размера
-  * регистрирует актор TMirrorCheckRangeActor, передаёт ему имена (DeviceUUID) реплик
-  * TMirrorCheckRangeActor
-    * SendReadBlocksRequest: отправляет запросы на чтение указанных блоков каждой реплики mirror'а (TEvReadBlocksRequest).
-      * TMirrorPartitionActor::HandleReadBlocks(part_mirror_actor_readblocks.cpp): обработка запроса на чтение -> TMirrorPartitionActor::ReadBlocks
-        * из хедеров выбираем нужную реплику
-        * создается `TRequestActor<TReadBlocksMethod>` для чтения из нужной реплики
-          * SendRequests из созданного на предыдущем шаге актора
-            * обработка ответов происходит в HandleResponse, в итоге выполняем ставим чексумму и возвращаем ответ
-    * В обработке ответа (TMirrorCheckRangeActor::HandleReadBlocksResponse)
-      * проверка ошибок чтения с реплики
-      * вычисление чексумм диапазона
-      * подготовка ответа с 1 общей чексуммой или набором чексумм, если были расхождения
+#### Mirror disks
+* TMirrorPartitionActor::HandleCheckRange:
+  * checks that the requested number of blocks is less than the maximum allowed size;
+  * registers the actor TMirrorCheckRangeActor, passes the replica names (DeviceUUID) to it;
+  * TMirrorCheckRangeActor:
+    * SendReadBlocksRequest: sends read requests for the specified blocks from each replica of the mirror (TEvReadBlocksRequest).
+      * TMirrorPartitionActor::HandleReadBlocks (part_mirror_actor_readblocks.cpp): request processing for reading -> TMirrorPartitionActor::ReadBlocks:
+      * the desired replica is selected from the headers;
+      * the TRequestActor<TReadBlocksMethod> is created to read from the desired replica;
+        * SendRequests is called from the actor created on the previous step:
+          * response processing occurs in HandleResponse, eventually we set the checksum and return the response;
+    * the response processing (TMirrorCheckRangeActor::HandleReadBlocksResponse):
+      * check read errors from the replica;
+      * calculate the checksums of the range;
+      * prepare the response with 1 general checksum or a set of checksums if there were discrepancies.
 
-#### partition диски
-* TPartitionActor::HandleCheckRange
-  * проверяет, что запрошенное количество блоков меньше максимально допустимого размера
-  * регистрирует актор TCheckRangeActor (базовый класс для других CheckRangeActor'ов)
+#### block-4-2(hdd + ssd) and mirror-3of4 (hdd + ssd) disks
+* TPartitionActor::HandleCheckRange:
+  * checks that the requested number of blocks is less than the maximum allowed size;
+  * registers the actor TCheckRangeActor (base class for other CheckRangeActors).
 
-  * TCheckRangeActor: Bootstrap + SendReadBlocksRequest
-    * отправляем запрос на чтение указанных блоков в Partition (TEvReadBlocksLocalRequest).
-      * TPartitionActor::HandleReadBlocksLocal -> HandleReadBlocksRequest
-        * создаётся запрос на чтение блоков
-        * для последующего возврата ответа регистрируем TReadBlocksLocalHandler через CreateReadHandler
-        * в TPartitionActor::ReadBlocks выполняется чтение блоков через транзакцию CreateTx<TReadBlocks> с хендлером TReadBlocksLocalHandler
-        * в конце транзакции вызывается TPartitionActor::CompleteReadBlocks
-          * регистрируется актор TReadBlocksActor
-            * // в процессе выполнения будет происходить работа с TReadBlocksLocalHandler::GetGuardedSgList с вызовом из TReadBlocksActor::ReadBlocks
-            * отправляется TEvReadBlobRequest
-            * TReadBlocksActor::HandleReadBlobResponse
-              * проверяем чексуммы в VerifyChecksums для каждого ответа
-              * дожидаемся всех ответов
-              * генерируется ответ через CreateReadBlocksResponse
-    * В обработке ответа (TCheckRangeActor::HandleReadBlocksResponse) проверит ошибки и посчитает + проставит полученные чексуммы
+  * TCheckRangeActor: Bootstrap + SendReadBlocksRequest:
+    * sends the read request to the Partition (TEvReadBlocksLocalRequest) for a specified blocks.
+      * TPartitionActor::HandleReadBlocksLocal -> HandleReadBlocksRequest:
+        * reading blocks request is created;
+        * TReadBlocksLocalHandler is registered through CreateReadHandler for the subsequent response's returning
+        * blocks are read via the CreateTx<TReadBlocks> transaction with the TReadBlocksLocalHandler handler with start in the TPartitionActor::ReadBlocks;
+        * TPartitionActor::CompleteReadBlocks is called at the end of the transaction:
+          * the TReadBlocksActor actor is registered;
+            * the work will be done with TReadBlocksLocalHandler::GetGuardedSgList, called from TReadBlocksActor::ReadBlocks;
+            * TEvReadBlobRequest is sent;
+            * TReadBlocksActor::HandleReadBlobResponse:
+              * check checksums in VerifyChecksums for each response;
+              * wait for all responses;
+              * generate the response through CreateReadBlocksResponse;
+    * errors are checked and the received checksums are calculated and set in response processing (TCheckRangeActor::HandleReadBlocksResponse)
 
-## Юниттесты
-### volume
-Содержит в себе общую для всех типов партиционирования логику. Тип диска получает параметром.
-#### Позитивные тесты
-- DoTestShouldCommonCheckRange: получение одного общего ответа на checkRange + проверка чексумм
-- DoTestShouldSuccessfullyCheckRangeIfDiskIsEmpty: проверка checkRange для пустого диска
-- DoTestShouldGetSameChecksumsWhileCheckRangeEqualBlocks: сверяем чексуммы одинаковых данных разных блоков
-- DoTEstShouldGetDifferentChecksumsWhileCheckRange: проверяем отличие чексумм разных блоков
-- DoTestShouldCheckRangeIndependentChecksum: проверка независимости чексумм соседних блоков
+## Unit tests
+### Volume
+It contains common logic for all types of partitioning. The disk type is received as a parameter.
 
-#### Негативные тесты
-- DoTestShouldCheckRangeWithBrokenBlocks: проверка ошибки "block is broken" через подмену перехваченного внутреннего ответа
-- DoTestShouldntCheckRangeWithBigBlockCount: проверка обработки параметра для слишком большого размера блока
+#### Positive tests:
+- DoTestShouldCommonCheckRange: getting one general response for checkRange + checksum check;
+- DoTestShouldSuccessfullyCheckRangeIfDiskIsEmpty: checkRange check for an empty disk;
+- DoTestShouldGetSameChecksumsWhileCheckRangeEqualBlocks: we compare checksums of the same data from different blocks;
+- DoTEstShouldGetDifferentChecksumsWhileCheckRange: we check the difference in checksums of different blocks;
+- DoTestShouldCheckRangeIndependentChecksum: we check the independence of checksums of adjacent blocks.
 
-### nonreplicated
-- Все тесты реализованы как "общие" в volume
+#### Negative tests:
+- DoTestShouldCheckRangeWithBrokenBlocks: we check the «block is broken» error by substituting the intercepted internal response;
+- DoTestShouldntCheckRangeWithBigBlockCount: we check the processing of a parameter for a block size that is too large.
 
-### mirror disk
-#### Позитивные тесты
-- ShouldMirrorCheckRangeRepliesFromAllReplicas: получение промежуточных ответов с каждой из 3 реплик. Необходим для проверки участия каждой реплики
-- Остальные тесты реализованы как "общие" в volume
-#### Негативные тесты
-- ShouldMirrorCheckRangeOneReplicaBroken: проверка ошибки "block is broken" на 1 реплике через подмену перехваченного внутреннего ответа
+### Nonreplicated disk
+All tests are implemented as «common» in volume.
 
-### partition disk
-- Все тесты реализованы как "общие" в volume
+### Block-4-2(hdd + ssd) and mirror-3of4 (hdd + ssd) disk
+All tests are implemented as «common» in volume.
+
+### Mirror disk
+Many tests are implemented as «common» in volume.
+#### Positive tests:
+- ShouldMirrorCheckRangeRepliesFromAllReplicas: receiving intermediate responses from each of the 3 replicas. This is necessary to check the participation of each replica;
+
+#### Negative tests:
+- ShouldMirrorCheckRangeOneReplicaBroken: checking the «block is broken» error on 1 replica by substituting the intercepted internal response;
+- ShouldMirrorCheckRangeOneReplicaDifferent: checking the case of a checksum's difference on a 1 replica.

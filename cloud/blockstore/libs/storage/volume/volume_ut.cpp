@@ -3533,13 +3533,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
     };
 
-    void DoTestShouldCommonCheckRange(
+    static void DoTestShouldCommonCheckRange(
         NCloud::NProto::EStorageMediaKind mediaKind)
     {
-        constexpr ui32 diskSize = 8192;
+        constexpr ui32 DiskSize = 8192;
         auto runtime = PrepareTestActorRuntime();
         TVolumeClient volume(*runtime);
-        volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind, diskSize);
+        volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind, DiskSize);
         volume.WaitReady();
 
         auto clientInfo = CreateVolumeClientInfo(
@@ -3557,9 +3557,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             clientInfo.GetClientId(),
             42);
 
-        const auto checkRange = [&](ui32 idx, ui32 size)
+        const auto checkRange = [&](ui32 startIndex, ui32 size)
         {
-            volume.SendCheckRangeRequest("disk-id", idx, size);
+            volume.SendCheckRangeRequest("disk-id", startIndex, size);
             auto response =
                 volume.RecvCheckRangeResponse(TDuration::Seconds(1));
             const auto& record = response->Record;
@@ -3575,7 +3575,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         checkRange(1000, 1000);
     }
 
-    void DoTestShouldCheckRangeIndependentChecksum(
+    static void DoTestShouldCheckRangeIndependentChecksum(
         NCloud::NProto::EStorageMediaKind mediaKind)
     {
         auto runtime = PrepareTestActorRuntime();
@@ -3620,7 +3620,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
     }
 
-    void DoTestShouldSuccessfullyCheckRangeIfDiskIsEmpty(
+    static void DoTestShouldSuccessfullyCheckRangeIfDiskIsEmpty(
         NCloud::NProto::EStorageMediaKind mediaKind)
     {
         auto runtime = PrepareTestActorRuntime();
@@ -3641,7 +3641,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->Record.GetStatus().GetCode());
     }
 
-    void DoTestShouldGetSameChecksumsWhileCheckRangeEqualBlocks(
+    static void DoTestShouldGetSameChecksumsWhileCheckRangeEqualBlocks(
         NCloud::NProto::EStorageMediaKind mediaKind)
     {
         auto runtime = PrepareTestActorRuntime();
@@ -3661,15 +3661,13 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             42);
 
         volume.SendCheckRangeRequest("disk-id", 0, 99);
-        auto response1 =
-            volume.RecvCheckRangeResponse(TDuration::Seconds(5));
+        auto response1 = volume.RecvCheckRangeResponse(TDuration::Seconds(5));
         bool resp1NotNull = response1 != nullptr;
         UNIT_ASSERT_VALUES_EQUAL(resp1NotNull, true);
         const auto& record1 = response1->Record;
 
         volume.SendCheckRangeRequest("disk-id", 100, 99);
-        auto response2 =
-            volume.RecvCheckRangeResponse(TDuration::Seconds(5));
+        auto response2 = volume.RecvCheckRangeResponse(TDuration::Seconds(5));
         bool resp2NotNull = response2 != nullptr;
         UNIT_ASSERT_VALUES_EQUAL(resp2NotNull, true);
         const auto& record2 = response2->Record;
@@ -3682,7 +3680,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             TVector<ui32>(checksums2.begin(), checksums2.end()));
     }
 
-    void DoTEstShouldGetDifferentChecksumsWhileCheckRange(
+    static void DoTEstShouldGetDifferentChecksumsWhileCheckRange(
         NCloud::NProto::EStorageMediaKind mediaKind)
     {
         auto runtime = PrepareTestActorRuntime();
@@ -3732,7 +3730,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_UNEQUAL(differentChecksums, 0);
     }
 
-    void DoTestShouldntCheckRangeWithBigBlockCount(
+    static void DoTestShouldntCheckRangeWithBigBlockCount(
         NCloud::NProto::EStorageMediaKind mediaKind)
     {
         auto runtime = PrepareTestActorRuntime();
@@ -3752,12 +3750,11 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             42);
 
         volume.SendCheckRangeRequest("disk-id", 0, 1024 + 1);
-        auto response =
-            volume.RecvCheckRangeResponse(TDuration::Seconds(3));
+        auto response = volume.RecvCheckRangeResponse(TDuration::Seconds(3));
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
     }
 
-    void DoTestShouldCheckRangeWithBrokenBlocks(
+    static void DoTestShouldCheckRangeWithBrokenBlocks(
         NCloud::NProto::EStorageMediaKind mediaKind)
     {
         auto runtime = PrepareTestActorRuntime();
