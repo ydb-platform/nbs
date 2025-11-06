@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package yandex.cloud.priv.compute.v1.inner;
 
-option go_package = "github.com/ydb-platform/nbs/ydb/public/api/client/yc_private/compute/inner;compute";
+option go_package = "github.com/ydb-platform/nbs/contrib/ydb/public/api/client/yc_private/compute/inner;compute";
 
 service DiskService {
   // Create iam-token for encrypted disk
