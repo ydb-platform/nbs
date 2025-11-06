@@ -104,6 +104,25 @@ TDeviceList::TDeviceList(
     }
 }
 
+[[nodiscard]] NProto::TError TDeviceList::CompareMeaningfullFields(
+    const TDeviceList& other) const
+{
+    static_assert(
+        sizeof(TDeviceList) == 232,
+        "If you have changed the fields of TDeviceList, please consider "
+        "updating the comparison logic");
+
+    if (AllDevices != other.AllDevices) {
+        return MakeError(E_FAIL, "AllDevices are different");
+    }
+
+    if (NodeDevices != other.NodeDevices) {
+        return MakeError(E_FAIL, "NodeDevices are different");
+    }
+
+    return {};
+}
+
 void TDeviceList::UpdateDevices(
     const NProto::TAgentConfig& agent,
     const TDevicePoolConfigs& poolConfigs,

@@ -93,6 +93,11 @@ public:
         TVector<std::pair<TDeviceId, TDiskId>> allocatedDevices,
         bool alwaysAllocateLocalDisks);
 
+    // Returns S_OK if the data is the same. Returns an error if the data is
+    // different.
+    [[nodiscard]] NProto::TError CompareMeaningfullFields(
+        const TDeviceList& other) const;
+
     [[nodiscard]] size_t Size() const
     {
         return AllDevices.size();
