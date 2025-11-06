@@ -33,6 +33,7 @@ struct ISwitchableBlockStore: public IBlockStore
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+
 struct ISessionSwitcher
 {
     virtual ~ISessionSwitcher() = default;

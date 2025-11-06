@@ -547,7 +547,7 @@ Y_UNIT_TEST_SUITE(TSwitchableClientTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldSwitchSessionIfResponseContains_EF_OUTDATED_VOLUME)
+    Y_UNIT_TEST(ShouldSwitchSessionIfResponseContainsFlagOutdatedVolume)
     {
         auto client1 = std::make_shared<TTestService>();
         auto sessionSwitcher = std::make_shared<TTestSessionSwitcher>();

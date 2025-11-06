@@ -279,7 +279,7 @@ private:
         return future.Apply(
             [sessionSwitcher = SessionSwitcher,
              diskId = PrimaryClientInfo.DiskId]   //
-            (TFuture<TResponse> future) -> TFuture<TResponse>
+            (TFuture<TResponse> future) -> TResponse
             {
                 TResponse response = future.ExtractValue();
 
@@ -294,7 +294,7 @@ private:
                     }
                 }
 
-                return MakeFuture(std::move(response));
+                return response;
             });
     }
 
@@ -310,7 +310,7 @@ private:
         return future.Apply(
             [sessionSwitcher = SessionSwitcher]   //
             (TFuture<NProto::TMountVolumeResponse> future)
-                -> TFuture<NProto::TMountVolumeResponse>
+                -> NProto::TMountVolumeResponse
             {
                 NProto::TMountVolumeResponse response = future.ExtractValue();
 
@@ -329,7 +329,7 @@ private:
                     }
                 }
 
-                return MakeFuture(std::move(response));
+                return response;
             });
     }
 };
