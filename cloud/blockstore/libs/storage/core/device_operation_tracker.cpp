@@ -10,7 +10,14 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+
+namespace {
+
 ////////////////////////////////////////////////////////////////////////////////
+
+std::atomic<ui32> TrackingFrequency = 1;
+
+}   // namespace
 
 TString TDeviceOperationTracker::TKey::GetHtmlPrefix() const
 {
@@ -41,6 +48,26 @@ ui64 TDeviceOperationTracker::THash::operator()(const TKey& key) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+// static
+void TDeviceOperationTracker::UpdateTrackingFrequency(ui32 trackingFrequency)
+{
+    TrackingFrequency = trackingFrequency;
+}
+
+// static
+ui64 TDeviceOperationTracker::GenerateId(ui64 identifiersToReserve)
+{
+    static std::atomic<ui64> DeviceOperationIdGenerator = 1;
+
+    const ui64 val = DeviceOperationIdGenerator.fetch_add(identifiersToReserve);
+    const ui32 trackingFreq = TrackingFrequency.load();
+    if (trackingFreq > 0 && val % trackingFreq == 0) {
+        return val;
+    }
+
+    return 0;
+}
 
 void TDeviceOperationTracker::RebuildFromDeviceInfos()
 {

@@ -45,8 +45,7 @@ public:
         TNonreplicatedPartitionConfigPtr partConfig,
         TActorId volumeActorId,
         const TActorId& part,
-        TChildLogTitle logTitle,
-        ui64 deviceOperationId);
+        TChildLogTitle logTitle);
 
 protected:
     void SendRequest(const NActors::TActorContext& ctx) override;
@@ -74,8 +73,7 @@ TDiskAgentChecksumActor::TDiskAgentChecksumActor(
         TNonreplicatedPartitionConfigPtr partConfig,
         TActorId volumeActorId,
         const TActorId& part,
-        TChildLogTitle logTitle,
-        ui64 deviceOperationId)
+        TChildLogTitle logTitle)
     : TDiskAgentBaseRequestActor(
           std::move(requestInfo),
           GetRequestId(request),
@@ -85,8 +83,7 @@ TDiskAgentChecksumActor::TDiskAgentChecksumActor(
           std::move(partConfig),
           volumeActorId,
           part,
-          std::move(logTitle),
-          deviceOperationId)
+          std::move(logTitle))
     , Request(std::move(request))
 {}
 
@@ -251,8 +248,6 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocks(
         return;
     }
 
-    ui64 operationId = GenerateOperationId(deviceRequests.size());
-
     auto actorId = NCloud::Register<TDiskAgentChecksumActor>(
         ctx,
         requestInfo,
@@ -262,8 +257,7 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocks(
         PartConfig,
         VolumeActorId,
         SelfId(),
-        LogTitle.GetChild(GetCycleCount()),
-        operationId);
+        LogTitle.GetChild(GetCycleCount()));
 
     RequestsInProgress.AddReadRequest(actorId, std::move(request));
 }
