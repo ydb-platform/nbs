@@ -1,15 +1,16 @@
 #include "service_local.h"
 
 #include <cloud/blockstore/config/server.pb.h>
-
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/discovery/discovery.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+#include <cloud/blockstore/libs/service/service_method.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer.h>
 
@@ -413,25 +414,19 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TLocalServiceBase
-    : public IBlockStore
+struct TLocalServiceBase: public TBlockStoreImpl<TLocalServiceBase, IBlockStore>
 {
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr ctx,                                                   \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        Y_UNUSED(ctx);                                                         \
-        Y_UNUSED(request);                                                     \
-        return MakeFuture<NProto::T##name##Response>(TErrorResponse(           \
-            E_NOT_IMPLEMENTED,                                                 \
-            "Method " #name " not implemeted"));                               \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
-
-    BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
-
-#undef BLOCKSTORE_IMPLEMENT_METHOD
+    template <typename TMethod>
+    TFuture<typename TMethod::TResponse> Execute(
+        TCallContextPtr ctx,
+        std::shared_ptr<typename TMethod::TRequest> request)
+    {
+        Y_UNUSED(ctx);
+        Y_UNUSED(request);
+        return MakeFuture<typename TMethod::TResponse>(TErrorResponse(
+            E_NOT_IMPLEMENTED,
+            "Method " + TMethod::GetName() + " not implemented"));
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

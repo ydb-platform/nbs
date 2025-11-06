@@ -254,6 +254,9 @@ struct TCreateHandleArgs
 
     static constexpr ui32 TRUNC
         = ProtoFlag(NProto::TCreateHandleRequest::E_TRUNCATE);
+
+    static constexpr ui32 DIRECT
+        = ProtoFlag(NProto::TCreateHandleRequest::E_DIRECT);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

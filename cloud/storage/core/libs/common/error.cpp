@@ -73,11 +73,13 @@ EErrorKind GetErrorKind(const NProto::TError& e)
     }
 
     // FACILITY_SYSTEM error codes are obtained from "errno". The list of all
-    // possible errors: contrib/libs/linux-headers/asm-generic/errno-base.h
+    // possible errors: contrib/libs/linux-headers/asm-generic/errno-base.h and
+    //                  contrib/libs/linux-headers/asm-generic/errno.h
     if (FACILITY_FROM_CODE(code) == FACILITY_SYSTEM) {
         switch (STATUS_FROM_CODE(code)) {
             case EIO:
             case ENODATA:
+            case EREMOTEIO:
                 return EErrorKind::ErrorFatal;
             default:
                 // system/network errors should be retriable

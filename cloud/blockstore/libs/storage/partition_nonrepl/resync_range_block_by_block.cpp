@@ -1,6 +1,7 @@
 #include "resync_range_block_by_block.h"
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
+#include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
@@ -381,7 +382,9 @@ void TResyncRangeBlockByBlockActor::ReadReplicaBlocks(
     ReadStartTs = ctx.Now();
 }
 
-void TResyncRangeBlockByBlockActor::WriteBlocks(const TActorContext& ctx)
+void TResyncRangeBlockByBlockActor::WriteBlocks(
+    const TActorContext& ctx,
+    bool calculateChecksum)
 {
     if (!ActorsToResync) {
         Done(ctx);
@@ -391,7 +394,11 @@ void TResyncRangeBlockByBlockActor::WriteBlocks(const TActorContext& ctx)
     for (size_t replicaIdx: ActorsToResync) {
         WriteRangeInfo.ReplicaChecksums.push_back(
             MakeChecksums(replicaIdx, ReadBuffers[replicaIdx]));
-        WriteReplicaBlocks(ctx, replicaIdx, std::move(ReadBuffers[replicaIdx]));
+        WriteReplicaBlocks(
+            ctx,
+            replicaIdx,
+            std::move(ReadBuffers[replicaIdx]),
+            calculateChecksum);
     }
 
     WriteStartTs = ctx.Now();
@@ -400,7 +407,8 @@ void TResyncRangeBlockByBlockActor::WriteBlocks(const TActorContext& ctx)
 void TResyncRangeBlockByBlockActor::WriteReplicaBlocks(
     const TActorContext& ctx,
     size_t replicaIndex,
-    NProto::TIOVector data)
+    NProto::TIOVector data,
+    bool calculateChecksum)
 {
     auto request = std::make_unique<TEvService::TEvWriteBlocksRequest>();
     request->Record.SetStartIndex(Range.Start);
@@ -424,6 +432,11 @@ void TResyncRangeBlockByBlockActor::WriteReplicaBlocks(
         if (digest.Defined()) {
             AffectedBlockInfos.push_back({blockIndex, *digest});
         }
+    }
+    if (calculateChecksum) {
+        auto checksum =
+            CalculateChecksum(request->Record.GetBlocks(), BlockSize);
+        request->Record.MutableChecksums()->Add(std::move(checksum));
     }
 
     auto event = std::make_unique<NActors::IEventHandle>(
@@ -563,7 +576,7 @@ void TResyncRangeBlockByBlockActor::HandleReadResponse(
     }
 
     PrepareWriteBuffers(ctx);
-    WriteBlocks(ctx);
+    WriteBlocks(ctx, msg->Record.HasChecksum());
 }
 
 void TResyncRangeBlockByBlockActor::HandleWriteUndelivery(

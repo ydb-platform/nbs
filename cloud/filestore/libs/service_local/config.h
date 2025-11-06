@@ -116,6 +116,14 @@ public:
     bool GetZeroCopyWriteEnabled() const;
 
     bool GetFSyncQueueDisabled() const;
+
+    TDuration GetEntryTimeout() const;
+
+    TDuration GetNegativeEntryTimeout() const;
+
+    TDuration GetAttrTimeout() const;
+
+    TDuration GetXAttrCacheTimeout() const;
 };
 
 }   // namespace NCloud::NFileStore

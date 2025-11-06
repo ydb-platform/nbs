@@ -497,6 +497,17 @@ void TListNodesActor::HandleGetNodeAttrResponseCheck(
 
     if (exists) {
         ++LostNodeCount;
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "Node found in leader but missing in shard. Node observed in "
+            "leader: (name: %s, node proto: %s). Listing request proto: %s. "
+            "Validation response proto: %s",
+            name.Quote().c_str(),
+            node.ShortDebugString().Quote().c_str(),
+            ListNodesRequest.ShortDebugString().Quote().c_str(),
+            msg->Record.ShortDebugString().Quote().c_str());
+
         ReportNodeNotFoundInShard();
     }
 

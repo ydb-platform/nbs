@@ -127,7 +127,6 @@ void FinalizeProfileLogRequestInfo(
     IMPLEMENT_DEFAULT_METHOD(CreateSession)
     IMPLEMENT_DEFAULT_METHOD(DestroySession)
     IMPLEMENT_DEFAULT_METHOD(PingSession)
-    IMPLEMENT_DEFAULT_METHOD(ToggleServiceState)
     IMPLEMENT_DEFAULT_METHOD(AddClusterNode)
     IMPLEMENT_DEFAULT_METHOD(RemoveClusterNode)
     IMPLEMENT_DEFAULT_METHOD(ListClusterNodes)
@@ -322,6 +321,10 @@ void InitProfileLogRequestInfo(
         nodeInfo->SetType(NProto::E_SYMLINK_NODE);
     } else if (request.HasFifo()) {
         nodeInfo->SetType(NProto::E_FIFO_NODE);
+    } else if (request.HasCharDevice()) {
+        nodeInfo->SetType(NProto::E_CHARDEV_NODE);
+    } else if (request.HasBlockDevice()) {
+        nodeInfo->SetType(NProto::E_BLOCKDEV_NODE);
     } else {
         nodeInfo->SetType(NProto::E_INVALID_NODE);
     }
@@ -505,7 +508,6 @@ void InitProfileLogRequestInfo(
     IMPLEMENT_DEFAULT_METHOD(CreateSession, NProto)
     IMPLEMENT_DEFAULT_METHOD(DestroySession, NProto)
     IMPLEMENT_DEFAULT_METHOD(PingSession, NProto)
-    IMPLEMENT_DEFAULT_METHOD(ToggleServiceState, NProto)
     IMPLEMENT_DEFAULT_METHOD(AddClusterNode, NProto)
     IMPLEMENT_DEFAULT_METHOD(RemoveClusterNode, NProto)
     IMPLEMENT_DEFAULT_METHOD(ListClusterNodes, NProto)

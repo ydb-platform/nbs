@@ -41,26 +41,6 @@ constexpr size_t MaxRealProtoSize = 4_KB - NRdma::RDMA_PROTO_HEADER_SIZE;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
-    struct T##name##Method                                                     \
-    {                                                                          \
-        using TRequest = NProto::T##name##Request;                             \
-        using TResponse = NProto::T##name##Response;                           \
-                                                                               \
-        template <typename T, typename... TArgs>                               \
-        static TFuture<TResponse> Execute(T& service, TArgs&&... args)         \
-        {                                                                      \
-            return service.name(std::forward<TArgs>(args)...);                 \
-        }                                                                      \
-    };                                                                         \
-    // BLOCKSTORE_DECLARE_METHOD
-
-BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
-
-#undef BLOCKSTORE_DECLARE_METHOD
-
-////////////////////////////////////////////////////////////////////////////////
-
 #define BLOCKSTORE_RETURN_TRUE_CASE(name, ...)                                 \
     case TBlockStoreServerProtocol::Ev##name##Request:                         \
         return true;                                                           \

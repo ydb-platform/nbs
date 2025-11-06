@@ -24,6 +24,7 @@ IActorPtr CreateNonreplicatedPartition(
             std::move(diagnosticsConfig),
             std::move(partConfig),
             std::move(rdmaClient),
+            volumeActorId,
             statActorId);
     }
 

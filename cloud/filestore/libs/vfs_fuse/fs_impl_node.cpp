@@ -164,11 +164,8 @@ void TFileSystem::MkNode(
     mode_t mode,
     dev_t rdev)
 {
-    // TODO
-    Y_UNUSED(rdev);
-
     STORAGE_DEBUG("MkNode #" << parent << " " << name.Quote()
-        << " mode: " << mode);
+        << " mode: " << mode << " rdev: " << rdev);
 
     if (!ValidateNodeId(*callContext, req, parent)) {
         return;
@@ -189,6 +186,14 @@ void TFileSystem::MkNode(
     } else if (S_ISFIFO(mode)) {
         auto* fifo = request->MutableFifo();
         fifo->SetMode(mode & ~(S_IFMT));
+    } else if (S_ISCHR(mode)) {
+        auto* charDevice = request->MutableCharDevice();
+        charDevice->SetMode(mode & ~(S_IFMT));
+        charDevice->SetDevice(rdev);
+    } else if (S_ISBLK(mode)) {
+        auto* blockDevice = request->MutableBlockDevice();
+        blockDevice->SetMode(mode & ~(S_IFMT));
+        blockDevice->SetDevice(rdev);
     } else {
         ReplyError(*callContext, ErrorNotSupported(""), req, ENOTSUP);
         return;

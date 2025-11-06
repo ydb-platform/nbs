@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request.h>
 #include <cloud/blockstore/libs/service/service.h>
+#include <cloud/blockstore/libs/service/service_method.h>
 #include <cloud/blockstore/libs/spdk/iface/device.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 
@@ -27,29 +28,24 @@ static const TString IQN_CLIENT = "iqn.2016-06.io.spdk:client";
 
 ///////////////////////////////////////////////////////////////////////////////
 
-class TEndpointBase
-    : public IBlockStore
+class TEndpointBase: public TBlockStoreImpl<TEndpointBase, IBlockStore>
 {
 public:
     TEndpointBase() = default;
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        Y_UNUSED(callContext);                                                 \
-        Y_UNUSED(request);                                                     \
-        const auto& type = GetBlockStoreRequestName(EBlockStoreRequest::name); \
-        return MakeFuture<NProto::T##name##Response>(                          \
-            TErrorResponse(E_NOT_IMPLEMENTED, TStringBuilder()                 \
-                << "Unsupported request " << type.Quote()));                   \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
+    template <typename TMethod>
+    TFuture<typename TMethod::TResponse> Execute(
+        TCallContextPtr callContext,
+        std::shared_ptr<typename TMethod::TRequest> request)
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(request);
 
-    BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
-
-#undef BLOCKSTORE_IMPLEMENT_METHOD
+        return MakeFuture<typename TMethod::TResponse>(TErrorResponse(
+            E_NOT_IMPLEMENTED,
+            TStringBuilder()
+                << "Unsupported request " << TMethod::GetName().Quote()));
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

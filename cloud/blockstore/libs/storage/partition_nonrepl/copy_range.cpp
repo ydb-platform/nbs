@@ -107,8 +107,11 @@ void TCopyRangeActor::ReadBlocks(const TActorContext& ctx)
     ReadStartTs = ctx.Now();
 }
 
-void TCopyRangeActor::WriteBlocks(const TActorContext& ctx, NProto::TIOVector blocks)
+void TCopyRangeActor::WriteBlocks(
+    const TActorContext& ctx,
+    NProto::TReadBlocksResponse readResponse)
 {
+    NProto::TIOVector blocks = std::move(*readResponse.MutableBlocks());
     // BlobStorage-based volumes returns empty blocks for zero-blocks.
     for (auto& block: *blocks.MutableBuffers()) {
         if (block.empty()) {
@@ -118,6 +121,10 @@ void TCopyRangeActor::WriteBlocks(const TActorContext& ctx, NProto::TIOVector bl
 
     auto request = std::make_unique<TEvService::TEvWriteBlocksRequest>();
     request->Record.SetStartIndex(Range.Start);
+    if (readResponse.HasChecksum()) {
+        request->Record.MutableChecksums()->Add(
+            std::move(*readResponse.MutableChecksum()));
+    }
     request->Record.MutableBlocks()->Swap(&blocks);
     auto clientId =
         WriterClientId ? WriterClientId : TString(BackgroundOpsClientId);
@@ -289,7 +296,7 @@ void TCopyRangeActor::HandleReadResponse(
         AllZeroes = true;
         ZeroBlocks(ctx);
     } else {
-        WriteBlocks(ctx, std::move(*msg->Record.MutableBlocks()));
+        WriteBlocks(ctx, std::move(msg->Record));
     }
 }
 

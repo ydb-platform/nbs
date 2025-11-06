@@ -191,6 +191,28 @@ message TClientConfig
 
     // First retry timeout for YDB based disks (in milliseconds).
     optional uint32 YDBBasedDiskInitialRetryTimeout = 44;
+
+    // Enable list-based retry rules in TDurableClient.
+    // If disabled (default),
+    //     "EErrorKind::ErrorRetriable"-based predicate is used.
+    // If enabled, TDurableClient will additionally retry all error except:
+    //   For all media:
+    //     - cloud/blockstore/libs/client/durable.cpp::NeverRetriableErrors[]
+    //   For reliable media:
+    //     - NonRetriableErrorsForReliableMedia[]
+    //   For non-reliable media:
+    //     - NonRetriableErrorsForUnreliableMedia[].
+    optional bool EnableListBasedRetryRules = 45;
+
+    // List of non-retriable errors that will not be retried
+    //     even if EnableListBasedRetryRules is set.
+    // Applied for disks with IsReliableMediaKind == true.
+    repeated uint32 NonRetriableErrorsForReliableMedia = 46;
+
+    // List of non-retriable errors that will not be retried
+    //     even if EnableListBasedRetryRules is set.
+    // Applied for disks with IsReliableMediaKind == false.
+    repeated uint32 NonRetriableErrorsForUnreliableMedia = 47;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

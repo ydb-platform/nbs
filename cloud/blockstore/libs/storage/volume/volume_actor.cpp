@@ -1183,12 +1183,14 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvVolume::TEvDiskRegistryBasedPartitionCounters);
         IgnoreFunc(TEvStatsService::TEvVolumePartCounters);
         IgnoreFunc(TEvVolumePrivate::TEvPartStatsSaved);
+        IgnoreFunc(TEvVolumePrivate::TEvWriteOrZeroCompleted);
 
         IgnoreFunc(TEvPartition::TEvWaitReadyResponse);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);
         HFunc(TEvTablet::TEvTabletStop, HandleTabletStop);
+        HFunc(TEvents::TEvWakeup, HandleWakeup);
 
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 

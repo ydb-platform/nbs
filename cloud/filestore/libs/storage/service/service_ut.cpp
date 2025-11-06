@@ -4045,8 +4045,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             pingResponse->Record.GetServiceState(),
             pingResponse->Record.ShortDebugString());
 
-        service.ToggleServiceState(
+        NProtoPrivate::TToggleServiceStateRequest toggleRequest;
+        toggleRequest.SetDesiredServiceState(
             NProto::EServiceState::SERVICE_STATE_STOPPING);
+        TString buf;
+        google::protobuf::util::MessageToJsonString(toggleRequest, &buf);
+        service.ExecuteAction("toggleservicestate", buf);
 
         pingResponse = service.Ping();
         UNIT_ASSERT_EQUAL_C(

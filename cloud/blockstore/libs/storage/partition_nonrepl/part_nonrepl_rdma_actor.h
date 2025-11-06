@@ -54,6 +54,7 @@ private:
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const NRdma::IClientPtr RdmaClient;
+    const NActors::TActorId VolumeActorId;
     const NActors::TActorId StatActorId;
 
     // TODO implement DeviceStats and similar stuff
@@ -97,9 +98,10 @@ public:
         TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
         NRdma::IClientPtr rdmaClient,
+        NActors::TActorId volumeActorId,
         NActors::TActorId statActorId);
 
-    ~TNonreplicatedPartitionRdmaActor();
+    ~TNonreplicatedPartitionRdmaActor() override;
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

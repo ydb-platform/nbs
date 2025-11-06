@@ -25,6 +25,22 @@ constexpr ui32 MaxRequestSize = 32_MB;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename TResponse>
+void NormalizeIOErrors(TResponse& response)
+{
+    NProto::TError& error = *response.MutableError();
+    switch (error.GetCode()) {
+        case MAKE_SYSTEM_ERROR(EIO):
+        case MAKE_SYSTEM_ERROR(EREMOTEIO):
+            error.SetCode(E_IO);
+            break;
+        default:
+            break;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TStorageStub final
     : public IStorage
 {
@@ -390,6 +406,8 @@ TFuture<NProto::TReadBlocksResponse> TStorageAdapter::TImpl::ReadBlocks(
             }
 
             response->MergeFrom(localResponse);
+            NormalizeIOErrors(*response);
+
             promise.TrySetValue(std::move(*response));
         });
 
@@ -492,6 +510,7 @@ TFuture<NProto::TWriteBlocksResponse> TStorageAdapter::TImpl::WriteBlocks(
 
             NProto::TWriteBlocksResponse response;
             response.MergeFrom(localResponse);
+            NormalizeIOErrors(response);
 
             promise.TrySetValue(std::move(response));
         });
@@ -516,7 +535,11 @@ TFuture<NProto::TZeroBlocksResponse> TStorageAdapter::TImpl::ZeroBlocks(
             [inflightZeros = InflightZeros, id, promise](const auto& f) mutable
             {
                 inflightZeros->UnregisterRequest(id);
-                promise.TrySetValue(std::move(f.GetValue()));
+
+                NProto::TZeroBlocksResponse response = f.GetValue();
+                NormalizeIOErrors(response);
+
+                promise.TrySetValue(std::move(response));
             });
 
         return promise;
@@ -550,7 +573,11 @@ TFuture<NProto::TZeroBlocksResponse> TStorageAdapter::TImpl::ZeroBlocks(
         [inflightZeros = InflightZeros, id, promise](const auto& f) mutable
         {
             inflightZeros->UnregisterRequest(id);
-            promise.TrySetValue(std::move(f.GetValue()));
+
+            NProto::TZeroBlocksResponse response = f.GetValue();
+            NormalizeIOErrors(response);
+
+            promise.TrySetValue(std::move(response));
         });
 
     return promise;

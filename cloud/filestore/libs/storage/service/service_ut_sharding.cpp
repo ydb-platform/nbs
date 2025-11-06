@@ -89,6 +89,32 @@ NProtoPrivate::TGetStorageStatsResponse GetStorageStats(
     return response;
 }
 
+void CheckShardsSize(
+    const TShardedFileSystemConfig& fsConfig,
+    TServiceClient& service,
+    const ui64 blocksCount)
+{
+    const auto mainStats =
+        GetStorageStats(service, fsConfig.FsId, false /* allowCache */);
+    const auto shard1Stats = GetStorageStats(
+        service,
+        fsConfig.Shard1Id,
+        false /* allowCache */,
+        NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
+    const auto shard2Stats = GetStorageStats(
+        service,
+        fsConfig.Shard2Id,
+        false /* allowCache */,
+        NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
+    UNIT_ASSERT_EQUAL(blocksCount, mainStats.GetStats().GetTotalBlocksCount());
+    UNIT_ASSERT_EQUAL(
+        blocksCount,
+        shard1Stats.GetStats().GetTotalBlocksCount());
+    UNIT_ASSERT_EQUAL(
+        blocksCount,
+        shard2Stats.GetStats().GetTotalBlocksCount());
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2548,35 +2574,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             UNIT_ASSERT_EQUAL(2, shard2Topology.ShardFileSystemIdsSize());
         }
 
-        auto checkShardsSize = [&](const ui64 blocksCount)
-        {
-            const auto mainStats =
-                GetStorageStats(service, fsConfig.FsId, false /* allowCache */);
-            const auto shard1Stats = GetStorageStats(
-                service,
-                fsConfig.Shard1Id,
-                false /* allowCache */,
-                NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
-            const auto shard2Stats = GetStorageStats(
-                service,
-                fsConfig.Shard2Id,
-                false /* allowCache */,
-                NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
-            UNIT_ASSERT_EQUAL(
-                blocksCount,
-                mainStats.GetStats().GetTotalBlocksCount());
-            UNIT_ASSERT_EQUAL(
-                blocksCount,
-                shard1Stats.GetStats().GetTotalBlocksCount());
-            UNIT_ASSERT_EQUAL(
-                blocksCount,
-                shard2Stats.GetStats().GetTotalBlocksCount());
-        };
-
         // After resizing and turning on StrictFileSystemSizeEnforcement every
         // shard should have the same TotalBytesCount equal to that of the main
         // filesystem
-        checkShardsSize(fsConfig.MainFsBlockCount());
+        CheckShardsSize(fsConfig, service, fsConfig.MainFsBlockCount());
 
         // Downsize the filesystem by force
         const auto newBlocksCount = fsConfig.MainFsBlockCount() / 2;
@@ -2585,7 +2586,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             newBlocksCount,
             true /* force */);
 
-        checkShardsSize(newBlocksCount);
+        CheckShardsSize(fsConfig, service, newBlocksCount);
 
         // Attempt to write one more file should fail
         const auto file = createFile("notEnoughSpace");
@@ -2596,6 +2597,32 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             file.second,
             0,
             GenerateValidateData(fileSize, 0xBADF00D));
+    }
+
+    SERVICE_TEST_SIMPLE(
+        ShouldResizeShardsInStrictWithStrictFileSystemSizeEnforcement)
+    {
+        // Create file system with two shards 1000 * 4 * 1024 bytes each
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetStrictFileSystemSizeEnforcementEnabled(true);
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        // Downsize the filesystem by force to a size that less than
+        // ShardAllocationUnit
+        const auto newBlocksCount = config.GetShardAllocationUnit() / 2;
+        service.ResizeFileStore(
+            fsConfig.FsId,
+            newBlocksCount,
+            true /* force */);
+
+        CheckShardsSize(fsConfig, service, newBlocksCount);
+
+        // It is prohibited to resize an individual shard if
+        // StrictFileSystemSizeEnforcementEnabled
+        service.AssertResizeFileStoreFailed(
+            fsConfig.Shard1Id,
+            newBlocksCount * 2);
     }
 
     SERVICE_TEST_SIMPLE(ShouldRetryFileSystemResize)

@@ -3,7 +3,7 @@
 #include "service.h"
 
 #include <cloud/blockstore/libs/service/context.h>
-#include <cloud/blockstore/libs/service/request_helpers.h>
+#include <cloud/blockstore/libs/service/request.h>
 
 namespace NCloud::NBlockStore {
 
@@ -28,11 +28,6 @@ struct TBlockStoreMethodTraits
     static constexpr bool IsReadWriteRequest()
     {
         return IsReadRequest() || IsWriteRequest();
-    }
-
-    static TString GetName()
-    {
-        return GetBlockStoreRequestName(GetBlockStoreRequest<TRequest>());
     }
 };
 
@@ -72,6 +67,13 @@ struct TBlockStoreMethods;
         using TResponse = NProto::T##name##Response;                        \
                                                                             \
         static constexpr const char* Name = #name;                          \
+        static constexpr EBlockStoreRequest BlockStoreRequest =             \
+            EBlockStoreRequest::name;                                       \
+                                                                            \
+        [[nodiscard]] static TString GetName()                              \
+        {                                                                   \
+            return Name;                                                    \
+        }                                                                   \
                                                                             \
         [[nodiscard]] static NThreading::TFuture<NProto::T##name##Response> \
         Execute(                                                            \
@@ -84,9 +86,11 @@ struct TBlockStoreMethods;
                 std::move(request));                                        \
         }                                                                   \
     };                                                                      \
+                                                                            \
     using TBlockStore##name##Method = TBlockStoreMethod<                    \
         NProto::T##name##Request,                                           \
         NProto::T##name##Response>;                                         \
+                                                                            \
     template <>                                                             \
     struct TBlockStoreMethods<NProto::T##name##Request>                     \
     {                                                                       \
@@ -131,6 +135,25 @@ struct TBlockStoreImpl: public U
             std::move(callContext),                                 \
             std::move(request));                                    \
     }                                                               \
+    // BLOCKSTORE_DECLARE_METHOD
+
+    BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
+
+#undef BLOCKSTORE_DECLARE_METHOD
+};
+
+////////////////////////////////////////////////////////////////////////////////
+struct TBlockStoreAdapter
+{
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                 \
+    [[nodiscard]] static NThreading::TFuture<NProto::T##name##Response>      \
+    Execute(                                                                 \
+        IBlockStore* blockStore,                                             \
+        TCallContextPtr callContext,                                         \
+        std::shared_ptr<NProto::T##name##Request> request)                   \
+    {                                                                        \
+        return blockStore->name(std::move(callContext), std::move(request)); \
+    }                                                                        \
     // BLOCKSTORE_DECLARE_METHOD
 
     BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)

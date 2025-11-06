@@ -25,6 +25,20 @@ void SendEvReacquireDisk(
     system.Send(event.release());
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+bool IsIOError(const NProto::TError& error)
+{
+    switch (error.GetCode()) {
+        case E_IO:
+        case MAKE_SYSTEM_ERROR(EIO):
+        case MAKE_SYSTEM_ERROR(EREMOTEIO):
+            return true;
+        default:
+            return false;
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -44,7 +58,7 @@ void ProcessError(
         error.SetCode(E_IO);
     }
 
-    if (error.GetCode() == E_IO || error.GetCode() == MAKE_SYSTEM_ERROR(EIO)) {
+    if (IsIOError(error)) {
         error = config.MakeIOError(std::move(*error.MutableMessage()));
     } else {
         config.AugmentErrorFlags(error);

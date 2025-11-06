@@ -1110,6 +1110,9 @@ private:
         if (features.GetAttrTimeout()) {
             config.SetAttrTimeout(features.GetAttrTimeout());
         }
+        if (features.GetXAttrCacheTimeout()) {
+            config.SetXAttrCacheTimeout(features.GetXAttrCacheTimeout());
+        }
         config.SetAsyncDestroyHandleEnabled(
             features.GetAsyncDestroyHandleEnabled());
         config.SetAsyncHandleOperationPeriod(

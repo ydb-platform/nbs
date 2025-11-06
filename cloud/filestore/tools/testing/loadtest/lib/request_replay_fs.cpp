@@ -430,7 +430,7 @@ private:
                 .Mode = mode};
 
             HandlesLogToActual[logRequest.GetNodeInfo().GetHandle()] = fh;
-            const auto stat = TFileStat{fullName};
+            const auto stat = NLowLevel::TFileStatEx{fullName};
             const auto inode = stat.INode;
             if (logRequest.GetNodeInfo().GetNodeId() != InvalidNodeId) {
                 NodesLogToLocal[logRequest.GetNodeInfo().GetNodeId()] = inode;
@@ -685,7 +685,7 @@ private:
     static TNodeLocal MakeDirectoryRecursive(const TString& name)
     {
         NFs::MakeDirectoryRecursive(name);
-        const auto inode = TFileStat{name}.INode;
+        const auto inode = NLowLevel::TFileStatEx{name}.INode;
         return inode;
     }
 
@@ -720,9 +720,9 @@ private:
                 // open mode
                 TFileHandle fh(fullName, OpenAlways | RdWr);
                 if (fh) {
-                    nodeid = TFileStat{fh}.INode;
+                    nodeid = NLowLevel::TFileStatEx{fh}.INode;
                 } else {
-                    nodeid = TFileStat{fullName}.INode;
+                    nodeid = NLowLevel::TFileStatEx{fullName}.INode;
                 }
 
                 if (logRequest.GetNodeInfo().GetSize()) {
@@ -774,7 +774,7 @@ private:
         }
 
         if (!nodeid) {
-            nodeid = TFileStat{fullName}.INode;
+            nodeid = NLowLevel::TFileStatEx{fullName}.INode;
         }
 
         if (nodeid) {
@@ -983,7 +983,7 @@ private:
                                      << " in " << NodesLogToLocal.size())});
         }
 
-        [[maybe_unused]] const auto stat = TFileStat{fullname};
+        [[maybe_unused]] const auto stat = NLowLevel::TFileStatEx{fullname};
         return MakeFuture(
             TCompletedRequest(NProto::ACTION_GET_NODE_ATTR, Started, {}));
     }

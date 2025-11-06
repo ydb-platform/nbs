@@ -31,21 +31,3 @@ message TPingResponse
     // Current service state.
     EServiceState ServiceState = 2;
 }
-
-////////////////////////////////////////////////////////////////////////////////
-// Toggle service state request/response
-
-message TToggleServiceStateRequest
-{
-    // Desired service state.
-    EServiceState DesiredServiceState = 1;
-
-    // Optional request headers.
-    THeaders Headers = 2;
-}
-
-message TToggleServiceStateResponse
-{
-    // Optional error, set only if error happened.
-    NCloud.NProto.TError Error = 1;
-}

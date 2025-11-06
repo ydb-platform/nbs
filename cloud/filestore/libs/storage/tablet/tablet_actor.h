@@ -90,6 +90,7 @@ private:
 
         std::atomic<i64> UsedSessionsCount{0};
         std::atomic<i64> UsedHandlesCount{0};
+        std::atomic<i64> UsedDirectHandlesCount{0};
         std::atomic<i64> UsedLocksCount{0};
 
         // Session stats
@@ -364,7 +365,8 @@ private:
             const TBlobMetaMapStats& blobMetaMapStats,
             const TIndexTabletState::TBackpressureThresholds&
                 backpressureThresholds,
-            const TIndexTabletState::TBackpressureValues& backpressureValues);
+            const TIndexTabletState::TBackpressureValues& backpressureValues,
+            const THandlesStats& handlesStats);
         void UpdatePerformanceMetrics(
             TInstant now,
             const TDiagnosticsConfig& diagConfig,

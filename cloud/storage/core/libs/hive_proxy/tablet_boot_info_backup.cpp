@@ -270,7 +270,7 @@ void TTabletBootInfoBackup::HandleListTabletBootInfoBackups(
     TVector<TTabletBootInfo> tabletBootInfos;
     for (const auto& [_, tabletBootInfo]: BackupProto.GetData()) {
         tabletBootInfos.emplace_back(
-            NKikimr::TabletStorageInfoFromProto(tabletBootInfo.GetStorageInfo()),
+            tabletBootInfo.GetStorageInfo(),
             tabletBootInfo.GetSuggestedGeneration());
     }
 

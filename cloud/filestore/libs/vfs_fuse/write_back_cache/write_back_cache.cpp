@@ -330,7 +330,7 @@ public:
             ITimerPtr timer,
             IWriteBackCacheStatsPtr stats,
             const TString& filePath,
-            ui32 capacityBytes,
+            ui64 capacityBytes,
             TFlushConfig flushConfig)
         : Session(std::move(session))
         , Scheduler(std::move(scheduler))
@@ -1257,7 +1257,7 @@ TWriteBackCache::TWriteBackCache(
         ITimerPtr timer,
         IWriteBackCacheStatsPtr stats,
         const TString& filePath,
-        ui32 capacityBytes,
+        ui64 capacityBytes,
         TDuration automaticFlushPeriod,
         TDuration flushRetryPeriod,
         ui32 maxWriteRequestSize,

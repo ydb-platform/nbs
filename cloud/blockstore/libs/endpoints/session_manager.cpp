@@ -14,6 +14,7 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_error_transform.h>
+#include <cloud/blockstore/libs/service/service_method.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/blockstore/libs/validation/validation.h>
 
@@ -125,30 +126,24 @@ using TEndpointPtr = std::shared_ptr<TEndpoint>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TClientBase
-    : public IBlockStore
+class TClientBase: public TBlockStoreImpl<TClientBase, IBlockStore>
 {
 public:
     TClientBase() = default;
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        Y_UNUSED(callContext);                                                 \
-        Y_UNUSED(request);                                                     \
-        const auto& type = GetBlockStoreRequestName(EBlockStoreRequest::name); \
-        return MakeFuture<NProto::T##name##Response>(TErrorResponse(           \
-            E_NOT_IMPLEMENTED,                                                 \
-            TStringBuilder()                                                   \
-                << "TClientBase: unsupported request " << type.Quote()));      \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
+    template <typename TMethod>
+    TFuture<typename TMethod::TResponse> Execute(
+        TCallContextPtr callContext,
+        std::shared_ptr<typename TMethod::TRequest> request)
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(request);
 
-    BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
-
-#undef BLOCKSTORE_IMPLEMENT_METHOD
+        return MakeFuture<typename TMethod::TResponse>(TErrorResponse(
+            E_NOT_IMPLEMENTED,
+            TStringBuilder() << "TClientBase: unsupported request "
+                             << TMethod::GetName().Quote()));
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
