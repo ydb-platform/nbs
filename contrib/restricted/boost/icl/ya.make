@@ -22,7 +22,6 @@ PEERDIR(
     contrib/restricted/boost/move
     contrib/restricted/boost/mpl
     contrib/restricted/boost/range
-    contrib/restricted/boost/rational
     contrib/restricted/boost/static_assert
     contrib/restricted/boost/type_traits
     contrib/restricted/boost/utility
