@@ -1,5 +1,7 @@
 LIBRARY(xslt_render)
 
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/deny_ydb_dependency.inc)
+
 SRCS(
     xml_document.cpp
     xslt_render.cpp

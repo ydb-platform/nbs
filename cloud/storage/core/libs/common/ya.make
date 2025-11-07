@@ -1,5 +1,7 @@
 LIBRARY()
 
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/deny_ydb_dependency.inc)
+
 GENERATE_ENUM_SERIALIZATION(error.h)
 
 SRCS(
