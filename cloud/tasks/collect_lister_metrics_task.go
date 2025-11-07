@@ -51,30 +51,33 @@ func (c *collectListerMetricsTask) Run(
 	ticker := time.NewTicker(c.metricsCollectionInterval)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		for _, taskStatus := range taskStatuses {
-			err := c.collectTasksMetrics(
-				ctx,
-				func(context.Context) ([]storage.TaskInfo, error) {
-					return c.storage.ListTasksWithStatus(
-						ctx,
-						taskStatus,
-					)
-				},
-				taskStatus,
-			)
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			for _, taskStatus := range taskStatuses {
+				err := c.collectTasksMetrics(
+					ctx,
+					func(context.Context) ([]storage.TaskInfo, error) {
+						return c.storage.ListTasksWithStatus(
+							ctx,
+							taskStatus,
+						)
+					},
+					taskStatus,
+				)
+				if err != nil {
+					return err
+				}
+			}
+
+			err := c.collectHangingTasksMetrics(ctx)
 			if err != nil {
 				return err
 			}
 		}
-
-		err := c.collectHangingTasksMetrics(ctx)
-		if err != nil {
-			return err
-		}
 	}
-
-	return nil
 }
 
 func (c *collectListerMetricsTask) Cancel(
