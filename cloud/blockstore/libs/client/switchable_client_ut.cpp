@@ -547,9 +547,10 @@ Y_UNIT_TEST_SUITE(TSwitchableClientTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldSwitchSessionIfResponseContainsFlagOutdatedVolume)
+    Y_UNIT_TEST(ShouldStartPauseRequestsIfResponseContainsFlagOutdatedVolume)
     {
         auto client1 = std::make_shared<TTestService>();
+        auto client2 = std::make_shared<TTestService>();
         auto sessionSwitcher = std::make_shared<TTestSessionSwitcher>();
 
         auto switchableClient = CreateSwitchableClient(
@@ -558,24 +559,23 @@ Y_UNIT_TEST_SUITE(TSwitchableClientTest)
             PrimaryDiskId,
             client1);
 
-        bool setOutdatedVolumeFlag = false;
-        client1->ReadBlocksLocalHandler =
-            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
         {
-            UNIT_ASSERT_EQUAL(request->GetDiskId(), PrimaryDiskId);
+            // If the response contain the EF_OUTDATED_VOLUME flag, then  call
+            // BeforeSwitching() of TSwitchableBlockStoreClient should occur.
+            client1->ReadBlocksLocalHandler =
+                [&](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+            {
+                UNIT_ASSERT_EQUAL(request->GetDiskId(), PrimaryDiskId);
 
-            ui32 flags = 0;
-            if (setOutdatedVolumeFlag) {
+                ui32 flags = 0;
                 SetProtoFlag(flags, NProto::EF_OUTDATED_VOLUME);
-            }
-            return MakeFuture<NProto::TReadBlocksLocalResponse>(TErrorResponse(
-                E_BS_INVALID_SESSION,
-                "reconnect to principal disk",
-                flags));
-        };
+                return MakeFuture<NProto::TReadBlocksLocalResponse>(
+                    TErrorResponse(
+                        E_BS_INVALID_SESSION,
+                        "reconnect to principal disk",
+                        flags));
+            };
 
-        {   // If the response does not contain the EF_OUTDATED_VOLUME flag,
-            // then the call SwitchSession of ISessionSwitcher should not occur.
             TCallContextPtr callContext = MakeIntrusive<TCallContext>();
             auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
             request->SetDiskId(PrimaryDiskId);
@@ -587,28 +587,29 @@ Y_UNIT_TEST_SUITE(TSwitchableClientTest)
                 E_BS_INVALID_SESSION,
                 response.GetError().GetCode(),
                 FormatError(response.GetError()));
-            UNIT_ASSERT_VALUES_EQUAL("", sessionSwitcher->DiskId);
-            UNIT_ASSERT_VALUES_EQUAL("", sessionSwitcher->NewDiskId);
         }
 
-        {   // If the response contain the EF_OUTDATED_VOLUME flag, then the
-            // call SwitchSession of ISessionSwitcher should occur.
-            setOutdatedVolumeFlag = true;
-            TCallContextPtr callContext = MakeIntrusive<TCallContext>();
-            auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
-            request->SetDiskId(PrimaryDiskId);
-            auto future = switchableClient->ReadBlocksLocal(
-                callContext,
-                std::move(request));
-            const auto& response = future.GetValue();
+        {
+            // Data-plane request should pause
+            auto readFuture = CheckRequestPaused<
+                NProto::TReadBlocksRequest,
+                NProto::TReadBlocksResponse>(
+                client1,
+                client2,
+                switchableClient);
+
+            // unpause requests
+            TTestMethod<NProto::TReadBlocksRequest, NProto::TReadBlocksResponse>
+                readMethod{client1, client2};
+            switchableClient->AfterSwitching();
+
+            const auto& response = readFuture.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_VALUES_EQUAL_C(
-                E_BS_INVALID_SESSION,
+                E_ARGUMENT,
                 response.GetError().GetCode(),
                 FormatError(response.GetError()));
-            UNIT_ASSERT_VALUES_EQUAL(PrimaryDiskId, sessionSwitcher->DiskId);
-            UNIT_ASSERT_VALUES_EQUAL(
-                NStorage::GetNextDiskId(PrimaryDiskId),
-                sessionSwitcher->NewDiskId);
+            UNIT_ASSERT_VALUES_EQUAL(1, readMethod.GetPrimaryRequestCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, readMethod.GetSecondaryRequestCount());
         }
     }
 }

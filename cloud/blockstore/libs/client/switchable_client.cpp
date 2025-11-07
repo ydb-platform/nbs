@@ -2,7 +2,6 @@
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service_method.h>
-#include <cloud/blockstore/libs/storage/model/volume_label.h>
 
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -44,6 +43,11 @@ private:
     TVector<TRequestInfo> Requests;
 
 public:
+    ~TDeferredRequestsHolder()
+    {
+        Y_DEBUG_ABORT_UNLESS(Requests.empty());
+    }
+
     TFuture<TResponse> SaveRequest(
         TCallContextPtr callContext,
         std::shared_ptr<TRequest> request)
@@ -132,9 +136,15 @@ public:
 
     void BeforeSwitching() override
     {
-        Y_ABORT_UNLESS(!WillSwitchToSecondary);
-        STORAGE_INFO("Will switch from " << PrimaryClientInfo.DiskId.Quote());
-        WillSwitchToSecondary = true;
+        if (WillSwitchToSecondary) {
+            return;
+        }
+
+        bool expected = false;
+        if (WillSwitchToSecondary.compare_exchange_strong(expected, true)) {
+            STORAGE_INFO(
+                "Will switch from " << PrimaryClientInfo.DiskId.Quote());
+        }
     }
 
     void Switch(
@@ -277,8 +287,7 @@ private:
             std::move(request));
 
         return future.Apply(
-            [sessionSwitcher = SessionSwitcher,
-             diskId = PrimaryClientInfo.DiskId]   //
+            [weakSelf = weak_from_this()]   //
             (TFuture<TResponse> future) -> TResponse
             {
                 TResponse response = future.ExtractValue();
@@ -286,10 +295,8 @@ private:
                 if (HasError(response)) {
                     const auto errorFlags = response.GetError().GetFlags();
                     if (HasProtoFlag(errorFlags, NProto::EF_OUTDATED_VOLUME)) {
-                        if (auto switcher = sessionSwitcher.lock()) {
-                            switcher->SwitchSession(
-                                diskId,
-                                NStorage::GetNextDiskId(diskId));
+                        if (auto self = weakSelf.lock()) {
+                            self->BeforeSwitching();
                         }
                     }
                 }
@@ -317,11 +324,6 @@ private:
                 if (!HasError(response) &&
                     response.GetVolume().GetPrincipalDiskId())
                 {
-                    Y_DEBUG_ABORT_UNLESS(
-                        response.GetVolume().GetPrincipalDiskId() ==
-                        NStorage::GetNextDiskId(
-                            response.GetVolume().GetDiskId()));
-
                     if (auto switcher = sessionSwitcher.lock()) {
                         switcher->SwitchSession(
                             response.GetVolume().GetDiskId(),

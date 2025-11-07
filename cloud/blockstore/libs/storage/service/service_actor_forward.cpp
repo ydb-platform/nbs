@@ -145,10 +145,7 @@ void TServiceActor::ForwardRequest(
             ctx,
             ev,
             E_BS_INVALID_SESSION,
-            TStringBuilder() << "Invalid session (SessionId does not match)"
-                             << " DiskId: " << diskId
-                             << " Volume sessionId: " << volume->SessionId
-                             << " Client sessionId: " << sessionId);
+            "Invalid session (SessionId does not match)");
         return;
     }
 
