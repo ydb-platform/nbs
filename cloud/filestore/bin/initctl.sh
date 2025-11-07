@@ -25,7 +25,6 @@ PID_FILE=$BIN_DIR/pids.txt
 if [[ "$1" == "stop" ]]; then
     if [[ -e "$PID_FILE" ]]; then
         for pid in `cat $PID_FILE`; do
-            echo "stopping $pid"
             pids=$(ps -o pid= --ppid $pid) || continue
 
             echo "stopping $pids"
@@ -80,7 +79,7 @@ elif [[ "$1" == "startlocal" ]]; then
 
     $BIN_DIR/filestore-vhost-local.sh &>$LOGS_DIR/filestore-vhost-log.txt &
     echo $! >> $PID_FILE
-    echo "started vhost server $!"
+    echo "started vhost server w local service $!"
 
     shift
 elif [[ "$1" == "start" || "$1" == "initialize" ]]; then
@@ -130,17 +129,7 @@ fi
 # MOUNT
 
 if [[ "$1" == "mount" ]]; then
-    [ -d "$MOUNT_POINT" ] || mkdir "$MOUNT_POINT"
-
-    $BIN_DIR/filestore-client mount         \
-        --server-port       $SERVER_PORT    \
-        --filesystem        "$FS"           \
-        --mount-path        "$MOUNT_POINT"  \
-        --verbose           trace           \
-        2>&1 | grep -v PingSession          \
-        2>&1 &>$LOGS_DIR/nfs-mount.txt      \
-        &
-
+    $BIN_DIR/mount.sh &>$LOGS_DIR/nfs-mount.txt &
     echo $! >> $PID_FILE
     echo "$FS mounted at $MOUNT_POINT"
 
