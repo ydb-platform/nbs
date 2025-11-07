@@ -1716,7 +1716,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         UNIT_ASSERT(detectedCreateVolumeRequest);
     }
 
-    Y_UNIT_TEST(ShoudCreateVolumeWithSSTags)
+    Y_UNIT_TEST(ShoudCreateVolumeWithSourceDiskIdTag)
     {
         TTestEnv env;
         ui32 nodeIdx = SetupTestEnv(env);
