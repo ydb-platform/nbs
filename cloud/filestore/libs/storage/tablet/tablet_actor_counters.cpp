@@ -908,6 +908,13 @@ void TIndexTabletActor::HandleUpdateCounters(
         }
         if (shardIds.empty()) {
             CachedAggregateStats = std::move(*stats);
+            Store(
+                Metrics.AggregateUsedBytesCount,
+                CachedAggregateStats.GetUsedBlocksCount() * GetBlockSize());
+            Store(
+                Metrics.AggregateUsedNodesCount,
+                CachedAggregateStats.GetUsedNodesCount());
+
             return;
         }
 

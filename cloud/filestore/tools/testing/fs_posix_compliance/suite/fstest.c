@@ -230,24 +230,24 @@ static struct flag chflags_flags[] = {
 
 
 struct name {
-	int		 n_name;
-	const char	*n_str;
+    int n_name;
+    const char* n_str;
 };
 
 static struct name pathconf_names[] = {
-#ifdef	_PC_LINK_MAX
-	{ _PC_LINK_MAX, "_PC_LINK_MAX" },
+#ifdef _PC_LINK_MAX
+    {_PC_LINK_MAX, "_PC_LINK_MAX"},
 #endif
-#ifdef	_PC_NAME_MAX
-	{ _PC_NAME_MAX, "_PC_NAME_MAX" },
+#ifdef _PC_NAME_MAX
+    {_PC_NAME_MAX, "_PC_NAME_MAX"},
 #endif
-#ifdef	_PC_PATH_MAX
-	{ _PC_PATH_MAX, "_PC_PATH_MAX" },
+#ifdef _PC_PATH_MAX
+    {_PC_PATH_MAX, "_PC_PATH_MAX"},
 #endif
-#ifdef	_PC_SYMLINK_MAX
-	{ _PC_SYMLINK_MAX, "_PC_SYMLINK_MAX" },
+#ifdef _PC_SYMLINK_MAX
+    {_PC_SYMLINK_MAX, "_PC_SYMLINK_MAX"},
 #endif
-	{ 0, NULL }
+    {0, NULL}
 };
 
 
@@ -311,13 +311,14 @@ static char* flags2str(struct flag* tflags, long long flags)
 static int
 str2name(struct name *names, char *name)
 {
-	unsigned int i;
+    unsigned int i;
 
-	for (i = 0; names[i].n_str != NULL; i++) {
-		if (strcmp(names[i].n_str, name) == 0)
-			return (names[i].n_name);
-	}
-	return (-1);
+    for (i = 0; names[i].n_str != NULL; i++) {
+        if (strcmp(names[i].n_str, name) == 0) {
+            return (names[i].n_name);
+        }
+    }
+    return (-1);
 }
 
 static struct syscall_desc* find_syscall(const char* name)
@@ -359,9 +360,9 @@ static void show_stat(struct stat64* sp, const char* what)
         printf("%s", flags2str(chflags_flags, sp->st_flags));
 #endif
     } else if (strcmp(what, "major") == 0) {
-		printf("%u", (unsigned int)major(sp->st_rdev));
+        printf("%u", (unsigned int)major(sp->st_rdev));
     } else if (strcmp(what, "minor") == 0) {
-		printf("%u", (unsigned int)minor(sp->st_rdev));
+        printf("%u", (unsigned int)minor(sp->st_rdev));
     } else if (strcmp(what, "type") == 0) {
         switch (sp->st_mode & S_IFMT) {
             case S_IFIFO:

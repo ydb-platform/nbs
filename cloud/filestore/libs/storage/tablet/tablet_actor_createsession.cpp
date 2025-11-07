@@ -61,6 +61,14 @@ void FillFeatures(
     features->SetParentlessFilesOnly(config.GetParentlessFilesOnly());
     features->SetAllowHandlelessIO(config.GetAllowHandlelessIO());
 
+    features->SetDirectoryHandlesStorageEnabled(
+        config.GetDirectoryHandlesStorageEnabled());
+
+    if (config.GetDirectoryHandlesStorageEnabled()) {
+        features->SetDirectoryHandlesTableSize(
+            config.GetDirectoryHandlesTableSize());
+    }
+
     features->SetDirectoryCreationInShardsEnabled(
         fileSystem.GetDirectoryCreationInShardsEnabled());
 

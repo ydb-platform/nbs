@@ -538,6 +538,126 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         service.DestroySession(headers);
     }
 
+    void DoShouldGetStorageStatsFormShardlessFilesystem(
+        const bool strictFileSystemSizeEnforcementEnabled)
+    {
+        // Create a filesystem without shards
+        const ui64 filestoreSize = 1_GB;
+        const ui64 autoShardsSize = 2_GB;
+        const ui64 blockSize = 4_KB;
+        const ui64 filestoreBlockSize = filestoreSize / blockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetAutomaticShardCreationEnabled(true);
+        storageConfig.SetShardAllocationUnit(2_GB);
+        storageConfig.SetAutomaticallyCreatedShardSize(autoShardsSize);
+        storageConfig.SetMultiTabletForwardingEnabled(true);
+        storageConfig.SetStrictFileSystemSizeEnforcementEnabled(
+            strictFileSystemSizeEnforcementEnabled);
+
+        TTestEnv env{{}, storageConfig};
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        const TString fsId = "test";
+        service.CreateFileStore(fsId, filestoreBlockSize);
+        // Wait for IndexTablet to restart triggered by ConfigureShards.
+        // ConfigureShards is called only if
+        // strictFileSystemSizeEnforcementEnabled.
+        if (strictFileSystemSizeEnforcementEnabled) {
+            WaitForTabletStart(service);
+        }
+
+        auto headers = service.InitSession("test", "client");
+
+        TString data1 = GenerateValidateData(256_KB, 1);
+        TString data2 = GenerateValidateData(256_KB, 2);
+        TString data3 = GenerateValidateData(512_KB, 3);
+
+        auto writeToFile =
+            [&](const TString& fileName, const TString& d1, const TString& d2)
+        {
+            const auto handle = service.CreateHandle(
+                headers,
+                fsId,
+                RootNodeId,
+                fileName,
+                TCreateHandleArgs::CREATE)->Record;
+
+            const auto nodeId = handle.GetNodeAttr().GetId();
+            const auto handleId = handle.GetHandle();
+
+            service.WriteData(headers, fsId, nodeId, handleId, 0, d1);
+            service.WriteData(headers, fsId, nodeId, handleId, d1.size(), d2);
+        };
+
+        writeToFile("file1", data1, data2);
+        writeToFile("file2", data2, data3);
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(30));
+
+        // If strictFileSystemSizeEnforcementEnabled the IndexTablet restarts
+        // and we need to pump one more EvUpdateCounters.
+        const ui32 requiredUdpdateEventsCount =
+            strictFileSystemSizeEnforcementEnabled ? 2 : 1;
+        TDispatchOptions options;
+        options.FinalEvents = {TDispatchOptions::TFinalEventCondition(
+            TEvIndexTabletPrivate::EvUpdateCounters,
+            requiredUdpdateEventsCount)};
+        env.GetRuntime().DispatchEvents(options);
+
+        NProtoPrivate::TGetStorageStatsRequest request;
+        request.SetFileSystemId(fsId);
+        request.SetAllowCache(true);
+
+        NProtoPrivate::TGetStorageStatsResponse response =
+            GetStorageStats(service, request);
+
+        const auto& stats = response.GetStats();
+        const auto usedBlocks = stats.GetUsedBlocksCount();
+        const auto usedBytes = usedBlocks * blockSize;
+
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.GetUsedNodesCount());
+        UNIT_ASSERT_VALUES_EQUAL(2, stats.GetUsedHandlesCount());
+        UNIT_ASSERT_VALUES_EQUAL(320, usedBlocks);
+        UNIT_ASSERT_VALUES_EQUAL(
+            filestoreBlockSize,
+            stats.GetTotalBlocksCount());
+
+        env.GetRegistry()->Update(env.GetRuntime().GetCurrentTime());
+
+        auto counters = GetFileSystemCounters(env, fsId);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            usedBytes,
+            counters->GetCounter("UsedBytesCount")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            usedBytes,
+            counters->GetCounter("AggregateUsedBytesCount")->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            counters->GetCounter("AggregateUsedNodesCount")->GetAtomic());
+
+        service.DestroySession(headers);
+    }
+
+    Y_UNIT_TEST(ShouldGetStorageStatsForShardlessFSWithStrictSizeEnforcement)
+    {
+        const bool strictFileSystemSizeEnforcementEnabled = true;
+        DoShouldGetStorageStatsFormShardlessFilesystem(
+            strictFileSystemSizeEnforcementEnabled);
+    }
+
+    Y_UNIT_TEST(ShouldGetStorageStatsForShardlessFSWithoutStrictSizeEnforcement)
+    {
+        const bool strictFileSystemSizeEnforcementEnabled = false;
+        DoShouldGetStorageStatsFormShardlessFilesystem(
+            strictFileSystemSizeEnforcementEnabled);
+    }
+
     Y_UNIT_TEST(ShouldGetStorageStatsWithFileSystemSizeEnforcement)
     {
         const bool strictFileSystemSizeEnforcementEnabled = true;

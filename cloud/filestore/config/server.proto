@@ -185,6 +185,11 @@ message TLocalServiceConfig
     // X Attrs cache timeout
     optional uint32 XAttrCacheTimeout = 33;
 
+    // Enable directory handles storage functionality
+    optional bool DirectoryHandlesStorageEnabled = 34;
+
+    // Capacity for DirectoryHandles persistent table.
+    optional uint64 DirectoryHandlesTableSize = 35;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

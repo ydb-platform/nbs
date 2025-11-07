@@ -291,11 +291,7 @@ NProto::TFsyncResponse TLocalFileSystem::Fsync(
         return TErrorResponse(ErrorInvalidHandle(request.GetHandle()));
     }
 
-    const bool flushed =
-        request.GetDataSync() ? handle->FlushData() : handle->Flush();
-    if (!flushed) {
-        return TErrorResponse(E_IO, "flush failed");
-    }
+    NLowLevel::Fsync(*handle, request.GetDataSync());
 
     return {};
 }
@@ -312,11 +308,7 @@ NProto::TFsyncDirResponse TLocalFileSystem::FsyncDir(
     }
 
     auto handle = node->OpenHandle(O_RDONLY|O_DIRECTORY);
-    const bool flushed =
-        request.GetDataSync() ? handle.FlushData() : handle.Flush();
-    if (!flushed) {
-        return TErrorResponse(E_IO, "flush failed");
-    }
+    NLowLevel::Fsync(handle, request.GetDataSync());
 
     return {};
 }

@@ -36,6 +36,7 @@ namespace NCloud::NFileStore{
     xxx(InvalidShardNo)                                                        \
     xxx(WriteBackCacheCreatingOrDeletingError)                                 \
     xxx(ErrorWasSentToTheGuest)                                                \
+    xxx(DirectoryHandlesStorageError)                                          \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_IMPOSSIBLE_EVENTS(xxx)                                       \

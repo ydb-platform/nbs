@@ -89,6 +89,7 @@ def generate_test_cases(
         'overlay_disk_max_count': _generate_test_cases_for_overlay_disk_max_count_suite,
         'default_all_types': _generate_test_cases_for_default_all_types_suite,
         'rdma_all_types': _generate_test_cases_for_rdma_all_types_suite,
+        'latency_4k_network_ssd': _generate_test_cases_for_latency_4k_network_ssd
     }
     try:
         func = test_suite_to_func[test_suite]
@@ -439,6 +440,33 @@ def _generate_test_cases_for_rdma_all_types_suite(
             ['randrw'],
             [4 * 1024, 1 * 1024 ** 2],  # bytes
             [1, 32],
+            [50]
+        )
+    ]
+
+
+def _generate_test_cases_for_latency_4k_network_ssd(
+    cluster_name: str,
+    service: str
+) -> list[TestCase]:
+    return [
+        TestCase(service,
+                 type,
+                 size,
+                 device_bs,
+                 rw,
+                 bs,
+                 iodepth,
+                 rw_mix_read,
+                 '/dev/vdb')
+        for type, size, device_bs, rw, bs, iodepth, rw_mix_read
+        in itertools.product(
+            ['network-ssd'],
+            [256, 1024],  # GB
+            [4 * 1024],  # bytes
+            ['randread', 'randwrite', 'randrw'],
+            [4 * 1024],  # bytes
+            [32],
             [50]
         )
     ]

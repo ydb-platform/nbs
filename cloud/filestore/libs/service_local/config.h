@@ -124,6 +124,10 @@ public:
     TDuration GetAttrTimeout() const;
 
     TDuration GetXAttrCacheTimeout() const;
+
+    bool GetDirectoryHandlesStorageEnabled() const;
+
+    ui64 GetDirectoryHandlesTableSize() const;
 };
 
 }   // namespace NCloud::NFileStore

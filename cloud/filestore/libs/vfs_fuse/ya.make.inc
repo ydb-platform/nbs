@@ -1,6 +1,8 @@
 SRCS(
     config.cpp
+    directory_handles_storage.cpp
     fs.cpp
+    fs_directory_handle.cpp
     fs_impl.cpp
     fs_impl_attr.cpp
     fs_impl_data.cpp
