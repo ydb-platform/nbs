@@ -37,11 +37,6 @@ NProto::TError ValidateRequest(const NProto::TCreateNodeRequest& request)
         }
     }
 
-    // TODO(#4541): support char/block device nodes with kikimr backend
-    if (request.HasBlockDevice() || request.HasCharDevice()) {
-        return ErrorNotSupported();
-    }
-
     return {};
 }
 
@@ -77,6 +72,20 @@ void InitAttrs(NProto::TNode& attrs, const NProto::TCreateNodeRequest& request)
             fifo.GetMode(),
             request.GetUid(),
             request.GetGid());
+    } else if (request.HasCharDevice()) {
+        const auto& cdev = request.GetCharDevice();
+        attrs = CreateCharDeviceAttrs(
+            cdev.GetMode(),
+            request.GetUid(),
+            request.GetGid(),
+            cdev.GetDevice());
+    } else if (request.HasBlockDevice()) {
+        const auto& bdev = request.GetBlockDevice();
+        attrs = CreateBlockDeviceAttrs(
+            bdev.GetMode(),
+            request.GetUid(),
+            request.GetGid(),
+            bdev.GetDevice());
     }
 }
 

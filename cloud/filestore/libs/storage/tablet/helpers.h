@@ -83,6 +83,8 @@ NProto::TNode CreateDirectoryAttrs(ui32 mode, ui32 uid, ui32 gid);
 NProto::TNode CreateLinkAttrs(const TString& link, ui32 uid, ui32 gid);
 NProto::TNode CreateSocketAttrs(ui32 mode, ui32 uid, ui32 gid);
 NProto::TNode CreateFifoAttrs(ui32 mode, ui32 uid, ui32 gid);
+NProto::TNode CreateCharDeviceAttrs(ui32 mode, ui32 uid, ui32 gid, ui64 dev);
+NProto::TNode CreateBlockDeviceAttrs(ui32 mode, ui32 uid, ui32 gid, ui64 dev);
 
 NProto::TNode CopyAttrs(const NProto::TNode& src, ui32 mode = E_CM_CTIME);
 
