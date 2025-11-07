@@ -72,7 +72,10 @@ private:
                 HandleRegisterTrafficSource);
 
             default:
-                Y_ABORT("Unexpected event %x", ev->GetTypeRewrite());
+                Y_ABORT(
+                    "Unexpected event %x %s",
+                    ev->GetTypeRewrite(),
+                    ev->GetTypeName().c_str());
         }
     }
 
@@ -161,7 +164,10 @@ private:
             IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutRequest);
 
             default:
-                Y_ABORT("Unexpected event %x", ev->GetTypeRewrite());
+                Y_ABORT(
+                    "Unexpected event %x %s",
+                    ev->GetTypeRewrite(),
+                    ev->GetTypeName().c_str());
         }
     }
 
@@ -276,7 +282,10 @@ private:
             HFunc(TEvService::TEvAddTagsRequest, HandleAddTagsRequest);
 
             default:
-                Y_ABORT("Unexpected event %x", ev->GetTypeRewrite());
+                Y_ABORT(
+                    "Unexpected event %x %s",
+                    ev->GetTypeRewrite(),
+                    ev->GetTypeName().c_str());
         }
     }
 
