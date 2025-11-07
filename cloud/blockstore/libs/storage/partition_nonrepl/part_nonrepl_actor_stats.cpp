@@ -1,6 +1,7 @@
 #include "part_nonrepl_actor.h"
 
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
+#include <util/generic/hash_set.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -38,6 +39,14 @@ void TNonreplicatedPartitionActor::SendStats(const TActorContext& ctx)
         CalculateHasBrokenDeviceCounterValue(ctx, false));
     PartCounters->Simple.HasBrokenDeviceSilent.Set(
         CalculateHasBrokenDeviceCounterValue(ctx, true));
+
+    THashSet<ui32> allAgents;
+    for (const auto& device: PartConfig->GetDevices()) {
+        allAgents.insert(device.GetNodeId());
+    }
+    PartCounters->Simple.AgentsNumberForDisk.Set(
+        allAgents.size()
+    );
 
     auto request =
         std::make_unique<TEvVolume::TEvDiskRegistryBasedPartitionCounters>(

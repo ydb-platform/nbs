@@ -231,6 +231,10 @@ struct TSimpleDiskCounters
         EPublishingPolicy::DiskRegistryBased,
         TSimpleCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter AgentsNumberForDisk{
+        EPublishingPolicy::DiskRegistryBased,
+        TSimpleCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
 
     static constexpr TMeta AllCounters[] = {
         MakeMeta<&TSimpleDiskCounters::BytesCount>(),
@@ -263,6 +267,7 @@ struct TSimpleDiskCounters
         MakeMeta<&TSimpleDiskCounters::HasBrokenDeviceSilent>(),
         MakeMeta<&TSimpleDiskCounters::ScrubbingProgress>(),
         MakeMeta<&TSimpleDiskCounters::ChecksumMismatches>(),
+        MakeMeta<&TSimpleDiskCounters::AgentsNumberForDisk>(),
     };
 };
 static_assert(
