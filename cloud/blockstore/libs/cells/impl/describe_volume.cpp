@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/client/config.h>
+#include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
@@ -145,13 +146,13 @@ TFuture<NProto::TDescribeVolumeResponse> TMultiCellDescribeHandler::Start(
             if (!cell.CellId.empty()) {
                 STORAGE_DEBUG(
                     TStringBuilder()
-                        << "Send remote Describe Request to " << host.Fqdn
-                        << " for volume " << Request.GetDiskId());
+                    << "Send remote Describe Request to " << host.Fqdn
+                    << " for volume " << Request.GetDiskId());
             } else {
                 STORAGE_DEBUG(
                     TStringBuilder()
-                        << "Send local Describe Request for volume "
-                        << Request.GetDiskId());
+                    << "Send local Describe Request for volume "
+                    << Request.GetDiskId());
             }
 
             auto handler = std::make_shared<TDescribeResponseHandler>(
@@ -291,32 +292,48 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
     }
     auto response = future.GetValue();
     if (!HasError(response)) {
-        if (!Cell.StrictCellIdCheckInDescribe ||
-            Cell.CellId == response.GetCellId())
-        {
-            response.SetCellId(Cell.CellId);
-            owner->Reply(std::move(response));
+        const auto& volume = response.GetVolume();
+        if (volume.GetTags().contains(SourceDiskIdTagName)) {
             STORAGE_DEBUG(
                 TStringBuilder()
-                    << "DescribeVolume: got success for disk "
-                    << Request.GetDiskId().Quote() << " from " << HostInfo.Fqdn);
-            return;
+                << "DescribeVolume: got response for disk "
+                << Request.GetDiskId().Quote() << " with source disk id "
+                << volume.GetTags().at(SourceDiskIdTagName).Quote() << " from "
+                << HostInfo.Fqdn
+                << " but it will be ignored since volume has source disk id "
+                   "tag");
+
+            const auto* msg =
+                "DescribeVolume response ignored since volume has source disk "
+                "id tag";
+            *response.MutableError() = MakeError(E_NOT_FOUND, msg);
+        } else {
+            if (!Cell.StrictCellIdCheckInDescribe ||
+                Cell.CellId == response.GetCellId())
+            {
+                response.SetCellId(Cell.CellId);
+                owner->Reply(std::move(response));
+                STORAGE_DEBUG(
+                    TStringBuilder() << "DescribeVolume: got success for disk "
+                                     << Request.GetDiskId().Quote() << " from "
+                                     << HostInfo.Fqdn);
+                return;
+            }
+
+            const auto* msg = "DescribeVolume response cell id mismatch";
+
+            ReportWrongCellIdInDescribeVolume(
+                msg,
+                {{"expected", Cell.CellId}, {"actual", response.GetCellId()}});
+
+            *response.MutableError() = MakeError(E_REJECTED, msg);
         }
-
-        const auto* msg = "DescribeVolume response cell id mismatch";
-
-        ReportWrongCellIdInDescribeVolume(
-            msg,
-            {{"expected", Cell.CellId}, {"actual", response.GetCellId()}});
-
-        *response.MutableError() = MakeError(E_REJECTED, msg);
     }
 
     STORAGE_DEBUG(
         TStringBuilder() << "DescribeVolume: got error "
-            << response.GetError().GetMessage().Quote()
-            << " from "
-            << HostInfo.Fqdn);
+                         << response.GetError().GetMessage().Quote() << " from "
+                         << HostInfo.Fqdn);
 
     if (EErrorKind::ErrorRetriable != GetErrorKind(response.GetError())) {
         auto code = response.GetError().GetCode();
