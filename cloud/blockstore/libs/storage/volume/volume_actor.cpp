@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler_logger.h>
@@ -820,24 +821,11 @@ void TVolumeActor::InitializeDeviceOperationTracker()
     }
 
     TVector<TDeviceOperationTracker::TDeviceInfo> deviceInfos;
-    THashSet<TString> seenDevices;
 
-    for (const auto& device: State->GetMeta().GetDevices()) {
-        const TString deviceUUID = device.GetDeviceUUID();
-        if (seenDevices.insert(deviceUUID).second) {
-            deviceInfos.push_back(
-                {.DeviceUUID = deviceUUID, .AgentId = device.GetAgentId()});
-        }
-    }
-
-    for (const auto& replica: State->GetMeta().GetReplicas()) {
-        for (const auto& device: replica.GetDevices()) {
-            const TString deviceUUID = device.GetDeviceUUID();
-            if (seenDevices.insert(deviceUUID).second) {
-                deviceInfos.push_back(
-                    {.DeviceUUID = deviceUUID, .AgentId = device.GetAgentId()});
-            }
-        }
+    for (const NProto::TDeviceConfig* device: GetAllDevices(State->GetMeta())) {
+        deviceInfos.push_back(
+            {.DeviceUUID = device->GetDeviceUUID(),
+             .AgentId = device->GetAgentId()});
     }
 
     DeviceOperationTracker.UpdateDevices(std::move(deviceInfos));
