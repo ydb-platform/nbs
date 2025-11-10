@@ -100,7 +100,8 @@ auto IsReadWriteRequest(TRequestCounters::TRequestType t)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRequestCountersOptions {
+struct TRequestCountersOptions
+{
     TRequestCounters::EOption Options = {};
     EHistogramCounterOptions HistogramCounterOptions =
         EHistogramCounterOption::ReportMultipleCounters;
@@ -520,8 +521,9 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
     {
         auto monitoring = CreateMonitoringServiceStub();
 
-        auto requestCounters =
-            MakeRequestCounters({TRequestCounters::EOption::AddSpecialCounters});
+        auto requestCounters = MakeRequestCounters(
+            {.Options = TRequestCounters::EOption::AddSpecialCounters,
+             .ExecutionTimeSizeClasses = {}});
         requestCounters.Register(*monitoring->GetCounters());
 
         const auto requestType = ReadRequestType;
@@ -683,7 +685,8 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
     {
         auto monitoring = CreateMonitoringServiceStub();
         auto counters = MakeRequestCountersPtr(
-            {TRequestCounters::EOption::ReportDataPlaneHistogram});
+            {.Options = TRequestCounters::EOption::ReportDataPlaneHistogram,
+             .ExecutionTimeSizeClasses = {}});
         counters->Register(*monitoring->GetCounters());
 
         AddRequestStats(*counters, WriteRequestType, {
@@ -711,8 +714,10 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
     {
         auto monitoring = CreateMonitoringServiceStub();
         auto counters = MakeRequestCountersPtr(
-            {TRequestCounters::EOption::ReportDataPlaneHistogram,
-             EHistogramCounterOption::ReportMultipleCounters});
+            {.Options = TRequestCounters::EOption::ReportDataPlaneHistogram,
+             .HistogramCounterOptions =
+                 EHistogramCounterOption::ReportMultipleCounters,
+             .ExecutionTimeSizeClasses = {}});
         counters->Register(*monitoring->GetCounters());
 
         AddRequestStats(*counters, WriteRequestType, {
@@ -750,8 +755,10 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
     {
         auto monitoring = CreateMonitoringServiceStub();
         auto counters = MakeRequestCountersPtr(
-            {TRequestCounters::EOption::ReportDataPlaneHistogram,
-             EHistogramCounterOption::ReportSingleCounter});
+            {.Options = TRequestCounters::EOption::ReportDataPlaneHistogram,
+             .HistogramCounterOptions =
+                 EHistogramCounterOption::ReportSingleCounter,
+             .ExecutionTimeSizeClasses = {}});
         counters->Register(*monitoring->GetCounters());
 
         AddRequestStats(*counters, WriteRequestType, {
@@ -792,7 +799,8 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
     {
         auto monitoring = CreateMonitoringServiceStub();
         auto counters = MakeRequestCountersPtr(
-            {TRequestCounters::EOption::ReportDataPlaneHistogram, {}});
+            {.Options = TRequestCounters::EOption::ReportDataPlaneHistogram,
+             .ExecutionTimeSizeClasses = {}});
         counters->Register(*monitoring->GetCounters());
 
         AddRequestStats(*counters, WriteRequestType, {
