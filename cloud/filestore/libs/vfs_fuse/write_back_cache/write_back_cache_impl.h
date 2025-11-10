@@ -2,9 +2,9 @@
 
 #include "write_back_cache.h"
 
-#include "disjoint_interval_map.h"
-
 #include <cloud/filestore/libs/service/filestore.h>
+
+#include <cloud/storage/core/libs/common/disjoint_interval_map.h>
 
 #include <util/datetime/base.h>
 

@@ -99,12 +99,12 @@ public:
         return Data.end();
     }
 
-    TConstIterator cbegin() const
+    TConstIterator begin() const
     {
         return Data.begin();
     }
 
-    TConstIterator cend() const
+    TConstIterator end() const
     {
         return Data.end();
     }
