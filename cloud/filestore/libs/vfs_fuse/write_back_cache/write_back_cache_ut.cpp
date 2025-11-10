@@ -831,17 +831,17 @@ struct TBootstrap
     }
 };
 
-struct TWriteRequestLogger
+struct TWriteDataRequestLogger
 {
-    struct TRequest
+    struct TRequestInfo
     {
         ui64 NodeId = 0;
         ui64 Offset = 0;
         ui64 Length = 0;
-        TVector<ui64> IoVecsLengths;
+        TVector<ui64> IovecsLengths;
     };
 
-    TVector<TRequest> Requests;
+    TVector<TRequestInfo> Requests;
 
     void Subscribe(TBootstrap& b)
     {
@@ -851,16 +851,17 @@ struct TWriteRequestLogger
              previousHandler =
                  std::move(previousHandler)](auto context, auto request) mutable
         {
-            TRequest info;
+            TRequestInfo info;
             info.NodeId = request->GetNodeId();
             info.Offset = request->GetOffset();
 
             if (request->GetIovecs().empty()) {
-                info.Length = request->GetBuffer().size() - request->GetBufferOffset();
+                info.Length =
+                    request->GetBuffer().size() - request->GetBufferOffset();
             } else {
                 info.Length = 0;
                 for (const auto& iovec : request->GetIovecs()) {
-                    info.IoVecsLengths.push_back(iovec.GetLength());
+                    info.IovecsLengths.push_back(iovec.GetLength());
                     info.Length += iovec.GetLength();
                 }
             }
@@ -871,7 +872,7 @@ struct TWriteRequestLogger
         };
     }
 
-    TString GetLog(ui64 nodeId) const
+    TString RangesToString(ui64 nodeId) const
     {
         TStringBuilder sb;
         for (const auto& request : Requests) {
@@ -886,7 +887,7 @@ struct TWriteRequestLogger
         return sb;
     }
 
-    TString GetIovecsLog(ui64 nodeId) const
+    TString IovecLengthsToString(ui64 nodeId) const
     {
         TStringBuilder sb;
         for (const auto& request : Requests) {
@@ -897,11 +898,11 @@ struct TWriteRequestLogger
                 sb << ", ";
             }
             sb << "[";
-            for (size_t i = 0; i < request.IoVecsLengths.size(); ++i) {
+            for (size_t i = 0; i < request.IovecsLengths.size(); ++i) {
                 if (i > 0) {
                     sb << ", ";
                 }
-                sb << request.IoVecsLengths[i];
+                sb << request.IovecsLengths[i];
             }
             sb << "]";
         }
@@ -1125,6 +1126,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         bool flushed = false;
 
         b.Session->WriteDataHandler = [&] (auto, auto request) {
+            // WriteBackCache generates WriteData requests in Flush that
+            // references the buffer directly in the cache using Iovecs.
+            // We copy the data to Buffer for easier validation.
             b.MoveIovecsToBuffer(*request);
             UNIT_ASSERT(!flushed);
             flushed = true;
@@ -1323,7 +1327,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
     struct TTestArgs
     {
-        bool WithRecreation = false;
+        bool WithCacheRecreation = false;
         bool ZeroCopyWriteEnabled = false;
     };
 
@@ -1332,7 +1336,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         // Ensures that the data is not flushed twice, does not work well with
         // cache recreation because after recreation, the data may be flushed
         // again
-        b.EraseExpectedUnflushedDataAfterFirstUse = !args.WithRecreation;
+        b.EraseExpectedUnflushedDataAfterFirstUse = !args.WithCacheRecreation;
 
         const TString alphabet = "abcdefghijklmnopqrstuvwxyz";
 
@@ -1371,7 +1375,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                 flushesRemaining--;
             }
 
-            if (args.WithRecreation && RandomNumber(20u) == 0) {
+            if (args.WithCacheRecreation && RandomNumber(20u) == 0) {
                 b.RecreateCache();
                 stats.Unflush();
             }
@@ -1389,7 +1393,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             UNIT_ASSERT_EQUAL(stats.FlushCount, b.Stats->CompletedFlushCount);
         }
 
-        if (args.WithRecreation) {
+        if (args.WithCacheRecreation) {
             b.RecreateCache();
         }
 
@@ -1406,7 +1410,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
     Y_UNIT_TEST(ShouldReadAfterWriteRandomizedWithRecreation)
     {
-        TestShouldReadAfterWriteRandomized({.WithRecreation = true});
+        TestShouldReadAfterWriteRandomized({.WithCacheRecreation = true});
     }
 
     Y_UNIT_TEST(ShouldReadAfterWriteRandomizedWithZeroCopy)
@@ -1417,7 +1421,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     Y_UNIT_TEST(ShouldReadAfterWriteRandomizedWithRecreationAndZeroCopy)
     {
         TestShouldReadAfterWriteRandomized(
-            {.WithRecreation = true, .ZeroCopyWriteEnabled = true});
+            {.WithCacheRecreation = true, .ZeroCopyWriteEnabled = true});
     }
 
     Y_UNIT_TEST(ShouldWriteAndFlushConcurrently)
@@ -1637,7 +1641,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     {
         TBootstrap b({.MaxWriteRequestSize = 2});
 
-        TWriteRequestLogger logger;
+        TWriteDataRequestLogger logger;
         logger.Subscribe(b);
 
         b.WriteToCacheSync(1, 0, "aa");
@@ -1650,14 +1654,14 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             "(0, 2), (2, 2), (4, 2), (6, 2), (8, 2)",
-            logger.GetLog(1));
+            logger.RangesToString(1));
     }
 
     Y_UNIT_TEST(ShouldLimitTotalWriteRequestSizeAtFlush)
     {
         TBootstrap b({.MaxSumWriteRequestsSize = 7});
 
-        TWriteRequestLogger logger;
+        TWriteDataRequestLogger logger;
         logger.Subscribe(b);
 
         b.WriteToCacheSync(1, 0, "aa");
@@ -1670,14 +1674,14 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             "(0, 6), (6, 4)",
-            logger.GetLog(1));
+            logger.RangesToString(1));
     }
 
     Y_UNIT_TEST(ShouldLimitWriteRequestsCountAtFlush)
     {
         TBootstrap b({.MaxWriteRequestsCount = 3});
 
-        TWriteRequestLogger logger;
+        TWriteDataRequestLogger logger;
         logger.Subscribe(b);
 
         b.WriteToCacheSync(1, 8, "a");
@@ -1691,14 +1695,14 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         // Parts are going in the increased order in each flush operation
         UNIT_ASSERT_VALUES_EQUAL(
             "(4, 1), (6, 1), (8, 1), (0, 1), (2, 1)",
-            logger.GetLog(1));
+            logger.RangesToString(1));
     }
 
     Y_UNIT_TEST(ShouldTryToFlushWhenRequestSizeIsGreaterThanLimit)
     {
         TBootstrap b({.MaxWriteRequestSize = 2, .MaxWriteRequestsCount = 1});
 
-        TWriteRequestLogger logger;
+        TWriteDataRequestLogger logger;
         logger.Subscribe(b);
 
         b.WriteToCacheSync(1, 0, "a");
@@ -1711,7 +1715,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             "(0, 1), (1, 2), (3, 2), (5, 2)",
-            logger.GetLog(1));
+            logger.RangesToString(1));
     }
 
     Y_UNIT_TEST(ShouldShareCacheBetweenHandles)
@@ -2061,17 +2065,17 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
     Y_UNIT_TEST(ShouldUseIovecsForWriteRequests)
     {
-        TBootstrap b({.ZeroCopyWriteEnabled = true} );
+        TBootstrap b({.ZeroCopyWriteEnabled = true});
 
-        TWriteRequestLogger logger;
+        TWriteDataRequestLogger logger;
         logger.Subscribe(b);
 
         b.WriteToCacheSync(1, 0, "abcde");
         b.WriteToCacheSync(1, 5, "eeeeee");
         b.FlushCache();
 
-        UNIT_ASSERT_VALUES_EQUAL("(0, 11)", logger.GetLog(1));
-        UNIT_ASSERT_VALUES_EQUAL("[5, 6]", logger.GetIovecsLog(1));
+        UNIT_ASSERT_VALUES_EQUAL("(0, 11)", logger.RangesToString(1));
+        UNIT_ASSERT_VALUES_EQUAL("[5, 6]", logger.IovecLengthsToString(1));
     }
 }
 
