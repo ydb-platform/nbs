@@ -136,15 +136,9 @@ public:
 
     void BeforeSwitching() override
     {
-        if (WillSwitchToSecondary) {
-            return;
-        }
-
-        bool expected = false;
-        if (WillSwitchToSecondary.compare_exchange_strong(expected, true)) {
-            STORAGE_INFO(
-                "Will switch from " << PrimaryClientInfo.DiskId.Quote());
-        }
+        Y_ABORT_UNLESS(!WillSwitchToSecondary);
+        STORAGE_INFO("Will switch from " << PrimaryClientInfo.DiskId.Quote());
+        WillSwitchToSecondary = true;
     }
 
     void Switch(
@@ -241,7 +235,6 @@ private:
         std::shared_ptr<TRequest> request)
     {
         using TMethod = TBlockStoreMethods<TRequest>::TMethod;
-        using TResponse = typename TMethod::TResponse;
 
         if (SwitchedToSecondary) {
             STORAGE_TRACE(
@@ -281,28 +274,10 @@ private:
                 std::move(request));
         }
 
-        auto future = TMethod::Execute(
+        return TMethod::Execute(
             PrimaryClientInfo.Client.get(),
             std::move(callContext),
             std::move(request));
-
-        return future.Apply(
-            [weakSelf = weak_from_this()]   //
-            (TFuture<TResponse> future) -> TResponse
-            {
-                TResponse response = future.ExtractValue();
-
-                if (HasError(response)) {
-                    const auto errorFlags = response.GetError().GetFlags();
-                    if (HasProtoFlag(errorFlags, NProto::EF_OUTDATED_VOLUME)) {
-                        if (auto self = weakSelf.lock()) {
-                            self->BeforeSwitching();
-                        }
-                    }
-                }
-
-                return response;
-            });
     }
 
     TFuture<NProto::TMountVolumeResponse> ExecuteMountRequest(
