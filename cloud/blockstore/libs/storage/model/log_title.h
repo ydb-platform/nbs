@@ -66,6 +66,12 @@ public:
         ui32 Generation = 0;
     };
 
+    struct TDiskRegistry
+    {
+        ui64 TabletId = 0;
+        ui32 Generation = 0;
+    };
+
 private:
     using TData = std::variant<
         TVolume,
@@ -73,7 +79,8 @@ private:
         TPartition,
         TPartitionNonrepl,
         TSession,
-        TClient>;
+        TClient,
+        TDiskRegistry>;
 
     ui64 StartTime = 0;
     TData Data;

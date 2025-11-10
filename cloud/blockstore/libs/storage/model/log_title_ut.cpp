@@ -258,6 +258,19 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
             childLogTitle.GetWithTime(),
             "[v:12345 g:5 d:disk1 cp:123 t:1.001s + 1.");
     }
+
+    Y_UNIT_TEST(GetForDiskRegistry)
+    {
+        TLogTitle logTitle{
+            GetCycleCount(),
+            TLogTitle::TDiskRegistry{.TabletId = 10}};
+
+        UNIT_ASSERT_STRINGS_EQUAL(
+            "[dr:10]",
+            logTitle.Get(TLogTitle::EDetails::Brief));
+
+        UNIT_ASSERT_STRING_CONTAINS(logTitle.GetWithTime(), "[dr:10 t:");
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
