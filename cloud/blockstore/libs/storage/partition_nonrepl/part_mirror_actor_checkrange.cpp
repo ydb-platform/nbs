@@ -28,9 +28,10 @@ namespace {
 
 class TMirrorCheckRangeActor final: public TCheckRangeActor
 {
+private:
     bool ErrorOnReplicaReading{false};
     uint32_t ResponseCount{0};
-    TVector<TString> ReplicasNames;
+    const TVector<TString> ReplicasNames;
     TVector<ui32> ReplicasSummaryChecksums;
     NCloud::NBlockStore::NProto::TCheckRangeResponse Response;
 

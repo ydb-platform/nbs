@@ -104,7 +104,6 @@ private:
     TString CreateNextInput(TBlockRange64 range) const;
 };
 
-//-----
 TCheckRangeCommand::TCheckRangeCommand(IBlockStorePtr client): TCommand(std::move(client))
 {
     Opts.AddLongOption("disk-id", "volume identifier")
@@ -215,7 +214,6 @@ TString TCheckRangeCommand::CreateNextInput(TBlockRange64 range) const
 
     return input.GetStringRobust();
 }
-//-----
 
 TRequestBuilder::TRequestBuilder(
     ui32 startIndex,
@@ -336,10 +334,12 @@ void TResultManager::AddProblemRangeWithMerging(const TBlockRange64& range)
         ProblemRanges.push_back(range);
     }
 }
+
 void TResultManager::WriteKV(const TString& key, const NJson::TJsonValue& val)
 {
     Output << "\"" << key << "\": " << NJson::WriteJson(val);
 }
+
 void TResultManager::WriteRangeResult(const NJson::TJsonValue& rangeRes)
 {
     if (RangeWtitten) {
