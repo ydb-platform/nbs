@@ -217,7 +217,7 @@ public:
             return {};
         }
 
-        TString buffer(bytesToRead, 0);
+        auto buffer = TString::Uninitialized(bytesToRead);
 
         while (bytesToRead > 0) {
             auto part = ReadInPlace(bytesToRead);
