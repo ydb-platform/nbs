@@ -829,6 +829,8 @@ void TVolumeActor::InitializeDeviceOperationTracker()
     }
 
     DeviceOperationTracker.UpdateDevices(std::move(deviceInfos));
+    TDeviceOperationTracker::UpdateTrackingFrequency(
+        Config->GetDeviceOperationTrackingFrequency());
 }
 
 void TVolumeActor::HandleDiskRegistryDeviceOperationStarted(

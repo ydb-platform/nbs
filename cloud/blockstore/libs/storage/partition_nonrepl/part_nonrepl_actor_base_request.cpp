@@ -26,14 +26,14 @@ TDiskAgentBaseRequestActor::TDiskAgentBaseRequestActor(
         TNonreplicatedPartitionConfigPtr partConfig,
         TActorId volumeActorId,
         const TActorId& part,
-        TChildLogTitle logTitle,
-        ui64 deviceOperationId)
+        TChildLogTitle logTitle)
     : RequestInfo(std::move(requestInfo))
     , DeviceRequests(std::move(deviceRequests))
     , PartConfig(std::move(partConfig))
     , VolumeActorId(volumeActorId)
     , Part(part)
-    , DeviceOperationId(deviceOperationId)
+    , DeviceOperationId(
+          TDeviceOperationTracker::GenerateId(DeviceRequests.size()))
     , LogTitle(std::move(logTitle))
     , RequestName(std::move(requestName))
     , RequestId(requestId)
