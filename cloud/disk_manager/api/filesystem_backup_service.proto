@@ -27,14 +27,13 @@ message CreateFilesystemBackupRequest {
 }
 
 message CreateFilesystemBackupMetadata {
-    double metadata_progress = 1;
+    int64 size = 1;
     double progress = 2;
 }
 
 message CreateFilesystemBackupResponse {
     int64 size = 1;
     int64 storage_size = 2;
-    int64 inodes_count = 3;
 }
 
 message DeleteFilesystemBackupRequest {
