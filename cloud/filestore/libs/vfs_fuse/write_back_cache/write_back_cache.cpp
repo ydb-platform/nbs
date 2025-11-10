@@ -26,9 +26,9 @@ using namespace NThreading;
 using EReadDataRequestCacheStatus =
     IWriteBackCacheStats::EReadDataRequestCacheStatus;
 
-#define LOG_ERROR(...) STORAGE_ERROR(LogTag << __VA_ARGS__);
-#define LOG_WARN(...) STORAGE_WARN(LogTag << __VA_ARGS__);
-#define LOG_INFO(...) STORAGE_INFO(LogTag << __VA_ARGS__);
+#define LOG_ERROR(...) STORAGE_ERROR(LogTag << " " << __VA_ARGS__);
+#define LOG_WARN(...) STORAGE_WARN(LogTag << " " << __VA_ARGS__);
+#define LOG_INFO(...) STORAGE_INFO(LogTag << " " << __VA_ARGS__);
 
 namespace {
 
@@ -356,7 +356,7 @@ public:
         , FlushConfig(flushConfig)
         , Log(std::move(log))
         , LogTag(
-            Sprintf("[f:%s][c:%s] ", fileSystemId.c_str(), clientId.c_str()))
+            Sprintf("[f:%s][c:%s]", fileSystemId.c_str(), clientId.c_str()))
         , CachedEntriesPersistentQueue(filePath, capacityBytes)
     {
         // File ring buffer should be able to store any valid TWriteDataRequest.
