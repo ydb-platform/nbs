@@ -298,6 +298,8 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
         // for the same volume from both the source and destination disks.
         // We should ignore responses from the destination disk, since the user
         // should only interact with the source disk.
+        // The source disk ID tag is set on the destination disk during migration,
+        // so we should ignore response for disk with this tag.
         if (volume.GetTags().contains(SourceDiskIdTagName)) {
             STORAGE_DEBUG(
                 TStringBuilder()
