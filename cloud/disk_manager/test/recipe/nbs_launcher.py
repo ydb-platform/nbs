@@ -81,6 +81,9 @@ class NbsLauncher:
             cells_config = TCellsConfig()
             cells_config.CellId = cell_id
 
+            if cells is None:
+                cells = []
+
             for cell in cells:
                 cell_config = TCellConfig()
                 cell_config.CellId = cell["cell_id"]
