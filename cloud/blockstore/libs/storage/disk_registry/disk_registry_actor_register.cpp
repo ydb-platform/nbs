@@ -26,22 +26,14 @@ void TDiskRegistryActor::HandleRegisterAgent(
         ev->Cookie,
         msg->CallContext);
 
-    auto getDeviceDecription = [] (const NProto::TDeviceConfig& config) {
-        TStringStream out;
-        out << config.GetDeviceUUID()
-            << " (" << config.GetDeviceName() << " "
-            << config.GetBlocksCount() << " x "  << config.GetBlockSize()
-            << " PoolName:'" << config.GetPoolName() << "'"
-            << " Rack:'" << config.GetRack() << "'"
-            << "); ";
-        return out.Str();
-    };
+    auto priority = NActors::NLog::PRI_INFO;
 
     auto* mutableAgentConfig = msg->Record.MutableAgentConfig();
     for (auto& device: *mutableAgentConfig->MutableDevices()) {
         if (!device.GetRack().empty()) {
             continue;
         }
+        priority = NActors::NLog::PRI_WARN;
 
         ReportRegisterAgentWithEmptyRackName(
             {{"AgentId", agentConfig.GetAgentId()},
@@ -49,36 +41,16 @@ void TDiskRegistryActor::HandleRegisterAgent(
 
         TString fakeRackName = "Rack-" + agentConfig.GetAgentId();
         device.SetRack(fakeRackName);
-        LOG_CRIT(
-            ctx,
-            TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Received RegisterAgent request with empty Rack name, "
-            "generated new based on AgentId: NodeId=%u, AgentId=%s"
-            ", SeqNo=%lu, Dedicated=%s, Device=%s",
-            TabletID(),
-            agentConfig.GetNodeId(),
-            agentConfig.GetAgentId().c_str(),
-            agentConfig.GetSeqNumber(),
-            agentConfig.GetDedicatedDiskAgent() ? "true" : "false",
-            getDeviceDecription(device).c_str()
-        );
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received RegisterAgent request: NodeId=%u, AgentId=%s"
-        ", SeqNo=%lu, Dedicated=%s, Devices=[%s]",
-        TabletID(),
-        agentConfig.GetNodeId(),
-        agentConfig.GetAgentId().c_str(),
-        agentConfig.GetSeqNumber(),
-        agentConfig.GetDedicatedDiskAgent() ? "true" : "false",
-        [&agentConfig, &getDeviceDecription] {
-            TStringStream out;
-            for (const auto& config: agentConfig.GetDevices()) {
-                out << getDeviceDecription(config);
-            }
-            return out.Str();
-        }().c_str());
+    LOG_LOG(
+        ctx,
+        priority,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received RegisterAgent request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TAddAgent>(
         ctx,
@@ -137,10 +109,11 @@ void TDiskRegistryActor::ExecuteAddAgent(
     info.Connected = true;
     info.SeqNo += 1;
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Execute register agent: NodeId=%u, AgentId=%s"
-        ", SeqNo=%lu",
-        TabletID(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Execute register agent: NodeId=%u, AgentId=%s, SeqNo=%lu",
+        LogTitle.GetWithTime().c_str(),
         args.Config.GetNodeId(),
         args.Config.GetAgentId().c_str(),
         info.SeqNo);
@@ -150,32 +123,41 @@ void TDiskRegistryActor::CompleteAddAgent(
     const TActorContext& ctx,
     TTxDiskRegistry::TAddAgent& args)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Complete register agent: NodeId=%u, AgentId=%s"
-        ", AffectedDisks=%lu, Error=%s",
-        TabletID(),
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Complete register agent: NodeId=%u, AgentId=%s, AffectedDisks=%lu, "
+        "Error=%s",
+        LogTitle.GetWithTime().c_str(),
         args.Config.GetNodeId(),
         args.Config.GetAgentId().c_str(),
         args.AffectedDisks.size(),
         FormatError(args.Error).c_str());
 
     if (HasError(args.Error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "AddAgent error: %s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s AddAgent error: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(args.Error).c_str());
     }
 
     for (const auto& diskId: args.AffectedDisks) {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] AffectedDiskID=%s",
-            TabletID(),
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s AffectedDiskID=%s",
+            LogTitle.GetWithTime().c_str(),
             diskId.Quote().c_str());
     }
 
     for (const auto& diskId: args.NotifiedDisks) {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] NotifiedDiskID=%s",
-            TabletID(),
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s NotifiedDiskID=%s",
+            LogTitle.GetWithTime().c_str(),
             diskId.Quote().c_str());
     }
 
@@ -211,10 +193,13 @@ void TDiskRegistryActor::HandleUnregisterAgent(
         ev->Cookie,
         msg->CallContext);
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received UnregisterAgent request: NodeId=%u",
-        TabletID(),
-        msg->Record.GetNodeId());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received UnregisterAgent request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TRemoveAgent>(
         ctx,
@@ -252,8 +237,11 @@ void TDiskRegistryActor::CompleteRemoveAgent(
     TTxDiskRegistry::TRemoveAgent& args)
 {
     if (HasError(args.Error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "RemoveAgent error: %s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s RemoveAgent error: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(args.Error).c_str());
     }
 

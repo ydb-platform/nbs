@@ -13,11 +13,14 @@ void TDiskRegistryActor::HandleQueryAgentsInfo(
     const TEvService::TEvQueryAgentsInfoRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    LOG_DEBUG(
+    const auto* msg = ev->Get();
+
+    LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received QueryAgentsInfo request",
-        TabletID());
+        "%s Received QueryAgentsInfo request: %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str());
 
     auto response = std::make_unique<TEvService::TEvQueryAgentsInfoResponse>(
         MakeError(S_OK));

@@ -18,9 +18,9 @@ void TDiskRegistryActor::HandleGetAgentNodeId(
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received GetAgentNodeId request: AgentId=%s",
-        TabletID(),
-        msg->Record.GetAgentId().c_str());
+        "%s Received GetAgentNodeId request: %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str());
 
     Y_DEBUG_ABORT_UNLESS(State);
     auto response =

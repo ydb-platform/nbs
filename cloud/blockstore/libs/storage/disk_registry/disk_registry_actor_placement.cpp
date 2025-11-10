@@ -22,14 +22,13 @@ void TDiskRegistryActor::HandleCreatePlacementGroup(
         ev->Cookie,
         msg->CallContext);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received CreatePlacementGroup request: GroupId=%s "
-        "PlacementStrategy=%s PlacementPartitionCount=%u",
-        TabletID(),
-        msg->Record.GetGroupId().c_str(),
-        NProto::EPlacementStrategy_Name(msg->Record.GetPlacementStrategy())
-            .c_str(),
-        msg->Record.GetPlacementPartitionCount());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received CreatePlacementGroup request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TCreatePlacementGroup>(
         ctx,
@@ -71,8 +70,11 @@ void TDiskRegistryActor::CompleteCreatePlacementGroup(
     TTxDiskRegistry::TCreatePlacementGroup& args)
 {
     if (HasError(args.Error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "CreatePlacementGroup error: %s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s CreatePlacementGroup error: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(args.Error).c_str());
     }
 
@@ -98,10 +100,13 @@ void TDiskRegistryActor::HandleDestroyPlacementGroup(
         ev->Cookie,
         msg->CallContext);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received DestroyPlacementGroup request: GroupId=%s",
-        TabletID(),
-        msg->Record.GetGroupId().c_str());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received DestroyPlacementGroup request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TDestroyPlacementGroup>(
         ctx,
@@ -139,8 +144,11 @@ void TDiskRegistryActor::CompleteDestroyPlacementGroup(
     TWaitDependentAndReply* delayedReply = nullptr;
 
     if (HasError(args.Error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "DestroyPlacementGroup error: %s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s DestroyPlacementGroup error: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(args.Error).c_str());
     } else {
         if (args.AffectedDisks) {
@@ -178,14 +186,13 @@ void TDiskRegistryActor::HandleAlterPlacementGroupMembership(
         ev->Cookie,
         msg->CallContext);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received AlterPlacementGroupMembership request: GroupId=%s"
-        ", PlacementPartitionIndex=%u, adding %u disks, removing %u disks",
-        TabletID(),
-        msg->Record.GetGroupId().c_str(),
-        msg->Record.GetPlacementPartitionIndex(),
-        msg->Record.DisksToAddSize(),
-        msg->Record.DisksToRemoveSize());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received AlterPlacementGroupMembership request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TAlterPlacementGroupMembership>(
         ctx,
@@ -242,8 +249,11 @@ void TDiskRegistryActor::CompleteAlterPlacementGroupMembership(
     TWaitDependentAndReply* delayedReply = nullptr;
 
     if (HasError(args.Error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "AlterPlacementGroupMembership error: %s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s AlterPlacementGroupMembership error: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(args.Error).c_str());
     } else {
         TVector<TString> affectedDisks(args.DiskIdsToAdd);
@@ -289,9 +299,12 @@ void TDiskRegistryActor::HandleListPlacementGroups(
         ev->Cookie,
         msg->CallContext);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received ListPlacementGroups request",
-        TabletID());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received ListPlacementGroups request: %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str());
 
     auto response = std::make_unique<TEvService::TEvListPlacementGroupsResponse>();
     for (const auto& x: State->GetPlacementGroups()) {
@@ -316,13 +329,15 @@ void TDiskRegistryActor::HandleDescribePlacementGroup(
         ev->Cookie,
         msg->CallContext);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received DescribePlacementGroup request: GroupId=%s",
-        TabletID(),
-        msg->Record.GetGroupId().c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received DescribePlacementGroup request: %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str());
 
     auto response = std::make_unique<TEvService::TEvDescribePlacementGroupResponse>();
-    if (auto* g = State->FindPlacementGroup(msg->Record.GetGroupId())) {
+    if (const auto* g = State->FindPlacementGroup(msg->Record.GetGroupId())) {
         auto* group = response->Record.MutableGroup();
         group->SetGroupId(msg->Record.GetGroupId());
         group->SetPlacementStrategy(g->GetPlacementStrategy());
