@@ -26,6 +26,8 @@ const NProto::TStorageDiscoveryConfig::TPoolConfig* FindPoolConfig(
     const NProto::TStorageDiscoveryConfig::TPathConfig& pathConfig,
     const ui64& fileSize);
 
+ui64 GetFileLengthWithSeek(const TString& path);
+
 NProto::TError FindDevices(
     const NProto::TStorageDiscoveryConfig& config,
     TDeviceCallback callback);
