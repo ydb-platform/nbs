@@ -28,12 +28,12 @@ class THdrRequestPercentiles
 {
     using TDynamicCounterPtr = TDynamicCounters::TCounterPtr;
 
-    struct TValue
+    struct TSizeClassCounters
     {
         // TLatencyHistogram is not movable, thats why we should wrap it in
         // unique_ptr.
-        std::unique_ptr<TLatencyHistogram> Hist;
-        TVector<TDynamicCounterPtr> Counters;
+        std::unique_ptr<TLatencyHistogram> ExecutionTimeHist;
+        TVector<TDynamicCounterPtr> CountersExecutionTime;
     };
 
 private:
@@ -41,7 +41,7 @@ private:
     TVector<TDynamicCounterPtr> CountersTotal;
     TVector<TDynamicCounterPtr> CountersSize;
 
-    TDisjointIntervalMap<ui64, TValue> ExecutionTimeSizeClasses;
+    TDisjointIntervalMap<ui64, TSizeClassCounters> ExecutionTimeSizeClasses;
 
     TLatencyHistogram ExecutionTimeHist;
     TLatencyHistogram TotalHist;
@@ -55,7 +55,7 @@ public:
             ExecutionTimeSizeClasses.Add(
                 start,
                 end,
-                {.Hist = std::make_unique<TLatencyHistogram>()});
+                {.ExecutionTimeHist = std::make_unique<TLatencyHistogram>()});
         }
     }
 
@@ -76,12 +76,10 @@ public:
             const auto sizeClassName =
                 ToString(TSizeInterval{item.Begin, item.End});
 
-            auto executionTimeGroup =
-                requestGroup->GetSubgroup("percentiles", "ExecutionTime");
             auto sizeClassCounters =
                 executionTimeGroup->GetSubgroup("sizeclass", sizeClassName);
 
-            Register(*sizeClassCounters, item.Value.Counters);
+            Register(*sizeClassCounters, item.Value.CountersExecutionTime);
         }
     }
 
@@ -91,7 +89,7 @@ public:
         Update(CountersSize, SizeHist);
         Update(CountersExecutionTime, ExecutionTimeHist);
         for (auto& [_, item]: ExecutionTimeSizeClasses) {
-            Update(item.Value.Counters, *item.Value.Hist);
+            Update(item.Value.CountersExecutionTime, *item.Value.ExecutionTimeHist);
         }
     }
 
@@ -106,8 +104,8 @@ public:
         ExecutionTimeSizeClasses.VisitOverlapping(
             requestBytes,
             requestBytes + 1,
-            [&](TDisjointIntervalMap<ui64, TValue>::TIterator it)
-            { it->second.Value.Hist->RecordValue(requestTime); });
+            [&](TDisjointIntervalMap<ui64, TSizeClassCounters>::TIterator it)
+            { it->second.Value.ExecutionTimeHist->RecordValue(requestTime); });
     }
 
     void BatchCompleted(
@@ -159,7 +157,7 @@ private:
 
 public:
     explicit THdrPercentiles(
-        const TVector<TSizeInterval>& executionTimeSizeClasses)
+            const TVector<TSizeInterval>& executionTimeSizeClasses)
         : ReadBlocksPercentiles(executionTimeSizeClasses)
         , WriteBlocksPercentiles(executionTimeSizeClasses)
         , ZeroBlocksPercentiles(executionTimeSizeClasses)
@@ -240,18 +238,17 @@ constexpr TRequestCounters::EOptions SSDOrHDDOptions =
     TRequestCounters::EOption::ReportDataPlaneHistogram |
     TRequestCounters::EOption::OnlyReadWriteRequests;
 
-#define BLOCKSTORE_MEDIA_KIND(xxx, ...)                                            \
-    xxx(,                  GeneralOptions                      __VA_ARGS__)        \
-    xxx(SSD,               SSDOrHDDOptions                     __VA_ARGS__)        \
-    xxx(HDD,               SSDOrHDDOptions                     __VA_ARGS__)        \
-    xxx(SSDNonrepl,        DefaultOptions,                     __VA_ARGS__)        \
-    xxx(SSDMirror2,        DefaultOptions,                     __VA_ARGS__)        \
-    xxx(SSDMirror3,        DefaultOptions,                     __VA_ARGS__)        \
-    xxx(SSDLocal,          DefaultOptions,                     __VA_ARGS__)        \
-    xxx(HDDLocal,          DefaultOptions,                     __VA_ARGS__)        \
-    xxx(HDDNonrepl,        DefaultOptions,                     __VA_ARGS__)        \
-                                                                                   \
-    // BLOCKSTORE_MEDIA_KIND
+#define BLOCKSTORE_MEDIA_KIND(xxx, ...)                                        \
+    xxx(,                  GeneralOptions                      __VA_ARGS__    )\
+    xxx(SSD,               SSDOrHDDOptions                     __VA_ARGS__    )\
+    xxx(HDD,               SSDOrHDDOptions                     __VA_ARGS__    )\
+    xxx(SSDNonrepl,        DefaultOptions,                     __VA_ARGS__    )\
+    xxx(SSDMirror2,        DefaultOptions,                     __VA_ARGS__    )\
+    xxx(SSDMirror3,        DefaultOptions,                     __VA_ARGS__    )\
+    xxx(SSDLocal,          DefaultOptions,                     __VA_ARGS__    )\
+    xxx(HDDLocal,          DefaultOptions,                     __VA_ARGS__    )\
+    xxx(HDDNonrepl,        DefaultOptions,                     __VA_ARGS__    )\
+// BLOCKSTORE_MEDIA_KIND
 
 class TRequestStats final
     : public IRequestStats
@@ -283,16 +280,18 @@ private:
 
 public:
 
-#define INITIALIZE_REQUEST_COUNTERS(name, options, ...) \
-    , Total##name(MakeRequestCounters(                  \
-          timer,                                        \
-          options,                                      \
-          histogramCounterOptions,                      \
-          executionTimeSizeClasses))   // INITIALIZE_REQUEST_COUNTERS
+#define INITIALIZE_REQUEST_COUNTERS(name, options, ...)                        \
+    , Total##name(MakeRequestCounters(                                         \
+          timer,                                                               \
+          options,                                                             \
+          histogramCounterOptions,                                             \
+          executionTimeSizeClasses))                                           \
+// INITIALIZE_REQUEST_COUNTERS
 
-#define INITIALIZE_HDR_PERCENTILES(name, ...) \
-    , HdrTotal##name(                         \
-          executionTimeSizeClasses)   // INITIALIZE_HDR_PERCENTILES
+#define INITIALIZE_HDR_PERCENTILES(name, ...)                                  \
+    , HdrTotal##name(                                                          \
+          executionTimeSizeClasses)                                            \
+// INITIALIZE_HDR_PERCENTILES
 
     TRequestStats(
             TDynamicCountersPtr counters,

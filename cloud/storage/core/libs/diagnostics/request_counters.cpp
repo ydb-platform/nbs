@@ -250,6 +250,18 @@ struct TRequestCounters::TStatCounters
         Type Failed;
     };
 
+    struct TSizeClassCounters
+    {
+        TTimeHist ExecutionTimeHist;
+        TRequestPercentiles<TTimeHist> ExecutionTimePercentiles;
+
+        explicit TSizeClassCounters(
+                EHistogramCounterOptions histogramCounterOptions)
+            : ExecutionTimeHist("ExecutionTime", histogramCounterOptions)
+            , ExecutionTimePercentiles(ExecutionTimeHist)
+        {}
+    };
+
     bool IsReadWriteRequest = false;
     bool ReportDataPlaneHistogram = false;
     bool ReportControlPlaneHistogram = false;
@@ -299,7 +311,8 @@ struct TRequestCounters::TStatCounters
     TTimeHist ExecutionTimeHistUnaligned;
     TRequestPercentiles<TTimeHist> ExecutionTimePercentiles;
 
-    TDisjointIntervalMap<ui64, TTimeHist> ExecutionTimeSizeClasses;
+    TDisjointIntervalMap<ui64, std::unique_ptr<TSizeClassCounters>>
+        ExecutionTimeSizeClasses;
 
     TTimeHist RequestCompletionTimeHist;
     TRequestPercentiles<TTimeHist> RequestCompletionTimePercentiles;
@@ -348,11 +361,11 @@ struct TRequestCounters::TStatCounters
         , MaxCountCalc(timer)
         , MaxRequestBytesCalc(timer)
     {
-        for (auto [start, end] : executionTimeSizeClasses) {
+        for (auto [start, end]: executionTimeSizeClasses) {
             ExecutionTimeSizeClasses.Add(
                 start,
                 end,
-                {"ExecutionTime", histogramCounterOptions});
+                std::make_unique<TSizeClassCounters>(histogramCounterOptions));
         }
     }
 
@@ -435,18 +448,24 @@ struct TRequestCounters::TStatCounters
                 TimeHistUnaligned.Register(*unalignedClassGroup);
                 ExecutionTimeHist.Register(counters);
                 ExecutionTimeHistUnaligned.Register(*unalignedClassGroup);
-
-                for (auto& [_, sizeClass]: ExecutionTimeSizeClasses) {
-                    auto sizeClassCounters = counters.GetSubgroup(
-                        "sizeclass",
-                        ToString(TSizeInterval{sizeClass.Begin, sizeClass.End}));
-                    sizeClass.Value.Register(*sizeClassCounters);
-                }
             } else {
                 SizePercentiles.Register(counters);
                 ExecutionTimePercentiles.Register(counters);
                 PostponedTimePercentiles.Register(counters);
                 TimePercentiles.Register(counters);
+            }
+
+            for (auto& [_, sizeClass]: ExecutionTimeSizeClasses) {
+                auto sizeClassCounters = counters.GetSubgroup(
+                    "sizeclass",
+                    ToString(TSizeInterval{sizeClass.Begin, sizeClass.End}));
+                if (ReportDataPlaneHistogram) {
+                    sizeClass.Value->ExecutionTimeHist.Register(
+                        *sizeClassCounters);
+                } else {
+                    sizeClass.Value->ExecutionTimePercentiles.Register(
+                        *sizeClassCounters);
+                }
             }
 
             const auto visibleHistogram = ReportDataPlaneHistogram
@@ -581,8 +600,10 @@ struct TRequestCounters::TStatCounters
             ExecutionTimeSizeClasses.VisitOverlapping(
                 requestBytes,
                 requestBytes + 1,
-                [&](TDisjointIntervalMap<ui64, TTimeHist>::TIterator it)
-                { it->second.Value.Increment(execTime); });
+                [&](TDisjointIntervalMap<
+                    ui64,
+                    std::unique_ptr<TSizeClassCounters>>::TIterator it)
+                { it->second.Value->ExecutionTimeHist.Increment(execTime); });
 
             PostponedTimeHist.Increment(postponedTime);
         }
@@ -729,6 +750,10 @@ struct TRequestCounters::TStatCounters
                 ExecutionTimePercentiles.Update();
                 RequestCompletionTimePercentiles.Update();
                 PostponedTimePercentiles.Update();
+
+                for (auto& [_, sizeClass]: ExecutionTimeSizeClasses) {
+                    sizeClass.Value->ExecutionTimePercentiles.Update();
+                }
             }
         } else if (updatePercentiles && !ReportControlPlaneHistogram) {
             TimePercentiles.Update();

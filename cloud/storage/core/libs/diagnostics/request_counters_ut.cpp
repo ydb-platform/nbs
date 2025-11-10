@@ -104,7 +104,7 @@ struct TRequestCountersOptions {
     TRequestCounters::EOption Options = {};
     EHistogramCounterOptions HistogramCounterOptions =
         EHistogramCounterOption::ReportMultipleCounters;
-    TVector<TSizeInterval> ExecutionTimeSizeClasses{};
+    TVector<TSizeInterval> ExecutionTimeSizeClasses;
 };
 
 auto MakeRequestCounters(TRequestCountersOptions options = {})
