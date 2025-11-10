@@ -2,6 +2,8 @@
 
 namespace NCloud::NFileStore::NFuse {
 
+////////////////////////////////////////////////////////////////////////////////
+
 void TDirectoryHandleChunk::Serialize(TBufferOutput& output) const
 {
     output.Write(&Index, sizeof(Index));

@@ -62,7 +62,7 @@ def test():
 
     ssh = SshToGuest(user="qemu", port=port, key=ssh_key)
 
-    readdir_bin_path = common.binary_path("cloud/filestore/tools/testing/directory_handles_state_test/directory_handles_state_test")
+    readdir_bin_path = common.binary_path("cloud/filestore/tools/testing/directory_handles_test/directory_handles_test")
 
     dir_for_open_restart = "test_dir"
     file_for_script_continue = "test_file_continue"
