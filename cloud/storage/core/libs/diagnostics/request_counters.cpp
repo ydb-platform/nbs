@@ -5,6 +5,8 @@
 #include "max_calculator.h"
 #include "weighted_percentile.h"
 
+#include <cloud/storage/core/libs/common/disjoint_interval_map.h>
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/common/verify.h>
@@ -248,6 +250,18 @@ struct TRequestCounters::TStatCounters
         Type Failed;
     };
 
+    struct TSizeClassCounters
+    {
+        TTimeHist ExecutionTimeHist;
+        TRequestPercentiles<TTimeHist> ExecutionTimePercentiles;
+
+        explicit TSizeClassCounters(
+                EHistogramCounterOptions histogramCounterOptions)
+            : ExecutionTimeHist("ExecutionTime", histogramCounterOptions)
+            , ExecutionTimePercentiles(ExecutionTimeHist)
+        {}
+    };
+
     bool IsReadWriteRequest = false;
     bool ReportDataPlaneHistogram = false;
     bool ReportControlPlaneHistogram = false;
@@ -297,6 +311,9 @@ struct TRequestCounters::TStatCounters
     TTimeHist ExecutionTimeHistUnaligned;
     TRequestPercentiles<TTimeHist> ExecutionTimePercentiles;
 
+    TDisjointIntervalMap<ui64, std::unique_ptr<TSizeClassCounters>>
+        ExecutionTimeSizeClasses;
+
     TTimeHist RequestCompletionTimeHist;
     TRequestPercentiles<TTimeHist> RequestCompletionTimePercentiles;
 
@@ -318,7 +335,8 @@ struct TRequestCounters::TStatCounters
 
     explicit TStatCounters(
         ITimerPtr timer,
-        EHistogramCounterOptions histogramCounterOptions)
+        EHistogramCounterOptions histogramCounterOptions,
+        const TVector<TSizeInterval>& executionTimeSizeClasses)
         : SizeHist("Size", histogramCounterOptions)
         , SizePercentiles(SizeHist)
         , TimeHist("Time", histogramCounterOptions)
@@ -342,7 +360,14 @@ struct TRequestCounters::TStatCounters
         , MaxPostponedQueueSizeGrpcCalc(timer)
         , MaxCountCalc(timer)
         , MaxRequestBytesCalc(timer)
-    {}
+    {
+        for (auto [start, end]: executionTimeSizeClasses) {
+            ExecutionTimeSizeClasses.Add(
+                start,
+                end,
+                std::make_unique<TSizeClassCounters>(histogramCounterOptions));
+        }
+    }
 
     TStatCounters(const TStatCounters&) = delete;
     TStatCounters(TStatCounters&&) = default;
@@ -428,6 +453,19 @@ struct TRequestCounters::TStatCounters
                 ExecutionTimePercentiles.Register(counters);
                 PostponedTimePercentiles.Register(counters);
                 TimePercentiles.Register(counters);
+            }
+
+            for (auto& [_, sizeClass]: ExecutionTimeSizeClasses) {
+                auto sizeClassCounters = counters.GetSubgroup(
+                    "sizeclass",
+                    ToString(TSizeInterval{sizeClass.Begin, sizeClass.End}));
+                if (ReportDataPlaneHistogram) {
+                    sizeClass.Value->ExecutionTimeHist.Register(
+                        *sizeClassCounters);
+                } else {
+                    sizeClass.Value->ExecutionTimePercentiles.Register(
+                        *sizeClassCounters);
+                }
             }
 
             const auto visibleHistogram = ReportDataPlaneHistogram
@@ -558,6 +596,15 @@ struct TRequestCounters::TStatCounters
             }
 
             ExecutionTimeHist.Increment(execTime);
+
+            ExecutionTimeSizeClasses.VisitOverlapping(
+                requestBytes,
+                requestBytes + 1,
+                [&](TDisjointIntervalMap<
+                    ui64,
+                    std::unique_ptr<TSizeClassCounters>>::TIterator it)
+                { it->second.Value->ExecutionTimeHist.Increment(execTime); });
+
             PostponedTimeHist.Increment(postponedTime);
         }
     }
@@ -703,6 +750,10 @@ struct TRequestCounters::TStatCounters
                 ExecutionTimePercentiles.Update();
                 RequestCompletionTimePercentiles.Update();
                 PostponedTimePercentiles.Update();
+
+                for (auto& [_, sizeClass]: ExecutionTimeSizeClasses) {
+                    sizeClass.Value->ExecutionTimePercentiles.Update();
+                }
             }
         } else if (updatePercentiles && !ReportControlPlaneHistogram) {
             TimePercentiles.Update();
@@ -718,7 +769,8 @@ TRequestCounters::TRequestCounters(
         std::function<TString(TRequestType)> requestType2Name,
         std::function<bool(TRequestType)> isReadWriteRequestType,
         EOptions options,
-        EHistogramCounterOptions histogramCounterOptions)
+        EHistogramCounterOptions histogramCounterOptions,
+        const TVector<TSizeInterval>& executionTimeSizeClasses)
     : RequestType2Name(std::move(requestType2Name))
     , IsReadWriteRequestType(std::move(isReadWriteRequestType))
     , Options(options)
@@ -729,7 +781,10 @@ TRequestCounters::TRequestCounters(
 
     CountersByRequest.reserve(requestCount);
     for (ui32 i = 0; i < requestCount; ++i) {
-        CountersByRequest.emplace_back(timer, histogramCounterOptions);
+        CountersByRequest.emplace_back(
+            timer,
+            histogramCounterOptions,
+            executionTimeSizeClasses);
     }
 }
 

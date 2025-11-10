@@ -30,16 +30,16 @@ PEERDIR(
     cloud/storage/core/libs/netlink
     cloud/storage/core/protos
 
-    library/cpp/lwtrace/mon
-
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/prof
+
     library/cpp/containers/ring_buffer
     library/cpp/deprecated/atomic
     library/cpp/histogram/hdr
     library/cpp/json/writer
     library/cpp/logger
     library/cpp/lwtrace
+    library/cpp/lwtrace/mon
     library/cpp/monlib/dynamic_counters
     library/cpp/monlib/service
     library/cpp/monlib/service/pages

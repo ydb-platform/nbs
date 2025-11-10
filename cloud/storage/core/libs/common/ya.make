@@ -1,5 +1,7 @@
 LIBRARY()
 
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/deny_ydb_dependency.inc)
+
 GENERATE_ENUM_SERIALIZATION(error.h)
 
 SRCS(
@@ -35,6 +37,7 @@ SRCS(
     sglist.cpp
     sglist_iter.cpp
     sglist_test.cpp
+    size_interval.cpp
     startable.cpp
     task_queue.cpp
     thread.cpp
