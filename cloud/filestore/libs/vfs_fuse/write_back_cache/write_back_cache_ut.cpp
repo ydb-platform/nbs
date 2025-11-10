@@ -1126,6 +1126,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         bool flushed = false;
 
         b.Session->WriteDataHandler = [&] (auto, auto request) {
+            // If ZeroCopyWriteEnabled feature is enabled,
             // WriteBackCache generates WriteData requests in Flush that
             // references the buffer directly in the cache using Iovecs.
             // We copy the data to Buffer for easier validation.
