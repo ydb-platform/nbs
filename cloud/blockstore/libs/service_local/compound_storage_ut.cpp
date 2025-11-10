@@ -179,7 +179,8 @@ IStoragePtr CreateTestStorage(
         CreateServerRequestStats(
             serverGroup,
             CreateWallClockTimer(),
-            EHistogramCounterOption::ReportMultipleCounters),
+            EHistogramCounterOption::ReportMultipleCounters,
+            {}),
         CreateVolumeStatsStub());
 
     return CreateCompoundStorage(
@@ -706,7 +707,8 @@ Y_UNIT_TEST_SUITE(TCompoundStorageTest)
             CreateServerRequestStats(
                 serverGroup,
                 CreateWallClockTimer(),
-                EHistogramCounterOption::ReportMultipleCounters),
+                EHistogramCounterOption::ReportMultipleCounters,
+                {}),
             CreateVolumeStatsStub());
 
         auto storage = CreateCompoundStorage(

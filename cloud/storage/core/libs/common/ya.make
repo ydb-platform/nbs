@@ -37,6 +37,7 @@ SRCS(
     sglist.cpp
     sglist_iter.cpp
     sglist_test.cpp
+    size_interval.cpp
     startable.cpp
     task_queue.cpp
     thread.cpp
