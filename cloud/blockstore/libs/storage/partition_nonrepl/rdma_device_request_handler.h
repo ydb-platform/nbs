@@ -18,12 +18,19 @@ namespace NCloud::NBlockStore::NStorage {
 
 struct TDeviceRequestRdmaContext: public NRdma::TNullContext
 {
-    ui32 DeviceIdx = 0;
+    // Index of the device in the partition config.
+    const ui32 DeviceIdx;
 
-    TDeviceRequestRdmaContext() = default;
     explicit TDeviceRequestRdmaContext(ui32 deviceIdx)
         : DeviceIdx(deviceIdx)
     {}
+};
+
+struct TRunningRdmaRequestInfo
+{
+    // Index of the device in the partition config.
+    ui32 DeviceIdx = 0;
+    ui64 SentRequestId = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

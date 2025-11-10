@@ -293,6 +293,13 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
     auto response = future.GetValue();
     if (!HasError(response)) {
         const auto& volume = response.GetVolume();
+        // DescribeVolume requests are sent to all cells at the start endpoint.
+        // If there is a relocation in progress, we may receive multiple responses
+        // for the same volume from both the source and destination disks.
+        // We should ignore responses from the destination disk, since the user
+        // should only interact with the source disk.
+        // The source disk ID tag is set on the destination disk during migration,
+        // so we should ignore response for disk with this tag.
         if (volume.GetTags().contains(SourceDiskIdTagName)) {
             STORAGE_DEBUG(
                 TStringBuilder()

@@ -230,8 +230,12 @@ struct TFixture: public NUnitTest::TBaseFixture
             status->Record.GetCheckpointStatus());
     }
 
-     [[nodiscard]] bool WriteBlocks(TBlockRange64 range) const
+    [[nodiscard]] bool WriteBlocks(
+        TBlockRange64 range,
+        std::optional<TFollowerDiskInfo::EState>* followerState = nullptr) const
     {
+        using EState = TFollowerDiskInfo::EState;
+
         const auto* volume = Volumes.FindPtr("vol1");
         if (!volume) {
             UNIT_ASSERT_C(false, "Volume not found");
@@ -243,6 +247,12 @@ struct TFixture: public NUnitTest::TBaseFixture
                 range,
                 volume->VolumeClientInfo->GetClientId(),
                 'b');
+            if (followerState && followerState->has_value() &&
+                (followerState->value() == EState::DataReady ||
+                 followerState->value() == EState::LeadershipTransferred))
+            {
+                return false;
+            }
             auto response = volume->VolumeClient->RecvWriteBlocksResponse();
             if (response->GetStatus() == S_OK) {
                 return true;
@@ -809,6 +819,10 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             UNIT_ASSERT_EQUAL(
                 TFollowerDiskInfo::EState::LeadershipTransferred,
                 followerState);
+            // It is necessary to reconnect the pipe as the previous one broke
+            // when the volume was restarted.
+            volume1.ReconnectPipe();
+            volume1.WaitReady();
         }
 
         if (checkpoint == ECheckpointBehaviour::CreateBeforeLink ||
@@ -819,7 +833,6 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
 
         // Check volumes content match.
         volume1.UnlinkLeaderVolumeFromFollower(link);
-        volume1.ReconnectPipe();
         fixture.CheckVolumesDataMatch();
     }
 
@@ -1055,7 +1068,8 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         for (ui64 pos = 0;; pos += 2048) {
             bool success = fixture.WriteBlocks(
                 TBlockRange64::MakeOneBlock(
-                    ((pos + 1) % fixture.VolumeBlockCount)));
+                    ((pos + 1) % fixture.VolumeBlockCount)),
+                &followerState);
             writtenBlockCount += success ? 1 : 0;
 
             TDispatchOptions options;
@@ -1102,6 +1116,9 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             fixture.Runtime->DispatchEvents(options, TDuration::Seconds(1));
             UNIT_ASSERT_VALUES_EQUAL(true, deletionOfTheSourceHasBeenInitiated);
         }
+
+        volume1.ReconnectPipe();
+        volume1.WaitReady();
 
         // Check volumes content match.
         volume1.UnlinkLeaderVolumeFromFollower(link);
@@ -1153,7 +1170,6 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                 auto* msg = event->Get<
                     TEvVolumePrivate::TEvUpdateFollowerStateResponse>();
                 followerState = msg->Follower.State;
-                leaderVolumeActorId = event->Sender;
             }
 
             if (event->GetTypeRewrite() ==
@@ -1162,6 +1178,13 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                 auto* msg =
                     event->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
                 propagatedAction = msg->Record.GetAction();
+            }
+
+            if (event->GetTypeRewrite() == TEvVolume::EvWaitReadyRequest) {
+                auto* msg = event->Get<TEvVolume::TEvWaitReadyRequest>();
+                if (msg->Record.GetDiskId() == "vol1") {
+                    leaderVolumeActorId = event->Recipient;
+                }
             }
 
             if (event->GetTypeRewrite() == TEvService::EvDestroyVolumeRequest) {
@@ -1207,7 +1230,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             VolumeBlockCount,   // block count per partition
             "vol1"));
-        volume1.WaitReady();
+        volume1.WaitReady("vol1");
 
         // registering a writer
         auto clientInfo1 = CreateVolumeClientInfo(
@@ -1269,6 +1292,16 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             UNIT_ASSERT_EQUAL(
                 TFollowerDiskInfo::EState::LeadershipTransferred,
                 followerState);
+
+            // Leader volume actor should be poisoned
+            UNIT_ASSERT_VALUES_EQUAL(true, leaderPoisoned);
+            leaderPoisoned = false;
+
+            // It is necessary to reconnect the pipe as the previous one broke
+            // when the partition was restarted.
+            volume1.ReconnectPipe();
+            volume1.WaitReady("vol1");
+            volume1.AddClient(clientInfo1);
         }
 
         // Waiting for the follower disk to become a leader.
@@ -1298,6 +1331,23 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL(1, volumeDestructionRequestCount);
         }
 
+        // Waiting for the leader volume actor poisoned by
+        // FollowerPartitionActor after 30 seconds.
+        {
+            UNIT_ASSERT_VALUES_EQUAL(false, leaderPoisoned);
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return leaderPoisoned;
+            };
+            Runtime->AdvanceCurrentTime(TDuration::Seconds(30));
+            Runtime->DispatchEvents(options, TDuration::Seconds(1));
+            Runtime->AdvanceCurrentTime(TDuration::Seconds(30));
+            Runtime->DispatchEvents(options, TDuration::Seconds(1));
+
+            UNIT_ASSERT_VALUES_EQUAL(true, leaderPoisoned);
+        }
+
         // Waiting for the leader disk destruction retried after reject.
         {
             TDispatchOptions options;
@@ -1311,21 +1361,6 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             Runtime->DispatchEvents(options, TDuration::Seconds(1));
 
             UNIT_ASSERT_VALUES_EQUAL(2, volumeDestructionRequestCount);
-        }
-
-        // Waiting for the leader volume actor poisoned by
-        // FollowerPartitionActor.
-        {
-            UNIT_ASSERT_VALUES_EQUAL(false, leaderPoisoned);
-            TDispatchOptions options;
-            Runtime->AdvanceCurrentTime(TDuration::Seconds(30));
-            options.CustomFinalCondition = [&]
-            {
-                return leaderPoisoned;
-            };
-            Runtime->DispatchEvents(options, TDuration::Seconds(1));
-
-            UNIT_ASSERT_VALUES_EQUAL(false, leaderPoisoned);
         }
     }
 
@@ -1772,6 +1807,11 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             UNIT_ASSERT_EQUAL(
                 TFollowerDiskInfo::EState::LeadershipTransferred,
                 followerState);
+
+            // It is necessary to reconnect the pipe as the previous one broke
+            // when the volume was restarted.
+            volume1.ReconnectPipe();
+            volume1.WaitReady();
         }
 
         {   // State of leader ELeadershipStatus::LeadershipTransferring

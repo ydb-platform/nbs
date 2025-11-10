@@ -21,11 +21,13 @@ void TDiskRegistryActor::HandleChangeDeviceState(
         ev->Cookie,
         msg->CallContext);
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received ChangeDeviceState request: UUID=%s, State=%u",
-        TabletID(),
-        msg->Record.GetDeviceUUID().c_str(),
-        static_cast<ui32>(msg->Record.GetDeviceState()));
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received ChangeDeviceState request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TUpdateDeviceState>(
         ctx,
@@ -73,8 +75,11 @@ void TDiskRegistryActor::CompleteUpdateDeviceState(
     TTxDiskRegistry::TUpdateDeviceState& args)
 {
     if (HasError(args.Error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "UpdateDeviceState error: %s, affected disk: %s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s UpdateDeviceState error: %s, affected disk: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(args.Error).c_str(),
             args.AffectedDisk.c_str());
     }

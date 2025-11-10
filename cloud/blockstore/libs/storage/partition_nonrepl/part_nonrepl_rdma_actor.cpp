@@ -323,13 +323,13 @@ TNonreplicatedPartitionRdmaActor::SendReadRequests(
         const auto& r = deviceRequests[i];
         auto ep = AgentId2Endpoint[r.Device.GetAgentId()];
         Y_ABORT_UNLESS(ep);
-        auto dr = std::make_unique<TDeviceReadRequestContext>();
+        auto dr = std::make_unique<TDeviceReadRequestContext>(
+            r.DeviceIdx,
+            startBlockIndexOffset,
+            r.DeviceBlockRange.Size(),
+            i);
 
         ui64 sz = r.DeviceBlockRange.Size() * PartConfig->GetBlockSize();
-        dr->StartIndexOffset = startBlockIndexOffset;
-        dr->BlockCount = r.DeviceBlockRange.Size();
-        dr->DeviceIdx = r.DeviceIdx;
-        dr->RequestIndex = i;
         startBlockIndexOffset += r.DeviceBlockRange.Size();
 
         sentRequestCtx.emplace_back(r.DeviceIdx);
@@ -368,7 +368,8 @@ TNonreplicatedPartitionRdmaActor::SendReadRequests(
             flags,
             deviceRequest);
 
-        requests.push_back({std::move(ep), std::move(req)});
+        requests.push_back(
+            {.Endpoint = std::move(ep), .ClientRequest = std::move(req)});
     }
 
     for (size_t i = 0; i < requests.size(); ++i) {
@@ -726,24 +727,23 @@ void TNonreplicatedPartitionRdmaActor::HandleAgentIsUnavailable(
         const auto& requestCtx = requestInfo.Value;
         bool needToCancel = AnyOf(
             requestCtx,
-            [&](const auto& ctx)
+            [&](const TRunningRdmaRequestInfo& item)
             {
-                return laggingRows.contains(ctx.DeviceIndex) &&
+                return laggingRows.contains(item.DeviceIdx) &&
                        (requestInfo.IsWrite ||
-                        devices[ctx.DeviceIndex].GetAgentId() ==
-                            laggingAgentId);
+                        devices[item.DeviceIdx].GetAgentId() == laggingAgentId);
             });
 
         if (!needToCancel) {
             continue;
         }
 
-        for (auto [deviceIdx, rdmaRequestId]: requestCtx) {
-            Y_ABORT_UNLESS(deviceIdx < static_cast<ui64>(devices.size()));
-            auto agentId = devices[deviceIdx].GetAgentId();
+        for (const TRunningRdmaRequestInfo& item: requestCtx) {
+            Y_ABORT_UNLESS(item.DeviceIdx < static_cast<ui64>(devices.size()));
+            const auto& agentId = devices[item.DeviceIdx].GetAgentId();
 
             auto& endpoint = AgentId2Endpoint[agentId];
-            endpoint->CancelRequest(rdmaRequestId);
+            endpoint->CancelRequest(item.SentRequestId);
         }
     }
 }

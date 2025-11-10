@@ -14,6 +14,8 @@
 
 namespace NCloud::NFileStore::NFuse {
 
+////////////////////////////////////////////////////////////////////////////////
+
 using namespace NCloud::NFileStore::NVFS;
 
 using TBufferPtr = std::shared_ptr<TBuffer>;

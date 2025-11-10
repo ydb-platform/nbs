@@ -28,13 +28,6 @@ TString CreateInputDescription(
     return CreateInputDescription(args.DiskId, args.BlockSize, args.Force);
 }
 
-TString CreateInputDescription(
-    const NProto::TUpdateDiskBlockSizeRequest& request)
-{
-    return CreateInputDescription(request.GetDiskId(), request.GetBlockSize(),
-        request.GetForce());
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -47,10 +40,13 @@ void TDiskRegistryActor::HandleUpdateDiskBlockSize(
 
     const auto& record = ev->Get()->Record;
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received UpdateDiskBlockSize request: %s",
-        TabletID(),
-        CreateInputDescription(record).c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received UpdateDiskBlockSize request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TUpdateDiskBlockSize>(
         ctx,
@@ -91,15 +87,21 @@ void TDiskRegistryActor::ExecuteUpdateDiskBlockSize(
         args.Force);
 
     if (HasError(args.Error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "UpdateDiskBlockSize execution errored: %s. %s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s UpdateDiskBlockSize execution errored: %s. %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(args.Error).c_str(),
             CreateInputDescription(args).c_str());
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "UpdateDiskBlockSize execution succeeded. %s",
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s UpdateDiskBlockSize execution succeeded. %s",
+        LogTitle.GetWithTime().c_str(),
         CreateInputDescription(args).c_str());
 }
 
@@ -107,8 +109,11 @@ void TDiskRegistryActor::CompleteUpdateDiskBlockSize(
     const TActorContext& ctx,
     TTxDiskRegistry::TUpdateDiskBlockSize& args)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "UpdateDiskBlockSize complete. %s",
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s UpdateDiskBlockSize complete. %s",
+        LogTitle.GetWithTime().c_str(),
         CreateInputDescription(args).c_str());
 
     ReallocateDisks(ctx);
@@ -121,4 +126,3 @@ void TDiskRegistryActor::CompleteUpdateDiskBlockSize(
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
-

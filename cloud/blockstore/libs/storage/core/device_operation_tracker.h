@@ -96,6 +96,9 @@ public:
         ERequestType requestType,
         ui64 startTime);
 
+    static void UpdateTrackingFrequency(ui32 trackingFrequency);
+    static ui64 GenerateId(ui64 identifiersToReserve);
+
     void OnFinished(TOperationId operationId, ui64 finishTime);
 
     void UpdateDevices(TVector<TDeviceInfo> deviceInfos);
@@ -108,5 +111,7 @@ public:
 
     [[nodiscard]] const TInflightMap& GetInflightOperations() const;
 };
+
+////////////////////////////////////////////////////////////////////////////////
 
 }   // namespace NCloud::NBlockStore::NStorage
