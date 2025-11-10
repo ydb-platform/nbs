@@ -26,6 +26,10 @@ using namespace NThreading;
 using EReadDataRequestCacheStatus =
     IWriteBackCacheStats::EReadDataRequestCacheStatus;
 
+#define LOG_ERROR(...) STORAGE_ERROR(LogTag << __VA_ARGS__);
+#define LOG_WARN(...) STORAGE_WARN(LogTag << __VA_ARGS__);
+#define LOG_INFO(...) STORAGE_INFO(LogTag << __VA_ARGS__);
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -301,8 +305,7 @@ private:
     const IWriteBackCacheStatsPtr Stats;
     const TFlushConfig FlushConfig;
     const TLog Log;
-    const TString FileSystemId;
-    const TString ClientId;
+    const TString LogTag;
 
     // All fields below should be protected by this lock
     TMutex Lock;
@@ -352,8 +355,8 @@ public:
         , Stats(std::move(stats))
         , FlushConfig(flushConfig)
         , Log(std::move(log))
-        , FileSystemId(fileSystemId)
-        , ClientId(clientId)
+        , LogTag(
+            Sprintf("[f:%s][c:%s] ", fileSystemId.c_str(), clientId.c_str()))
         , CachedEntriesPersistentQueue(filePath, capacityBytes)
     {
         // File ring buffer should be able to store any valid TWriteDataRequest.
@@ -389,39 +392,33 @@ public:
                 }
             });
 
-        STORAGE_INFO(
-            "[f:%s][c:%s] WriteBackCache has been initialized "
-            "{\"FilePath\": %s, "
-            "\"RawCapacityBytes\": %lu, "
-            "\"RawUsedBytesCount\": %lu, "
-            "\"WriteDataRequestCount:\": %lu}",
-            FileSystemId.Quote().c_str(),
-            ClientId.Quote().c_str(),
-            filePath.Quote().c_str(),
-            CachedEntriesPersistentQueue.GetRawCapacity(),
-            CachedEntriesPersistentQueue.GetRawUsedBytesCount(),
-            CachedEntriesPersistentQueue.Size());
+        LOG_INFO(
+            "WriteBackCache has been initialized "
+            << "{\"FilePath\": " << filePath.Quote()
+            << ", \"RawCapacityBytes\": "
+            << CachedEntriesPersistentQueue.GetRawCapacity()
+            << ", \"RawUsedBytesCount\": "
+            << CachedEntriesPersistentQueue.GetRawUsedBytesCount()
+            << ", \"WriteDataRequestCount\": "
+            << CachedEntriesPersistentQueue.Size() << "}");
 
         if (deserializationStats.HasFailed()) {
             // Each deserialization failure event has been already reported
             // as a critical error - just write statistics to the log
-            STORAGE_ERROR(
-                "[f:%s][c:%s] WriteBackCache request deserialization failure "
-                "{\"ChecksumMismatchCount\": %lu, "
-                "\"EntrySizeMismatchCount\": %lu, "
-                "\"ProtobufDeserializationErrorCount\": %lu}",
-                FileSystemId.Quote().c_str(),
-                ClientId.Quote().c_str(),
-                deserializationStats.ChecksumMismatchCount,
-                deserializationStats.EntrySizeMismatchCount,
-                deserializationStats.ProtobufDeserializationErrorCount);
+            LOG_ERROR(
+                "WriteBackCache request deserialization failure "
+                << "{\"ChecksumMismatchCount\": "
+                << deserializationStats.ChecksumMismatchCount
+                << ", \"EntrySizeMismatchCount\": "
+                << deserializationStats.EntrySizeMismatchCount
+                << ", \"ProtobufDeserializationErrorCount\": "
+                << deserializationStats.ProtobufDeserializationErrorCount
+                << "}");
         }
 
         if (CachedEntriesPersistentQueue.IsCorrupted()) {
-            ReportWriteBackCacheCorruptionError(Sprintf(
-                "[f:%s][c:%s] WriteBackCache persistent queue is corrupted",
-                FileSystemId.Quote().c_str(),
-                ClientId.Quote().c_str()));
+            ReportWriteBackCacheCorruptionError(
+                LogTag + "WriteBackCache persistent queue is corrupted");
         }
 
         UpdatePersistentQueueStats();
@@ -1124,19 +1121,18 @@ private:
                 FlushConfig.MaxSumWriteRequestsSize);
 
             if (entryCount == 0) {
-                STORAGE_WARN(
-                    "[f:%s][c:%s] WriteBackCache WriteData request size "
-                    "exceeds flush limits, flushing anyway "
-                    "{\"MaxWriteRequestSize\": %u, "
-                    "\"MaxWriteRequestsCount\": %u, "
-                    "\"MaxSumWriteRequestsSize\": %u, "
-                    "\"WriteDataRequestSize\": %lu}",
-                    FileSystemId.Quote().c_str(),
-                    ClientId.Quote().c_str(),
-                    FlushConfig.MaxWriteRequestSize,
-                    FlushConfig.MaxWriteRequestsCount,
-                    FlushConfig.MaxSumWriteRequestsSize,
-                    nodeState->CachedEntries.front()->GetBuffer().size());
+                LOG_WARN(
+                    "WriteBackCache WriteData request size exceeds flush "
+                    "limits, flushing anyway "
+                    << "{\"MaxWriteRequestSize\": "
+                    << FlushConfig.MaxWriteRequestSize
+                    << ", \"MaxWriteRequestsCount\": "
+                    << FlushConfig.MaxWriteRequestsCount
+                    << ", \"MaxSumWriteRequestsSize\": "
+                    << FlushConfig.MaxSumWriteRequestsSize
+                    << ", \"WriteDataRequestSize\": "
+                    << nodeState->CachedEntries.front()->GetBuffer().size()
+                    << "}");
                 entryCount = 1;
             }
 
