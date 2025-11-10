@@ -1734,7 +1734,9 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         {
             auto response = service.RecvDescribeVolumeResponse();
             UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
-            UNIT_ASSERT_VALUES_EQUAL(response->Record.GetVolume().GetTags().at("source-disk-id"), "disk-id");
+            UNIT_ASSERT_VALUES_EQUAL(
+                response->Record.GetVolume().GetTags().at("source-disk-id"),
+                "disk-id");
         }
     }
 
