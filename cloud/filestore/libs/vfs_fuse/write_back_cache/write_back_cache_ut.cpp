@@ -887,7 +887,7 @@ struct TWriteDataRequestLogger
         return sb;
     }
 
-    TString IovecLengthsToString(ui64 nodeId) const
+    TString IovecsLengthsToString(ui64 nodeId) const
     {
         TStringBuilder sb;
         for (const auto& request : Requests) {
@@ -2076,7 +2076,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.FlushCache();
 
         UNIT_ASSERT_VALUES_EQUAL("(0, 11)", logger.RangesToString(1));
-        UNIT_ASSERT_VALUES_EQUAL("[5, 6]", logger.IovecLengthsToString(1));
+        UNIT_ASSERT_VALUES_EQUAL("[5, 6]", logger.IovecsLengthsToString(1));
     }
 }
 
