@@ -414,7 +414,7 @@ public:
 
         if (CachedEntriesPersistentQueue.IsCorrupted()) {
             ReportWriteBackCacheCorruptionError(
-                LogTag + "WriteBackCache persistent queue is corrupted");
+                LogTag + " WriteBackCache persistent queue is corrupted");
         }
 
         UpdatePersistentQueueStats();
