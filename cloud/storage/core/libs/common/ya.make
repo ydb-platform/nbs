@@ -15,6 +15,7 @@ SRCS(
     compressed_bitmap.cpp
     concurrent_queue.cpp
     context.cpp
+    disjoint_interval_map.cpp
     error.cpp
     file_io_service.cpp
     file_ring_buffer.cpp
