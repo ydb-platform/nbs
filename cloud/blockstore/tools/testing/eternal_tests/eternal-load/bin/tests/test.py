@@ -51,7 +51,7 @@ def test_load_fails(scenario, engine, direct):
 
     with ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(__run_load_test, tmp_file.name, scenario, engine, direct)
-        time.sleep(10)
+        time.sleep(20)
 
         cnt = 0
         while future.running():
