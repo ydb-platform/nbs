@@ -95,6 +95,7 @@ void TStatsServiceActor::RegisterVolumeSelfCounters(
             volume.VolumeInfo.GetCloudId(),
             volume.VolumeInfo.GetFolderId(),
             volume.VolumeInfo.GetDiskId(),
+            DiagnosticsConfig->GetHistogramCounterOptions(),
             volumeCounters);
 
         volume.SelfCountersRegistered = true;

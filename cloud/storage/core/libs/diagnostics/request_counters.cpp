@@ -34,6 +34,7 @@ struct THistBase
 {
     const TString Name;
     const TString Units;
+    const double PercentileMultiplier;
     const TBucketBounds HistBounds;
     const EHistogramCounterOptions CounterOptions;
 
@@ -43,6 +44,7 @@ struct THistBase
     THistBase(TString name, EHistogramCounterOptions counterOptions)
         : Name(std::move(name))
         , Units(TDerived::Units)
+        , PercentileMultiplier(TDerived::PercentileMultiplier)
         , HistBounds(ConvertToHistBounds(TDerived::Buckets))
         , CounterOptions(counterOptions)
         , Hist(
@@ -113,18 +115,118 @@ struct THistBase
     {
         return Name;
     }
+
+    double GetPercentileMultiplier() const
+    {
+        return PercentileMultiplier;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTimeHist
-    : public THistBase<TRequestUsTimeBuckets>
+struct TUsTimeHist: public THistBase<TRequestUsTimeBuckets>
 {
     using THistBase::THistBase;
 
     void Increment(TDuration requestTime, ui64 count = 1)
     {
         THistBase::Increment(requestTime.MicroSeconds(), count);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TMsTimeHist: public THistBase<TRequestMsTimeBuckets>
+{
+    using THistBase::THistBase;
+
+    void Increment(TDuration requestTime, ui64 count = 1)
+    {
+        THistBase::Increment(
+            requestTime.MicroSeconds() / GetPercentileMultiplier(),
+            count);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Allows to use either microseconds or milliseconds for time histograms.
+class TAdaptiveTimeHist
+{
+private:
+    using TTimeHistVariant = std::variant<TUsTimeHist, TMsTimeHist>;
+    std::unique_ptr<TTimeHistVariant> TimeHistPtr;
+
+public:
+    TAdaptiveTimeHist(TString name, EHistogramCounterOptions counterOptions)
+    {
+        if (counterOptions &
+            EHistogramCounterOption::UseMsUnitsForTimeHistogram)
+        {
+            TimeHistPtr = std::make_unique<TTimeHistVariant>(
+                std::in_place_type<TMsTimeHist>,
+                std::move(name),
+                counterOptions);
+        } else {
+            TimeHistPtr = std::make_unique<TTimeHistVariant>(
+                std::in_place_type<TUsTimeHist>,
+                std::move(name),
+                counterOptions);
+        }
+    }
+    ~TAdaptiveTimeHist() = default;
+
+    TAdaptiveTimeHist(const TAdaptiveTimeHist&) = delete;
+    TAdaptiveTimeHist(TAdaptiveTimeHist&&) = default;
+    TAdaptiveTimeHist& operator=(const TAdaptiveTimeHist&) = delete;
+    TAdaptiveTimeHist& operator=(TAdaptiveTimeHist&&) = default;
+
+    void Increment(TDuration requestTime, ui64 count = 1)
+    {
+        std::visit(
+            [&](auto& timeHist) { timeHist.Increment(requestTime, count); },
+            *TimeHistPtr);
+    }
+
+    template <typename... Args>
+    void Register(Args&&... args)
+    {
+        std::visit(
+            [&](auto& timeHist)
+            { timeHist.Register(std::forward<Args>(args)...); },
+            *TimeHistPtr);
+    }
+
+    [[nodiscard]] TVector<TBucketInfo> GetBuckets() const
+    {
+        return std::visit(
+            [&](auto& timeHist) -> TVector<TBucketInfo>
+            { return timeHist.GetBuckets(); },
+            *TimeHistPtr);
+    }
+
+    [[nodiscard]] const TString& GetUnits() const
+    {
+        return std::visit(
+            [&](auto& timeHist) -> const TString&
+            { return timeHist.GetUnits(); },
+            *TimeHistPtr);
+    }
+
+    [[nodiscard]] const TString& GetName() const
+    {
+        return std::visit(
+            [&](auto& timeHist) -> const TString&
+            { return timeHist.GetName(); },
+            *TimeHistPtr);
+    }
+
+    [[nodiscard]] double GetPercentileMultiplier() const
+    {
+        return std::visit(
+            [&](auto& timeHist) -> double
+            { return timeHist.GetPercentileMultiplier(); },
+            *TimeHistPtr);
     }
 };
 
@@ -192,7 +294,8 @@ public:
             GetDefaultPercentiles());
 
         for (ui32 i = 0; i < Min(Counters.size(), result.size()); ++i) {
-            *Counters[i] = std::lround(result[i]);
+            *Counters[i] =
+                std::lround(result[i] * SrcHistogram.GetPercentileMultiplier());
         }
     }
 };
@@ -252,8 +355,8 @@ struct TRequestCounters::TStatCounters
 
     struct TSizeClassCounters
     {
-        TTimeHist ExecutionTimeHist;
-        TRequestPercentiles<TTimeHist> ExecutionTimePercentiles;
+        TAdaptiveTimeHist ExecutionTimeHist;
+        TRequestPercentiles<TAdaptiveTimeHist> ExecutionTimePercentiles;
 
         explicit TSizeClassCounters(
                 EHistogramCounterOptions histogramCounterOptions)
@@ -303,22 +406,22 @@ struct TRequestCounters::TStatCounters
     TSizeHist SizeHist;
     TRequestPercentiles<TSizeHist> SizePercentiles;
 
-    TTimeHist TimeHist;
-    TTimeHist TimeHistUnaligned;
-    TRequestPercentiles<TTimeHist> TimePercentiles;
+    TAdaptiveTimeHist TimeHist;
+    TAdaptiveTimeHist TimeHistUnaligned;
+    TRequestPercentiles<TAdaptiveTimeHist> TimePercentiles;
 
-    TTimeHist ExecutionTimeHist;
-    TTimeHist ExecutionTimeHistUnaligned;
-    TRequestPercentiles<TTimeHist> ExecutionTimePercentiles;
+    TAdaptiveTimeHist ExecutionTimeHist;
+    TAdaptiveTimeHist ExecutionTimeHistUnaligned;
+    TRequestPercentiles<TAdaptiveTimeHist> ExecutionTimePercentiles;
 
     TDisjointIntervalMap<ui64, std::unique_ptr<TSizeClassCounters>>
         ExecutionTimeSizeClasses;
 
-    TTimeHist RequestCompletionTimeHist;
-    TRequestPercentiles<TTimeHist> RequestCompletionTimePercentiles;
+    TAdaptiveTimeHist RequestCompletionTimeHist;
+    TRequestPercentiles<TAdaptiveTimeHist> RequestCompletionTimePercentiles;
 
-    TTimeHist PostponedTimeHist;
-    TRequestPercentiles<TTimeHist> PostponedTimePercentiles;
+    TAdaptiveTimeHist PostponedTimeHist;
+    TRequestPercentiles<TAdaptiveTimeHist> PostponedTimePercentiles;
 
     TMaxCalculator<DEFAULT_BUCKET_COUNT> MaxTimeCalc;
     TMaxCalculator<DEFAULT_BUCKET_COUNT> MaxTotalTimeCalc;

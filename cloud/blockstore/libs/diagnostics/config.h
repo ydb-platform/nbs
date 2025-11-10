@@ -159,6 +159,7 @@ public:
 
     TRequestThresholds GetRequestThresholds() const;
     EHistogramCounterOptions GetHistogramCounterOptions() const;
+    bool GetUseMsUnitsForTimeHistogram() const;
 
     NCloud::NProto::EStatsFetcherType GetStatsFetcherType() const;
 

@@ -76,6 +76,7 @@ void RegisterServiceVolume(
     const TString& cloudId,
     const TString& folderId,
     const TString& diskId,
+    EHistogramCounterOptions histogramCounterOptions,
     TDynamicCounterPtr src)
 {
     const auto commonLabels =
@@ -94,7 +95,10 @@ void RegisterServiceVolume(
 
     auto readSub = src->FindSubgroup("request", "ReadBlocks");
     AddHistogramUserMetric(
-        GetUsBuckets(),
+        histogramCounterOptions.HasFlag(
+            EHistogramCounterOption::UseMsUnitsForTimeHistogram)
+            ? GetMsBuckets()
+            : GetUsBuckets(),
         dsc,
         commonLabels,
         {{readSub, "ThrottlerDelay"}},
@@ -103,7 +107,10 @@ void RegisterServiceVolume(
     auto writeSub = src->FindSubgroup("request", "WriteBlocks");
     auto zeroSub = src->FindSubgroup("request", "ZeroBlocks");
     AddHistogramUserMetric(
-        GetUsBuckets(),
+        histogramCounterOptions.HasFlag(
+            EHistogramCounterOption::UseMsUnitsForTimeHistogram)
+            ? GetMsBuckets()
+            : GetUsBuckets(),
         dsc,
         commonLabels,
         {{writeSub, "ThrottlerDelay"}, {zeroSub, "ThrottlerDelay"}},
@@ -132,6 +139,7 @@ void RegisterServerVolumeInstance(
     const TString& diskId,
     const TString& instanceId,
     const bool reportZeroBlocksMetrics,
+    EHistogramCounterOptions histogramCounterOptions,
     TDynamicCounterPtr src)
 {
     if (instanceId.empty()) {
@@ -184,7 +192,10 @@ void RegisterServerVolumeInstance(
         {{readSub, "MaxInProgressBytes"}},
         DISK_READ_BYTES_IN_FLIGHT_BURST);
     AddHistogramUserMetric(
-        GetUsBuckets(),
+        histogramCounterOptions.HasFlag(
+            EHistogramCounterOption::UseMsUnitsForTimeHistogram)
+            ? GetMsBuckets()
+            : GetUsBuckets(),
         dsc,
         commonLabels,
         {{readSub, "Time"}},
@@ -242,7 +253,10 @@ void RegisterServerVolumeInstance(
         getWriteCounters("MaxInProgressBytes"),
         DISK_WRITE_BYTES_IN_FLIGHT_BURST);
     AddHistogramUserMetric(
-        GetUsBuckets(),
+        histogramCounterOptions.HasFlag(
+            EHistogramCounterOption::UseMsUnitsForTimeHistogram)
+            ? GetMsBuckets()
+            : GetUsBuckets(),
         dsc,
         commonLabels,
         getWriteCounters("Time"),

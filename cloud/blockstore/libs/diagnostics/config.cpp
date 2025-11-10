@@ -56,6 +56,7 @@ namespace {
     xxx(LocalHDDDowntimeThreshold,           TDuration,       TDuration::Seconds(15)                    )\
     xxx(ReportHistogramAsMultipleCounters,   bool,            true                                      )\
     xxx(ReportHistogramAsSingleCounter,      bool,            false                                     )\
+    xxx(UseMsUnitsForTimeHistogram,          bool,            false                                     )\
     xxx(StatsFetcherType, NCloud::NProto::EStatsFetcherType, NCloud::NProto::EStatsFetcherType::CGROUP  )\
                                                                                                          \
     xxx(SkipReportingZeroBlocksMetricsForYDBBasedDisks, bool, false                                     )\
@@ -197,6 +198,10 @@ EHistogramCounterOptions TDiagnosticsConfig::GetHistogramCounterOptions() const
     }
     if (GetReportHistogramAsSingleCounter()) {
         histogramCounterOptions |= EHistogramCounterOption::ReportSingleCounter;
+    }
+    if (GetUseMsUnitsForTimeHistogram()) {
+        histogramCounterOptions |=
+            EHistogramCounterOption::UseMsUnitsForTimeHistogram;
     }
     return histogramCounterOptions;
 }
