@@ -383,7 +383,8 @@ public:
         };
     }
 
-    std::unique_ptr<TEvVolume::TEvWaitReadyRequest> CreateWaitReadyRequest();
+    std::unique_ptr<TEvVolume::TEvWaitReadyRequest> CreateWaitReadyRequest(
+        TString diskId = {});
 
     std::unique_ptr<TEvVolume::TEvAddClientRequest> CreateAddClientRequest(
         const NProto::TVolumeClientInfo& info);

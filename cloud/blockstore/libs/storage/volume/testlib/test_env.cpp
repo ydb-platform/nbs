@@ -347,9 +347,12 @@ TVolumeClient::CreateUpdateVolumeConfigRequest(
     return request;
 }
 
-std::unique_ptr<TEvVolume::TEvWaitReadyRequest> TVolumeClient::CreateWaitReadyRequest()
+std::unique_ptr<TEvVolume::TEvWaitReadyRequest>
+TVolumeClient::CreateWaitReadyRequest(TString diskId)
 {
-    return std::make_unique<TEvVolume::TEvWaitReadyRequest>();
+    auto request = std::make_unique<TEvVolume::TEvWaitReadyRequest>();
+    request->Record.SetDiskId(std::move(diskId));
+    return request;
 }
 
 std::unique_ptr<TEvVolume::TEvAddClientRequest> TVolumeClient::CreateAddClientRequest(
