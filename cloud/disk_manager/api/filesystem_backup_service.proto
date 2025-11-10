@@ -24,11 +24,11 @@ message CreateFilesystemBackupRequest {
     FilesystemId src = 1;
     string filesystem_backup_id = 2;
     string folder_id = 3;
+    uint64 node_id = 4;
 }
 
 message CreateFilesystemBackupMetadata {
-    int64 size = 1;
-    double progress = 2;
+    double progress = 1;
 }
 
 message CreateFilesystemBackupResponse {
