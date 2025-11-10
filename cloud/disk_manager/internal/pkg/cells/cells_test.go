@@ -192,7 +192,7 @@ func TestCellSelectorSelectsCorrectCell(t *testing.T) {
 		shardedZoneID,
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
-		true, // requireExactCellIdMatch
+		true, // requireExactCellIDMatch
 	)
 	require.NoError(t, err)
 	require.Equal(t, shardedZoneID, selectedCell)
@@ -202,7 +202,7 @@ func TestCellSelectorSelectsCorrectCell(t *testing.T) {
 		shardedZoneID,
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
-		false, // requireExactCellIdMatch
+		false, // requireExactCellIDMatch
 	)
 	require.NoError(t, err)
 	require.Equal(t, cellID2, selectedCell) // First in the config.
@@ -212,7 +212,7 @@ func TestCellSelectorSelectsCorrectCell(t *testing.T) {
 		cellID2,
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
-		false, // requireExactCellIdMatch
+		false, // requireExactCellIDMatch
 	)
 	require.NoError(t, err)
 	require.Equal(t, cellID2, selectedCell)
@@ -222,7 +222,7 @@ func TestCellSelectorSelectsCorrectCell(t *testing.T) {
 		otherZoneID,
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
-		false, // requireExactCellIdMatch
+		false, // requireExactCellIDMatch
 	)
 	require.NoError(t, err)
 	require.Equal(t, otherZoneID, selectedCell)
@@ -232,7 +232,7 @@ func TestCellSelectorSelectsCorrectCell(t *testing.T) {
 		"incorrectZoneID",
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
-		false, // requireExactCellIdMatch
+		false, // requireExactCellIDMatch
 	)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "incorrect zone ID provided")
@@ -248,7 +248,7 @@ func TestCellSelectorReturnsCorrectNBSClientIfConfigsIsNotSet(t *testing.T) {
 		otherZoneID,
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
-		false, // requireExactCellIdMatch
+		false, // requireExactCellIDMatch
 	)
 	require.NoError(t, err)
 	require.Equal(t, otherZoneID, selectedCell)
@@ -287,7 +287,7 @@ func TestCellSelectorReturnsCorrectCellWithMaxFreeBytesPolicy(t *testing.T) {
 		shardedZoneID,
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
-		false, // requireExactCellIdMatch
+		false, // requireExactCellIDMatch
 	)
 	require.NoError(t, err)
 	require.Equal(t, cellID1, selectedCell)
@@ -325,7 +325,7 @@ func TestCellSelectorReturnsCorrectCellWithMaxFreeBytesPolicyIfNoCapacities(
 		shardedZoneID,
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
-		false, // requireExactCellIdMatch
+		false, // requireExactCellIDMatch
 	)
 	require.NoError(t, err)
 	require.Equal(t, cellID1, selectedCell)

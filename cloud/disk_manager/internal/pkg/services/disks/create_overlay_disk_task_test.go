@@ -96,7 +96,7 @@ func TestCreateOverlayDiskTask(t *testing.T) {
 		"zone",
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
-		false, // requireExactCellIdMatch
+		false, // requireExactCellIDMatch
 	).Return(nbsClient, nil)
 
 	nbsClient.On("Create", ctx, nbs.CreateDiskParams{
@@ -171,7 +171,7 @@ func TestCreateOverlayDiskTaskFailureWhenAcquireReturnsEmptyBaseDiskId(t *testin
 		"zone",
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
-		false, // requireExactCellIdMatch
+		false, // requireExactCellIDMatch
 	).Return(nbsClient, nil)
 
 	nbsClient.On("ZoneID").Return("zone")
@@ -246,7 +246,7 @@ func TestCreateOverlayDiskTaskFailureWhenAcquireReturnsEmptyBaseDiskCheckpointId
 		"zone",
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
-		false, // requireExactCellIdMatch
+		false, // requireExactCellIDMatch
 	).Return(nbsClient, nil)
 
 	nbsClient.On("ZoneID").Return("zone")

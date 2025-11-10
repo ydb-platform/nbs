@@ -52,7 +52,7 @@ func setupMigrationTest(
 			ZoneId: params.SrcZoneID,
 		},
 		FolderId:                params.FolderID,
-		RequireExactCellIdMatch: true,
+		requireExactCellIDMatch: true,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)

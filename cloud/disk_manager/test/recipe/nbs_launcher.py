@@ -48,7 +48,7 @@ class NbsLauncher:
         disk_agent_count=1,
         nbs_secure_port=None,
         cell_id=None,
-        cells=[],
+        cells=None,
     ):
         self.__ydb_port = ydb_port
         self.__domains_txt = domains_txt
@@ -77,20 +77,20 @@ class NbsLauncher:
         cert.CertPrivateKeyFile = cert_key_file
 
         cells_config = None
-        if cell_id:
+        if cell_id is not None:
             cells_config = TCellsConfig()
             cells_config.CellId = cell_id
 
             for cell in cells:
-                another_cell_config = TCellConfig()
-                another_cell_config.CellId = cell["cell_id"]
+                cell_config = TCellConfig()
+                cell_config.CellId = cell["cell_id"]
 
                 for host in cell["hosts"]:
                     cell_host_config = TCellHostConfig()
                     cell_host_config.Fqdn = host
-                    another_cell_config.Hosts.append(cell_host_config)
+                    cell_config.Hosts.append(cell_host_config)
 
-                cells_config.Cells.append(another_cell_config)
+                cells_config.Cells.append(cell_config)
 
         storage_config_patch = TStorageServiceConfig()
         storage_config_patch.AllocationUnitNonReplicatedSSD = 1
