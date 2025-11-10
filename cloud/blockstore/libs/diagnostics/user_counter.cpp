@@ -95,10 +95,7 @@ void RegisterServiceVolume(
 
     auto readSub = src->FindSubgroup("request", "ReadBlocks");
     AddHistogramUserMetric(
-        histogramCounterOptions.HasFlag(
-            EHistogramCounterOption::UseMsUnitsForTimeHistogram)
-            ? GetMsBuckets()
-            : GetUsBuckets(),
+        GetTimeBuckets(histogramCounterOptions),
         dsc,
         commonLabels,
         {{readSub, "ThrottlerDelay"}},
@@ -107,10 +104,7 @@ void RegisterServiceVolume(
     auto writeSub = src->FindSubgroup("request", "WriteBlocks");
     auto zeroSub = src->FindSubgroup("request", "ZeroBlocks");
     AddHistogramUserMetric(
-        histogramCounterOptions.HasFlag(
-            EHistogramCounterOption::UseMsUnitsForTimeHistogram)
-            ? GetMsBuckets()
-            : GetUsBuckets(),
+        GetTimeBuckets(histogramCounterOptions),
         dsc,
         commonLabels,
         {{writeSub, "ThrottlerDelay"}, {zeroSub, "ThrottlerDelay"}},
@@ -192,10 +186,7 @@ void RegisterServerVolumeInstance(
         {{readSub, "MaxInProgressBytes"}},
         DISK_READ_BYTES_IN_FLIGHT_BURST);
     AddHistogramUserMetric(
-        histogramCounterOptions.HasFlag(
-            EHistogramCounterOption::UseMsUnitsForTimeHistogram)
-            ? GetMsBuckets()
-            : GetUsBuckets(),
+        GetTimeBuckets(histogramCounterOptions),
         dsc,
         commonLabels,
         {{readSub, "Time"}},
@@ -253,10 +244,7 @@ void RegisterServerVolumeInstance(
         getWriteCounters("MaxInProgressBytes"),
         DISK_WRITE_BYTES_IN_FLIGHT_BURST);
     AddHistogramUserMetric(
-        histogramCounterOptions.HasFlag(
-            EHistogramCounterOption::UseMsUnitsForTimeHistogram)
-            ? GetMsBuckets()
-            : GetUsBuckets(),
+        GetTimeBuckets(histogramCounterOptions),
         dsc,
         commonLabels,
         getWriteCounters("Time"),

@@ -124,28 +124,32 @@ struct THistBase
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TUsTimeHist: public THistBase<TRequestUsTimeBuckets>
+template <typename TBucket>
+struct TTimeHist: public THistBase<TBucket>
 {
-    using THistBase::THistBase;
+    using THistBase<TBucket>::THistBase;
 
     void Increment(TDuration requestTime, ui64 count = 1)
     {
-        THistBase::Increment(requestTime.MicroSeconds(), count);
+        THistBase<TBucket>::Increment(
+            requestTime.MicroSeconds() /
+                THistBase<TBucket>::GetPercentileMultiplier(),
+            count);
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TMsTimeHist: public THistBase<TRequestMsTimeBuckets>
+struct TUsTimeHist: public TTimeHist<TRequestUsTimeBuckets>
 {
-    using THistBase::THistBase;
+    using TTimeHist<TRequestUsTimeBuckets>::TTimeHist;
+};
 
-    void Increment(TDuration requestTime, ui64 count = 1)
-    {
-        THistBase::Increment(
-            requestTime.MicroSeconds() / GetPercentileMultiplier(),
-            count);
-    }
+////////////////////////////////////////////////////////////////////////////////
+
+struct TMsTimeHist: public TTimeHist<TRequestMsTimeBuckets>
+{
+    using TTimeHist<TRequestMsTimeBuckets>::TTimeHist;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -162,6 +162,14 @@ TBucketsWithUnits GetUsBuckets()
     return {Buckets, "usec"};
 }
 
+TBucketsWithUnits GetTimeBuckets(EHistogramCounterOptions options)
+{
+    if (options & EHistogramCounterOption::UseMsUnitsForTimeHistogram) {
+        return GetMsBuckets();
+    }
+    return GetUsBuckets();
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 
 class TUserSumCounterWrapper

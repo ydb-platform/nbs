@@ -122,7 +122,9 @@ struct TKbSizeBuckets
     }};
 
     static constexpr TStringBuf Units = "KB";
-    static constexpr double PercentileMultiplier = 1.0;  // TODO: multiply by 1024?
+    // NOTE: maybe should be using multiplier of 1024 to increase the
+    // percentiles resolution.
+    static constexpr double PercentileMultiplier = 1.0;
 
     static TVector<TString> MakeNames();
 };

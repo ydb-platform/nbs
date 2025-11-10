@@ -819,6 +819,7 @@ public:
                 folderId,
                 fileSystemId,
                 clientId,
+                DiagnosticsConfig->GetHistogramCounterOptions(),
                 counters);
         }
     }

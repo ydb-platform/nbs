@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cloud/storage/core/libs/diagnostics/histogram_counter_options.h>
+
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/monlib/metrics/metric_registry.h>
 
@@ -66,8 +68,7 @@ static constexpr size_t BUCKETS_COUNT = 25;
 using TBuckets = std::array<TBucket, BUCKETS_COUNT>;
 using TBucketsWithUnits = std::pair<TBuckets, TString>;
 
-TBucketsWithUnits GetMsBuckets();
-TBucketsWithUnits GetUsBuckets();
+TBucketsWithUnits GetTimeBuckets(EHistogramCounterOptions options);
 
 ////////////////////////////////////////////////////////////////////////////////
 
