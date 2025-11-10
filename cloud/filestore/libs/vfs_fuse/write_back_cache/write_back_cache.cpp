@@ -26,10 +26,6 @@ using namespace NThreading;
 using EReadDataRequestCacheStatus =
     IWriteBackCacheStats::EReadDataRequestCacheStatus;
 
-#define LOG_ERROR(...) STORAGE_ERROR(LogTag << " " << __VA_ARGS__);
-#define LOG_WARN(...) STORAGE_WARN(LogTag << " " << __VA_ARGS__);
-#define LOG_INFO(...) STORAGE_INFO(LogTag << " " << __VA_ARGS__);
-
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -392,8 +388,8 @@ public:
                 }
             });
 
-        LOG_INFO(
-            "WriteBackCache has been initialized "
+        STORAGE_INFO(
+            LogTag << " WriteBackCache has been initialized "
             << "{\"FilePath\": " << filePath.Quote()
             << ", \"RawCapacityBytes\": "
             << CachedEntriesPersistentQueue.GetRawCapacity()
@@ -405,8 +401,8 @@ public:
         if (deserializationStats.HasFailed()) {
             // Each deserialization failure event has been already reported
             // as a critical error - just write statistics to the log
-            LOG_ERROR(
-                "WriteBackCache request deserialization failure "
+            STORAGE_ERROR(
+                LogTag << " WriteBackCache request deserialization failure "
                 << "{\"ChecksumMismatchCount\": "
                 << deserializationStats.ChecksumMismatchCount
                 << ", \"EntrySizeMismatchCount\": "
@@ -1121,9 +1117,9 @@ private:
                 FlushConfig.MaxSumWriteRequestsSize);
 
             if (entryCount == 0) {
-                LOG_WARN(
-                    "WriteBackCache WriteData request size exceeds flush "
-                    "limits, flushing anyway "
+                STORAGE_WARN(
+                    LogTag << " WriteBackCache WriteData request size exceeds "
+                    "flush limits, flushing anyway "
                     << "{\"MaxWriteRequestSize\": "
                     << FlushConfig.MaxWriteRequestSize
                     << ", \"MaxWriteRequestsCount\": "
