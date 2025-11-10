@@ -318,7 +318,7 @@ void TFileSystem::ReleaseDir(
         if (it != DirectoryHandles.end()) {
             CheckDirectoryHandle(req, ino, *it->second, Log, __func__);
             DirectoryHandles.erase(it);
-            
+
             if (DirectoryHandlesStorage) {
                 DirectoryHandlesStorage->RemoveHandle(fi->fh);
             }
