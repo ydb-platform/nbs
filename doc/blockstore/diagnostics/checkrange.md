@@ -9,7 +9,7 @@ This is a part of the blockstore-client application and is launched in the stand
 - mirror2 / mirror3 (data reading + replica checksums verification):
   - check data reading from each replica;
   - compare and display checksums of data between replicas.
--  block-4-2(hdd + ssd) and mirror-3of4 (hdd + ssd):
+-  ydb-based disks:
   - check data reading (YDB will have its own implicit integrity check);
   - TODO: a separate command for SSD disk verification is planned in YDB — https://github.com/ydb-platform/ydb/issues/8189.
 
@@ -106,7 +106,7 @@ The utility supports the following options:
       * calculate the checksums of the range;
       * prepare the response with 1 general checksum or a set of checksums if there were discrepancies.
 
-#### block-4-2(hdd + ssd) and mirror-3of4 (hdd + ssd) disks
+#### ydb-based disks
 * TPartitionActor::HandleCheckRange:
   * checks that the requested number of blocks is less than the maximum allowed size;
   * registers the actor TCheckRangeActor (base class for other CheckRangeActors).
@@ -145,7 +145,7 @@ It contains common logic for all types of partitioning. The disk type is receive
 ### Nonreplicated disk
 All tests are implemented as «common» in volume.
 
-### Block-4-2(hdd + ssd) and mirror-3of4 (hdd + ssd) disk
+### ydb-based disk
 All tests are implemented as «common» in volume.
 
 ### Mirror disk

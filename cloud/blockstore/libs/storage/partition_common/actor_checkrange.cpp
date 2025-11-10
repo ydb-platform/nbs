@@ -85,15 +85,9 @@ void TCheckRangeActor::ReplyAndDie(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-bool TCheckRangeActor::OnMessage(TAutoPtr<NActors::IEventHandle>& ev)
+bool TCheckRangeActor::OnMessage(TAutoPtr<NActors::IEventHandle>&)
 {
-    switch (ev->GetTypeRewrite()) {
-        HFunc(TEvService::TEvReadBlocksLocalResponse, HandleReadBlocksResponse);
-        default:
-            return false;
-    }
-
-    return true;
+    return false;
 }
 
 STFUNC(TCheckRangeActor::StateWork)
@@ -105,6 +99,7 @@ STFUNC(TCheckRangeActor::StateWork)
     }
 
     switch (ev->GetTypeRewrite()) {
+        HFunc(TEvService::TEvReadBlocksLocalResponse, HandleReadBlocksResponse);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         default:
             HandleUnexpectedEvent(

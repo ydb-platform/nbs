@@ -26,7 +26,19 @@ namespace {
 
 constexpr ui64 DefaultBlocksPerRequest = 1024;
 
-NProto::TError ExtractStatusValues(const NJson::TJsonValue& json);
+NProto::TError ExtractStatusValues(const NJson::TJsonValue& json)
+{
+    NJson::TJsonValue code;
+    if (json.GetValueByPath("Status.Code", code) && !code.IsUInteger()) {
+        return MakeError(E_ARGUMENT, "Status.Code parsing error");
+    }
+    NJson::TJsonValue message;
+    if (json.GetValueByPath("Status.Message", message) && !message.IsString()) {
+        return MakeError(E_ARGUMENT, "Status.Message parsing error");
+    }
+
+    return MakeError(code.GetUIntegerSafe(S_OK), message.GetString());
+}
 
 struct TRequestBuilder
 {
@@ -366,20 +378,6 @@ void TResultManager::WriteSummary()
         }
     }
     WriteKV("summary", summary);
-}
-
-NProto::TError ExtractStatusValues(const NJson::TJsonValue& json)
-{
-    NJson::TJsonValue code;
-    if (json.GetValueByPath("Status.Code", code) && !code.IsUInteger()) {
-        return MakeError(E_ARGUMENT, "Status.Code parsing error");
-    }
-    NJson::TJsonValue message;
-    if (json.GetValueByPath("Status.Message", message) && !message.IsString()) {
-        return MakeError(E_ARGUMENT, "Status.Message parsing error");
-    }
-
-    return MakeError(code.GetUIntegerSafe(S_OK), message.GetString());
 }
 
 }   // namespace
