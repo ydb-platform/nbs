@@ -18,10 +18,13 @@ void TDiskRegistryActor::HandleSuspendDevice(
     const auto* msg = ev->Get();
     const TString& deviceId = msg->Record.GetDeviceId();
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received SuspendDevice request: DeviceId=%s",
-        TabletID(),
-        deviceId.c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received SuspendDevice request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     if (deviceId.empty()) {
         auto response = std::make_unique<TEvDiskRegistry::TEvSuspendDeviceResponse>(
@@ -72,8 +75,11 @@ void TDiskRegistryActor::CompleteSuspendDevice(
     TTxDiskRegistry::TSuspendDevice& args)
 {
     if (HasError(args.Error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "SuspendDevice error: %s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s SuspendDevice error: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(args.Error).c_str());
     }
 

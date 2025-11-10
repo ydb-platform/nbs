@@ -19,6 +19,7 @@ class TReleaseDiskActor final
     : public TActorBootstrapped<TReleaseDiskActor>
 {
 private:
+    const TChildLogTitle LogTitle;
     const TActorId Owner;
     const TRequestInfoPtr RequestInfo;
     const TString DiskId;
@@ -33,6 +34,7 @@ private:
 
 public:
     TReleaseDiskActor(
+        const TChildLogTitle logTitle,
         const TActorId& owner,
         TRequestInfoPtr requestInfo,
         TString diskId,
@@ -82,6 +84,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TReleaseDiskActor::TReleaseDiskActor(
+        TChildLogTitle logTitle,
         const TActorId& owner,
         TRequestInfoPtr requestInfo,
         TString diskId,
@@ -89,7 +92,8 @@ TReleaseDiskActor::TReleaseDiskActor(
         ui32 volumeGeneration,
         TDuration requestTimeout,
         TVector<NProto::TDeviceConfig> devices)
-    : Owner(owner)
+    : LogTitle(std::move(logTitle))
+    , Owner(owner)
     , RequestInfo(std::move(requestInfo))
     , DiskId(std::move(diskId))
     , ClientId(std::move(clientId))
@@ -175,7 +179,8 @@ void TReleaseDiskActor::OnReleaseResponse(
 
     if (HasError(error)) {
         LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "ReleaseDevices %s error: %s, %llu",
+            "%s ReleaseDevices %s error: %s, %llu",
+            LogTitle.GetWithTime().c_str(),
             LogTargets().c_str(),
             FormatError(error).c_str(),
             cookie);
@@ -232,7 +237,12 @@ void TReleaseDiskActor::HandleTimeout(
         << " VolumeGeneration: " << VolumeGeneration
         << " PendingRequests: " << PendingRequests;
 
-    LOG_WARN(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER, err);
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY_WORKER,
+        "%s %s",
+        LogTitle.GetWithTime().c_str(),
+        err.c_str());
 
     ReplyAndDie(ctx, MakeError(E_TIMEOUT, err));
 }
@@ -288,13 +298,12 @@ void TDiskRegistryActor::HandleReleaseDisk(
     TString& clientId = *msg->Record.MutableHeaders()->MutableClientId();
     ui32 volumeGeneration = msg->Record.GetVolumeGeneration();
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received ReleaseDisk request: DiskId=%s, ClientId=%s"
-        ", VolumeGeneration=%u",
-        TabletID(),
-        diskId.c_str(),
-        clientId.c_str(),
-        volumeGeneration);
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received ReleaseDisk request: %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str());
 
     if (!clientId) {
         replyWithError(MakeError(E_ARGUMENT, "empty client id"));
@@ -309,8 +318,11 @@ void TDiskRegistryActor::HandleReleaseDisk(
     TDiskInfo diskInfo;
     const auto error = State->GetDiskInfo(diskId, diskInfo);
     if (HasError(error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "ReleaseDisk %s. GetDiskInfo error: %s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s ReleaseDisk %s. GetDiskInfo error: %s",
+            LogTitle.GetWithTime().c_str(),
             diskId.c_str(),
             FormatError(error).c_str());
 
@@ -319,8 +331,11 @@ void TDiskRegistryActor::HandleReleaseDisk(
     }
 
     if (!State->FilterDevicesForRelease(diskInfo)) {
-        LOG_WARN(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "ReleaseDisk %s. Nothing to release",
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s ReleaseDisk %s. Nothing to release",
+            LogTitle.GetWithTime().c_str(),
             diskId.c_str());
 
         replyWithError(MakeError(S_ALREADY, {}));
@@ -344,6 +359,9 @@ void TDiskRegistryActor::HandleReleaseDisk(
 
     auto actor = NCloud::Register<TReleaseDiskActor>(
         ctx,
+        LogTitle.GetChildWithTags(
+            GetCycleCount(),
+            {{"DiskId", diskId}, {"ClientId", clientId}}),
         ctx.SelfID,
         std::move(requestInfo),
         std::move(diskId),

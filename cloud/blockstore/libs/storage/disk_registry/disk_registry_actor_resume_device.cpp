@@ -133,18 +133,13 @@ void TDiskRegistryActor::HandleResumeDevice(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    const TString& agentId = msg->Record.GetAgentId();
-    const TString& path = msg->Record.GetPath();
-    bool dryRun = msg->Record.GetDryRun();
 
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received ResumeDevice request: AgentId=%s Path=%s DryRun=%d",
-        TabletID(),
-        agentId.c_str(),
-        path.c_str(),
-        dryRun);
+        "%s Received ResumeDevice request: %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str());
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,

@@ -448,9 +448,14 @@ void TDiskRegistryActor::HandleRestoreDiskRegistryState(
 {
     BLOCKSTORE_DISK_REGISTRY_COUNTER(RestoreDiskRegistryState);
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received RestoreDiskRegistryState request",
-        TabletID());
+    const auto* msg = ev->Get();
+
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received RestoreDiskRegistryState request %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str());
 
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
@@ -659,9 +664,12 @@ void TDiskRegistryActor::HandleRestoreDiskRegistryPart(
     const TEvDiskRegistryPrivate::TEvRestoreDiskRegistryPartRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received RestoreDiskRegistryPart request",
-        TabletID());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received RestoreDiskRegistryPart request: %s",
+        LogTitle.GetWithTime().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     auto* msg = ev->Get();
 
