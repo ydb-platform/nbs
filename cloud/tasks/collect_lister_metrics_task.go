@@ -54,7 +54,7 @@ func (c *collectListerMetricsTask) Run(
 	for {
 		select {
 		case <-ctx.Done():
-			return nil
+			return ctx.Err()
 		case <-ticker.C:
 			for _, taskStatus := range taskStatuses {
 				err := c.collectTasksMetrics(
