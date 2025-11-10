@@ -1716,6 +1716,30 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         UNIT_ASSERT(detectedCreateVolumeRequest);
     }
 
+    Y_UNIT_TEST(ShoudCreateVolumeWithSourceDiskIdTag)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        auto request = service.CreateCreateVolumeRequest();
+        (*request->Record.MutableTagsStr()) = "source-disk-id=disk-id";
+        service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+        auto response = service.RecvCreateVolumeResponse();
+        UNIT_ASSERT_C(response->GetStatus() == S_OK, response->GetErrorReason());
+
+        service.SendDescribeVolumeRequest();
+        {
+            auto response = service.RecvDescribeVolumeResponse();
+            UNIT_ASSERT(SUCCEEDED(response->GetStatus()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                response->Record.GetVolume().GetTags().at("source-disk-id"),
+                "disk-id");
+        }
+    }
+
     Y_UNIT_TEST(ShoudSaveFillGeneration)
     {
         TTestEnv env;
