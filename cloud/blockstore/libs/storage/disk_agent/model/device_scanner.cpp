@@ -38,33 +38,6 @@ ui32 GetBlockSize(const std::string& path)
     return s.st_blksize;
 }
 
-ui64 GetFileLength(const std::string& path)
-{
-    TFileHandle file(path.c_str(),
-          EOpenModeFlag::RdOnly
-        | EOpenModeFlag::OpenExisting);
-
-    if (!file.IsOpen()) {
-        const int ec = errno;
-        ythrow TServiceError(MAKE_SYSTEM_ERROR(ec))
-            << "unable to open file " << path << " error: " << ::strerror(ec);
-    }
-
-    const i64 size = file.Seek(0, sEnd);
-
-    if (size == -1) {
-        const int ec = errno;
-        ythrow TServiceError(MAKE_SYSTEM_ERROR(ec))
-            << "unable to retrive file size " << path;
-    }
-
-    if (!size) {
-        ythrow TServiceError {E_FAIL} << "zero file size: " << path;
-    }
-
-    return size;
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -88,6 +61,33 @@ const NProto::TStorageDiscoveryConfig::TPoolConfig* FindPoolConfig(
 
             return minSize <= fileSize && fileSize <= maxSize;
         });
+}
+
+ui64 GetFileLengthWithSeek(const TString& path)
+{
+    TFileHandle file(
+        path.c_str(),
+        EOpenModeFlag::RdOnly | EOpenModeFlag::OpenExisting);
+
+    if (!file.IsOpen()) {
+        const int ec = errno;
+        ythrow TServiceError(MAKE_SYSTEM_ERROR(ec))
+            << "unable to open file " << path << " error: " << ::strerror(ec);
+    }
+
+    const i64 size = file.Seek(0, sEnd);
+
+    if (size == -1) {
+        const int ec = errno;
+        ythrow TServiceError(MAKE_SYSTEM_ERROR(ec))
+            << "unable to retrive file size " << path;
+    }
+
+    if (!size) {
+        ythrow TServiceError{E_FAIL} << "zero file size: " << path;
+    }
+
+    return size;
 }
 
 NProto::TError FindDevices(

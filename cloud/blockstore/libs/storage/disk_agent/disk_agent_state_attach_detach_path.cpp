@@ -152,13 +152,25 @@ auto TDiskAgentState::AttachPath(
 
             THashMap<TString, bool> hasLayout;
             for (const auto& path: result.PathsToAttach) {
+                ui64 fileLength = 0;
+                try {
+                    fileLength = GetFileLengthWithSeek(path);
+                } catch (const std::exception& e) {
+                    promise.SetValue(MakeError(
+                        E_INVALID_STATE,
+                        Sprintf(
+                            "Failed to get file[%s] size: %s",
+                            path.Quote().c_str(),
+                            e.what())));
+                    return;
+                }
+
                 for (const auto& c:
                      agentConfig->GetStorageDiscoveryConfig().GetPathConfigs())
                 {
                     std::regex regex(c.GetPathRegExp().c_str());
                     if (std::regex_match(path.c_str(), regex)) {
-                        const auto* poolConfig =
-                            FindPoolConfig(c, GetFileLength(path));
+                        const auto* poolConfig = FindPoolConfig(c, fileLength);
                         hasLayout[path] =
                             poolConfig ? poolConfig->HasLayout() : false;
                         break;
