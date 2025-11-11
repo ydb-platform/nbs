@@ -536,7 +536,7 @@ public:
     if (updatePercentiles && IsServerSide) {    \
         HdrTotal##name.UpdateStats();           \
     }                                           \
-    // OO_UPDATE_STATS
+// UPDATE_STATS
 
         BLOCKSTORE_MEDIA_KIND(UPDATE_STATS)
 
