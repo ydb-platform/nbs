@@ -288,7 +288,7 @@ func (s *service) prepareCreateDiskParams(
 		StoragePoolName:         req.StoragePoolName,
 		AgentIds:                req.AgentIds,
 		EncryptionDesc:          encryptionDesc,
-		requireExactCellIDMatch: req.requireExactCellIDMatch,
+		RequireExactCellIdMatch: req.RequireExactCellIdMatch,
 	}, nil
 }
 

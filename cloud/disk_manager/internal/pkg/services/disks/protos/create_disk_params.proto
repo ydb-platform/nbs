@@ -23,5 +23,5 @@ message CreateDiskParams {
     repeated string AgentIds = 12;
     types.EncryptionDesc EncryptionDesc = 13;
     uint32 PlacementPartitionIndex = 14;
-    bool requireExactCellIDMatch = 15;
+    bool requireExactCellIdMatch = 15;
 }
