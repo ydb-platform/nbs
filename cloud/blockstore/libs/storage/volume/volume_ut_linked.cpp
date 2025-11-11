@@ -1766,6 +1766,13 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             UNIT_ASSERT_EQUAL(
                 TFollowerDiskInfo::EState::DataReady,
                 followerState);
+
+            // Wait for propagation ELinkAction::LINK_ACTION_COMPLETED request
+            options.CustomFinalCondition = [&]() -> bool
+            {
+                return stolenDataTransferredRequest != nullptr;
+            };
+            Runtime->DispatchEvents(options, TDuration::Seconds(10));
             UNIT_ASSERT(stolenDataTransferredRequest);
         }
 
