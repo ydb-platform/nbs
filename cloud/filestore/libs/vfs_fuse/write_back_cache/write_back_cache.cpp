@@ -88,6 +88,7 @@ struct TFlushConfig
     ui32 MaxWriteRequestSize = 0;
     ui32 MaxWriteRequestsCount = 0;
     ui32 MaxSumWriteRequestsSize = 0;
+    bool ZeroCopyWriteEnabled = false;
 };
 
 }   // namespace
@@ -211,45 +212,48 @@ public:
         return RemainingSize;
     }
 
-    TString Read(ui64 bytesCount)
+    TString Read(ui64 maxBytesToRead)
     {
-        Y_ENSURE(
-            bytesCount <= RemainingSize,
-            "Trying to read more data ("
-                << bytesCount << ") than is remaining (" << RemainingSize
-                << ")");
+        auto bytesToRead = Min(RemainingSize, maxBytesToRead);
+        if (bytesToRead == 0) {
+            return {};
+        }
 
-        TString buffer(bytesCount, 0);
+        auto buffer = TString::Uninitialized(bytesToRead);
 
-        while (bytesCount > 0) {
-            // Nagivate to the next element if the current one is fully read.
-            if (CurrentReadOffset == Current->Length) {
-                Current++;
-                CurrentReadOffset = 0;
-
-                // The next element is guaranteed to be valid if the contiguous
-                // buffer hasn't fully read
-                Y_DEBUG_ABORT_UNLESS(RemainingSize > 0);
-
-                // The next element is guaranteed to be non-empty - no need to
-                // skip more elements
-                Y_DEBUG_ABORT_UNLESS(Current->Length > 0);
-            }
-
-            const char* from = Current->Source->GetBuffer().data();
-            from += Current->OffsetInSource + CurrentReadOffset;
-
-            char* to = buffer.vend() - bytesCount;
-
-            auto len = Min(Current->Length - CurrentReadOffset, bytesCount);
-            MemCopy(to, from, len);
-
-            bytesCount -= len;
-            CurrentReadOffset += len;
-            RemainingSize -= len;
+        while (bytesToRead > 0) {
+            auto part = ReadInPlace(bytesToRead);
+            Y_ABORT_UNLESS(part.size() > 0 && part.size() <= bytesToRead);
+            part.copy(buffer.vend() - bytesToRead, part.size());
+            bytesToRead -= part.size();
         }
 
         return buffer;
+    }
+
+    TStringBuf ReadInPlace(ui64 maxBytesToRead)
+    {
+        if (RemainingSize == 0) {
+            return {};
+        }
+
+        // Nagivate to the next element if the current one is fully read.
+        if (CurrentReadOffset == Current->Length) {
+            Current++;
+            CurrentReadOffset = 0;
+            // The next element is guaranteed to be non-empty
+            Y_ABORT_UNLESS(Current->Length > 0);
+        }
+
+        const auto len =
+            Min(Current->Length - CurrentReadOffset, maxBytesToRead);
+        const char* data = Current->Source->GetBuffer().data() +
+                           Current->OffsetInSource + CurrentReadOffset;
+
+        CurrentReadOffset += len;
+        RemainingSize -= len;
+
+        return {data, len};
     }
 
     // Validates a range of data entry parts to ensure they form a contiguous
@@ -631,13 +635,6 @@ public:
                 parts.begin() + rangeEndIndex);
 
             while (reader.GetRemainingSize() > 0) {
-                auto size = Min(
-                    reader.GetRemainingSize(),
-                    static_cast<ui64>(FlushConfig.MaxWriteRequestSize));
-
-                auto offset = reader.GetOffset();
-                auto buffer = reader.Read(size);
-
                 auto request = std::make_shared<NProto::TWriteDataRequest>();
                 request->SetFileSystemId(
                     parts[partIndex].Source->GetRequest()->GetFileSystemId());
@@ -645,8 +642,25 @@ public:
                     parts[partIndex].Source->GetRequest()->GetHeaders();
                 request->SetNodeId(nodeId);
                 request->SetHandle(handle);
-                request->SetOffset(offset);
-                request->SetBuffer(std::move(buffer));
+                request->SetOffset(reader.GetOffset());
+
+                if (FlushConfig.ZeroCopyWriteEnabled) {
+                    auto remainingBytes = FlushConfig.MaxWriteRequestSize;
+                    while (remainingBytes > 0) {
+                        auto part = reader.ReadInPlace(remainingBytes);
+                        if (part.empty()) {
+                            break;
+                        }
+                        Y_ABORT_UNLESS(part.size() <= remainingBytes);
+                        remainingBytes -= part.size();
+                        auto* iovec = request->AddIovecs();
+                        iovec->SetBase(reinterpret_cast<ui64>(part.data()));
+                        iovec->SetLength(part.size());
+                    }
+                } else {
+                    request->SetBuffer(
+                        reader.Read(FlushConfig.MaxWriteRequestSize));
+                }
 
                 res.push_back(std::move(request));
             }
@@ -1316,7 +1330,8 @@ TWriteBackCache::TWriteBackCache(
         TDuration flushRetryPeriod,
         ui32 maxWriteRequestSize,
         ui32 maxWriteRequestsCount,
-        ui32 maxSumWriteRequestsSize)
+        ui32 maxSumWriteRequestsSize,
+        bool zeroCopyWriteEnabled)
     : Impl(
         new TImpl(
             std::move(session),
@@ -1332,7 +1347,8 @@ TWriteBackCache::TWriteBackCache(
              .FlushRetryPeriod = flushRetryPeriod,
              .MaxWriteRequestSize = maxWriteRequestSize,
              .MaxWriteRequestsCount = maxWriteRequestsCount,
-             .MaxSumWriteRequestsSize = maxSumWriteRequestsSize}))
+             .MaxSumWriteRequestsSize = maxSumWriteRequestsSize,
+             .ZeroCopyWriteEnabled = zeroCopyWriteEnabled}))
 {
     Impl->ScheduleAutomaticFlushIfNeeded();
 }
