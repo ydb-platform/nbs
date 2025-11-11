@@ -214,7 +214,7 @@ def start(argv):
             nbs_secure_port=nbs4_secure_port,
             cell_id="zone-d",
             cells=[
-                {"cell_id": "zone-d-shard1", "hosts": [f"localhost{nbs5_secure_port}"]},
+                {"cell_id": "zone-d-shard1", "hosts": [f"localhost:{nbs5_secure_port}"]},
             ]
         )
         nbs4.start()
@@ -240,7 +240,7 @@ def start(argv):
             nbs_secure_port=nbs5_secure_port,
             cell_id="zone-d-shard1",
             cells=[
-                {"cell_id": "zone-d", "hosts": [f"localhost{nbs4_secure_port}"]},
+                {"cell_id": "zone-d", "hosts": [f"localhost:{nbs4_secure_port}"]},
             ]
         )
         nbs5.start()
