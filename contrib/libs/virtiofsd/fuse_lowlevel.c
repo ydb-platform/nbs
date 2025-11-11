@@ -1902,10 +1902,10 @@ static void do_init(fuse_req_t req, fuse_ino_t nodeid,
         }
     }
 
-    fuse_log(FUSE_LOG_DEBUG, "INIT: %u.%u\n", arg->major, arg->minor);
+    fuse_log(FUSE_LOG_INFO, "INIT REQ: %u.%u\n", arg->major, arg->minor);
     if (arg->major == 7 && arg->minor >= 6) {
-        fuse_log(FUSE_LOG_DEBUG, "flags=0x%08x\n", arg->flags);
-        fuse_log(FUSE_LOG_DEBUG, "max_readahead=0x%08x\n", arg->max_readahead);
+        fuse_log(FUSE_LOG_INFO, "flags=0x%08x\n", arg->flags);
+        fuse_log(FUSE_LOG_INFO, "max_readahead=0x%08x\n", arg->max_readahead);
     }
     se->conn.proto_major = arg->major;
     se->conn.proto_minor = arg->minor;
@@ -1986,6 +1986,9 @@ static void do_init(fuse_req_t req, fuse_ino_t nodeid,
         if (bufsize > max_bufsize) {
             bufsize = max_bufsize;
         }
+    }
+    if (arg->flags & FUSE_HANDLE_KILLPRIV_V2) {
+        se->conn.capable |= FUSE_CAP_HANDLE_KILLPRIV_V2;
     }
 #ifdef HAVE_SPLICE
 #ifdef HAVE_VMSPLICE
@@ -2118,7 +2121,11 @@ static void do_init(fuse_req_t req, fuse_ino_t nodeid,
     outarg.congestion_threshold = se->conn.congestion_threshold;
     outarg.time_gran = se->conn.time_gran;
 
-    fuse_log(FUSE_LOG_INFO, "   INIT: %u.%u\n", outarg.major, outarg.minor);
+    if (se->conn.want & FUSE_CAP_HANDLE_KILLPRIV_V2) {
+        outarg.flags |= FUSE_HANDLE_KILLPRIV_V2;
+    }
+
+    fuse_log(FUSE_LOG_INFO, "   INIT RSP: %u.%u\n", outarg.major, outarg.minor);
     fuse_log(FUSE_LOG_INFO, "   flags=0x%08x\n", outarg.flags);
     fuse_log(FUSE_LOG_INFO, "   max_readahead=0x%08x\n", outarg.max_readahead);
     fuse_log(FUSE_LOG_INFO, "   max_write=0x%08x\n", outarg.max_write);
