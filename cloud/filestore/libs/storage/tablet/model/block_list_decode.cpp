@@ -3,6 +3,8 @@
 #include "binary_reader.h"
 #include "block_list_spec.h"
 
+#include <cloud/storage/core/libs/common/interval.h>
+
 #include <util/generic/algorithm.h>
 #include <util/system/align.h>
 
@@ -297,43 +299,7 @@ ui64 FindDeletionMarker(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRange
-{
-    const ui32 Offset = 0;
-    const ui32 Length = 0;
-
-    static TRange WithLength(ui32 offset, ui32 length)
-    {
-        return {offset, length};
-    }
-
-    bool Empty() const
-    {
-        return Length == 0;
-    }
-
-    ui32 End() const
-    {
-        return Offset + Length;
-    }
-
-    bool Contains(ui32 offset) const
-    {
-        return Offset <= offset && offset < End();
-    }
-
-    TRange Intersection(const TRange& range) const
-    {
-        auto offset = Max(Offset, range.Offset);
-        auto end = Min(End(), range.End());
-
-        if (end > offset) {
-            return {offset, end - offset};
-        }
-
-        return {};
-    }
-};
+using TRange = NCloud::TInterval<ui32>;
 
 struct TFindDeletionMarkersResult
 {
@@ -408,19 +374,20 @@ TFindDeletionMarkersResult FindDeletionMarkers(
 
             const auto intersection =
                 searchRange.Intersection(groupRange);
-            if (intersection.Contains(searchRange.Offset)) {
-                res = TFindDeletionMarkersResult {
+            if (!intersection) {
+                return false;
+            }
+
+            if (intersection->Contains(searchRange.Start)) {
+                res = TFindDeletionMarkersResult{
                     .MaxCommitId = groupCommitId,
-                    .BlocksFound =
-                        intersection.End() - searchRange.Offset
-                };
+                    .BlocksFound = intersection->End - searchRange.Start};
                 return true;
             }
 
-            if (!intersection.Empty()) {
-                minOverlappingBlobOffset = Min<ui16>(
-                    minOverlappingBlobOffset,
-                    intersection.Offset);
+            if (!intersection->Empty()) {
+                minOverlappingBlobOffset =
+                    Min<ui16>(minOverlappingBlobOffset, intersection->Start);
             }
 
             return false;
@@ -443,9 +410,9 @@ TFindDeletionMarkersResult FindDeletionMarkers(
                     return true;
                 }
 
-                Y_DEBUG_ABORT_UNLESS(*it > searchRange.Offset);
+                Y_DEBUG_ABORT_UNLESS(*it > searchRange.Start);
 
-                if (*it < searchRange.End()) {
+                if (*it < searchRange.End) {
                     minOverlappingBlobOffset = Min<ui16>(
                         minOverlappingBlobOffset,
                         *it);

@@ -3,7 +3,7 @@
 #include "public.h"
 
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/common/size_interval.h>
+#include <cloud/storage/core/libs/common/interval.h>
 #include <cloud/storage/core/libs/diagnostics/histogram_counter_options.h>
 
 #include <util/datetime/base.h>

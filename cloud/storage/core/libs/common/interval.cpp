@@ -1,4 +1,4 @@
-#include "size_interval.h"
+#include "interval.h"
 
 #include <cloud/storage/core/libs/common/format.h>
 
