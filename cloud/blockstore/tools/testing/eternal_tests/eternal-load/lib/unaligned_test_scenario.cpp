@@ -257,7 +257,7 @@ private:
     bool GenerateRegionMetadata();
     bool ValidateRegionMetadata() const;
     bool Init(TFileHandle& file) override;
-    bool InitialReadValidationNeeded() const;
+    bool InitialValidationInProgress() const;
     ui32 GetWriteProbabilityPercent(double secondsSinceTestStart) const;
 
     void Read(IService& service, TVector<char>& readBuffer);
@@ -330,7 +330,7 @@ public:
         ITestExecutorIOService& service) override
     {
         if (Operation == EOperation::Idle) {
-            if (TestScenario->InitialReadValidationNeeded()) {
+            if (TestScenario->InitialValidationInProgress()) {
                 Operation = EOperation::Read;
             } else {
                 const auto writeRate = TestScenario->GetWriteProbabilityPercent(
@@ -585,7 +585,7 @@ bool TUnalignedTestScenario::Init(TFileHandle& file)
     return ValidateRegionMetadata();
 }
 
-bool TUnalignedTestScenario::InitialReadValidationNeeded() const
+bool TUnalignedTestScenario::InitialValidationInProgress() const
 {
     return ShouldValidate && ValidatedByteCount.load() < FileSize;
 }
