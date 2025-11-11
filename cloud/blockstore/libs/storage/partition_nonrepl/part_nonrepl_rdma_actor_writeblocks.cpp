@@ -248,10 +248,11 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
             PartConfig,
             AssignIdToWriteAndZeroRequestsEnabled);
 
-        auto context = std::make_unique<TDeviceRequestRdmaContext>();
-        context->DeviceIdx = deviceRequest.DeviceIdx;
+        auto context = std::make_unique<TDeviceRequestRdmaContext>(
+            deviceRequest.DeviceIdx);
 
-        sentRequestCtx.emplace_back(deviceRequest.DeviceIdx);
+        sentRequestCtx.emplace_back(
+            TRunningRdmaRequestInfo{.DeviceIdx = deviceRequest.DeviceIdx});
 
         auto [req, err] = ep->AllocateRequest(
             requestResponseHandler,
@@ -274,12 +275,11 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
                 ctx,
                 deviceRequest.Device.GetDeviceUUID());
 
-            using TResponse = TEvService::TEvWriteBlocksResponse;
             NCloud::Reply(
                 ctx,
                 *requestInfo,
-                std::make_unique<TResponse>(std::move(err)));
-
+                std::make_unique<TEvService::TEvWriteBlocksResponse>(
+                    std::move(err)));
             return;
         }
 
@@ -298,7 +298,8 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
             request,
             sglist);
 
-        requests.push_back({std::move(ep), std::move(req)});
+        requests.push_back(
+            {.Endpoint = std::move(ep), .ClientRequest = std::move(req)});
     }
 
     for (size_t i = 0; i < requests.size(); ++i) {
@@ -423,8 +424,8 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
             PartConfig,
             AssignIdToWriteAndZeroRequestsEnabled);
 
-        auto context = std::make_unique<TDeviceRequestRdmaContext>();
-        context->DeviceIdx = deviceRequest.DeviceIdx;
+        auto context = std::make_unique<TDeviceRequestRdmaContext>(
+            deviceRequest.DeviceIdx);
 
         auto [req, err] = ep->AllocateRequest(
             requestResponseHandler,
@@ -447,11 +448,11 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
                 ctx,
                 deviceRequest.Device.GetDeviceUUID());
 
-            using TResponse = TEvService::TEvWriteBlocksLocalResponse;
             NCloud::Reply(
                 ctx,
                 *requestInfo,
-                std::make_unique<TResponse>(std::move(err)));
+                std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
+                    std::move(err)));
 
             return;
         }
@@ -472,7 +473,8 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
 
         blocks += deviceRequest.DeviceBlockRange.Size();
 
-        requests.push_back({std::move(ep), std::move(req)});
+        requests.push_back(
+            {.Endpoint = std::move(ep), .ClientRequest = std::move(req)});
     }
 
     for (size_t i = 0; i < requests.size(); ++i) {

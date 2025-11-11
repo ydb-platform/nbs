@@ -1,9 +1,9 @@
 #include "switchable_client.h"
 
 #include <cloud/blockstore/libs/service/context.h>
-#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service_method.h>
 
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/vector.h>
@@ -43,6 +43,11 @@ private:
     TVector<TRequestInfo> Requests;
 
 public:
+    ~TDeferredRequestsHolder()
+    {
+        Y_DEBUG_ABORT_UNLESS(Requests.empty());
+    }
+
     TFuture<TResponse> SaveRequest(
         TCallContextPtr callContext,
         std::shared_ptr<TRequest> request)
@@ -97,8 +102,8 @@ class TSwitchableBlockStore final
 {
 private:
     TLog Log;
-
-    TClientInfo PrimaryClientInfo;
+    const ISessionSwitcherWeakPtr SessionSwitcher;
+    const TClientInfo PrimaryClientInfo;
     TClientInfo SecondaryClientInfo;
 
     // BeforeSwitching() sets the WillSwitchToSecondary to true. After that,
@@ -118,9 +123,11 @@ private:
 public:
     TSwitchableBlockStore(
         ILoggingServicePtr logging,
+        ISessionSwitcherWeakPtr sessionSwitcher,
         TString diskId,
         IBlockStorePtr client)
         : Log(logging->CreateLog("BLOCKSTORE_CLIENT"))
+        , SessionSwitcher(std::move(sessionSwitcher))
         , PrimaryClientInfo(
               {.Client = std::move(client),
                .DiskId = std::move(diskId),
@@ -209,6 +216,11 @@ public:
                 std::move(callContext),
                 std::move(request));
         }
+        if constexpr (TMethod::IsMountRequest()) {
+            return ExecuteMountRequest(
+                std::move(callContext),
+                std::move(request));
+        }
         return TMethod::Execute(
             PrimaryClientInfo.Client.get(),
             std::move(callContext),
@@ -267,6 +279,36 @@ private:
             std::move(callContext),
             std::move(request));
     }
+
+    TFuture<NProto::TMountVolumeResponse> ExecuteMountRequest(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TMountVolumeRequest> request)
+    {
+        TFuture<NProto::TMountVolumeResponse> future =
+            PrimaryClientInfo.Client->MountVolume(
+                std::move(callContext),
+                std::move(request));
+
+        return future.Apply(
+            [sessionSwitcher = SessionSwitcher]   //
+            (TFuture<NProto::TMountVolumeResponse> future)
+                -> NProto::TMountVolumeResponse
+            {
+                NProto::TMountVolumeResponse response = future.ExtractValue();
+
+                if (!HasError(response) &&
+                    response.GetVolume().GetPrincipalDiskId())
+                {
+                    if (auto switcher = sessionSwitcher.lock()) {
+                        switcher->SwitchSession(
+                            response.GetVolume().GetDiskId(),
+                            response.GetVolume().GetPrincipalDiskId());
+                    }
+                }
+
+                return response;
+            });
+    }
 };
 
 }   // namespace
@@ -295,11 +337,13 @@ public:
 
 ISwitchableBlockStorePtr CreateSwitchableClient(
     ILoggingServicePtr logging,
+    ISessionSwitcherWeakPtr sessionSwitcher,
     TString diskId,
     IBlockStorePtr client)
 {
     return std::make_shared<TSwitchableBlockStore>(
         std::move(logging),
+        std::move(sessionSwitcher),
         std::move(diskId),
         std::move(client));
 }

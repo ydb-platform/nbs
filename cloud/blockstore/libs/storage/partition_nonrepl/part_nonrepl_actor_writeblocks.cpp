@@ -40,8 +40,7 @@ public:
         const TActorId& part,
         bool assignVolumeRequestId,
         bool replyLocal,
-        TChildLogTitle logTitle,
-        ui64 deviceOperationId);
+        TChildLogTitle logTitle);
 
 protected:
     void SendRequest(const NActors::TActorContext& ctx) override;
@@ -71,8 +70,7 @@ TDiskAgentWriteActor::TDiskAgentWriteActor(
         const TActorId& part,
         bool assignVolumeRequestId,
         bool replyLocal,
-        TChildLogTitle logTitle,
-        ui64 deviceOperationId)
+        TChildLogTitle logTitle)
     : TDiskAgentBaseRequestActor(
           std::move(requestInfo),
           GetRequestId(request),
@@ -82,8 +80,7 @@ TDiskAgentWriteActor::TDiskAgentWriteActor(
           std::move(partConfig),
           volumeActorId,
           part,
-          std::move(logTitle),
-          deviceOperationId)
+          std::move(logTitle))
     , AssignVolumeRequestId(assignVolumeRequestId)
     , ReplyLocal(replyLocal)
     , Request(std::move(request))
@@ -313,8 +310,6 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
         return;
     }
 
-    ui64 operationId = GenerateOperationId(deviceRequests.size());
-
     auto actorId = NCloud::Register<TDiskAgentWriteActor>(
         ctx,
         requestInfo,
@@ -326,8 +321,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocks(
         SelfId(),
         Config->GetAssignIdToWriteAndZeroRequestsEnabled(),
         false,   // replyLocal
-        LogTitle.GetChild(GetCycleCount()),
-        operationId);
+        LogTitle.GetChild(GetCycleCount()));
 
     RequestsInProgress.AddWriteRequest(actorId, std::move(request));
 }
@@ -430,8 +424,6 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
     // code to TDiskAgentWriteActor that tries to use it
     msg->Record.Sglist.SetSgList({});
 
-    ui64 operationId = GenerateOperationId(deviceRequests.size());
-
     auto actorId = NCloud::Register<TDiskAgentWriteActor>(
         ctx,
         requestInfo,
@@ -443,8 +435,7 @@ void TNonreplicatedPartitionActor::HandleWriteBlocksLocal(
         SelfId(),
         Config->GetAssignIdToWriteAndZeroRequestsEnabled(),
         true,   // replyLocal
-        LogTitle.GetChild(GetCycleCount()),
-        operationId);
+        LogTitle.GetChild(GetCycleCount()));
 
     RequestsInProgress.AddWriteRequest(actorId, std::move(request));
 }

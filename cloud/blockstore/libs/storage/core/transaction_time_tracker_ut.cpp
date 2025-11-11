@@ -135,6 +135,30 @@ Y_UNIT_TEST_SUITE(TTransactionTimeTrackerTest)
         UNIT_ASSERT_VALUES_EQUAL("+ 1", get("ReadBlocks_inflight_Total"));
         UNIT_ASSERT_VALUES_EQUAL("0", get("WriteBlocks_finished_Total"));
     }
+
+    Y_UNIT_TEST(ShouldMakeInflightInfo)
+    {
+        TTransactionTimeTracker timeTracker(TransactionNames);
+
+        timeTracker.OnStarted(
+            1,
+            "ReadBlocks",
+            1000 * GetCyclesPerMillisecond());
+        timeTracker.OnStarted(
+            2,
+            "ReadBlocks",
+            2000 * GetCyclesPerMillisecond());
+        timeTracker.OnStarted(
+            3,
+            "WriteBlocks",
+            2000 * GetCyclesPerMillisecond());
+
+        const TString inflightInfo =
+            timeTracker.GetInflightInfo(4000 * GetCyclesPerMillisecond());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "Inflight: ReadBlocks(2, 3.000s), WriteBlocks(1, 2.000s)",
+            inflightInfo);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

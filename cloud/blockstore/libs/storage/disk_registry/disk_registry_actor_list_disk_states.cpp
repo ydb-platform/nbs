@@ -10,11 +10,14 @@ void TDiskRegistryActor::HandleListDiskStates(
     const TEvService::TEvListDiskStatesRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    auto* msg = ev->Get();
+
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received ListDiskStates request",
-        TabletID());
+        "%s Received ListDiskStates request: %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str());
 
     auto states = State->ListDiskStates();
     for (auto& s: states) {

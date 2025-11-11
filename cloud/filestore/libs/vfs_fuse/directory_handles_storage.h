@@ -11,7 +11,7 @@
 #include <util/generic/hash.h>
 #include <util/generic/strbuf.h>
 #include <util/generic/string.h>
-#include <util/system/mutex.h>
+#include <util/system/spinlock.h>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -38,7 +38,7 @@ private:
     TLog Log;
 
     // Mutex for Table and HandleIdToIndices
-    TMutex TableLock;
+    TAdaptiveLock TableLock;
     std::unique_ptr<TDirectoryHandleTable> Table;
     THashMap<ui64, std::vector<ui64>> HandleIdToIndices;
 

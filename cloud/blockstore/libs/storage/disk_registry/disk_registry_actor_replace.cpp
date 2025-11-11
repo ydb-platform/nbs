@@ -15,6 +15,7 @@ class TReplaceActor final
     : public TActorBootstrapped<TReplaceActor>
 {
 private:
+    const TChildLogTitle LogTitle;
     const TActorId Owner;
     const TRequestInfoPtr Request;
     const TString DiskId;
@@ -24,6 +25,7 @@ private:
 
 public:
     TReplaceActor(
+        TChildLogTitle logTitle,
         const TActorId& owner,
         TRequestInfoPtr request,
         TString diskId,
@@ -51,13 +53,15 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TReplaceActor::TReplaceActor(
+        TChildLogTitle logTitle,
         const TActorId& owner,
         TRequestInfoPtr request,
         TString diskId,
         TString deviceId,
         TString deviceReplacementId,
         TInstant timestamp)
-    : Owner(owner)
+    : LogTitle(std::move(logTitle))
+    , Owner(owner)
     , Request(std::move(request))
     , DiskId(std::move(diskId))
     , DeviceId(std::move(deviceId))
@@ -102,10 +106,12 @@ void TReplaceActor::HandleReplaceDiskDeviceResponse(
     auto* msg = ev->Get();
 
     if (HasError(msg->GetError())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "Can't replace device %s for disk %s: %s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_WORKER,
+            "%s Can't replace device %s: %s",
+            LogTitle.GetWithTime().c_str(),
             DeviceId.c_str(),
-            DiskId.c_str(),
             FormatError(msg->GetError()).c_str());
 
         ReplyAndDie(ctx, msg->GetError());
@@ -159,21 +165,18 @@ void TDiskRegistryActor::HandleReplaceDevice(
     const auto& deviceId = msg->Record.GetDeviceUUID();
     const auto& deviceReplacementId = msg->Record.GetDeviceReplacementUUID();
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received ReplaceDevice request: "
-        "DiskId=%s, DeviceId=%s, DeviceReplacementId=%s",
-        TabletID(),
-        diskId.c_str(),
-        deviceId.c_str(),
-        deviceReplacementId.c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received ReplaceDevice request: %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str());
 
     auto actor = NCloud::Register<TReplaceActor>(
         ctx,
+        LogTitle.GetChildWithTags(GetCycleCount(), {{"DiskId", diskId}}),
         SelfId(),
-        CreateRequestInfo(
-            ev->Sender,
-            ev->Cookie,
-            msg->CallContext),
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
         diskId,
         deviceId,
         deviceReplacementId,
@@ -244,8 +247,12 @@ void TDiskRegistryActor::CompleteReplaceDevice(
     TTxDiskRegistry::TReplaceDevice& args)
 {
     if (HasError(args.Error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "ReplaceDevice error: %s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s ReplaceDevice error %s: %s",
+            LogTitle.GetWithTime().c_str(),
+            args.DiskId.Quote().c_str(),
             FormatError(args.Error).c_str());
     }
 

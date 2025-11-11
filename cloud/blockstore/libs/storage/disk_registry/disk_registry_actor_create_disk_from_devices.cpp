@@ -18,20 +18,13 @@ void TDiskRegistryActor::HandleCreateDiskFromDevices(
     const auto& record = ev->Get()->Record;
     const auto& volume = record.GetVolumeConfig();
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received CreateDiskFromDevices %s, %u, %u, [ %s] %s",
-        TabletID(),
-        volume.GetDiskId().c_str(),
-        volume.GetBlockSize(),
-        volume.GetStorageMediaKind(),
-        [&] {
-            TStringStream out;
-            for (auto& d: record.GetDevices()) {
-                out << "(" << d.GetAgentId() << " " << d.GetDeviceName() << ") ";
-            }
-            return out.Str();
-        }().c_str(),
-        record.GetForce() ? "force" : "");
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received CreateDiskFromDevices request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     if (!NProto::EStorageMediaKind_IsValid(volume.GetStorageMediaKind())) {
         auto response =
@@ -115,13 +108,19 @@ void TDiskRegistryActor::CompleteCreateDiskFromDevices(
     TTxDiskRegistry::TCreateDiskFromDevices& args)
 {
     if (HasError(args.Error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "CreateDiskFromDevices %s failed. Error: %s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s CreateDiskFromDevices %s failed. Error: %s",
+            LogTitle.GetWithTime().c_str(),
             args.ToString().c_str(),
             FormatError(args.Error).c_str());
     } else {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "CreateDiskFromDevices %s succeeded. Error: %s",
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s CreateDiskFromDevices %s succeeded. Error: %s",
+            LogTitle.GetWithTime().c_str(),
             args.ToString().c_str(),
             FormatError(args.Error).c_str());
     }

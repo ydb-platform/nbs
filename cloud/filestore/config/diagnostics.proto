@@ -148,4 +148,7 @@ message TDiagnosticsConfig
     // Limit number of records flushed in each frame during flush iteration
     optional uint64 ProfileLogMaxFrameFlushRecords = 30;
 
+    // Report time histograms with milliseconds buckets. Percentiles are still
+    // reported in microseconds.
+    optional bool UseMsUnitsForTimeHistogram = 31;
 }

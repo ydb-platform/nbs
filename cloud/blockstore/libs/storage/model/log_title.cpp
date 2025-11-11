@@ -40,6 +40,23 @@ TStringBuilder& operator<<(TStringBuilder& stream, TOptional<T> opt)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template<typename T>
+concept HasDiskId = requires(T t) {
+    t.DiskId = TString();
+};
+
+template<typename T>
+concept HasGeneration = requires(T t) {
+    t.Generation = ui32();
+};
+
+template<typename T>
+concept HasTabletId = requires(T t) {
+    t.TabletId = ui64();
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 TString ToString(const TLogTitle::TVolume& data)
 {
     TStringBuilder stream;
@@ -116,6 +133,11 @@ TString ToString(const TLogTitle::TVolumeProxy& data)
 TString ToString(const TLogTitle::TPartitionNonrepl& data)
 {
     return TStringBuilder() << "[nrd:" << data.DiskId;
+}
+
+TString ToString(const TLogTitle::TDiskRegistry& data)
+{
+    return TStringBuilder() << "[dr:" << data.TabletId;
 }
 
 }   // namespace
@@ -210,7 +232,9 @@ void TLogTitle::SetDiskId(TString diskId)
     std::visit(
         [this, &diskId](auto& data)
         {
-            data.DiskId = std::move(diskId);
+            if constexpr (HasDiskId<decltype(data)>) {
+                data.DiskId = diskId;
+            }
             CachedPrefix = ToString(data);
         },
         Data);
@@ -218,33 +242,27 @@ void TLogTitle::SetDiskId(TString diskId)
 
 void TLogTitle::SetGeneration(ui32 generation)
 {
-    std::visit(TOverloaded(
+    std::visit(
         [this, generation]<typename T>(T& data)
-            requires(std::is_same_v<T, TVolume> ||
-                     std::is_same_v<T, TVolumeProxy> ||
-                     std::is_same_v<T, TPartition> ||
-                     std::is_same_v<T, TClient>)
         {
-            data.Generation = generation;
+            if constexpr (HasGeneration<decltype(data)>) {
+                data.Generation = generation;
+            }
             CachedPrefix = ToString(data);
         },
-        [](auto&) { Y_DEBUG_ABORT_UNLESS(false, "it does not make sense"); }),
         Data);
 }
 
 void TLogTitle::SetTabletId(ui64 tabletId)
 {
-    std::visit(TOverloaded(
+    std::visit(
         [this, tabletId]<typename T>(T& data)
-            requires(std::is_same_v<T, TVolumeProxy> ||
-                     std::is_same_v<T, TPartition> ||
-                     std::is_same_v<T, TClient> ||
-                     std::is_same_v<T, TSession>)
         {
-            data.TabletId = tabletId;
+            if constexpr (HasTabletId<decltype(data)>) {
+                data.TabletId = tabletId;
+            }
             CachedPrefix = ToString(data);
         },
-        [](auto&) { Y_DEBUG_ABORT_UNLESS(false, "it does not make sense"); }),
         Data);
 }
 

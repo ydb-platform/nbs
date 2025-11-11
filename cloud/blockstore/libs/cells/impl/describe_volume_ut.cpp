@@ -6,6 +6,7 @@
 #include <cloud/blockstore/config/client.pb.h>
 #include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/client/config.h>
+#include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/service/context.h>
 
 #include <cloud/storage/core/libs/common/scheduler.h>
@@ -162,6 +163,64 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
 
         const auto& describeResponse = response.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL("cell1", describeResponse.GetCellId());
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreVolumeWithSourceDiskIdTag)
+    {
+        TCellHostEndpointsByCellId endpoints;
+
+        NProto::TCellsConfig cellsProto;
+        cellsProto.AddCells()->SetCellId("cell1");
+        cellsProto.AddCells()->SetCellId("cell2");
+        TCellsConfig config(cellsProto);
+
+        auto s1h1Client = CreateCellEndpoint("cell1", "s1h1", endpoints);
+        auto s2h1Client = CreateCellEndpoint("cell2", "s2h1", endpoints);
+
+        auto request = CreateDescribeRequest();
+        request.SetDiskId("celldisk");
+
+        auto localService = CreateService();
+
+        TBootstrap bootstrap;
+        bootstrap.Logging = CreateLoggingService("console");
+        bootstrap.Scheduler = CreateScheduler();
+        bootstrap.Scheduler->Start();
+
+        auto response = DescribeVolume(
+            config,
+            request,
+            localService,
+            endpoints,
+            false,
+            bootstrap);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, s1h1Client->DescribeVolumeCalled);
+        UNIT_ASSERT_VALUES_EQUAL(1, s2h1Client->DescribeVolumeCalled);
+        UNIT_ASSERT_VALUES_EQUAL(1, localService->DescribeVolumeCalled);
+
+        {
+            NProto::TDescribeVolumeResponse msg;
+            (*msg.MutableVolume()->MutableTags())[TString(SourceDiskIdTagName)] = "source_disk_id";
+            s1h1Client->DescribeVolumePromise.SetValue(std::move(msg));
+        }
+
+        {
+            NProto::TDescribeVolumeResponse msg;
+            (*msg.MutableVolume()->MutableTags())[TString(SourceDiskIdTagName)] = "source_disk_id";
+            s2h1Client->DescribeVolumePromise.SetValue(std::move(msg));
+        }
+
+        {
+            NProto::TDescribeVolumeResponse msg;
+            (*msg.MutableVolume()->MutableTags())[TString(SourceDiskIdTagName)] = "source_disk_id";
+            localService->DescribeVolumePromise.SetValue(std::move(msg));
+        }
+
+        const auto& describeResponse = response.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_NOT_FOUND,
+            describeResponse.GetError().GetCode());
     }
 
     Y_UNIT_TEST(ShouldDescribeLocalVolume)

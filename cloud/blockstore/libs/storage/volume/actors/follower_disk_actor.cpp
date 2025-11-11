@@ -89,7 +89,7 @@ void TFollowerDiskActor::OnBootstrap(const NActors::TActorContext& ctx)
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Follower created %s",
+        "%s Follower actor created %s",
         LogTitle.GetWithTime().c_str(),
         ToString(FollowerDiskInfo.State).Quote().c_str());
 
@@ -378,6 +378,9 @@ void TFollowerDiskActor::HandleUpdateFollowerStateResponse(
     const auto* msg = ev->Get();
     FollowerDiskInfo = msg->Follower;
     ApplyLinkState(ctx);
+    if (State == EState::LeadershipTransferredAndPersisted) {
+        RebootLeaderVolume(ctx, TDuration());
+    }
 }
 
 void TFollowerDiskActor::HandlePropagateLeadershipToFollowerResponse(

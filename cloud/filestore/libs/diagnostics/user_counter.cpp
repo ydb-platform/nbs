@@ -93,6 +93,7 @@ void RegisterFilestore(
     const TString& folderId,
     const TString& filestoreId,
     const TString& instanceId,
+    EHistogramCounterOptions histogramCounterOptions,
     NMonitoring::TDynamicCounterPtr src)
 {
     if (instanceId.empty() || !src) {
@@ -129,7 +130,7 @@ void RegisterFilestore(
         { { readSub, "Errors/Fatal" } },
         FILESTORE_READ_ERRORS);
     AddHistogramUserMetric(
-        GetUsBuckets(),
+        GetTimeBuckets(histogramCounterOptions),
         dsc,
         commonLabels,
         { { readSub, "Time" } },
@@ -162,7 +163,7 @@ void RegisterFilestore(
         { { writeSub, "Errors/Fatal" } },
         FILESTORE_WRITE_ERRORS);
     AddHistogramUserMetric(
-        GetUsBuckets(),
+        GetTimeBuckets(histogramCounterOptions),
         dsc,
         commonLabels,
         { { writeSub, "Time" } },
@@ -204,7 +205,7 @@ void RegisterFilestore(
                     FILESTORE_INDEX_CUMULATIVE_TIME
                 );
                 AddHistogramUserMetric(
-                    GetUsBuckets(),
+                    GetTimeBuckets(histogramCounterOptions),
                     dsc,
                     labels,
                     {{ indexSubgroup, "Time" }},

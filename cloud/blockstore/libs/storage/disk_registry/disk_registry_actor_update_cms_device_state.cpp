@@ -23,13 +23,16 @@ void TDiskRegistryActor::HandleUpdateCmsHostDeviceState(
         ev->Cookie,
         msg->CallContext);
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received UpdateCmsHostDeviceState request"
-        ": host=%s, path=%s, State=%u",
-        TabletID(),
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received UpdateCmsHostDeviceState request: host=%s, path=%s, "
+        "State=%s %s",
+        LogTitle.GetWithTime().c_str(),
         msg->Host.c_str(),
         msg->Path.c_str(),
-        static_cast<ui32>(msg->State));
+        NProto::EDeviceState_Name(msg->State).c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TUpdateCmsHostDeviceState>(
         ctx,
@@ -86,8 +89,11 @@ void TDiskRegistryActor::CompleteUpdateCmsHostDeviceState(
     const TActorContext& ctx,
     TTxDiskRegistry::TUpdateCmsHostDeviceState& args)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "UpdateCmsDeviceState result: %s %u",
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s UpdateCmsDeviceState result: %s %u",
+        LogTitle.GetWithTime().c_str(),
         FormatError(args.Error).c_str(),
         args.Timeout.Seconds());
 

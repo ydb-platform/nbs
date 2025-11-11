@@ -1,9 +1,10 @@
 #pragma once
 
+#include <cloud/storage/core/libs/diagnostics/histogram_counter_options.h>
+#include <cloud/storage/core/libs/user_stats/counter/user_counter.h>
+
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/monlib/metrics/metric_registry.h>
-
-#include <cloud/storage/core/libs/user_stats/counter/user_counter.h>
 
 #include <util/generic/hash_multi_map.h>
 
@@ -18,6 +19,7 @@ void RegisterServiceVolume(
     const TString& cloudId,
     const TString& folderId,
     const TString& diskId,
+    EHistogramCounterOptions histogramCounterOptions,
     NMonitoring::TDynamicCounterPtr src);
 
 void UnregisterServiceVolume(
@@ -33,6 +35,7 @@ void RegisterServerVolumeInstance(
     const TString& diskId,
     const TString& instanceId,
     const bool reportZeroBlocksMetrics,
+    EHistogramCounterOptions histogramCounterOptions,
     NMonitoring::TDynamicCounterPtr src);
 
 void UnregisterServerVolumeInstance(

@@ -25,9 +25,11 @@ void TDiskRegistryActor::HandlePurgeHostCms(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received PurgeHostCms request: Host=%s",
-        TabletID(),
-        msg->Host.c_str());
+        "%s Received PurgeHostCms request: Host=%s DryRun=%s %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Host.c_str(),
+        msg->DryRun ? "true" : "false",
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TPurgeHostCms>(
         ctx,
@@ -71,7 +73,8 @@ void TDiskRegistryActor::CompletePurgeHostCms(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "PurgeHostCms result: Host=%s Error=%s AffectedDisks=%s",
+        "%s PurgeHostCms result: Host=%s Error=%s AffectedDisks=%s",
+        LogTitle.GetWithTime().c_str(),
         args.Host.c_str(),
         FormatError(args.Error).c_str(),
         [&]

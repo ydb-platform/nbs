@@ -2,7 +2,9 @@
 
 #include <cloud/blockstore/libs/service/service_method.h>
 #include <cloud/blockstore/libs/service/service_test.h>
+#include <cloud/blockstore/libs/storage/model/volume_label.h>
 
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -30,6 +32,20 @@ enum class EHandledOn
 template <typename T>
 concept HasSessionId = requires(T& obj) {
     { obj.GetSessionId() } -> std::convertible_to<TString>;
+};
+
+struct TTestSessionSwitcher
+    : public ISessionSwitcher
+    , public std::enable_shared_from_this<TTestSessionSwitcher>
+{
+    TString DiskId;
+    TString NewDiskId;
+
+    void SwitchSession(const TString& diskId, const TString& newDiskId) override
+    {
+        DiskId = diskId;
+        NewDiskId = newDiskId;
+    }
 };
 
 template <typename TRequest, typename TResponse>
@@ -201,9 +217,11 @@ Y_UNIT_TEST_SUITE(TSwitchableClientTest)
     {
         auto client1 = std::make_shared<TTestService>();
         auto client2 = std::make_shared<TTestService>();
+        auto sessionSwitcher = std::make_shared<TTestSessionSwitcher>();
 
         auto switchableClient = CreateSwitchableClient(
             CreateLoggingService("console"),
+            sessionSwitcher,
             PrimaryDiskId,
             client1);
 
@@ -249,9 +267,11 @@ Y_UNIT_TEST_SUITE(TSwitchableClientTest)
     {
         auto client1 = std::make_shared<TTestService>();
         auto client2 = std::make_shared<TTestService>();
+        auto sessionSwitcher = std::make_shared<TTestSessionSwitcher>();
 
         auto switchableClient = CreateSwitchableClient(
             CreateLoggingService("console"),
+            sessionSwitcher,
             PrimaryDiskId,
             client1);
 
@@ -335,9 +355,11 @@ Y_UNIT_TEST_SUITE(TSwitchableClientTest)
     {
         auto client1 = std::make_shared<TTestService>();
         auto client2 = std::make_shared<TTestService>();
+        auto sessionSwitcher = std::make_shared<TTestSessionSwitcher>();
 
         auto switchableClient = CreateSwitchableClient(
             CreateLoggingService("console"),
+            sessionSwitcher,
             PrimaryDiskId,
             client1);
 
@@ -390,9 +412,11 @@ Y_UNIT_TEST_SUITE(TSwitchableClientTest)
     {
         auto client1 = std::make_shared<TTestService>();
         auto client2 = std::make_shared<TTestService>();
+        auto sessionSwitcher = std::make_shared<TTestSessionSwitcher>();
 
         auto switchableClient = CreateSwitchableClient(
             CreateLoggingService("console"),
+            sessionSwitcher,
             PrimaryDiskId,
             client1);
 
@@ -458,6 +482,69 @@ Y_UNIT_TEST_SUITE(TSwitchableClientTest)
             client2,
             switchableClient,
             EHandledOn::Primary);
+    }
+
+    Y_UNIT_TEST(ShouldSwitchSessionIfMountResponseContainsPrincipalDiskId)
+    {
+        auto client1 = std::make_shared<TTestService>();
+        auto sessionSwitcher = std::make_shared<TTestSessionSwitcher>();
+
+        auto switchableClient = CreateSwitchableClient(
+            CreateLoggingService("console"),
+            sessionSwitcher,
+            PrimaryDiskId,
+            client1);
+
+        size_t sessionNum = 0;
+        bool setPrincipalDisk = false;
+        client1->MountVolumeHandler =
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            UNIT_ASSERT_EQUAL(request->GetDiskId(), PrimaryDiskId);
+
+            NProto::TMountVolumeResponse response;
+            response.SetSessionId(ToString(++sessionNum));
+
+            auto& volume = *response.MutableVolume();
+            volume.SetDiskId(request->GetDiskId());
+            volume.SetBlockSize(DefaultBlockSize);
+            volume.SetBlocksCount(100);
+            if (setPrincipalDisk) {
+                volume.SetPrincipalDiskId(
+                    NStorage::GetNextDiskId(request->GetDiskId()));
+            }
+
+            return MakeFuture(response);
+        };
+
+        {   // If the mount response does not contain the PrincipalDiskId, then
+            // the call SwitchSession of ISessionSwitcher should not occur.
+            TCallContextPtr callContext = MakeIntrusive<TCallContext>();
+            auto request = std::make_shared<NProto::TMountVolumeRequest>();
+            request->SetDiskId(PrimaryDiskId);
+            auto future =
+                switchableClient->MountVolume(callContext, std::move(request));
+            const auto& response = future.GetValue();
+            UNIT_ASSERT(!HasError(response));
+            UNIT_ASSERT_VALUES_EQUAL("", sessionSwitcher->DiskId);
+            UNIT_ASSERT_VALUES_EQUAL("", sessionSwitcher->NewDiskId);
+        }
+
+        {   // If the mount response contains the PrincipalDiskId, then call
+            // SwitchSession of ISessionSwitcher should occur.
+            setPrincipalDisk = true;
+            TCallContextPtr callContext = MakeIntrusive<TCallContext>();
+            auto request = std::make_shared<NProto::TMountVolumeRequest>();
+            request->SetDiskId(PrimaryDiskId);
+            auto future =
+                switchableClient->MountVolume(callContext, std::move(request));
+            const auto& response = future.GetValue();
+            UNIT_ASSERT(!HasError(response));
+            UNIT_ASSERT_VALUES_EQUAL(PrimaryDiskId, sessionSwitcher->DiskId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                NStorage::GetNextDiskId(PrimaryDiskId),
+                sessionSwitcher->NewDiskId);
+        }
     }
 }
 

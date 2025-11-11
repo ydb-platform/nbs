@@ -17,6 +17,9 @@ using IBlockStorePtr = std::shared_ptr<IBlockStore>;
 struct ISwitchableBlockStore;
 using ISwitchableBlockStorePtr = std::shared_ptr<ISwitchableBlockStore>;
 
+struct ISessionSwitcher;
+using ISessionSwitcherWeakPtr = std::weak_ptr<ISessionSwitcher>;
+
 struct IAuthProvider;
 using IAuthProviderPtr = std::shared_ptr<IAuthProvider>;
 

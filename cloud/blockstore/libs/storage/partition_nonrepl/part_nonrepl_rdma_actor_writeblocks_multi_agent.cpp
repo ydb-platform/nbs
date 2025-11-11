@@ -305,11 +305,11 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
     const auto sentRequestId =
         ep->SendRequest(std::move(req), requestInfo->CallContext);
 
-    RequestsInProgress.AddWriteRequest(
-        requestId,
-        TRequestContext{TDeviceRequestContext{
-            .DeviceIndex = deviceRequest.DeviceIdx,
-            .SentRequestId = sentRequestId}});
+    TRequestContext sentRequestCtx{
+        {.DeviceIdx = deviceRequest.DeviceIdx,
+         .SentRequestId = sentRequestId}};
+
+    RequestsInProgress.AddWriteRequest(requestId, sentRequestCtx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

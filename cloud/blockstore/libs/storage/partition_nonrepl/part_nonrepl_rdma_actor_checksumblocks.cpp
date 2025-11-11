@@ -25,8 +25,17 @@ namespace {
 
 struct TDeviceChecksumRequestContext: public TDeviceRequestRdmaContext
 {
-    ui64 RangeStartIndex = 0;
-    ui32 RangeSize = 0;
+    const ui64 RangeStartIndex = 0;
+    const ui32 RangeSize = 0;
+
+    TDeviceChecksumRequestContext(
+        ui32 deviceIdx,
+        ui64 rangeStartIndex,
+        ui32 rangeSize)
+        : TDeviceRequestRdmaContext(deviceIdx)
+        , RangeStartIndex(rangeStartIndex)
+        , RangeSize(rangeSize)
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -161,10 +170,10 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
     for (auto& r: deviceRequests) {
         auto ep = AgentId2Endpoint[r.Device.GetAgentId()];
         Y_ABORT_UNLESS(ep);
-        auto dc = std::make_unique<TDeviceChecksumRequestContext>();
-        dc->RangeStartIndex = r.BlockRange.Start;
-        dc->RangeSize = r.DeviceBlockRange.Size() * PartConfig->GetBlockSize();
-        dc->DeviceIdx = r.DeviceIdx;
+        auto dc = std::make_unique<TDeviceChecksumRequestContext>(
+            r.DeviceIdx,
+            r.BlockRange.Start,
+            r.DeviceBlockRange.Size() * PartConfig->GetBlockSize());
 
         sentRequestCtx.emplace_back(r.DeviceIdx);
 

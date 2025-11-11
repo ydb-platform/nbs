@@ -58,7 +58,8 @@ TRequestCountersPtr MakeRequestCounters(
             return IsReadWriteRequest(static_cast<EFileStoreRequest>(t));
         },
         options,
-        histogramCounterOptions
+        histogramCounterOptions,
+        TVector<TSizeInterval>{}
     );
     requestCounters->Register(counters);
     return requestCounters;
@@ -818,6 +819,7 @@ public:
                 folderId,
                 fileSystemId,
                 clientId,
+                DiagnosticsConfig->GetHistogramCounterOptions(),
                 counters);
         }
     }

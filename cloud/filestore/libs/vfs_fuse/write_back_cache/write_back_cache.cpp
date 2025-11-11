@@ -2,10 +2,12 @@
 
 #include "read_write_range_lock.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/context.h>
 
 #include <cloud/storage/core/libs/common/file_ring_buffer.h>
 
+#include <library/cpp/digest/crc32c/crc32c.h>
 #include <library/cpp/threading/future/subscription/wait_all.h>
 
 #include <util/generic/hash_set.h>
@@ -86,6 +88,7 @@ struct TFlushConfig
     ui32 MaxWriteRequestSize = 0;
     ui32 MaxWriteRequestsCount = 0;
     ui32 MaxSumWriteRequestsSize = 0;
+    bool ZeroCopyWriteEnabled = false;
 };
 
 }   // namespace
@@ -209,45 +212,48 @@ public:
         return RemainingSize;
     }
 
-    TString Read(ui64 bytesCount)
+    TString Read(ui64 maxBytesToRead)
     {
-        Y_ENSURE(
-            bytesCount <= RemainingSize,
-            "Trying to read more data ("
-                << bytesCount << ") than is remaining (" << RemainingSize
-                << ")");
+        auto bytesToRead = Min(RemainingSize, maxBytesToRead);
+        if (bytesToRead == 0) {
+            return {};
+        }
 
-        TString buffer(bytesCount, 0);
+        auto buffer = TString::Uninitialized(bytesToRead);
 
-        while (bytesCount > 0) {
-            // Nagivate to the next element if the current one is fully read.
-            if (CurrentReadOffset == Current->Length) {
-                Current++;
-                CurrentReadOffset = 0;
-
-                // The next element is guaranteed to be valid if the contiguous
-                // buffer hasn't fully read
-                Y_DEBUG_ABORT_UNLESS(RemainingSize > 0);
-
-                // The next element is guaranteed to be non-empty - no need to
-                // skip more elements
-                Y_DEBUG_ABORT_UNLESS(Current->Length > 0);
-            }
-
-            const char* from = Current->Source->GetBuffer().data();
-            from += Current->OffsetInSource + CurrentReadOffset;
-
-            char* to = buffer.vend() - bytesCount;
-
-            auto len = Min(Current->Length - CurrentReadOffset, bytesCount);
-            MemCopy(to, from, len);
-
-            bytesCount -= len;
-            CurrentReadOffset += len;
-            RemainingSize -= len;
+        while (bytesToRead > 0) {
+            auto part = ReadInPlace(bytesToRead);
+            Y_ABORT_UNLESS(part.size() > 0 && part.size() <= bytesToRead);
+            part.copy(buffer.vend() - bytesToRead, part.size());
+            bytesToRead -= part.size();
         }
 
         return buffer;
+    }
+
+    TStringBuf ReadInPlace(ui64 maxBytesToRead)
+    {
+        if (RemainingSize == 0) {
+            return {};
+        }
+
+        // Nagivate to the next element if the current one is fully read.
+        if (CurrentReadOffset == Current->Length) {
+            Current++;
+            CurrentReadOffset = 0;
+            // The next element is guaranteed to be non-empty
+            Y_ABORT_UNLESS(Current->Length > 0);
+        }
+
+        const auto len =
+            Min(Current->Length - CurrentReadOffset, maxBytesToRead);
+        const char* data = Current->Source->GetBuffer().data() +
+                           Current->OffsetInSource + CurrentReadOffset;
+
+        CurrentReadOffset += len;
+        RemainingSize -= len;
+
+        return {data, len};
     }
 
     // Validates a range of data entry parts to ensure they form a contiguous
@@ -292,6 +298,8 @@ private:
     const ITimerPtr Timer;
     const IWriteBackCacheStatsPtr Stats;
     const TFlushConfig FlushConfig;
+    const TLog Log;
+    const TString LogTag;
 
     // All fields below should be protected by this lock
     TMutex Lock;
@@ -329,6 +337,9 @@ public:
             ISchedulerPtr scheduler,
             ITimerPtr timer,
             IWriteBackCacheStatsPtr stats,
+            TLog log,
+            const TString& fileSystemId,
+            const TString& clientId,
             const TString& filePath,
             ui64 capacityBytes,
             TFlushConfig flushConfig)
@@ -337,6 +348,9 @@ public:
         , Timer(std::move(timer))
         , Stats(std::move(stats))
         , FlushConfig(flushConfig)
+        , Log(std::move(log))
+        , LogTag(
+            Sprintf("[f:%s][c:%s]", fileSystemId.c_str(), clientId.c_str()))
         , CachedEntriesPersistentQueue(filePath, capacityBytes)
     {
         // File ring buffer should be able to store any valid TWriteDataRequest.
@@ -349,12 +363,15 @@ public:
 
         Stats->ResetNonDerivativeCounters();
 
+        TWriteDataEntryDeserializationStats deserializationStats;
+
         CachedEntriesPersistentQueue.Visit(
             [&](auto checksum, auto serializedRequest)
             {
                 auto entry = std::make_unique<TWriteDataEntry>(
                     checksum,
                     serializedRequest,
+                    deserializationStats,
                     this);
 
                 if (entry->IsCorrupted()) {
@@ -362,13 +379,41 @@ public:
                     // We should add this entry to a queue like a normal entry
                     // because there is 1-by-1 correspondence between
                     // CachedEntriesPersistentQueue and CachedEntries.
-                    // TODO(nasonov): report it
                     CachedEntries.push_back(std::move(entry));
                 } else {
                     auto* nodeState = GetOrCreateNodeState(entry->GetNodeId());
                     AddCachedEntry(nodeState, std::move(entry));
                 }
             });
+
+        STORAGE_INFO(
+            LogTag << " WriteBackCache has been initialized "
+            << "{\"FilePath\": " << filePath.Quote()
+            << ", \"RawCapacityBytes\": "
+            << CachedEntriesPersistentQueue.GetRawCapacity()
+            << ", \"RawUsedBytesCount\": "
+            << CachedEntriesPersistentQueue.GetRawUsedBytesCount()
+            << ", \"WriteDataRequestCount\": "
+            << CachedEntriesPersistentQueue.Size() << "}");
+
+        if (deserializationStats.HasFailed()) {
+            // Each deserialization failure event has been already reported
+            // as a critical error - just write statistics to the log
+            STORAGE_ERROR(
+                LogTag << " WriteBackCache request deserialization failure "
+                << "{\"ChecksumMismatchCount\": "
+                << deserializationStats.ChecksumMismatchCount
+                << ", \"EntrySizeMismatchCount\": "
+                << deserializationStats.EntrySizeMismatchCount
+                << ", \"ProtobufDeserializationErrorCount\": "
+                << deserializationStats.ProtobufDeserializationErrorCount
+                << "}");
+        }
+
+        if (CachedEntriesPersistentQueue.IsCorrupted()) {
+            ReportWriteBackCacheCorruptionError(
+                LogTag + " WriteBackCache persistent queue is corrupted");
+        }
 
         UpdatePersistentQueueStats();
     }
@@ -590,13 +635,6 @@ public:
                 parts.begin() + rangeEndIndex);
 
             while (reader.GetRemainingSize() > 0) {
-                auto size = Min(
-                    reader.GetRemainingSize(),
-                    static_cast<ui64>(FlushConfig.MaxWriteRequestSize));
-
-                auto offset = reader.GetOffset();
-                auto buffer = reader.Read(size);
-
                 auto request = std::make_shared<NProto::TWriteDataRequest>();
                 request->SetFileSystemId(
                     parts[partIndex].Source->GetRequest()->GetFileSystemId());
@@ -604,8 +642,25 @@ public:
                     parts[partIndex].Source->GetRequest()->GetHeaders();
                 request->SetNodeId(nodeId);
                 request->SetHandle(handle);
-                request->SetOffset(offset);
-                request->SetBuffer(std::move(buffer));
+                request->SetOffset(reader.GetOffset());
+
+                if (FlushConfig.ZeroCopyWriteEnabled) {
+                    auto remainingBytes = FlushConfig.MaxWriteRequestSize;
+                    while (remainingBytes > 0) {
+                        auto part = reader.ReadInPlace(remainingBytes);
+                        if (part.empty()) {
+                            break;
+                        }
+                        Y_ABORT_UNLESS(part.size() <= remainingBytes);
+                        remainingBytes -= part.size();
+                        auto* iovec = request->AddIovecs();
+                        iovec->SetBase(reinterpret_cast<ui64>(part.data()));
+                        iovec->SetLength(part.size());
+                    }
+                } else {
+                    request->SetBuffer(
+                        reader.Read(FlushConfig.MaxWriteRequestSize));
+                }
 
                 res.push_back(std::move(request));
             }
@@ -1044,8 +1099,18 @@ private:
                 FlushConfig.MaxSumWriteRequestsSize);
 
             if (entryCount == 0) {
-                // Even a single entry is too large to flush
-                // TODO(nasonov): report and try to flush it anyway
+                STORAGE_WARN(
+                    LogTag << " WriteBackCache WriteData request size exceeds "
+                    "flush limits, flushing anyway "
+                    << "{\"MaxWriteRequestSize\": "
+                    << FlushConfig.MaxWriteRequestSize
+                    << ", \"MaxWriteRequestsCount\": "
+                    << FlushConfig.MaxWriteRequestsCount
+                    << ", \"MaxSumWriteRequestsSize\": "
+                    << FlushConfig.MaxSumWriteRequestsSize
+                    << ", \"WriteDataRequestSize\": "
+                    << nodeState->CachedEntries.front()->GetBuffer().size()
+                    << "}");
                 entryCount = 1;
             }
 
@@ -1256,26 +1321,34 @@ TWriteBackCache::TWriteBackCache(
         ISchedulerPtr scheduler,
         ITimerPtr timer,
         IWriteBackCacheStatsPtr stats,
+        TLog log,
+        const TString& fileSystemId,
+        const TString& clientId,
         const TString& filePath,
         ui64 capacityBytes,
         TDuration automaticFlushPeriod,
         TDuration flushRetryPeriod,
         ui32 maxWriteRequestSize,
         ui32 maxWriteRequestsCount,
-        ui32 maxSumWriteRequestsSize)
+        ui32 maxSumWriteRequestsSize,
+        bool zeroCopyWriteEnabled)
     : Impl(
         new TImpl(
             std::move(session),
             std::move(scheduler),
             std::move(timer),
             std::move(stats),
+            std::move(log),
+            fileSystemId,
+            clientId,
             filePath,
             capacityBytes,
             {.AutomaticFlushPeriod = automaticFlushPeriod,
              .FlushRetryPeriod = flushRetryPeriod,
              .MaxWriteRequestSize = maxWriteRequestSize,
              .MaxWriteRequestsCount = maxWriteRequestsCount,
-             .MaxSumWriteRequestsSize = maxSumWriteRequestsSize}))
+             .MaxSumWriteRequestsSize = maxSumWriteRequestsSize,
+             .ZeroCopyWriteEnabled = zeroCopyWriteEnabled}))
 {
     Impl->ScheduleAutomaticFlushIfNeeded();
 }
@@ -1321,10 +1394,24 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
 TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
     ui32 checksum,
     TStringBuf serializedRequest,
+    TWriteDataEntryDeserializationStats& deserializationStats,
     TImpl* impl)
 {
-    // TODO(nasonov): validate checksum
+    deserializationStats.EntryCount++;
+
     Y_UNUSED(checksum);
+    // TODO(nasonov): validate checksum when TFileRingBuffer supports
+    // in-place allocation. Currently, data is written directly to the
+    // TFileRingBuffer without Crc32 calculation
+    //
+    // auto expectedChecksum =
+    //    Crc32c(serializedRequest.data(), serializedRequest.size());
+    //
+    // if (expectedChecksum != checksum) {
+    //    stats.ChecksumMismatchCount++;
+    //    SetStatus(EWriteDataRequestStatus::Corrupted, impl);
+    //    return;
+    //}
 
     TMemoryInput mi(serializedRequest);
 
@@ -1336,6 +1423,9 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
         // Currently this may happen when execution stopped between allocation
         // and Serialization. In future, this can happen only as a result of
         // corruption
+        deserializationStats.EntrySizeMismatchCount++;
+        ReportWriteBackCacheCorruptionError(
+            "TWriteDataEntry deserialization error: entry is empty");
         SetStatus(EWriteDataRequestStatus::Corrupted, impl);
         return;
     }
@@ -1343,16 +1433,19 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
     const char* bufferPtr = mi.Buf();
 
     if (mi.Skip(bufferSize) != bufferSize) {
-        // Buffer corruption
-        // TODO(nasonov): report and handle
+        deserializationStats.EntrySizeMismatchCount++;
+        ReportWriteBackCacheCorruptionError(
+            "TWriteDataEntry deserialization error: invalid entry size");
         SetStatus(EWriteDataRequestStatus::Corrupted, impl);
         return;
     }
 
     auto parsedRequest = std::make_shared<NProto::TWriteDataRequest>();
-    if (!parsedRequest->ParseFromArray(mi.Buf(), static_cast<int>(mi.Avail()))) {
-        // Buffer corruption
-        // TODO(nasonov): report and handle
+    if (!parsedRequest->ParseFromArray(mi.Buf(), static_cast<int>(mi.Avail())))
+    {
+        deserializationStats.ProtobufDeserializationErrorCount++;
+        ReportWriteBackCacheCorruptionError(
+            "TWriteDataEntry deserialization error: ParseFromArray has failed");
         SetStatus(EWriteDataRequestStatus::Corrupted, impl);
         return;
     }

@@ -47,8 +47,7 @@ public:
         TNonreplicatedPartitionConfigPtr partConfig,
         NActors::TActorId volumeActorId,
         const NActors::TActorId& part,
-        TChildLogTitle logTitle,
-        ui64 deviceOperationId);
+        TChildLogTitle logTitle);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

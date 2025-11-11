@@ -56,10 +56,13 @@ namespace {
     xxx(LocalHDDDowntimeThreshold,           TDuration,       TDuration::Seconds(15)                    )\
     xxx(ReportHistogramAsMultipleCounters,   bool,            true                                      )\
     xxx(ReportHistogramAsSingleCounter,      bool,            false                                     )\
+    xxx(UseMsUnitsForTimeHistogram,          bool,            false                                     )\
     xxx(StatsFetcherType, NCloud::NProto::EStatsFetcherType, NCloud::NProto::EStatsFetcherType::CGROUP  )\
                                                                                                          \
     xxx(SkipReportingZeroBlocksMetricsForYDBBasedDisks, bool, false                                     )\
     xxx(OpentelemetryTraceConfig,           ::NCloud::NProto::TOpentelemetryTraceConfig, {}             )\
+                                                                                                         \
+    xxx(ExecutionTimeSizeClasses,       TVector<TSizeInterval>,  {}                                     )\
 // BLOCKSTORE_DIAGNOSTICS_CONFIG
 
 #define BLOCKSTORE_DIAGNOSTICS_DECLARE_CONFIG(name, type, value)               \
@@ -119,6 +122,18 @@ TVector<TString> ConvertValue(
     return v;
 }
 
+template <>
+TVector<TSizeInterval> ConvertValue(
+    const google::protobuf::RepeatedPtrField<
+        NProto::TDiagnosticsConfig::TInterval>& value)
+{
+    TVector<TSizeInterval> v;
+    for (const auto& x : value) {
+        v.push_back({x.GetStart(), x.GetEnd()});
+    }
+    return v;
+}
+
 template <typename T>
 void DumpImpl(const T& t, IOutputStream& os)
 {
@@ -133,6 +148,17 @@ void DumpImpl(const TVector<TString>& value, IOutputStream& os)
             os << ",";
         }
         os << value[i];
+    }
+}
+
+template <>
+void DumpImpl(const TVector<TSizeInterval>& value, IOutputStream& os)
+{
+    for (size_t i = 0; i < value.size(); ++i) {
+        if (i) {
+            os << ",";
+        }
+        os << ToString(value[i]);
     }
 }
 
@@ -172,6 +198,10 @@ EHistogramCounterOptions TDiagnosticsConfig::GetHistogramCounterOptions() const
     }
     if (GetReportHistogramAsSingleCounter()) {
         histogramCounterOptions |= EHistogramCounterOption::ReportSingleCounter;
+    }
+    if (GetUseMsUnitsForTimeHistogram()) {
+        histogramCounterOptions |=
+            EHistogramCounterOption::UseMsUnitsForTimeHistogram;
     }
     return histogramCounterOptions;
 }

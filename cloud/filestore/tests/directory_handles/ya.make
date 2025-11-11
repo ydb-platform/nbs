@@ -8,7 +8,7 @@ TEST_SRCS(
 )
 
 DEPENDS(
-    cloud/filestore/tools/testing/directory_handles_state_test
+    cloud/filestore/tools/testing/directory_handles_test
 )
 
 PEERDIR(
