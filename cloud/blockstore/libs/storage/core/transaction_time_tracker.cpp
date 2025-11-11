@@ -241,7 +241,7 @@ TString TTransactionTimeTracker::GetInflightInfo(ui64 nowCycles) const
                 << FormatDuration(duration) << ")";
     }
 
-    return "Inflight: " + builder + "";
+    return "Inflight: " + builder;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

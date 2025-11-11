@@ -17,11 +17,13 @@ void TDiskRegistryActor::HandleChangeDiskDevice(
 
     const auto& record = ev->Get()->Record;
 
-    LOG_INFO_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[" << TabletID() << "] Received ChangeDiskDevice"
-        << " DiskId: " << record.GetDiskId().c_str()
-        << " SourceDeviceId: " << record.GetSourceDeviceId().c_str()
-        << " TargetDeviceId: " << record.GetTargetDeviceId().c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received ChangeDiskDevice request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TChangeDiskDevice>(
         ctx,
@@ -68,12 +70,24 @@ void TDiskRegistryActor::CompleteChangeDiskDevice(
     TTxDiskRegistry::TChangeDiskDevice& args)
 {
     if (HasError(args.Error)) {
-        LOG_ERROR_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "ChangeDiskDevice failed. Error: "
-            << FormatError(args.Error));
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s ChangeDiskDevice failed. %s %s -> %s Error: %s",
+            LogTitle.GetWithTime().c_str(),
+            args.DiskId.Quote().c_str(),
+            args.SourceDeviceId.Quote().c_str(),
+            args.TargetDeviceId.Quote().c_str(),
+            FormatError(args.Error).c_str());
     } else {
-        LOG_INFO_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "ChangeDiskDevice succeeded.");
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s ChangeDiskDevice succeeded. %s %s -> %s",
+            LogTitle.GetWithTime().c_str(),
+            args.DiskId.Quote().c_str(),
+            args.SourceDeviceId.Quote().c_str(),
+            args.TargetDeviceId.Quote().c_str());
     }
 
     NCloud::Reply(

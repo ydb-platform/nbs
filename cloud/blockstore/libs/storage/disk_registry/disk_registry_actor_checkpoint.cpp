@@ -20,12 +20,10 @@ void TDiskRegistryActor::HandleAllocateCheckpoint(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received AllocateCheckpoint request: DiskId=%s, "
-        "CheckpointId=%s",
-        TabletID(),
-        msg->Record.GetSourceDiskId().c_str(),
-        msg->Record.GetCheckpointId().c_str());
-
+        "%s Received AllocateCheckpoint request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     NProto::TCheckpointReplica checkpointReplica;
     checkpointReplica.SetSourceDiskId(msg->Record.GetSourceDiskId());
@@ -75,8 +73,8 @@ void TDiskRegistryActor::CompleteAllocateCheckpoint(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] AllocateCheckpoint error: %s. DiskId=%s, CheckpointId=%s",
-            TabletID(),
+            "%s AllocateCheckpoint error: %s. DiskId=%s, CheckpointId=%s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(args.Error).c_str(),
             args.CheckpointReplica.GetSourceDiskId().Quote().c_str(),
             args.CheckpointReplica.GetCheckpointId().Quote().c_str());
@@ -103,11 +101,10 @@ void TDiskRegistryActor::HandleDeallocateCheckpoint(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received DeallocateCheckpoint request: "
-        "DiskId=%s, CheckpointId=%s",
-        TabletID(),
-        msg->Record.GetSourceDiskId().c_str(),
-        msg->Record.GetCheckpointId().c_str());
+        "%s Received DeallocateCheckpoint request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TDeallocateCheckpoint>(
         ctx,
@@ -152,9 +149,9 @@ void TDiskRegistryActor::CompleteDeallocateCheckpoint(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] DeallocateCheckpoint error: %s. DiskId=%s, CheckpointId=%s, "
+            "%s DeallocateCheckpoint error: %s. DiskId=%s, CheckpointId=%s, "
             "ShadowDiskId=%s",
-            TabletID(),
+            LogTitle.GetWithTime().c_str(),
             FormatError(args.Error).c_str(),
             args.SourceDiskId.Quote().c_str(),
             args.CheckpointId.Quote().c_str(),
@@ -184,11 +181,10 @@ void TDiskRegistryActor::HandleGetCheckpointDataState(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received GetCheckpointDataState request: SourceDiskId=%s, "
-        "CheckpointId=%s",
-        TabletID(),
-        msg->Record.GetSourceDiskId().c_str(),
-        msg->Record.GetCheckpointId().c_str());
+        "%s Received GetCheckpointDataState request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     NProto::ECheckpointState checkpointState = {};
     auto error = State->GetCheckpointDataState(
@@ -219,11 +215,10 @@ void TDiskRegistryActor::HandleSetCheckpointDataState(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received SetCheckpointDataState request: "
-        "CheckpointId=%s State=%s",
-        TabletID(),
-        msg->Record.GetCheckpointId().c_str(),
-        ECheckpointState_Name(msg->Record.GetCheckpointState()).c_str());
+        "%s Received SetCheckpointDataState request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TSetCheckpointDataState>(
         ctx,
@@ -269,8 +264,8 @@ void TDiskRegistryActor::CompleteSetCheckpointDataState(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] SetCheckpointDataState error: %s. CheckpointId=%s",
-            TabletID(),
+            "%s SetCheckpointDataState error: %s. CheckpointId=%s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(args.Error).c_str(),
             args.CheckpointId.Quote().c_str());
     }
