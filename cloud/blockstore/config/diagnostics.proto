@@ -230,6 +230,7 @@ message TDiagnosticsConfig
     // Skip reporting ZeroBlocks metrics as part of WriteBlocks metrics
     optional bool SkipReportingZeroBlocksMetricsForYDBBasedDisks = 53;
 
+    // Opentelemetry trace config
     optional NCloud.NProto.TOpentelemetryTraceConfig OpentelemetryTraceConfig = 54;
 
     // Represents [Start, End) interval.
@@ -242,4 +243,8 @@ message TDiagnosticsConfig
     // Request size intervals that should be measured separately (in bytes).
     // Intersections between ExecutionTimeSizeClasses are not allowed.
     repeated TInterval ExecutionTimeSizeClasses = 56;
+
+    // Report time histograms with milliseconds buckets. Percentiles are still
+    // reported in microseconds.
+    optional bool UseMsUnitsForTimeHistogram = 57;
 }

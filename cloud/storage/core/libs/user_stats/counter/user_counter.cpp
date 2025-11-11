@@ -146,6 +146,13 @@ std::shared_ptr<IUserCounterSupplier> CreateUserCounterSupplierStub()
 
 ///////////////////////////////////////////////////////////////////////////////
 
+TBucketsWithUnits GetMsBuckets()
+{
+    constexpr auto Identity = [](double data) { return data; };
+    static const auto Buckets = MakeBuckets<TRequestMsTimeBuckets>(Identity);
+    return {Buckets, "msec"};
+}
+
 TBucketsWithUnits GetUsBuckets()
 {
     constexpr auto UsToMs = [](double data) {
@@ -153,6 +160,14 @@ TBucketsWithUnits GetUsBuckets()
     };
     static const auto Buckets = MakeBuckets<TRequestUsTimeBuckets>(UsToMs);
     return {Buckets, "usec"};
+}
+
+TBucketsWithUnits GetTimeBuckets(EHistogramCounterOptions options)
+{
+    if (options & EHistogramCounterOption::UseMsUnitsForTimeHistogram) {
+        return GetMsBuckets();
+    }
+    return GetUsBuckets();
 }
 
 ///////////////////////////////////////////////////////////////////////////////

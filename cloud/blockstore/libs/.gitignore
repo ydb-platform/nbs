@@ -4,6 +4,7 @@ client/ut/cloud-blockstore-libs-client-ut
 common/benchmark/benchmark
 common/ut/cloud-blockstore-libs-common-ut
 daemon/ydb/ut/cloud-blockstore-libs-daemon-ydb-ut
+diagnostics/gtest/cloud-blockstore-libs-diagnostics-gtest
 diagnostics/ut/cloud-blockstore-libs-diagnostics-ut
 discovery/ut/cloud-blockstore-libs-discovery-ut
 disk_agent/ut/cloud-blockstore-libs-disk_agent-ut

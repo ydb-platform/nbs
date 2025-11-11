@@ -10,12 +10,6 @@ PEERDIR(
     library/cpp/resource
 )
 
-RESOURCE(
-    res/user_server_volume_instance_test.json                  user_server_volume_instance_test
-    res/user_service_volume_instance_test.json                 user_service_volume_instance_test
-    res/user_server_volume_instance_skip_zero_blocks_test.json user_server_volume_instance_skip_zero_blocks_test
-)
-
 SRCS(
     config_ut.cpp
     block_digest_ut.cpp
@@ -25,7 +19,6 @@ SRCS(
     request_stats_ut.cpp
     server_stats_ut.cpp
     stats_aggregator_ut.cpp
-    user_counter_ut.cpp
     volume_perf_ut.cpp
     volume_stats_ut.cpp
 )

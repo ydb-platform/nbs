@@ -903,6 +903,7 @@ private:
             volumeConfig.GetDiskId(),
             realInstanceId.GetInstanceId(),
             reportZeroBlocksMetrics,
+            DiagnosticsConfig->GetHistogramCounterOptions(),
             countersGroup);
 
         return info;
