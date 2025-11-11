@@ -1235,7 +1235,10 @@ public:
         auto unixSocketPath = Config->GetUnixSocketPath();
         if (unixSocketPath) {
             ui32 backlog = Config->GetUnixSocketBacklog();
-            StartListenUnixSocket(unixSocketPath, backlog);
+            StartListenUnixSocket(
+                unixSocketPath,
+                backlog,
+                Config->GetUnixSocketAccessMode());
         }
 
         with_lock (ExecutorsLock) {
@@ -1337,7 +1340,10 @@ private:
         return sslOptions;
     }
 
-    void StartListenUnixSocket(const TString& unixSocketPath, ui32 backlog)
+    void StartListenUnixSocket(
+        const TString& unixSocketPath,
+        ui32 backlog,
+        ui32 accessMode)
     {
         auto& Log = AppCtx.Log;
 
@@ -1349,7 +1355,7 @@ private:
         auto error = EndpointPoller->StartListenEndpoint(
             unixSocketPath,
             backlog,
-            S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR, // accessMode
+            accessMode,
             true,   // multiClient
             NProto::SOURCE_FD_CONTROL_CHANNEL,
             AppCtx.SessionStorage->CreateClientStorage());
