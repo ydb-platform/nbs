@@ -161,11 +161,13 @@ void TDiskRegistryActor::HandleFinishMigration(
 
     auto& record = ev->Get()->Record;
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received FinishMigration request: DiskId=%s, Migrations=%d",
-        TabletID(),
-        record.GetDiskId().c_str(),
-        record.MigrationsSize());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received FinishMigration request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     auto requestInfo = CreateRequestInfo<TEvDiskRegistry::TFinishMigrationMethod>(
         ev->Sender,
@@ -262,15 +264,23 @@ void TDiskRegistryActor::ExecuteFinishMigration(
         Y_UNUSED(updated);
 
         if (HasError(error)) {
-            LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-                "FinishDeviceMigration error: %s. DiskId=%s Source=%s Target=%s",
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::DISK_REGISTRY,
+                "%s FinishDeviceMigration error: %s. DiskId=%s Source=%s "
+                "Target=%s",
+                LogTitle.GetWithTime().c_str(),
                 FormatError(error).c_str(),
                 args.DiskId.c_str(),
                 x.GetSourceDeviceId().c_str(),
                 x.GetTargetDeviceId().c_str());
         } else {
-            LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-                "FinishDeviceMigration succeeded. DiskId=%s Source=%s Target=%s",
+            LOG_INFO(
+                ctx,
+                TBlockStoreComponents::DISK_REGISTRY,
+                "%s FinishDeviceMigration succeeded. DiskId=%s Source=%s "
+                "Target=%s",
+                LogTitle.GetWithTime().c_str(),
                 args.DiskId.c_str(),
                 x.GetSourceDeviceId().c_str(),
                 x.GetTargetDeviceId().c_str());
@@ -286,8 +296,11 @@ void TDiskRegistryActor::CompleteFinishMigration(
     const TActorContext& ctx,
     TTxDiskRegistry::TFinishMigration& args)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "FinishMigration complete. DiskId=%s Migrations=%d",
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s FinishMigration complete. DiskId=%s Migrations=%d",
+        LogTitle.GetWithTime().c_str(),
         args.DiskId.c_str(),
         args.Migrations.size());
 
@@ -320,9 +333,11 @@ void TDiskRegistryActor::StartMigration(const NActors::TActorContext& ctx)
 
     auto deadline = Min(StartMigrationStartTs, ctx.Now()) + TDuration::Seconds(5);
     if (deadline > ctx.Now()) {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Scheduled device migration, now: %lu, deadline: %lu",
-            TabletID(),
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s Scheduled device migration, now: %lu, deadline: %lu",
+            LogTitle.GetWithTime().c_str(),
             ctx.Now().MicroSeconds(),
             deadline.MicroSeconds());
 
@@ -330,9 +345,11 @@ void TDiskRegistryActor::StartMigration(const NActors::TActorContext& ctx)
             deadline,
             std::make_unique<IEventHandle>(ctx.SelfID, ctx.SelfID, request.release()));
     } else {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Sending device migration request",
-            TabletID());
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s Sending device migration request",
+            LogTitle.GetWithTime().c_str());
 
         NCloud::Send(ctx, ctx.SelfID, std::move(request));
     }
@@ -443,9 +460,13 @@ void TDiskRegistryActor::HandleStartForceMigration(
 
     const auto* msg = ev->Get();
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received StartForceMigrationRequest request",
-        TabletID());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received StartForceMigrationRequest request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     if (msg->Record.GetSourceDiskId().empty() ||
         msg->Record.GetSourceDeviceId().empty() ||
