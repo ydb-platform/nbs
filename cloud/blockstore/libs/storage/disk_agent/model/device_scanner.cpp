@@ -133,7 +133,7 @@ NProto::TError FindDevices(
                         << path << ": the device number can't be zero");
                 }
 
-                const ui64 size = GetFileLength(path);
+                const ui64 size = GetFileLengthWithSeek(path.c_str());
                 auto* pool = FindPoolConfig(p, size);
 
                 if (!pool) {

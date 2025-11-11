@@ -557,7 +557,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             NvmeManager,
             nullptr,   // rdmaTargetConfig
             TOldRequestCounters(),
-            nullptr   // multiAgentWriteHandler
+            nullptr,   // multiAgentWriteHandler
+            nullptr    // backgroundThreadPool
         );
 
         auto future = state.Initialize();
@@ -772,7 +773,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                     NvmeManager,
                     nullptr,   // rdmaTargetConfig
                     TOldRequestCounters(),
-                    nullptr   // multiAgentWriteHandler
+                    nullptr,   // multiAgentWriteHandler
+                    nullptr    // backgroundThreadPool
                 );
 
                 auto future = state.Initialize();
@@ -842,7 +844,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             std::make_shared<TTestNvmeManager>(),
             nullptr,   // rdmaTargetConfig
             TOldRequestCounters(),
-            nullptr   // multiAgentWriteHandler
+            nullptr,   // multiAgentWriteHandler
+            nullptr    // backgroundThreadPool
         );
 
         auto future = state.Initialize();
@@ -1265,7 +1268,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             NvmeManager,
             nullptr,   // rdmaTargetConfig
             TOldRequestCounters(),
-            nullptr   // multiAgentWriteHandler
+            nullptr,   // multiAgentWriteHandler
+            nullptr    // backgroundThreadPool
         );
 
         auto future = state.Initialize();
