@@ -708,9 +708,7 @@ void TVolumeActor::SendSelfStatsToService(const TActorContext& ctx)
     for (const NProto::TDeviceConfig* device: GetAllDevices(State->GetMeta())) {
         allAgents.insert(device->GetNodeId());
     }
-    simple.AgentsNumberForDisk.Set(
-        allAgents.size()
-    );
+    simple.AgentsNumberForDisk.Set(allAgents.size());
 
     SendVolumeSelfCounters(ctx);
     VolumeSelfCounters = CreateVolumeSelfCounters(

@@ -1423,6 +1423,68 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         // Check that volume got statistics
         UNIT_ASSERT(updated);
     }
+
+    static void DoShouldAgentsNumberForDiskStat(
+        NCloud::NProto::EStorageMediaKind mediaKind)
+    {
+        ui32 minExpectedAgentsNumber =
+            mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD ? 0 : 1;
+
+        NProto::TStorageServiceConfig config;
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind);
+        volume.WaitReady();
+
+        ui32 counter{0};
+        auto obs = [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvStatsService::EvVolumeSelfCounters)
+            {
+                auto* msg =
+                    event->Get<TEvStatsService::TEvVolumeSelfCounters>();
+                counter =
+                    msg->VolumeSelfCounters->Simple.AgentsNumberForDisk.Value;
+            }
+
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        };
+
+        runtime->SetObserverFunc(obs);
+        runtime->AdvanceCurrentTime(UpdateCountersInterval);
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        if (minExpectedAgentsNumber) {
+            UNIT_ASSERT_GT(counter, 0);
+        } else {
+            UNIT_ASSERT_VALUES_EQUAL(counter, 0);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldAgentsNumberForDiskStatNonRepl)
+    {
+        DoShouldAgentsNumberForDiskStat(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST(ShouldAgentsNumberForDiskStatMirror2)
+    {
+        DoShouldAgentsNumberForDiskStat(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2);
+    }
+
+    Y_UNIT_TEST(ShouldAgentsNumberForDiskStatMirror3)
+    {
+        DoShouldAgentsNumberForDiskStat(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
+    }
+
+    Y_UNIT_TEST(ShouldNotAgentsNumberForDiskStatSSD)
+    {
+        DoShouldAgentsNumberForDiskStat(NCloud::NProto::STORAGE_MEDIA_SSD);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
