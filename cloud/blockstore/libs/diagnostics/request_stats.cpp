@@ -239,15 +239,14 @@ constexpr TRequestCounters::EOptions SSDOrHDDOptions =
     TRequestCounters::EOption::OnlyReadWriteRequests;
 
 #define BLOCKSTORE_MEDIA_KIND(xxx, ...)                                        \
-    xxx(,                  GeneralOptions                      __VA_ARGS__    )\
-    xxx(SSD,               SSDOrHDDOptions                     __VA_ARGS__    )\
-    xxx(HDD,               SSDOrHDDOptions                     __VA_ARGS__    )\
-    xxx(SSDNonrepl,        DefaultOptions,                     __VA_ARGS__    )\
-    xxx(SSDMirror2,        DefaultOptions,                     __VA_ARGS__    )\
-    xxx(SSDMirror3,        DefaultOptions,                     __VA_ARGS__    )\
-    xxx(SSDLocal,          DefaultOptions,                     __VA_ARGS__    )\
-    xxx(HDDLocal,          DefaultOptions,                     __VA_ARGS__    )\
-    xxx(HDDNonrepl,        DefaultOptions,                     __VA_ARGS__    )\
+    xxx(SSD,               SSDOrHDDOptions,   "ssd",           __VA_ARGS__    )\
+    xxx(HDD,               SSDOrHDDOptions,   "hdd",           __VA_ARGS__    )\
+    xxx(SSDNonrepl,        DefaultOptions,    "ssd_nonrepl",   __VA_ARGS__    )\
+    xxx(SSDMirror2,        DefaultOptions,    "ssd_mirror2",   __VA_ARGS__    )\
+    xxx(SSDMirror3,        DefaultOptions,    "ssd_mirror3",   __VA_ARGS__    )\
+    xxx(SSDLocal,          DefaultOptions,    "ssd_local",     __VA_ARGS__    )\
+    xxx(HDDLocal,          DefaultOptions,    "hdd_local",     __VA_ARGS__    )\
+    xxx(HDDNonrepl,        DefaultOptions,    "hdd_nonrepl",   __VA_ARGS__    )\
 // BLOCKSTORE_MEDIA_KIND
 
 class TRequestStats final
@@ -259,39 +258,28 @@ private:
     const bool IsServerSide;
 
     TRequestCounters Total;
-    TRequestCounters TotalSSD;
-    TRequestCounters TotalHDD;
-    TRequestCounters TotalSSDNonrepl;
-    TRequestCounters TotalSSDMirror2;
-    TRequestCounters TotalSSDMirror3;
-    TRequestCounters TotalSSDLocal;
-    TRequestCounters TotalHDDLocal;
-    TRequestCounters TotalHDDNonrepl;
-
     THdrPercentiles HdrTotal;
-    THdrPercentiles HdrTotalSSD;
-    THdrPercentiles HdrTotalHDD;
-    THdrPercentiles HdrTotalSSDNonrepl;
-    THdrPercentiles HdrTotalSSDMirror2;
-    THdrPercentiles HdrTotalSSDMirror3;
-    THdrPercentiles HdrTotalSSDLocal;
-    THdrPercentiles HdrTotalHDDLocal;
-    THdrPercentiles HdrTotalHDDNonrepl;
+
+#define DEFINE_COUNTERS(name, ...)                                              \
+    TRequestCounters Total##name;                                               \
+    THdrPercentiles HdrTotal##name;                                             \
+// DEFINE_REQUEST_COUNTERS
+
+    BLOCKSTORE_MEDIA_KIND(DEFINE_COUNTERS)
+
+#undef DEFINE_COUNTERS
 
 public:
 
-#define INITIALIZE_REQUEST_COUNTERS(name, options, ...)                        \
+#define INITIALIZE_COUNTERS(name, options, ...)                                \
     , Total##name(MakeRequestCounters(                                         \
           timer,                                                               \
           options,                                                             \
           histogramCounterOptions,                                             \
           executionTimeSizeClasses))                                           \
-// INITIALIZE_REQUEST_COUNTERS
-
-#define INITIALIZE_HDR_PERCENTILES(name, ...)                                  \
     , HdrTotal##name(                                                          \
           executionTimeSizeClasses)                                            \
-// INITIALIZE_HDR_PERCENTILES
+// INITIALIZE_REQUEST_COUNTERS
 
     TRequestStats(
             TDynamicCountersPtr counters,
@@ -301,50 +289,34 @@ public:
             const TVector<TSizeInterval>& executionTimeSizeClasses)
         : Counters(std::move(counters))
         , IsServerSide(isServerSide)
-        BLOCKSTORE_MEDIA_KIND(INITIALIZE_REQUEST_COUNTERS)
-        BLOCKSTORE_MEDIA_KIND(INITIALIZE_HDR_PERCENTILES)
+        , Total(MakeRequestCounters(
+              timer,
+              GeneralOptions,
+              histogramCounterOptions,
+              executionTimeSizeClasses))
+        , HdrTotal(executionTimeSizeClasses)
+        BLOCKSTORE_MEDIA_KIND(INITIALIZE_COUNTERS)
     {
         Total.Register(*Counters);
-
-        auto ssd = Counters->GetSubgroup("type", "ssd");
-        TotalSSD.Register(*ssd);
-
-        auto hdd = Counters->GetSubgroup("type", "hdd");
-        TotalHDD.Register(*hdd);
-
-        auto ssdNonrepl = Counters->GetSubgroup("type", "ssd_nonrepl");
-        TotalSSDNonrepl.Register(*ssdNonrepl);
-
-        auto ssdMirror2 = Counters->GetSubgroup("type", "ssd_mirror2");
-        TotalSSDMirror2.Register(*ssdMirror2);
-
-        auto ssdMirror3 = Counters->GetSubgroup("type", "ssd_mirror3");
-        TotalSSDMirror3.Register(*ssdMirror3);
-
-        auto ssdLocal = Counters->GetSubgroup("type", "ssd_local");
-        TotalSSDLocal.Register(*ssdLocal);
-
-        auto hddLocal = Counters->GetSubgroup("type", "hdd_local");
-        TotalHDDLocal.Register(*hddLocal);
-
-        auto hddNonrepl = Counters->GetSubgroup("type", "hdd_nonrepl");
-        TotalHDDNonrepl.Register(*hddNonrepl);
-
         if (IsServerSide) {
             HdrTotal.Register(*Counters);
-            HdrTotalSSD.Register(*ssd);
-            HdrTotalHDD.Register(*hdd);
-            HdrTotalSSDNonrepl.Register(*ssdNonrepl);
-            HdrTotalSSDMirror2.Register(*ssdMirror2);
-            HdrTotalSSDMirror3.Register(*ssdMirror3);
-            HdrTotalSSDLocal.Register(*ssdLocal);
-            HdrTotalHDDLocal.Register(*ssdLocal);
-            HdrTotalHDDNonrepl.Register(*hddNonrepl);
         }
+
+#define REGISTER_COUNTERS(name, _, countersName, ...)                          \
+    do {                                                                       \
+        auto counters = Counters->GetSubgroup("type", #name);                  \
+        Total##name.Register(*counters);                                       \
+        if (IsServerSide) {                                                    \
+            HdrTotal##name.Register(*counters);                                \
+        }                                                                      \
+    } while (false);                                                           \
+// REGISTER_COUNTERS
+
+        BLOCKSTORE_MEDIA_KIND(REGISTER_COUNTERS)
     }
 
-#undef INITIALIZE_REQUEST_COUNTERS
-#undef INITIALIZE_HDR_PERCENTILES
+#undef REGISTER_COUNTERS
+#undef INITIALIZE_COUNTERS
 
     ui64 RequestStarted(
         NCloud::NProto::EStorageMediaKind mediaKind,
@@ -555,26 +527,20 @@ public:
     void UpdateStats(bool updatePercentiles) override
     {
         Total.UpdateStats(updatePercentiles);
-        TotalSSD.UpdateStats(updatePercentiles);
-        TotalHDD.UpdateStats(updatePercentiles);
-        TotalSSDNonrepl.UpdateStats(updatePercentiles);
-        TotalSSDMirror2.UpdateStats(updatePercentiles);
-        TotalSSDMirror3.UpdateStats(updatePercentiles);
-        TotalSSDLocal.UpdateStats(updatePercentiles);
-        TotalHDDLocal.UpdateStats(updatePercentiles);
-        TotalHDDNonrepl.UpdateStats(updatePercentiles);
-
         if (updatePercentiles && IsServerSide) {
             HdrTotal.UpdateStats();
-            HdrTotalSSD.UpdateStats();
-            HdrTotalHDD.UpdateStats();
-            HdrTotalSSDNonrepl.UpdateStats();
-            HdrTotalSSDMirror2.UpdateStats();
-            HdrTotalSSDMirror3.UpdateStats();
-            HdrTotalSSDLocal.UpdateStats();
-            HdrTotalHDDLocal.UpdateStats();
-            HdrTotalHDDNonrepl.UpdateStats();
         }
+
+#define UPDATE_STATS(name, ...)                 \
+    Total##name.UpdateStats(updatePercentiles); \
+    if (updatePercentiles && IsServerSide) {    \
+        HdrTotal##name.UpdateStats();           \
+    }                                           \
+    // OO_UPDATE_STATS
+
+        BLOCKSTORE_MEDIA_KIND(UPDATE_STATS)
+
+#undef UPDATE_STATS
     }
 
 private:
