@@ -7,6 +7,7 @@
 #include <library/cpp/digest/crc32c/crc32c.h>
 
 #include <util/random/random.h>
+#include "util/stream/format.h"
 #include <util/string/builder.h>
 #include <util/system/mutex.h>
 
@@ -105,7 +106,7 @@ struct Y_PACKED TRegionMetadata
     ui64 Offset = 0;
     ui64 ByteCount = 0;
     // CurrentState != NewStats means that the region is being written
-    // Since write is not performed atomically, the reader may obeserve
+    // Since write is not performed atomically, the reader may observe
     // a combination of two states
     TRegionState CurrentState = {};
     TRegionState NewState = {};
@@ -194,6 +195,11 @@ void GenerateRegionData(
     regionData->Crc32 = Crc32c(regionData, offsetof(TRegionDataBlock, Crc32));
 }
 
+ui64 Align(ui64 value, ui64 alignment)
+{
+    return (value + alignment - 1) / alignment * alignment;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TUnalignedTestScenario: public ITestScenario
@@ -229,6 +235,10 @@ private:
     ui64 MinRegionByteCount = DefaultMinRegionByteCount;
     ui64 MaxRegionByteCount = DefaultMaxRegionByteCount;
 
+    std::atomic<ui64> ValidationOffset = 0;
+    std::atomic<ui64> ValidatedByteCount = 0;
+    bool ShouldValidate = false;
+
 public:
     TUnalignedTestScenario(IConfigHolderPtr configHolder, const TLog& log);
 
@@ -247,9 +257,16 @@ private:
     bool GenerateRegionMetadata();
     bool ValidateRegionMetadata() const;
     bool Init(TFileHandle& file) override;
+    bool InitialReadValidationNeeded() const;
     ui32 GetWriteProbabilityPercent(double secondsSinceTestStart) const;
 
     void Read(IService& service, TVector<char>& readBuffer);
+    void Read(
+        IService& service,
+        ui64 offset,
+        ui64 length,
+        bool isInitialValidation,
+        TVector<char>& readBuffer);
     TVector<TReadRegionInfo> GetReadRegions(ui64 offset, ui64 length) const;
     void UpdateReadRegions(TVector<TReadRegionInfo>& regions) const;
     void ValidateReadData(
@@ -260,6 +277,7 @@ private:
         IService& service,
         TStringBuf readBuffer,
         const TVector<TRegionState>& expectedStates,
+        size_t regionIndex,
         ui64 offsetInRegion) const;
     bool ValidateReadDataFragment(
         TStringBuf readBuffer,
@@ -312,11 +330,16 @@ public:
         ITestExecutorIOService& service) override
     {
         if (Operation == EOperation::Idle) {
-            auto writeRate = TestScenario->GetWriteProbabilityPercent(secondsSinceTestStart);
-            if (RandomNumber(100u) >= writeRate) {
+            if (TestScenario->InitialReadValidationNeeded()) {
                 Operation = EOperation::Read;
             } else {
-                Operation = EOperation::WriteBegin;
+                const auto writeRate = TestScenario->GetWriteProbabilityPercent(
+                    secondsSinceTestStart);
+                if (RandomNumber(100u) >= writeRate) {
+                    Operation = EOperation::Read;
+                } else {
+                    Operation = EOperation::WriteBegin;
+                }
             }
         }
 
@@ -549,7 +572,22 @@ bool TUnalignedTestScenario::Init(TFileHandle& file)
 
     STORAGE_INFO("File format: " << RegionMetadata.size() << " regions");
 
+    for (const auto& metadata: RegionMetadata) {
+        if (metadata.NewState.SeqNum != 0) {
+            STORAGE_INFO(
+                "Test file contains written data and will be fully validated "
+                "before writing new data");
+            ShouldValidate = true;
+            break;
+        }
+    }
+
     return ValidateRegionMetadata();
+}
+
+bool TUnalignedTestScenario::InitialReadValidationNeeded() const
+{
+    return ShouldValidate && ValidatedByteCount.load() < FileSize;
 }
 
 ui32 TUnalignedTestScenario::GetWriteProbabilityPercent(
@@ -567,27 +605,59 @@ void TUnalignedTestScenario::Read(
     ITestExecutorIOService& service,
     TVector<char>& readBuffer)
 {
-    auto dataOffset = RegionMetadata.front().Offset;
-    auto dataByteCount = RegionMetadata.back().End() - dataOffset;
-
     auto len =
         Min(RandomNumberFromRange(MinReadByteCount, MaxReadByteCount),
             readBuffer.size(),
-            dataByteCount);
+            FileSize);
 
-    auto offset = RandomNumber(dataByteCount - len + 1) + dataOffset;
+    if (ShouldValidate) {
+        auto offset = ValidationOffset.fetch_add(len);
+        if (offset == 0) {
+            STORAGE_INFO("Starting sequential read validation");
+        }
+        if (offset < FileSize) {
+            len = Min(len, FileSize - offset);
+            Read(service, offset, len, true, readBuffer);
+            return;
+        }
+    }
 
-    auto regions = GetReadRegions(offset, len);
-    auto buffer = TStringBuf(readBuffer.data(), len);
+    auto randomOffset = RandomNumber(FileSize - len + 1);
+
+    Read(service, randomOffset, len, false, readBuffer);
+}
+
+void TUnalignedTestScenario::Read(
+    IService& service,
+    ui64 offset,
+    ui64 length,
+    bool isInitialValidation,
+    TVector<char>& readBuffer)
+{
+    auto regions = GetReadRegions(offset, length);
+    auto buffer = TStringBuf(readBuffer.data(), length);
 
     service.Read(
         readBuffer.begin(),
-        len,
+        length,
         offset,
-        [this, &service, regions = std::move(regions), buffer]() mutable
+        [this,
+         &service,
+         regions = std::move(regions),
+         buffer,
+         isInitialValidation]() mutable
         {
             UpdateReadRegions(regions);
             ValidateReadData(service, buffer, regions);
+            if (isInitialValidation) {
+                auto prev = ValidatedByteCount.fetch_add(buffer.size());
+                Y_ABORT_UNLESS(prev < FileSize);
+                Y_ABORT_UNLESS(prev + buffer.size() <= FileSize);
+                if (prev + buffer.size() == FileSize) {
+                    ShouldValidate = false;
+                    STORAGE_INFO("Finished sequential read validation");
+                }
+            }
         });
 }
 
@@ -666,6 +736,7 @@ void TUnalignedTestScenario::ValidateReadData(
             service,
             readBufferFragment,
             expectedStates,
+            region.Index,
             region.OffsetInRegion);
     }
 }
@@ -674,17 +745,19 @@ void TUnalignedTestScenario::ValidateReadDataRegion(
     IService& service,
     TStringBuf readBuffer,
     const TVector<TRegionState>& expectedStates,
+    size_t regionIndex,
     ui64 offsetInRegion) const
 {
     if (expectedStates.empty()) {
         return;
     }
 
-    TVector<TRegionDataBlock> expectedBuffers(
-        expectedStates.size());
+    TVector<TRegionDataBlock> expectedBuffers(expectedStates.size());
 
-    auto offset = ((offsetInRegion + sizeof(TRegionDataBlock) - 1) /
-                   sizeof(TRegionDataBlock) * sizeof(TRegionDataBlock)) - offsetInRegion;
+    // Region data is split into blocks of size |RegionBlockByteCount|
+    // Skip partial block at the beginning
+    auto offset =
+        Align(offsetInRegion, sizeof(TRegionDataBlock)) - offsetInRegion;
 
     while (offset < readBuffer.size()) {
         for (size_t i = 0; i < expectedStates.size(); i++) {
@@ -701,29 +774,36 @@ void TUnalignedTestScenario::ValidateReadDataRegion(
             continue;
         }
 
+        const auto offsetInFile =
+            RegionMetadata[regionIndex].Offset + offsetInRegion + offset;
+
         TStringBuilder sb;
-        sb << "Read validation failed\n";
-        sb << "Wrong data at offset " << offsetInRegion + offset;
-        sb << ", expected one of " << expectedStates.size() << " patterns:";
+        sb << "Read validation failed";
+        sb << "\nWrong data at file range [" << offsetInFile << ", "
+           << offsetInFile + fragment.size() << "], Region: " << regionIndex
+           << ", OffsetInRegion: " << offsetInRegion + offset;
 
         for (size_t i = 0; i < expectedStates.size(); i++) {
-            sb << "\nPattern #" << (i + 1) << ": "
+            sb << "\nExpected pattern #" << (i + 1) << ": ("
                << expectedStates[i].SeqNum << ", "
                << expectedStates[i].TestStartTime << ", "
-               << expectedStates[i].LastWriteTime;
+               << expectedStates[i].LastWriteTime << ")\n  "
+               << HexText(expectedBuffers[i].AsStringBuf(fragment.size()));
         }
 
+        sb << "\nActual read data:";
         if (fragment.size() >= offsetof(TRegionDataBlock, Data)) {
             TRegionDataBlock regionData;
             MemCopy(
                 reinterpret_cast<char*>(&regionData),
                 fragment.data(),
                 fragment.size());
-            sb << "\nRead data: "
+            sb << " ("
                << regionData.SeqNum << ", "
                << regionData.TestStartTime << ", "
-               << regionData.WriteTime;
+               << regionData.WriteTime << ")";
         }
+        sb << "\n  " << HexText(fragment);
 
         service.Fail(sb);
         break;

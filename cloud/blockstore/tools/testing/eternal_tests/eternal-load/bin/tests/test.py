@@ -42,7 +42,9 @@ def __run_load_test(file_name, scenario="aligned", engine="asyncio", direct=True
     if not direct:
         params.append('--no-direct')
 
-    return run(params, stdout=PIPE, stderr=PIPE, universal_newlines=True, timeout=timeout)
+    result = run(params, stdout=PIPE, stderr=PIPE, universal_newlines=True, timeout=timeout)
+    print(result.stderr)
+    return result
 
 
 @pytest.mark.parametrize("scenario,engine,direct", _SCENARIOS)
