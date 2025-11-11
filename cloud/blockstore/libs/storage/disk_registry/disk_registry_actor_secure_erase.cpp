@@ -19,6 +19,7 @@ class TSecureEraseActor final
     : public TActorBootstrapped<TSecureEraseActor>
 {
 private:
+    const TChildLogTitle LogTitle;
     const TActorId Owner;
     const TRequestInfoPtr Request;
     const TDuration RequestTimeout;
@@ -31,6 +32,7 @@ private:
 
 public:
     TSecureEraseActor(
+        TChildLogTitle logTitle,
         const TActorId& owner,
         TRequestInfoPtr request,
         TDuration requestTimeout,
@@ -71,12 +73,14 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TSecureEraseActor::TSecureEraseActor(
+        TChildLogTitle logTitle,
         const TActorId& owner,
         TRequestInfoPtr request,
         TDuration requestTimeout,
         TString poolName,
         TVector<NProto::TDeviceConfig> devicesToClean)
-    : Owner(owner)
+    : LogTitle(std::move(logTitle))
+    , Owner(owner)
     , Request(std::move(request))
     , RequestTimeout(requestTimeout)
     , PoolName(std::move(poolName))
@@ -144,8 +148,11 @@ void TSecureEraseActor::HandleTimeout(
 {
     Y_UNUSED(ev);
 
-    LOG_WARN(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-        "Secure erase request timed out");
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY_WORKER,
+        "%s Secure erase request timed out",
+        LogTitle.GetWithTime().c_str());
 
     if (CleanDevices) {
         CleanupDevices(ctx);
@@ -163,8 +170,12 @@ void TSecureEraseActor::HandleSecureEraseDeviceUndelivery(
     const auto index = ev->Cookie;
     auto& device = Devices[index];
 
-    LOG_DEBUG_S(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-        "Undelivered secure erase request for " << device.GetDeviceUUID().Quote());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY_WORKER,
+        "%s Undelivered secure erase request for %s",
+        LogTitle.GetWithTime().c_str(),
+        device.GetDeviceUUID().Quote().c_str());
 
     if (--PendingRequests != 0) {
         return;
@@ -191,9 +202,13 @@ void TSecureEraseActor::HandleSecureEraseDeviceResponse(
     if (!HasError(msg->GetError())) {
         CleanDevices.push_back(device.GetDeviceUUID());
     } else {
-        LOG_ERROR_S(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "Secure erase device " << device.GetDeviceUUID().Quote() <<
-            " failed: " << FormatError(msg->GetError()));
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_WORKER,
+            "%s Secure erase device %s failed: %s ",
+            LogTitle.GetWithTime().c_str(),
+            device.GetDeviceUUID().Quote().c_str(),
+            FormatError(msg->GetError()).c_str());
     }
 
     if (--PendingRequests != 0) {
@@ -313,8 +328,8 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Nothing to erase",
-            TabletID());
+            "%s Nothing to erase",
+            LogTitle.GetWithTime().c_str());
 
         return;
     }
@@ -327,9 +342,11 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
         Config->GetMaxDevicesToErasePerDeviceNameForLocalPoolKind(),
         Config->GetMaxDevicesToErasePerDeviceNameForGlobalPoolKind());
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Filtered dirty devices: %lu -> %lu",
-        TabletID(),
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Filtered dirty devices: %lu -> %lu",
+        LogTitle.GetWithTime().c_str(),
         countBeforeFiltration,
         dirtyDevices.size());
 
@@ -363,9 +380,9 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
             LOG_INFO(
                 ctx,
                 TBlockStoreComponents::DISK_REGISTRY,
-                "[%lu] Scheduled secure erase for pool: %s, now: %lu, "
+                "%s Scheduled secure erase for pool: %s, now: %lu, "
                 "deadline: %lu",
-                TabletID(),
+                LogTitle.GetWithTime().c_str(),
                 poolName.c_str(),
                 ctx.Now().MicroSeconds(),
                 deadline.MicroSeconds());
@@ -377,8 +394,8 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
             LOG_INFO(
                 ctx,
                 TBlockStoreComponents::DISK_REGISTRY,
-                "[%lu] Sending secure erase request for pool: %s",
-                TabletID(),
+                "%s Sending secure erase request for pool: %s",
+                LogTitle.GetWithTime().c_str(),
                 poolName.c_str());
 
             NCloud::Send(ctx, ctx.SelfID, std::move(request));
@@ -396,19 +413,18 @@ void TDiskRegistryActor::HandleSecureErase(
 
     auto* msg = ev->Get();
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received SecureErase request: DirtyDevices=%lu",
-        TabletID(),
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received SecureErase request: DirtyDevices=%lu",
+        LogTitle.GetWithTime().c_str(),
         msg->DirtyDevices.size());
 
     auto actor = NCloud::Register<TSecureEraseActor>(
         ctx,
+        LogTitle.GetChild(GetCycleCount()),
         ctx.SelfID,
-        CreateRequestInfo(
-            ev->Sender,
-            ev->Cookie,
-            msg->CallContext
-        ),
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
         msg->RequestTimeout,
         msg->PoolName,
         std::move(msg->DirtyDevices));
@@ -421,9 +437,11 @@ void TDiskRegistryActor::HandleSecureEraseResponse(
 {
     const auto* msg = ev->Get();
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received SecureErase response: CleanDevices=%lu",
-        TabletID(),
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received SecureErase response: CleanDevices=%lu",
+        LogTitle.GetWithTime().c_str(),
         msg->CleanDevices);
 
     SecureEraseInProgressPerPool.erase(msg->PoolName);
@@ -436,10 +454,13 @@ void TDiskRegistryActor::HandleCleanupDevices(
 {
     auto* msg = ev->Get();
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received CleanupDevices request: Devices=%lu",
-        TabletID(),
-        msg->Devices.size());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received CleanupDevices request: Devices=%lu %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Devices.size(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TCleanupDevices>(
         ctx,
