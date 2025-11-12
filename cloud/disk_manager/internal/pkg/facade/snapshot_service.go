@@ -16,7 +16,7 @@ type snapshotService struct {
 	service       snapshots.Service
 }
 
-func (s *filesystemSnapshotService) Create(
+func (s *snapshotService) Create(
 	ctx context.Context,
 	req *disk_manager.CreateSnapshotRequest,
 ) (*disk_manager.Operation, error) {
@@ -29,7 +29,7 @@ func (s *filesystemSnapshotService) Create(
 	return getOperation(ctx, s.taskScheduler, taskID)
 }
 
-func (s *filesystemSnapshotService) Delete(
+func (s *snapshotService) Delete(
 	ctx context.Context,
 	req *disk_manager.DeleteSnapshotRequest,
 ) (*disk_manager.Operation, error) {
@@ -50,7 +50,7 @@ func RegisterSnapshotService(
 	service snapshots.Service,
 ) {
 
-	disk_manager.RegisterSnapshotServiceServer(server, &filesystemSnapshotService{
+	disk_manager.RegisterSnapshotServiceServer(server, &snapshotService{
 		taskScheduler: taskScheduler,
 		service:       service,
 	})

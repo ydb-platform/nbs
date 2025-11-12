@@ -344,7 +344,7 @@ func (c *client) CreateFilesystemSnapshot(
 	req *disk_manager.CreateFilesystemSnapshotRequest,
 ) (*disk_manager.Operation, error) {
 
-	return c.filesystemSnapshotServiceClient.CreateSnapshot(ctx, req)
+	return c.filesystemSnapshotServiceClient.Create(ctx, req)
 }
 
 func (c *client) DeleteFilesystemSnapshot(
@@ -352,5 +352,5 @@ func (c *client) DeleteFilesystemSnapshot(
 	req *disk_manager.DeleteFilesystemSnapshotRequest,
 ) (*disk_manager.Operation, error) {
 
-	return c.filesystemSnapshotServiceClient.DeleteSnapshot(ctx, req)
+	return c.filesystemSnapshotServiceClient.Delete(ctx, req)
 }

@@ -5,6 +5,7 @@ SRCS(
     image_service.go
     interceptor.go
     filesystem_service.go
+    filesystem_snapshot_service.go
     operation_service.go
     placement_group_service.go
     private_service.go
