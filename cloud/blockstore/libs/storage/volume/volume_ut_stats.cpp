@@ -1424,7 +1424,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT(updated);
     }
 
-    static void DoShouldAgentsNumberForDiskStat(
+    static void DoShouldDiskAgentCountStat(
         NCloud::NProto::EStorageMediaKind mediaKind,
         ui32 agentCount,
         ui32 deviceCount,
@@ -1460,7 +1460,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 auto* msg =
                     event->Get<TEvStatsService::TEvVolumeSelfCounters>();
                 counter =
-                    msg->VolumeSelfCounters->Simple.AgentsNumberForDisk.Value;
+                    msg->VolumeSelfCounters->Simple.DiskAgentCount.Value;
             }
 
             return false;
@@ -1473,36 +1473,36 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(counter, agentCount);
     }
 
-    Y_UNIT_TEST(ShouldAgentsNumberForDiskStatNonRepl)
+    Y_UNIT_TEST(ShouldDiskAgentCountStatNonRepl)
     {
-        DoShouldAgentsNumberForDiskStat(
+        DoShouldDiskAgentCountStat(
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             1,
             1,
             0);
     }
 
-    Y_UNIT_TEST(ShouldAgentsNumberForDiskStatMirror2)
+    Y_UNIT_TEST(ShouldDiskAgentCountStatMirror2)
     {
-        DoShouldAgentsNumberForDiskStat(
+        DoShouldDiskAgentCountStat(
             NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2,
             2,
             2,
             1);
     }
 
-    Y_UNIT_TEST(ShouldAgentsNumberForDiskStatMirror3)
+    Y_UNIT_TEST(ShouldDiskAgentCountStatMirror3)
     {
-        DoShouldAgentsNumberForDiskStat(
+        DoShouldDiskAgentCountStat(
             NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
             3,
             3,
             2);
     }
 
-    Y_UNIT_TEST(ShouldNotAgentsNumberForDiskStatSSD)
+    Y_UNIT_TEST(ShouldNotDiskAgentCountStatSSD)
     {
-        DoShouldAgentsNumberForDiskStat(
+        DoShouldDiskAgentCountStat(
             NCloud::NProto::STORAGE_MEDIA_SSD,
             0,
             1,

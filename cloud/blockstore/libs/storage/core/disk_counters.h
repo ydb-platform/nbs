@@ -612,7 +612,7 @@ struct TVolumeSelfSimpleCounters
         EPublishingPolicy::DiskRegistryBased,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
-    TCounter AgentsNumberForDisk{
+    TCounter DiskAgentCount{
         EPublishingPolicy::DiskRegistryBased,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
@@ -648,7 +648,7 @@ struct TVolumeSelfSimpleCounters
         MakeMeta<&TVolumeSelfSimpleCounters::HasLaggingDevices>(),
         MakeMeta<&TVolumeSelfSimpleCounters::LaggingDevicesCount>(),
         MakeMeta<&TVolumeSelfSimpleCounters::LaggingMigrationProgress>(),
-        MakeMeta<&TVolumeSelfSimpleCounters::AgentsNumberForDisk>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::DiskAgentCount>(),
     };
 };
 static_assert(
