@@ -3673,8 +3673,8 @@ auto TDiskRegistryState::CalcConfigUpdateEffect(
         }
     }
 
-    THashSet<TString> allKnownDevices;
-    allKnownDevices.reserve(DeviceList.Size() * 2);
+    THashSet<TString> newKnownDevices;
+    newKnownDevices.reserve(DeviceList.Size() * 2);
 
     THashSet<TString> newKnownAgents;
     newKnownAgents.reserve(newConfig.KnownAgentsSize() * 2);
@@ -3691,7 +3691,7 @@ auto TDiskRegistryState::CalcConfigUpdateEffect(
         for (const auto& device: agent.GetDevices()) {
             const auto& deviceId = device.GetDeviceUUID();
 
-            auto [_, inserted] = allKnownDevices.insert(deviceId);
+            auto [_, inserted] = newKnownDevices.insert(deviceId);
             if (!inserted) {
                 return MakeError(
                     E_ARGUMENT,
@@ -3709,8 +3709,10 @@ auto TDiskRegistryState::CalcConfigUpdateEffect(
         for (const auto& device: agent.GetUnknownDevices()) {
             const auto& uuid = device.GetDeviceUUID();
 
-            if (allKnownDevices.contains(uuid)) {
+            // Device is added.
+            if (newKnownDevices.contains(uuid)) {
                 affectedAgents.insert(agentId);
+                break;
             }
         }
     }
@@ -3721,12 +3723,14 @@ auto TDiskRegistryState::CalcConfigUpdateEffect(
         for (const auto& device: agent.GetDevices()) {
             const auto& uuid = device.GetDeviceUUID();
 
-            if (!allKnownDevices.contains(uuid)) {
+            // Device is removed.
+            if (!newKnownDevices.contains(uuid)) {
                 removedDevices.push_back(uuid);
                 affectedAgents.insert(agentId);
             }
         }
 
+        // Agent is removed.
         if (!newKnownAgents.contains(agentId)) {
             affectedAgents.insert(agentId);
         }
@@ -5569,14 +5573,14 @@ NProto::TError TDiskRegistryState::RegisterUnknownDevices(
     NProto::TAgentConfig& agent,
     TInstant now)
 {
+    // There is no need to add agent to config if it has no unknown devices.
+    if (agent.GetUnknownDevices().empty()) {
+        return {};
+    }
+
     TVector<TDeviceId> ids;
     for (const auto& device: agent.GetUnknownDevices()) {
         ids.push_back(device.GetDeviceUUID());
-    }
-
-    // There is no need to add agent to config if it has no unknown devices.
-    if (ids.empty()) {
-        return {};
     }
 
     STORAGE_INFO("add new devices: AgentId=" << agent.GetAgentId()
