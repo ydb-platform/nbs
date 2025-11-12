@@ -55,19 +55,16 @@ void TStatsServiceActor::UnregisterIsLocalMountCounter(
     NMonitoring::TDynamicCounterPtr& counters,
     TVolumeStatsInfo& volume)
 {
-    if (counters) {
-        auto volumeCounters =
-            counters
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "service_volume")
-            ->GetSubgroup("volume", volume.VolumeInfo.GetDiskId())
-            ->GetSubgroup("cloud", volume.VolumeInfo.GetCloudId())
-            ->GetSubgroup("folder", volume.VolumeInfo.GetFolderId());
-
-        volumeCounters->RemoveCounter("IsLocalMount");
-
-        volume.IsLocalMountCounterRegistered = false;
+    if (!counters) {
+        return;
     }
+
+    auto volumeCounters = counters->GetSubgroup("counters", "blockstore")
+                              ->GetSubgroup("component", "service_volume");
+
+    volumeCounters->RemoveSubgroup("volume", volume.VolumeInfo.GetDiskId());
+
+    volume.IsLocalMountCounterRegistered = false;
 }
 
 void TStatsServiceActor::RegisterVolumeSelfCounters(
