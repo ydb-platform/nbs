@@ -1,4 +1,4 @@
-package filesystem_snapshots
+package filesystem_snapshot
 
 import (
 	"context"
@@ -32,7 +32,7 @@ func (s *service) CreateFilesystemSnapshot(
 
 	return s.taskScheduler.ScheduleTask(
 		ctx,
-		"filesystem_snapshots.CreateFilesystemSnapshot",
+		"filesystem_snapshot.CreateFilesystemSnapshot",
 		"",
 		&empty.Empty{},
 	)
@@ -52,7 +52,7 @@ func (s *service) DeleteFilesystemSnapshot(
 
 	return s.taskScheduler.ScheduleTask(
 		ctx,
-		"filesystem_snapshots.DeleteFilesystemSnapshot",
+		"filesystem_snapshot.DeleteFilesystemSnapshot",
 		"",
 		&empty.Empty{},
 	)

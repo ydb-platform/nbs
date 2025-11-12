@@ -24,7 +24,7 @@ RECURSE_FOR_TESTS(
     image_service_test
     filesystem_service_nemesis_test
     filesystem_service_test
-    filesystem_snapshots_service_test
+    filesystem_snapshot_service_test
     placement_group_service_nemesis_test
     placement_group_service_test
     private_service_nemesis_test

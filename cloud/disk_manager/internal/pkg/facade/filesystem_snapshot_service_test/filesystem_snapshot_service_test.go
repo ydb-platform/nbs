@@ -1,4 +1,4 @@
-package filesystemsnapshotsservicetest
+package filesystem_snapshot_service_test
 
 import (
 	"testing"

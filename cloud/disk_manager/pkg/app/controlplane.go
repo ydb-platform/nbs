@@ -21,7 +21,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem_snapshots"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem_snapshot"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/placementgroup"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
@@ -333,7 +333,7 @@ func registerControlplaneTasks(
 			return err
 		}
 
-		err = filesystem_snapshots.RegisterForExecution(
+		err = filesystem_snapshot.RegisterForExecution(
 			ctx,
 			taskRegistry,
 			taskScheduler,
@@ -410,7 +410,7 @@ func initControlplane(
 	poolService := pools.NewService(taskScheduler, poolStorage)
 
 	var filesystemService filesystem.Service
-	var filesystemSnapshotService filesystem_snapshots.Service
+	var filesystemSnapshotService filesystem_snapshot.Service
 	if config.GetFilesystemConfig() != nil {
 		filesystemService = filesystem.NewService(
 			taskScheduler,
@@ -418,8 +418,7 @@ func initControlplane(
 			nfsFactory,
 		)
 
-		logging.Error(ctx, "Initialized filesystem_snapshots service: %v", err)
-		filesystemSnapshotService = filesystem_snapshots.NewService(
+		filesystemSnapshotService = filesystem_snapshot.NewService(
 			taskScheduler,
 		)
 	}
@@ -541,7 +540,6 @@ func initControlplane(
 	}
 
 	if filesystemSnapshotService != nil {
-		logging.Info(ctx, "Registering filesystem_snapshot service in GRPC server")
 		facade.RegisterFilesystemSnapshotService(
 			server,
 			taskScheduler,

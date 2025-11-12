@@ -1,4 +1,4 @@
-package filesystem_snapshots
+package filesystem_snapshot
 
 import (
 	"context"

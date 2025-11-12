@@ -4,7 +4,7 @@ import (
 	"context"
 
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem_snapshots"
+	filesystem_snapshot "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem_snapshot"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"google.golang.org/grpc"
 )
@@ -13,7 +13,7 @@ import (
 
 type filesystemSnapshotService struct {
 	taskScheduler tasks.Scheduler
-	service       filesystem_snapshots.Service
+	service       filesystem_snapshot.Service
 }
 
 func (s *filesystemSnapshotService) Create(
@@ -47,7 +47,7 @@ func (s *filesystemSnapshotService) Delete(
 func RegisterFilesystemSnapshotService(
 	server *grpc.Server,
 	taskScheduler tasks.Scheduler,
-	service filesystem_snapshots.Service,
+	service filesystem_snapshot.Service,
 ) {
 
 	disk_manager.RegisterFilesystemSnapshotServiceServer(server, &filesystemSnapshotService{

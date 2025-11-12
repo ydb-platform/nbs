@@ -1,4 +1,4 @@
-package filesystem_snapshots
+package filesystem_snapshot
 
 import (
 	"context"
@@ -14,7 +14,7 @@ func RegisterForExecution(
 	taskScheduler tasks.Scheduler,
 ) error {
 	err := taskRegistry.RegisterForExecution(
-		"filesystem_snapshots.CreateFilesystemSnapshot",
+		"filesystem_snapshot.CreateFilesystemSnapshot",
 		func() tasks.Task {
 			return &createFilesystemSnapshotTask{
 				scheduler: taskScheduler,
@@ -26,7 +26,7 @@ func RegisterForExecution(
 	}
 
 	err = taskRegistry.RegisterForExecution(
-		"filesystem_snapshots.DeleteFilesystemSnapshot",
+		"filesystem_snapshot.DeleteFilesystemSnapshot",
 		func() tasks.Task {
 			return &deleteFilesystemSnapshotTask{
 				scheduler: taskScheduler,

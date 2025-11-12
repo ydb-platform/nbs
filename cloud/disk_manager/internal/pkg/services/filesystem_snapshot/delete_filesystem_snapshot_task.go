@@ -1,4 +1,4 @@
-package filesystem_snapshots
+package filesystem_snapshot
 
 import (
 	"context"
@@ -10,19 +10,19 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type createFilesystemSnapshotTask struct {
+type deleteFilesystemSnapshotTask struct {
 	scheduler tasks.Scheduler
 }
 
-func (t *createFilesystemSnapshotTask) Save() ([]byte, error) {
+func (t *deleteFilesystemSnapshotTask) Save() ([]byte, error) {
 	return nil, nil
 }
 
-func (t *createFilesystemSnapshotTask) Load(request, state []byte) error {
+func (t *deleteFilesystemSnapshotTask) Load(request, state []byte) error {
 	return nil
 }
 
-func (t *createFilesystemSnapshotTask) Run(
+func (t *deleteFilesystemSnapshotTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
@@ -30,7 +30,7 @@ func (t *createFilesystemSnapshotTask) Run(
 	return nil
 }
 
-func (t *createFilesystemSnapshotTask) Cancel(
+func (t *deleteFilesystemSnapshotTask) Cancel(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
@@ -38,15 +38,15 @@ func (t *createFilesystemSnapshotTask) Cancel(
 	return nil
 }
 
-func (t *createFilesystemSnapshotTask) GetMetadata(
+func (t *deleteFilesystemSnapshotTask) GetMetadata(
 	ctx context.Context,
 ) (proto.Message, error) {
 
-	metadata := &disk_manager.CreateFilesystemSnapshotMetadata{}
+	metadata := &disk_manager.DeleteFilesystemSnapshotMetadata{}
 
 	return metadata, nil
 }
 
-func (t *createFilesystemSnapshotTask) GetResponse() proto.Message {
-	return &disk_manager.CreateFilesystemSnapshotResponse{}
+func (t *deleteFilesystemSnapshotTask) GetResponse() proto.Message {
+	return &disk_manager.DeleteFilesystemSnapshotResponse{}
 }

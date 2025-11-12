@@ -4,7 +4,7 @@ SET_APPEND(RECIPE_ARGS --creation-and-deletion-allowed-only-for-disks-with-id-pr
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/internal/pkg/facade/testcommon/common.inc)
 
 GO_XTEST_SRCS(
-    filesystem_snapshots_service_test.go
+    filesystem_snapshot_service_test.go
 )
 
 END()
