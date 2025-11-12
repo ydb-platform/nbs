@@ -652,6 +652,10 @@ void CheckVolumeSendsStatsEvenIfPartitionsAreDead(
 
 void CheckRebuildMetadata(ui32 partCount, ui32 blocksPerStripe);
 
+TVector<NProto::TDeviceConfig> MakeDeviceList(
+    ui32 agentCount,
+    ui32 deviceCount);
+
 }   // namespace NTestVolume
 
 }   // namespace NCloud::NBlockStore::NStorage

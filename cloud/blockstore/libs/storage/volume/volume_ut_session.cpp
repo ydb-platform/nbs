@@ -28,23 +28,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TVector<NProto::TDeviceConfig> MakeDeviceList(ui32 agentCount, ui32 deviceCount)
-{
-    TVector<NProto::TDeviceConfig> result;
-    for (ui32 i = 1; i <= agentCount; i++) {
-        for (ui32 j = 0; j < deviceCount; j++) {
-            auto device = MakeDevice(
-                Sprintf("uuid-%u.%u", i, j),
-                Sprintf("dev%u", j),
-                Sprintf("transport%u-%u", i, j));
-            device.SetNodeId(i - 1);
-            device.SetAgentId(Sprintf("agent-%u", i));
-            result.push_back(std::move(device));
-        }
-    }
-    return result;
-}
-
 struct TFixture: public NUnitTest::TBaseFixture
 {
     TIntrusivePtr<TDiskRegistryState> State;

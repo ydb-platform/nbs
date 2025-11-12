@@ -1427,18 +1427,54 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
     static void DoShouldAgentsNumberForDiskStat(
         NCloud::NProto::EStorageMediaKind mediaKind)
     {
-        ui32 minExpectedAgentsNumber =
-            mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD ? 0 : 1;
+        ui32 agentCount = 0;
+        ui32 deviceCount = 0;
+        ui32 replicaCount = 0;
+        auto state = MakeIntrusive<TDiskRegistryState>();
+        switch (mediaKind) {
+            case NCloud::NProto::STORAGE_MEDIA_SSD:
+                replicaCount = agentCount = 0;
+                deviceCount = 1;
+                break;
+            case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED:
+                deviceCount = agentCount = 1;
+                replicaCount = 0;
+                break;
+            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2:
+                deviceCount = agentCount = 2;
+                replicaCount = 1;
+                break;
+            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3:
+                deviceCount = agentCount = 3;
+                replicaCount = 2;
+                break;
+            default:
+                break;
+        }
+
+        auto diskRegistryState = MakeIntrusive<TDiskRegistryState>();
+        diskRegistryState->Devices = MakeDeviceList(agentCount, deviceCount);
+        diskRegistryState->AllocateDiskReplicasOnDifferentNodes = true;
+        diskRegistryState->ReplicaCount = replicaCount;
+        TVector<TDiskAgentStatePtr> agentStates;
+        for (ui32 i = 0; i < agentCount; i++) {
+            agentStates.push_back(TDiskAgentStatePtr{});
+        }
 
         NProto::TStorageServiceConfig config;
-        auto runtime = PrepareTestActorRuntime(config);
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            diskRegistryState,
+            {},
+            {},
+            std::move(agentStates));
 
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind);
         volume.WaitReady();
 
         ui32 counter{0};
-        auto obs = [&](TAutoPtr<IEventHandle>& event)
+        auto obs = [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
         {
             if (event->GetTypeRewrite() ==
                 TEvStatsService::EvVolumeSelfCounters)
@@ -1449,18 +1485,14 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                     msg->VolumeSelfCounters->Simple.AgentsNumberForDisk.Value;
             }
 
-            return TTestActorRuntime::DefaultObserverFunc(event);
+            return false;
         };
 
-        runtime->SetObserverFunc(obs);
+        runtime->SetEventFilter(obs);
         runtime->AdvanceCurrentTime(UpdateCountersInterval);
         runtime->DispatchEvents({}, TDuration::Seconds(1));
 
-        if (minExpectedAgentsNumber) {
-            UNIT_ASSERT_GT(counter, 0);
-        } else {
-            UNIT_ASSERT_VALUES_EQUAL(counter, 0);
-        }
+        UNIT_ASSERT_VALUES_EQUAL(counter, agentCount);
     }
 
     Y_UNIT_TEST(ShouldAgentsNumberForDiskStatNonRepl)
