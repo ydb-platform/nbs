@@ -2,17 +2,20 @@
 
 #include <cloud/blockstore/libs/storage/disk_registry/disk_registry_actor.h>
 #include <cloud/blockstore/libs/storage/disk_registry/testlib/test_state.h>
+#include <cloud/blockstore/public/api/protos/disk.pb.h>
+
+#include <cloud/storage/core/libs/common/random.h>
 
 #include <library/cpp/testing/common/env.h>
 #include <library/cpp/testing/gbenchmark/benchmark.h>
 
 #include <util/stream/file.h>
+#include <util/string/join.h>
 #include <util/system/env.h>
 
 #include <google/protobuf/util/json_util.h>
 
 namespace NCloud::NBlockStore::NStorage {
-
 namespace {
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -91,6 +94,54 @@ TDiskRegistryState Load(bool disableFullGroupsCalc)
         std::move(snapshot.DiskRegistryAgentListParams));
 }
 
+NProto::TDeviceConfig MakeDevice(
+    const TString& agentId,
+    const TString& uuid,
+    const TString& name,
+    const TString& rack,
+    ui64 offset)
+{
+    constexpr ui64 DefaultDeviceBlockCount = 93_GB / DefaultBlockSize;
+    NProto::TDeviceConfig config;
+
+    config.SetAgentId(agentId);
+    config.SetDeviceName(name);
+    config.SetDeviceUUID(uuid);
+    config.SetBlockSize(DefaultBlockSize);
+    config.SetRack(rack);
+    config.SetSerialNumber(Sprintf("serial-%s", uuid.c_str()));
+    config.SetPhysicalOffset(offset);
+    config.SetBlocksCount(DefaultDeviceBlockCount);
+
+    return config;
+}
+
+TVector<NProto::TAgentConfig> MakeNewAgents(ui32 agentCount, ui32 nodeIdStart)
+{
+    TVector<NProto::TAgentConfig> agents{agentCount};
+    TString rack = NUnitTest::RandomString(5);
+    constexpr ui32 DeviceCount = 64;
+    for (ui32 i = 0; i < agentCount; ++i) {
+        if (i % 10 == 0) {
+            rack = NUnitTest::RandomString(5);
+        }
+        const TString agentId = Sprintf("new-agent-%u", i);
+        ui64 offset = 0;
+        for (ui32 j = 0; j < DeviceCount; ++j) {
+            const TString uuid = Sprintf("%s-uuid-%u", agentId.c_str(), j);
+            const TString name = Sprintf("%s-name-%u", agentId.c_str(), j);
+            auto device = MakeDevice(agentId, uuid, name, rack, offset);
+            offset += device.GetBlocksCount() * device.GetBlockSize();
+            *agents[i].AddDevices() = std::move(device);
+        }
+        agents[i].SetAgentId(agentId);
+        agents[i].SetNodeId(nodeIdStart++);
+        agents[i].SetState(NProto::AGENT_STATE_ONLINE);
+        agents[i].SetDedicatedDiskAgent(true);
+    }
+    return agents;
+}
+
 }   // namespace
 
 static void PublishCounters_All(benchmark::State& benchmarkState)
@@ -143,6 +194,194 @@ static void DoRegisterAgent(benchmark::State& benchmarkState, bool changeNodeId)
 
                 if (HasError(error)) {
                     Cout << error.GetMessage() << Endl;
+                }
+            });
+    }
+}
+
+static void AddHost(benchmark::State& benchmarkState)
+{
+    auto state = Load(true);
+    auto agents = state.GetAgents();
+
+    TTestExecutor executor;
+    executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+    for (auto& agent: agents) {
+        if (agent.GetNodeId() == 0) {
+            continue;
+        }
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto [r, error] =
+                    state.RegisterAgent(db, agent, TInstant::Now());
+                if (HasError(error)) {
+                    Cout << error.GetMessage() << Endl;
+                    return;
+                }
+            });
+    }
+
+    auto newAgents = MakeNewAgents(500, agents.size() + 1);
+    for (auto& agent: newAgents) {
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto [r, error] =
+                    state.RegisterAgent(db, agent, TInstant::Now());
+                if (HasError(error)) {
+                    Cout << error.GetMessage() << Endl;
+                    return;
+                }
+            });
+    }
+
+    size_t i = 0;
+    for (const auto _: benchmarkState) {
+        const TString& agentId =
+            newAgents[(i++) % newAgents.size()].GetAgentId();
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TVector<TString> affectedDisks;
+                TDuration timeout;
+                auto error = state.UpdateCmsHostState(
+                    db,
+                    agentId,
+                    NProto::AGENT_STATE_ONLINE,
+                    TInstant::Now(),
+                    /*dryRun=*/false,
+                    affectedDisks,
+                    timeout);
+
+                if (HasError(error)) {
+                    Cout << error.GetMessage()
+                         << "; affectedDisks: " << JoinSeq(", ", affectedDisks)
+                         << "; timeout: " << timeout.Seconds() << Endl;
+                }
+            });
+    }
+}
+
+static void AddSameHostMultipleTimes(benchmark::State& benchmarkState)
+{
+    auto state = Load(true);
+    auto agents = state.GetAgents();
+
+    TTestExecutor executor;
+    executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+    for (auto& agent: agents) {
+        if (agent.GetNodeId() == 0) {
+            continue;
+        }
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto [r, error] =
+                    state.RegisterAgent(db, agent, TInstant::Now());
+                if (HasError(error)) {
+                    Cout << error.GetMessage() << Endl;
+                    return;
+                }
+            });
+    }
+
+    auto newAgents = MakeNewAgents(500, agents.size() + 1);
+    for (auto& agent: newAgents) {
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto [r, error] =
+                    state.RegisterAgent(db, agent, TInstant::Now());
+                if (HasError(error)) {
+                    Cout << error.GetMessage() << Endl;
+                    return;
+                }
+            });
+    }
+
+    for (const auto _: benchmarkState) {
+        const TString& agentId = newAgents[0].GetAgentId();
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TVector<TString> affectedDisks;
+                TDuration timeout;
+                auto error = state.UpdateCmsHostState(
+                    db,
+                    agentId,
+                    NProto::AGENT_STATE_ONLINE,
+                    TInstant::Now(),
+                    /*dryRun=*/false,
+                    affectedDisks,
+                    timeout);
+
+                if (HasError(error)) {
+                    Cout << error.GetMessage()
+                         << "; affectedDisks: " << JoinSeq(", ", affectedDisks)
+                         << "; timeout: " << timeout.Seconds() << Endl;
+                }
+            });
+    }
+}
+
+static void PurgeHost(benchmark::State& benchmarkState)
+{
+    auto state = Load(true);
+    auto agents = state.GetAgents();
+
+    TTestExecutor executor;
+    executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+    TVector<TString> removableAgents;
+    for (auto& agent: agents) {
+        if (agent.GetNodeId() == 0) {
+            continue;
+        }
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto [r, error] =
+                    state.RegisterAgent(db, agent, TInstant::Now());
+                if (HasError(error)) {
+                    Cout << error.GetMessage() << Endl;
+                    return;
+                }
+
+                if (agent.DevicesSize() == 0) {
+                    return;
+                }
+                for (const auto& device: agent.GetDevices()) {
+                    if (state.FindDisk(device.GetDeviceUUID())) {
+                        return;
+                    }
+                }
+                removableAgents.push_back(agent.GetAgentId());
+            });
+    }
+
+    Y_ABORT_UNLESS(removableAgents.size() > 0);
+    size_t i = 0;
+    for (const auto _: benchmarkState) {
+        const TString& agentId =
+            removableAgents[(i++) % removableAgents.size()];
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TVector<TString> affectedDisks;
+                auto error = state.PurgeHost(
+                    db,
+                    agentId,
+                    TInstant::Now(),
+                    /*dryRun=*/false,
+                    affectedDisks);
+
+                if (HasError(error)) {
+                    Cout << error.GetMessage()
+                         << "; affectedDisks: " << JoinSeq(", ", affectedDisks)
+                         << Endl;
                 }
             });
     }
@@ -221,6 +460,9 @@ void DoCreateDeleteDisk(
 
 BENCHMARK(PublishCounters_All);
 BENCHMARK(PublishCounters_DisableFullGroups);
+BENCHMARK(AddHost);
+BENCHMARK(AddSameHostMultipleTimes);
+BENCHMARK(PurgeHost);
 CREATE_AND_DELETE_NRD_DISK(1);
 CREATE_AND_DELETE_NRD_DISK(10);
 CREATE_AND_DELETE_NRD_DISK(100);
