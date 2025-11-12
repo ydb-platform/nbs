@@ -115,6 +115,29 @@ func TestDeleteFilesystem(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestCreateCheckpoint(t *testing.T) {
+	ctx := newContext()
+	client := newClient(t, ctx)
+
+	filesystemID := t.Name()
+
+	err := client.Create(ctx, filesystemID, nfs.CreateFilesystemParams{
+		FolderID:    "folder",
+		CloudID:     "cloud",
+		BlocksCount: 1024,
+		BlockSize:   4096,
+		Kind:        types.FilesystemKind_FILESYSTEM_KIND_SSD,
+	})
+	require.NoError(t, err)
+	defer client.Delete(ctx, filesystemID)
+
+	checkpointID := "checkpoint_1"
+	nodeID := uint64(0)
+
+	err = client.CreateCheckpoint(ctx, filesystemID, checkpointID, nodeID)
+	require.NoError(t, err)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type node struct {

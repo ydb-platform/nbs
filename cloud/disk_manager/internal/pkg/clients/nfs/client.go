@@ -233,6 +233,23 @@ func (c *client) DescribeModel(
 	}, nil
 }
 
+func (c *client) CreateCheckpoint(
+	ctx context.Context,
+	filesystemID string,
+	checkpointID string,
+	nodeID uint64,
+) error {
+
+	return c.nfs.CreateCheckpoint(
+		ctx,
+		filesystemID,
+		&nfs_client.CreateCheckpointOpts{
+			CheckpointID: checkpointID,
+			NodeID:       nodeID,
+		},
+	)
+}
+
 func (c *client) CreateSession(
 	ctx context.Context,
 	fileSystemID string,
