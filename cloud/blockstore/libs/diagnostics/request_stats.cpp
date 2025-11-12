@@ -239,14 +239,14 @@ constexpr TRequestCounters::EOptions SSDOrHDDOptions =
     TRequestCounters::EOption::OnlyReadWriteRequests;
 
 #define BLOCKSTORE_MEDIA_KIND(xxx, ...)                                        \
-    xxx(SSD,               SSDOrHDDOptions,   "ssd",           __VA_ARGS__    )\
-    xxx(HDD,               SSDOrHDDOptions,   "hdd",           __VA_ARGS__    )\
-    xxx(SSDNonrepl,        DefaultOptions,    "ssd_nonrepl",   __VA_ARGS__    )\
-    xxx(SSDMirror2,        DefaultOptions,    "ssd_mirror2",   __VA_ARGS__    )\
-    xxx(SSDMirror3,        DefaultOptions,    "ssd_mirror3",   __VA_ARGS__    )\
-    xxx(SSDLocal,          DefaultOptions,    "ssd_local",     __VA_ARGS__    )\
-    xxx(HDDLocal,          DefaultOptions,    "hdd_local",     __VA_ARGS__    )\
-    xxx(HDDNonrepl,        DefaultOptions,    "hdd_nonrepl",   __VA_ARGS__    )\
+    xxx(SSD,               SSDOrHDDOptions,   ssd,           __VA_ARGS__      )\
+    xxx(HDD,               SSDOrHDDOptions,   hdd,           __VA_ARGS__      )\
+    xxx(SSDNonrepl,        DefaultOptions,    ssd_nonrepl,   __VA_ARGS__      )\
+    xxx(SSDMirror2,        DefaultOptions,    ssd_mirror2,   __VA_ARGS__      )\
+    xxx(SSDMirror3,        DefaultOptions,    ssd_mirror3,   __VA_ARGS__      )\
+    xxx(SSDLocal,          DefaultOptions,    ssd_local,     __VA_ARGS__      )\
+    xxx(HDDLocal,          DefaultOptions,    hdd_local,     __VA_ARGS__      )\
+    xxx(HDDNonrepl,        DefaultOptions,    hdd_nonrepl,   __VA_ARGS__      )\
 // BLOCKSTORE_MEDIA_KIND
 
 class TRequestStats final
@@ -304,7 +304,7 @@ public:
 
 #define REGISTER_COUNTERS(name, _, countersName, ...)                          \
     do {                                                                       \
-        auto counters = Counters->GetSubgroup("type", #name);                  \
+        auto counters = Counters->GetSubgroup("type", #countersName);          \
         Total##name.Register(*counters);                                       \
         if (IsServerSide) {                                                    \
             HdrTotal##name.Register(*counters);                                \
