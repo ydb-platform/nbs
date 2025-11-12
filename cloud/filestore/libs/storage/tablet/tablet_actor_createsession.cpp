@@ -86,6 +86,9 @@ void FillFeatures(
     features->SetZeroCopyWriteEnabled(config.GetZeroCopyWriteEnabled());
 
     features->SetFSyncQueueDisabled(config.GetFSyncQueueDisabled());
+
+    features->SetGuestHandleKillPrivV2Enabled(
+        config.GetGuestHandleKillPrivV2Enabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -43,6 +43,7 @@ message TFileStoreFeatures
     uint32 XAttrCacheTimeout = 28;
     bool DirectoryHandlesStorageEnabled = 29;
     uint64 DirectoryHandlesTableSize = 30;
+    bool GuestHandleKillPrivV2Enabled = 31;
 }
 
 message TFileStore

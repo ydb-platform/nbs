@@ -1196,6 +1196,9 @@ private:
 
         config.SetFSyncQueueDisabled(features.GetFSyncQueueDisabled());
 
+        config.SetGuestHandleKillPrivV2Enabled(
+            features.GetGuestHandleKillPrivV2Enabled());
+
         return std::make_shared<TFileSystemConfig>(config);
     }
 
@@ -1231,6 +1234,10 @@ private:
 
         if (FileSystemConfig->GetGuestWriteBackCacheEnabled()) {
             conn->want |= FUSE_CAP_WRITEBACK_CACHE;
+        }
+
+        if (FileSystemConfig->GetGuestHandleKillPrivV2Enabled()) {
+            conn->want |= FUSE_CAP_HANDLE_KILLPRIV_V2;
         }
 
         FileSystem->Init();
