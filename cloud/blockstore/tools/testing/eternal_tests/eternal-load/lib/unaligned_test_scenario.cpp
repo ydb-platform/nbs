@@ -7,7 +7,7 @@
 #include <library/cpp/digest/crc32c/crc32c.h>
 
 #include <util/random/random.h>
-#include "util/stream/format.h"
+#include <util/stream/format.h>
 #include <util/string/builder.h>
 #include <util/system/mutex.h>
 
@@ -195,7 +195,8 @@ void GenerateRegionData(
     regionData->Crc32 = Crc32c(regionData, offsetof(TRegionDataBlock, Crc32));
 }
 
-ui64 Align(ui64 value, ui64 alignment)
+// Alignment can be non-power-of-two in this test scenario
+ui64 AlignUp(ui64 value, ui64 alignment)
 {
     return (value + alignment - 1) / alignment * alignment;
 }
@@ -756,8 +757,8 @@ void TUnalignedTestScenario::ValidateReadDataRegion(
 
     // Region data is split into blocks of size |RegionBlockByteCount|
     // Skip partial block at the beginning
-    auto offset =
-        Align(offsetInRegion, sizeof(TRegionDataBlock)) - offsetInRegion;
+    ui64 offset =
+        AlignUp(offsetInRegion, sizeof(TRegionDataBlock)) - offsetInRegion;
 
     while (offset < readBuffer.size()) {
         for (size_t i = 0; i < expectedStates.size(); i++) {
