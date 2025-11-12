@@ -243,7 +243,6 @@ func registerControlplaneTasks(
 	poolStorage pools_storage.Storage,
 	poolService pools.Service,
 	filesystemService filesystem.Service,
-	filesystemSnapshotService filesystem_snapshots.Service,
 	resourceStorage resources.Storage,
 	cellStorage cells_storage.Storage,
 	cellSelector cells.CellSelector,
@@ -419,7 +418,10 @@ func initControlplane(
 			nfsFactory,
 		)
 
-		filesystemSnapshotService = filesystem_snapshots.NewService(taskScheduler)
+		logging.Error(ctx, "Initialized filesystem_snapshots service: %v", err)
+		filesystemSnapshotService = filesystem_snapshots.NewService(
+			taskScheduler,
+		)
 	}
 
 	filesystemStorageFolder := ""
@@ -474,7 +476,6 @@ func initControlplane(
 		poolStorage,
 		poolService,
 		filesystemService,
-		filesystemSnapshotService,
 		resourceStorage,
 		cellStorage,
 		cellSelector,
@@ -540,6 +541,7 @@ func initControlplane(
 	}
 
 	if filesystemSnapshotService != nil {
+		logging.Info(ctx, "Registering filesystem_snapshot service in GRPC server")
 		facade.RegisterFilesystemSnapshotService(
 			server,
 			taskScheduler,
