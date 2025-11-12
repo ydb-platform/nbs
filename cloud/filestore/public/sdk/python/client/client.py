@@ -676,6 +676,47 @@ class Client(object):
         return self.__impl.write_data(
             request, idempotence_id, timestamp, trace_id, request_timeout)
 
+    def mmap(
+        self,
+        file_path: str,
+        size: int,
+        idempotence_id: Optional[str] = None,
+        timestamp: Optional[int] = None,
+        trace_id: Optional[str] = None,
+        request_timeout: Optional[float] = None
+    ) -> protos.TMmapResponse:
+        request = protos.TMmapRequest(
+            FilePath=file_path,
+            Size=size
+        )
+        return self.__impl.mmap(
+            request, idempotence_id, timestamp, trace_id, request_timeout)
+
+    def munmap(
+        self,
+        mmap_id: str,
+        idempotence_id: Optional[str] = None,
+        timestamp: Optional[int] = None,
+        trace_id: Optional[str] = None,
+        request_timeout: Optional[float] = None
+    ) -> protos.TMunmapResponse:
+        request = protos.TMunmapRequest(
+            Id=mmap_id
+        )
+        return self.__impl.munmap(
+            request, idempotence_id, timestamp, trace_id, request_timeout)
+
+    def list_mmap_regions(
+        self,
+        idempotence_id: Optional[str] = None,
+        timestamp: Optional[int] = None,
+        trace_id: Optional[str] = None,
+        request_timeout: Optional[float] = None
+    ) -> protos.TListMmapRegionsResponse:
+        request = protos.TListMmapRegionsRequest()
+        return self.__impl.list_mmap_regions(
+            request, idempotence_id, timestamp, trace_id, request_timeout)
+
 
 def CreateClient(
         endpoint,
