@@ -21,6 +21,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem_snapshots"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/placementgroup"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
@@ -242,6 +243,7 @@ func registerControlplaneTasks(
 	poolStorage pools_storage.Storage,
 	poolService pools.Service,
 	filesystemService filesystem.Service,
+	filesystemSnapshotService filesystem_snapshots.Service,
 	resourceStorage resources.Storage,
 	cellStorage cells_storage.Storage,
 	cellSelector cells.CellSelector,
@@ -331,6 +333,16 @@ func registerControlplaneTasks(
 			logging.Error(ctx, "Failed to register filesystem tasks: %v", err)
 			return err
 		}
+
+		err = filesystem_snapshots.RegisterForExecution(
+			ctx,
+			taskRegistry,
+			taskScheduler,
+		)
+		if err != nil {
+			logging.Error(ctx, "Failed to register filesystem snapshot tasks: %v", err)
+			return err
+		}
 	}
 
 	logging.Info(ctx, "Registering placementgroup tasks")
@@ -399,12 +411,15 @@ func initControlplane(
 	poolService := pools.NewService(taskScheduler, poolStorage)
 
 	var filesystemService filesystem.Service
+	var filesystemSnapshotService filesystem_snapshots.Service
 	if config.GetFilesystemConfig() != nil {
 		filesystemService = filesystem.NewService(
 			taskScheduler,
 			config.GetFilesystemConfig(),
 			nfsFactory,
 		)
+
+		filesystemSnapshotService = filesystem_snapshots.NewService(taskScheduler)
 	}
 
 	filesystemStorageFolder := ""
@@ -459,6 +474,7 @@ func initControlplane(
 		poolStorage,
 		poolService,
 		filesystemService,
+		filesystemSnapshotService,
 		resourceStorage,
 		cellStorage,
 		cellSelector,
@@ -520,6 +536,14 @@ func initControlplane(
 			server,
 			taskScheduler,
 			filesystemService,
+		)
+	}
+
+	if filesystemSnapshotService != nil {
+		facade.RegisterFilesystemSnapshotService(
+			server,
+			taskScheduler,
+			filesystemSnapshotService,
 		)
 	}
 
