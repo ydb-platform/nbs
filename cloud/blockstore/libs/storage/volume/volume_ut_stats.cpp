@@ -1425,33 +1425,11 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
     }
 
     static void DoShouldAgentsNumberForDiskStat(
-        NCloud::NProto::EStorageMediaKind mediaKind)
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        ui32 agentCount,
+        ui32 deviceCount,
+        ui32 replicaCount)
     {
-        ui32 agentCount = 0;
-        ui32 deviceCount = 0;
-        ui32 replicaCount = 0;
-        auto state = MakeIntrusive<TDiskRegistryState>();
-        switch (mediaKind) {
-            case NCloud::NProto::STORAGE_MEDIA_SSD:
-                replicaCount = agentCount = 0;
-                deviceCount = 1;
-                break;
-            case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED:
-                deviceCount = agentCount = 1;
-                replicaCount = 0;
-                break;
-            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2:
-                deviceCount = agentCount = 2;
-                replicaCount = 1;
-                break;
-            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3:
-                deviceCount = agentCount = 3;
-                replicaCount = 2;
-                break;
-            default:
-                break;
-        }
-
         auto diskRegistryState = MakeIntrusive<TDiskRegistryState>();
         diskRegistryState->Devices = MakeDeviceList(agentCount, deviceCount);
         diskRegistryState->AllocateDiskReplicasOnDifferentNodes = true;
@@ -1498,24 +1476,37 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
     Y_UNIT_TEST(ShouldAgentsNumberForDiskStatNonRepl)
     {
         DoShouldAgentsNumberForDiskStat(
-            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1,
+            1,
+            0);
     }
 
     Y_UNIT_TEST(ShouldAgentsNumberForDiskStatMirror2)
     {
         DoShouldAgentsNumberForDiskStat(
-            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2);
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2,
+            2,
+            2,
+            1);
     }
 
     Y_UNIT_TEST(ShouldAgentsNumberForDiskStatMirror3)
     {
         DoShouldAgentsNumberForDiskStat(
-            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            3,
+            3,
+            2);
     }
 
     Y_UNIT_TEST(ShouldNotAgentsNumberForDiskStatSSD)
     {
-        DoShouldAgentsNumberForDiskStat(NCloud::NProto::STORAGE_MEDIA_SSD);
+        DoShouldAgentsNumberForDiskStat(
+            NCloud::NProto::STORAGE_MEDIA_SSD,
+            0,
+            1,
+            0);
     }
 }
 
