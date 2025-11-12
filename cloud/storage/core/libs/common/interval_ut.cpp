@@ -14,13 +14,22 @@ Y_UNIT_TEST_SUITE(TIntervalTest)
                                     const auto& interval2,
                                     const auto& expected)
         {
-            auto intersection = *interval1.Intersection(interval2);
+            auto intersection = interval1.Intersection(interval2);
             UNIT_ASSERT_VALUES_EQUAL(expected.Start, intersection.Start);
             UNIT_ASSERT_VALUES_EQUAL(expected.End, intersection.End);
         };
 
-        checkIntersection(TInterval<ui64>{10, 20}, TInterval<ui64>{15, 30}, TInterval<ui64>{15, 20});
-        checkIntersection(TInterval<TString>{"aaaa", "zzzz"}, TInterval<TString>{"bbbb", "zzzzz"}, TInterval<TString>{"bbbb", "zzzz"});
+        checkIntersection(
+            TInterval<ui64>{10, 20},
+            TInterval<ui64>{15, 30},
+            TInterval<ui64>{15, 20});
+        checkIntersection(
+            TInterval<TString>{"aaaa", "zzzz"},
+            TInterval<TString>{"bbbb", "zzzzz"},
+            TInterval<TString>{"bbbb", "zzzz"});
+
+        auto intersection = TInterval<ui64>{10, 20}.Intersection({20, 30});
+        UNIT_ASSERT(intersection.Empty());
     }
 
     Y_UNIT_TEST(ShouldContains)

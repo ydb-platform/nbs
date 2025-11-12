@@ -15,8 +15,10 @@ namespace NCloud {
 template <typename T>
 struct TInterval
 {
-    T Start;
-    T End;
+    T Start{};
+    T End{};
+
+    TInterval() = default;
 
     TInterval(T start, T end)
         : Start(std::move(start))
@@ -35,7 +37,7 @@ struct TInterval
         return Start <= value && value < End;
     }
 
-    std::optional<TInterval> Intersection(const TInterval& otherInterval) const
+    TInterval Intersection(const TInterval& otherInterval) const
     {
         const auto& start = Max(Start, otherInterval.Start);
         const auto& end = Min(End, otherInterval.End);

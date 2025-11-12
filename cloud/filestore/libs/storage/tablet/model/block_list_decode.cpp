@@ -299,8 +299,6 @@ ui64 FindDeletionMarker(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TRange = NCloud::TInterval<ui32>;
-
 struct TFindDeletionMarkersResult
 {
     ui64 MaxCommitId = 0;
@@ -340,7 +338,8 @@ TFindDeletionMarkersResult FindDeletionMarkers(
     TFindDeletionMarkersResult res;
 
     ui16 minOverlappingBlobOffset = Max<ui16>();
-    const auto searchRange = TRange::WithLength(blobOffset, maxBlocksToFind);
+    const auto searchRange =
+        NCloud::TInterval<ui32>::WithLength(blobOffset, maxBlocksToFind);
 
     const bool found = FindDeletionGroup(
         encodedDeletionMarkers,
@@ -368,26 +367,22 @@ TFindDeletionMarkersResult FindDeletionMarkers(
             ui32 groupBlockCount,
             ui64 groupCommitId) -> bool
         {   // merged group
-            const auto groupRange = TRange::WithLength(
+            const auto groupRange = NCloud::TInterval<ui32>::WithLength(
                 groupBlobOffset,
                 groupBlockCount);
 
-            const auto intersection =
-                searchRange.Intersection(groupRange);
-            if (!intersection) {
-                return false;
-            }
+            const auto intersection = searchRange.Intersection(groupRange);
 
-            if (intersection->Contains(searchRange.Start)) {
+            if (intersection.Contains(searchRange.Start)) {
                 res = TFindDeletionMarkersResult{
                     .MaxCommitId = groupCommitId,
-                    .BlocksFound = intersection->End - searchRange.Start};
+                    .BlocksFound = intersection.End - searchRange.Start};
                 return true;
             }
 
-            if (!intersection->Empty()) {
+            if (!intersection.Empty()) {
                 minOverlappingBlobOffset =
-                    Min<ui16>(minOverlappingBlobOffset, intersection->Start);
+                    Min<ui16>(minOverlappingBlobOffset, intersection.Start);
             }
 
             return false;
