@@ -3674,24 +3674,25 @@ auto TDiskRegistryState::CalcConfigUpdateEffect(
     }
 
     THashSet<TString> allKnownDevices;
-    TKnownAgents newKnownAgents;
+    allKnownDevices.reserve(DeviceList.Size() * 2);
+
+    THashSet<TString> newKnownAgents;
+    newKnownAgents.reserve(newConfig.KnownAgentsSize() * 2);
 
     for (const auto& agent: newConfig.GetKnownAgents()) {
         const auto& agentId = agent.GetAgentId();
-        if (newKnownAgents.contains(agentId)) {
+        auto [_, inserted] = newKnownAgents.insert(agentId);
+        if (!inserted) {
             return MakeError(
                 E_ARGUMENT,
                 TStringBuilder() << "duplicate of an agent " << agentId);
         }
 
-        TKnownAgent& knownAgent = newKnownAgents[agentId];
-
         for (const auto& device: agent.GetDevices()) {
             const auto& deviceId = device.GetDeviceUUID();
 
-            knownAgent.Devices.emplace(deviceId, device);
-            auto [_, ok] = allKnownDevices.insert(deviceId);
-            if (!ok) {
+            auto [_, inserted] = allKnownDevices.insert(deviceId);
+            if (!inserted) {
                 return MakeError(
                     E_ARGUMENT,
                     TStringBuilder() << "duplicate of a device " << deviceId);
@@ -3705,19 +3706,23 @@ auto TDiskRegistryState::CalcConfigUpdateEffect(
     for (const auto& agent: AgentList.GetAgents()) {
         const auto& agentId = agent.GetAgentId();
 
-        for (const auto& d: agent.GetDevices()) {
-            const auto& uuid = d.GetDeviceUUID();
+        for (const auto& device: agent.GetUnknownDevices()) {
+            const auto& uuid = device.GetDeviceUUID();
 
-            if (!allKnownDevices.contains(uuid)) {
-                removedDevices.push_back(uuid);
+            if (allKnownDevices.contains(uuid)) {
                 affectedAgents.insert(agentId);
             }
         }
+    }
 
-        for (const auto& d: agent.GetUnknownDevices()) {
-            const auto& uuid = d.GetDeviceUUID();
+    for (const auto& agent: CurrentConfig.GetKnownAgents()) {
+        const auto& agentId = agent.GetAgentId();
 
-            if (allKnownDevices.contains(uuid)) {
+        for (const auto& device: agent.GetDevices()) {
+            const auto& uuid = device.GetDeviceUUID();
+
+            if (!allKnownDevices.contains(uuid)) {
+                removedDevices.push_back(uuid);
                 affectedAgents.insert(agentId);
             }
         }
@@ -3728,7 +3733,6 @@ auto TDiskRegistryState::CalcConfigUpdateEffect(
     }
 
     THashSet<TString> diskIds;
-
     for (const auto& uuid: removedDevices) {
         auto diskId = DeviceList.FindDiskId(uuid);
         if (diskId) {
@@ -5568,6 +5572,11 @@ NProto::TError TDiskRegistryState::RegisterUnknownDevices(
     TVector<TDeviceId> ids;
     for (const auto& device: agent.GetUnknownDevices()) {
         ids.push_back(device.GetDeviceUUID());
+    }
+
+    // There is no need to add agent to config if it has no unknown devices.
+    if (ids.empty()) {
+        return {};
     }
 
     STORAGE_INFO("add new devices: AgentId=" << agent.GetAgentId()
