@@ -133,8 +133,17 @@ func TestCreateCheckpoint(t *testing.T) {
 
 	checkpointID := "checkpoint_1"
 	nodeID := uint64(0)
+	session, err := client.CreateSession(ctx, filesystemID, false)
+	require.NoError(t, err)
+	defer client.DestroySession(ctx, session)
 
-	err = client.CreateCheckpoint(ctx, filesystemID, checkpointID, nodeID)
+	err = client.CreateCheckpoint(
+		ctx,
+		session,
+		filesystemID,
+		checkpointID,
+		nodeID,
+	)
 	require.NoError(t, err)
 }
 

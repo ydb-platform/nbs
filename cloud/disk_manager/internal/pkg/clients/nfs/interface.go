@@ -55,6 +55,7 @@ type Client interface {
 
 	CreateCheckpoint(
 		ctx context.Context,
+		session Session,
 		filesystemID string,
 		checkpointID string,
 		nodeID uint64,

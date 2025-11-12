@@ -191,11 +191,16 @@ func (client *Client) GetFileStoreInfo(
 
 func (client *Client) CreateCheckpoint(
 	ctx context.Context,
+	session Session,
 	fileSystemID string,
 	opts *CreateCheckpointOpts,
 ) error {
 	req := &protos.TCreateCheckpointRequest{
 		FileSystemId: fileSystemID,
+		Headers: &protos.THeaders{
+			SessionSeqNo: session.SessionSeqNo,
+			SessionId:    []byte(session.SessionID),
+		},
 	}
 
 	if opts != nil {
