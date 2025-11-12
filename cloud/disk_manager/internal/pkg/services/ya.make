@@ -2,6 +2,7 @@ RECURSE(
     disks
     common
     filesystem
+    filesystem_snapshot
     images
     placementgroup
     pools
