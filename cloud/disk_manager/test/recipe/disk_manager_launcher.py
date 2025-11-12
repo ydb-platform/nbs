@@ -125,8 +125,8 @@ NbsConfig: <
         key: "zone-d"
         value: <
             Endpoints: [
-                "localhost:{nbs2_port}",
-                "localhost:{nbs2_port}"
+                "localhost:{nbs4_port}",
+                "localhost:{nbs4_port}"
             ]
         >
     >
@@ -134,8 +134,8 @@ NbsConfig: <
         key: "zone-d-shard1"
         value: <
             Endpoints: [
-                "localhost:{nbs3_port}",
-                "localhost:{nbs3_port}"
+                "localhost:{nbs5_port}",
+                "localhost:{nbs5_port}"
             ]
         >
     >
@@ -346,8 +346,8 @@ NbsConfig: <
         key: "zone-d"
         value: <
             Endpoints: [
-                "localhost:{nbs2_port}",
-                "localhost:{nbs2_port}"
+                "localhost:{nbs4_port}",
+                "localhost:{nbs4_port}"
             ]
         >
     >
@@ -355,8 +355,8 @@ NbsConfig: <
         key: "zone-d-shard1"
         value: <
             Endpoints: [
-                "localhost:{nbs3_port}",
-                "localhost:{nbs3_port}"
+                "localhost:{nbs5_port}",
+                "localhost:{nbs5_port}"
             ]
         >
     >
@@ -486,6 +486,8 @@ class DiskManagerLauncher:
         nbs_port,
         nbs2_port,
         nbs3_port,
+        nbs4_port,
+        nbs5_port,
         metadata_url,
         root_certs_file,
         idx,
@@ -550,6 +552,8 @@ class DiskManagerLauncher:
                     nbs_port=nbs_port,
                     nbs2_port=nbs2_port,
                     nbs3_port=nbs3_port,
+                    nbs4_port=nbs4_port,
+                    nbs5_port=nbs5_port,
                     monitoring_port=self.__monitoring_port,
                     restarts_count_file=self.__restarts_count_file,
                     metadata_url=metadata_url,
@@ -589,6 +593,8 @@ class DiskManagerLauncher:
                     nbs_port=nbs_port,
                     nbs2_port=nbs2_port,
                     nbs3_port=nbs3_port,
+                    nbs4_port=nbs4_port,
+                    nbs5_port=nbs5_port,
                     monitoring_port=self.__monitoring_port,
                     restarts_count_file=self.__restarts_count_file,
                     metadata_url=metadata_url,
