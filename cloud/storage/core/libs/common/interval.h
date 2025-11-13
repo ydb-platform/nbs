@@ -24,7 +24,11 @@ struct TInterval
         : Start(std::move(start))
         , End(std::move(end))
     {
-        Y_ABORT_UNLESS(Start < End);
+        Y_ABORT_UNLESS(
+            Start < End,
+            "Start(%s) >= End(%s)",
+            ToString(Start).c_str(),
+            ToString(End).c_str());
     }
 
     [[nodiscard]] bool Empty() const
