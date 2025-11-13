@@ -30,7 +30,7 @@ void TDiskAgentActor::HandleAttachPath(
         return;
     }
 
-    if (PendingAttachPathRequest) {
+    if (PendingAttachDetachPathRequest) {
         NCloud::Reply(
             ctx,
             *ev,
@@ -39,7 +39,7 @@ void TDiskAgentActor::HandleAttachPath(
         return;
     }
 
-    PendingAttachPathRequest =
+    PendingAttachDetachPathRequest =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     TVector<TString> pathsToAttach{
@@ -86,7 +86,7 @@ void TDiskAgentActor::HandlePathAttached(
 
     Y_DEFER
     {
-        PendingAttachPathRequest.Reset();
+        PendingAttachDetachPathRequest.Reset();
     };
 
     if (HasError(msg->Error)) {
@@ -99,7 +99,7 @@ void TDiskAgentActor::HandlePathAttached(
 
         auto response =
             std::make_unique<TEvDiskAgent::TEvAttachPathResponse>(msg->Error);
-        NCloud::Reply(ctx, *PendingAttachPathRequest, std::move(response));
+        NCloud::Reply(ctx, *PendingAttachDetachPathRequest, std::move(response));
         return;
     }
 
@@ -133,7 +133,7 @@ void TDiskAgentActor::HandlePathAttached(
         msg->DiskAgentGeneration,
         JoinSeq(",", msg->AlreadyAttachedPaths).c_str());
 
-    NCloud::Reply(ctx, *PendingAttachPathRequest, std::move(response));
+    NCloud::Reply(ctx, *PendingAttachDetachPathRequest, std::move(response));
 }
 
 void TDiskAgentActor::HandleDetachPath(
@@ -154,7 +154,7 @@ void TDiskAgentActor::HandleDetachPath(
         return;
     }
 
-    if (PendingAttachPathRequest) {
+    if (PendingAttachDetachPathRequest) {
         NCloud::Reply(
             ctx,
             *ev,
@@ -163,14 +163,43 @@ void TDiskAgentActor::HandleDetachPath(
         return;
     }
 
+    PendingAttachDetachPathRequest =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
+
     TVector<TString> pathsToDetach{
         record.GetPathsToDetach().begin(),
         record.GetPathsToDetach().end()};
 
-    auto error = State->DetachPath(
+    auto future = State->DetachPath(
         record.GetDiskRegistryGeneration(),
         record.GetDiskAgentGeneration(),
         pathsToDetach);
+
+    auto* actorSystem = TActivationContext::ActorSystem();
+    auto daId = ctx.SelfID;
+
+    future.Subscribe(
+        [actorSystem, daId, pathsToDetach = std::move(pathsToDetach)](
+            TFuture<NProto::TError>& future)
+        {
+            auto response =
+                std::make_unique<TEvDiskAgentPrivate::TEvPathDetached>(
+                    future.ExtractValue());
+            actorSystem->Send(new IEventHandle{daId, daId, response.release()});
+        });
+}
+
+void TDiskAgentActor::HandlePathDetached(
+    const TEvDiskAgentPrivate::TEvPathDetached::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto& error = ev->Get()->Error;
+    auto pathsToDetach = std::move(ev->Get()->PathsToDetach);
+
+    Y_DEFER
+    {
+        PendingAttachDetachPathRequest.Reset();
+    };
 
     if (HasError(error)) {
         LOG_ERROR(

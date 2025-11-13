@@ -44,7 +44,7 @@ ui32 GetBlockSize(const std::string& path)
 
 const NProto::TStorageDiscoveryConfig::TPoolConfig* FindPoolConfig(
     const NProto::TStorageDiscoveryConfig::TPathConfig& pathConfig,
-    const ui64& fileSize)
+    ui64 fileSize)
 {
     return FindIfPtr(
         pathConfig.GetPoolConfigs(),
