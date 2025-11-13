@@ -432,6 +432,20 @@ private:
     TResultOrError<NActors::IActorPtr> CreateGetClusterCapacityActor(
         TRequestInfoPtr requestInfo,
         TString input);
+
+    // Local NVMe devices
+
+    TResultOrError<NActors::IActorPtr> CreateListNVMeDevicesActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    TResultOrError<NActors::IActorPtr> CreateAcquireNVMeDeviceActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
+    TResultOrError<NActors::IActorPtr> CreateReleaseNVMeDeviceActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

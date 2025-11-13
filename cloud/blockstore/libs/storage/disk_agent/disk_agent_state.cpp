@@ -1197,8 +1197,7 @@ auto TDiskAgentState::GetNVMeDevices() const
     return NVMeDevices->GetNVMeDevices();
 }
 
-TResultOrError<TString> TDiskAgentState::AcquireNVMeDevice(
-    const TString& serialNumber)
+NProto::TError TDiskAgentState::AcquireNVMeDevice(const TString& serialNumber)
 {
     if (!NVMeDevices) {
         return MakeError(E_PRECONDITION_FAILED, "NVMe device list is disabled");

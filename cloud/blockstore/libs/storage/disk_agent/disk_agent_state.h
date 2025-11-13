@@ -175,11 +175,8 @@ public:
     [[nodiscard]] auto GetNVMeDevices() const
         -> TResultOrError<TVector<NProto::TNVMeDevice>>;
 
-    [[nodiscard]] TResultOrError<TString> AcquireNVMeDevice(
-        const TString& serialNumber);
-
-    [[nodiscard]] NProto::TError ReleaseNVMeDevice(
-        const TString& serialNumber);
+    [[nodiscard]] NProto::TError AcquireNVMeDevice(const TString& serialNumber);
+    [[nodiscard]] NProto::TError ReleaseNVMeDevice(const TString& serialNumber);
 
 private:
     const TDeviceState& GetDeviceState(
