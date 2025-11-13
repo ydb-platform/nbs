@@ -180,7 +180,7 @@ void TDiskAgentActor::HandleDetachPath(
 
     future.Subscribe(
         [actorSystem, daId, pathsToDetach = std::move(pathsToDetach)](
-            TFuture<NProto::TError>& future)
+            TFuture<NProto::TError> future)
         {
             auto response =
                 std::make_unique<TEvDiskAgentPrivate::TEvPathDetached>(
