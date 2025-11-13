@@ -435,6 +435,18 @@ STFUNC(TDiskAgentActor::StateIdle)
 
         BLOCKSTORE_HANDLE_REQUEST(WaitReady, TEvDiskAgent)
 
+        HFunc(
+            TEvDiskAgentPrivate::TEvListNVMeDevicesRequest,
+            HandleListNVMeDevices);
+
+        HFunc(
+            TEvDiskAgentPrivate::TEvAcquireNVMeDeviceRequest,
+            HandleAcquireNVMeDevice);
+
+        HFunc(
+            TEvDiskAgentPrivate::TEvReleaseNVMeDeviceRequest,
+            HandleReleaseNVMeDevice);
+
         default:
             if (!RejectRequests(ev)) {
                 auto ctx = ActorContext();

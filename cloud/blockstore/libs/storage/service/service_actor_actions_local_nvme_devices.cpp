@@ -130,6 +130,11 @@ void TLocalNVMeDeviceOpsActor::HandleListNVMeDevicesUndelivery(
 {
     Y_UNUSED(ev);
 
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "List NVMe devices request undelivered");
+
     auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(
         MakeError(E_PRECONDITION_FAILED, "Local Disk Agent not found"));
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
@@ -156,6 +161,11 @@ void TLocalNVMeDeviceOpsActor::HandleAcquireNVMeDeviceUndelivery(
 {
     Y_UNUSED(ev);
 
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "Acquire NVMe device request undelivered");
+
     auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(
         MakeError(E_PRECONDITION_FAILED, "Local Disk Agent not found"));
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
@@ -180,6 +190,11 @@ void TLocalNVMeDeviceOpsActor::HandleReleaseNVMeDeviceUndelivery(
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
+
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "Release NVMe device request undelivered");
 
     auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(
         MakeError(E_PRECONDITION_FAILED, "Local Disk Agent not found"));
