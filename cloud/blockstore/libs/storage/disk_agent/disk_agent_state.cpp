@@ -584,6 +584,21 @@ void TDiskAgentState::InitNVMeDeviceList()
 
     NVMeDevices.emplace(NvmeManager, AgentConfig, Log);
 
+    const auto& devices = NVMeDevices->GetNVMeDevices();
+    STORAGE_INFO(
+        "Found " << devices.size() << " NVMe device(s): [" <<
+        [&]
+        {
+            TStringStream ss;
+            for (int i = 0; const auto& d: devices) {
+                if (i++) {
+                    ss << ", " << d;
+                }
+            }
+            ss << "]";
+            return ss.Str();
+        }());
+
     // TODO(sharpeye): check if any NVMe occupied by FileDevices
 }
 

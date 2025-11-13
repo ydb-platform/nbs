@@ -62,6 +62,10 @@ NNvme::TPCIAddress GetPCIAddress(const NProto::TNVMeDevice& d)
     return SafeExecute<TResultOrError<TVector<NProto::TNVMeDevice>>>(
         [&]
         {
+            if (!NFs::Exists(path)) {
+                return TVector<NProto::TNVMeDevice>{};
+            }
+
             NProto::TNVMeDeviceList proto;
             ParseProtoTextFromFileRobust(path, proto);
 
