@@ -48,21 +48,29 @@ public:
         TDuration Time;
     };
 
+    struct TRequestTypeInfo
+    {
+        TString Name;
+        bool IsBasic = false;
+        bool IsReadWrite = false;
+    };
+
+    using TTimestamp = ui64;
+
 private:
-    const std::function<TString(TRequestType)> RequestType2Name;
-    const std::function<bool(TRequestType)> IsReadWriteRequestType;
+    const std::function<TRequestTypeInfo(TRequestType)> GetRequestTypeInfo;
     const EOptions Options;
 
     THolder<TSpecialCounters> SpecialCounters;
     TVector<TStatCounters> CountersByRequest;
     TVector<TRequestCountersPtr> Subscribers;
+    TVector<TRequestTypeInfo> RequestTypeInfos;
 
 public:
     TRequestCounters(
         ITimerPtr timer,
         ui32 requestCount,
-        std::function<TString(TRequestType)> requestType2Name,
-        std::function<bool(TRequestType)> isReadWriteRequestType,
+        std::function<TRequestTypeInfo(TRequestType)> getRequestTypeInfo,
         EOptions options,
         EHistogramCounterOptions histogramCounterOptions,
         const TVector<TSizeInterval>& executionTimeSizeClasses);
@@ -72,21 +80,21 @@ public:
 
     void Subscribe(TRequestCountersPtr subscriber);
 
-    ui64 RequestStarted(
+    TTimestamp RequestStarted(
         TRequestType requestType,
         ui64 requestBytes);
 
     //TODO: rollback commit after NBS-4239 is fixed
     TRequestTime RequestCompleted(
         TRequestType requestType,
-        ui64 requestStarted,
+        TTimestamp requestStarted,
         TDuration postponedTime,
         ui64 requestBytes,
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
         bool unaligned,
         ECalcMaxTime calcMaxTime,
-        ui64 responseSent);
+        TTimestamp responseSent);
 
     void AddRetryStats(
         TRequestType requestType,
