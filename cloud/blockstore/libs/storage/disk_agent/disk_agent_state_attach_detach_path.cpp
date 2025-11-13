@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_scanner.h>
 
 #include <cloud/storage/core/libs/common/task_queue.h>
+#include <cloud/storage/core/libs/common/timer.h>
 
 #include <util/generic/hash_set.h>
 #include <util/string/printf.h>
@@ -277,7 +278,7 @@ void TDiskAgentState::PathAttached(
     DiskAgentGeneration = Max(diskAgentGeneration, DiskAgentGeneration);
 }
 
-NProto::TError TDiskAgentState::DetachPath(
+TFuture<NProto::TError> TDiskAgentState::DetachPath(
     ui64 diskRegistryGeneration,
     ui64 diskAgentGeneration,
     const TVector<TString>& paths)
@@ -286,7 +287,7 @@ NProto::TError TDiskAgentState::DetachPath(
             diskRegistryGeneration);
         HasError(error))
     {
-        return error;
+        return MakeFuture(error);
     }
 
     for (const auto& path: paths) {
@@ -300,14 +301,16 @@ NProto::TError TDiskAgentState::DetachPath(
         }
 
         if (diskAgentGeneration <= DiskAgentGeneration) {
-            return MakeError(
+            return MakeFuture(MakeError(
                 E_ARGUMENT,
                 Sprintf(
                     "outdated disk agent generation %lu vs %lu",
                     diskAgentGeneration,
-                    DiskAgentGeneration));
+                    DiskAgentGeneration)));
         }
     }
+
+    TVector<TStorageAdapterPtr> storageAdaptersToDrop;
 
     for (const auto& path: paths) {
         auto* pathAttachState = PathAttachStates.FindPtr(path);
@@ -322,6 +325,8 @@ NProto::TError TDiskAgentState::DetachPath(
 
         for (const auto& uuid: uuids) {
             auto* d = Devices.FindPtr(uuid);
+
+            storageAdaptersToDrop.emplace_back(std::move(d->StorageAdapter));
             d->StorageAdapter.reset();
 
             if (RdmaTarget) {
@@ -334,7 +339,30 @@ NProto::TError TDiskAgentState::DetachPath(
 
     DiskAgentGeneration = Max(diskAgentGeneration, DiskAgentGeneration);
 
-    return {};
+    auto promise = NThreading::NewPromise<NProto::TError>();
+    auto future = promise.GetFuture();
+
+    BackgroundThreadPool->ExecuteSimple(
+        [Log = Logging->CreateLog("BLOCKSTORE_DISK_AGENT"),
+         promise = std::move(promise),
+         storageAdaptersToDrop = std::move(storageAdaptersToDrop)]() mutable
+        {
+            auto timer = CreateWallClockTimer();
+
+            for (const auto& storageAdapter: storageAdaptersToDrop) {
+                auto requestsRemained = storageAdapter->Shutdown(timer);
+                if (requestsRemained) {
+                    STORAGE_WARN(
+                        "remained " << requestsRemained
+                                    << " requests in device after detach");
+                }
+            }
+
+            storageAdaptersToDrop.clear();
+
+            promise.SetValue({});
+        });
+    return future;
 }
 
 NProto::TError TDiskAgentState::CheckDiskRegistryGenerationAndUpdateItIfNeeded(

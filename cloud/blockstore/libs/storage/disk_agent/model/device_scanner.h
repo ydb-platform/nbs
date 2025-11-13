@@ -24,7 +24,7 @@ using TDeviceCallback = std::function<NProto::TError(
 
 const NProto::TStorageDiscoveryConfig::TPoolConfig* FindPoolConfig(
     const NProto::TStorageDiscoveryConfig::TPathConfig& pathConfig,
-    const ui64& fileSize);
+    ui64 fileSize);
 
 ui64 GetFileLengthWithSeek(const TString& path);
 

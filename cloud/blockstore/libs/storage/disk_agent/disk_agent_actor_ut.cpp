@@ -107,21 +107,16 @@ TVector<ui64> FindProcessesWithOpenFile(const TString& targetPath)
 
 class TDiskAgentAttachDetachModel
 {
-    struct TPathAttachState
-    {
-        bool Attached = true;
-    };
-
 private:
     ui64 DrGeneration = 0;
     ui64 DiskAgentGeneration = 0;
-    THashMap<TString, TPathAttachState> PathAttachStates;
+    THashMap<TString, bool> PathAttached;
 
 public:
     explicit TDiskAgentAttachDetachModel(const TVector<TString>& paths)
     {
         for (const auto& path: paths) {
-            PathAttachStates[path] = {};
+            PathAttached[path] = true;
         }
     }
 
@@ -136,9 +131,9 @@ public:
         }
 
         for (const auto& path: paths) {
-            auto& state = PathAttachStates[path];
+            auto& isAttached = PathAttached[path];
 
-            if (state.Attached == attach) {
+            if (isAttached == attach) {
                 continue;
             }
 
@@ -148,8 +143,8 @@ public:
         }
 
         for (const auto& path: paths) {
-            auto& state = PathAttachStates[path];
-            state.Attached = attach;
+            auto& isAttached = PathAttached[path];
+            isAttached = attach;
         }
 
         DiskAgentGeneration = Max(DiskAgentGeneration, daGeneration);
@@ -170,9 +165,9 @@ public:
         return true;
     }
 
-    bool IsPathAttached(const TString& path) const
+    [[nodiscard]] bool IsPathAttached(const TString& path) const
     {
-        return PathAttachStates.at(path).Attached;
+        return PathAttached.at(path);
     }
 };
 

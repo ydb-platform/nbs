@@ -52,12 +52,6 @@ private:
         Detached,
     };
 
-    struct TPathAttachState
-    {
-        EPathAttachState State = EPathAttachState::Attached;
-        ui64 Generation = 0;
-    };
-
 private:
     const TStorageConfigPtr StorageConfig;
     const TDiskAgentConfigPtr AgentConfig;
@@ -224,7 +218,7 @@ public:
         TVector<TStorageIoStatsPtr> stats,
         const TVector<TString>& pathsToAttach);
 
-    NProto::TError DetachPath(
+    NThreading::TFuture<NProto::TError> DetachPath(
         ui64 diskRegistryGeneration,
         ui64 diskAgentGeneration,
         const TVector<TString>& paths);
