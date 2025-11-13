@@ -215,7 +215,8 @@ NProto::TError TVolumeClientState::CheckPipeRequest(
         if (!pipe || pipe->State == EPipeState::DEACTIVATED) {
             return MakeError(
                 E_BS_INVALID_SESSION,
-                TStringBuilder() << "No mounter found");
+                TStringBuilder() << "No mounter found "
+                                 << (pipe ? "(deactivated)" : "(nullptr)"));
         }
         if (IsLocalPipeActive()) {
             // When the local pipe is ACTIVE response with retriable error
