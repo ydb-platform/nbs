@@ -151,6 +151,7 @@ private:
         const TRequestPtr& ev);
 
     void RenderDevices(IOutputStream& out) const;
+    void RenderNVMeDevices(IOutputStream& out) const;
 
     bool CanStartSecureErase(const TString& uuid);
 

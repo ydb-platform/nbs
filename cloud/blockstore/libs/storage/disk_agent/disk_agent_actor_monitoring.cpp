@@ -48,6 +48,8 @@ void TDiskAgentActor::HandleHttpInfo(
         TAG(TH3) { out << "Devices"; }
         RenderDevices(out);
 
+        RenderNVMeDevices(out);
+
         TAG(TH3) { out << "Config"; }
         AgentConfig->DumpHtml(out);
 
@@ -61,6 +63,52 @@ void TDiskAgentActor::HandleHttpInfo(
         ctx,
         *ev,
         std::make_unique<NMon::TEvHttpInfoRes>(out.Str()));
+}
+
+void TDiskAgentActor::RenderNVMeDevices(IOutputStream& out) const
+{
+    if (!State) {
+        return;
+    }
+    auto [devices, error] = State->GetNVMeDevices();
+    if (GetErrorKind(error) == EErrorKind::ErrorRetriable) {
+        return;
+    }
+
+    HTML(out) {
+        TAG(TH3) { out << "NVMe Devices"; }
+        if (HasError(error)) {
+            DIV() { out << "Can't get NVMe devices: " << FormatError(error); }
+            return;
+        }
+
+        TABLE_SORTABLE_CLASS("table table-bordered") {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLEH() { out << "S/N"; }
+                    TABLEH() { out << "Model"; }
+                    TABLEH() { out << "Capacity"; }
+                    TABLEH() { out << "PCI"; }
+                }
+
+                for (const auto& d: devices) {
+                    TABLER() {
+                        TABLED() { out << d.GetSerialNumber(); }
+                        TABLED() { out << d.GetModel(); }
+                        TABLED() {
+                            out << FormatByteSize(d.GetCapacity()) << " ("
+                                << d.GetCapacity() << " B)";
+                        }
+                        TABLED () {
+                            out << d.GetPCIVendorId() << ":"
+                                << d.GetPCIDeviceId() << " "
+                                << d.GetPCIAddress();
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 void TDiskAgentActor::RenderDevices(IOutputStream& out) const
