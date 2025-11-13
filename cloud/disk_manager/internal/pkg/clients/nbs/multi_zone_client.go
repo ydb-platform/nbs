@@ -159,6 +159,8 @@ func (c *multiZoneClient) clone(
 			StoragePoolName: "",
 			AgentIds:        []string{},
 			FillGeneration:  fillGeneration,
+			TagsStr: "source-disk-id=" +
+				c.srcZoneClient.ZoneID() + "_" + diskID,
 		},
 	)
 	if IsNotFoundError(err) {
