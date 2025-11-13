@@ -400,6 +400,8 @@ void TVolumeState::Reset()
     }
     if (const auto* value = tags.FindPtr(SourceDiskIdTagName)) {
         SourceDiskId = *value;
+    } else {
+        SourceDiskId = "";
     }
 
     UpdateLeadershipStatus();

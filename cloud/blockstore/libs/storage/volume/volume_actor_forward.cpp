@@ -799,6 +799,7 @@ void TVolumeActor::ForwardRequest(
                 break;
             }
             case ELeadershipStatus::Follower: {
+                Cerr << "KOKOS" << State->GetLeadershipStatus() << " " << State->GetPrincipalDiskId().Quote() << Endl;
                 if (!isCopyingClient) {
                     // Any operations on the follower disk are prohibited for
                     // an ordinary client.
