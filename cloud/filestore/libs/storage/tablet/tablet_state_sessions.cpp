@@ -690,6 +690,10 @@ TSessionHandle* TIndexTabletState::CreateHandle(
     db.WriteSessionHandle(proto);
     IncrementUsedHandlesCount(db);
 
+    if (HasFlag(proto.GetFlags(), NProto::TCreateHandleRequest::E_DIRECT)) {
+        ++Impl->UsedDirectHandlesCount;
+    }
+
     return CreateHandle(session, proto);
 }
 
@@ -702,6 +706,10 @@ void TIndexTabletState::DestroyHandle(
         handle->GetHandle());
 
     DecrementUsedHandlesCount(db);
+
+    if (HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_DIRECT)) {
+        --Impl->UsedDirectHandlesCount;
+    }
 
     ReleaseLocks(db, handle->GetHandle());
 
