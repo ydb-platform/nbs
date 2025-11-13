@@ -218,7 +218,7 @@ void TDiskAgentActor::HandlePathDetached(
 
     auto response =
         std::make_unique<TEvDiskAgent::TEvDetachPathResponse>(error);
-    NCloud::Reply(ctx, *ev, std::move(response));
+    NCloud::Reply(ctx, *PendingAttachDetachPathRequest, std::move(response));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
