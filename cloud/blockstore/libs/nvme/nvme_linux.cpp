@@ -2,8 +2,14 @@
 
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
+
 #include <util/generic/yexception.h>
+#include <util/stream/file.h>
+#include <util/stream/format.h>
+#include <util/string/builder.h>
+#include <util/string/cast.h>
 #include <util/string/printf.h>
+#include <util/string/strip.h>
 #include <util/system/file.h>
 
 #include <linux/fs.h>
@@ -13,6 +19,9 @@
 #include <sys/stat.h>
 
 #include <cerrno>
+#include <charconv>
+#include <filesystem>
+#include <regex>
 
 namespace NCloud::NBlockStore::NNvme {
 
@@ -22,7 +31,37 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-nvme_ctrlr_data NVMeIdentifyCtrl(TFileHandle& device)
+const TString NVMeDriverName = "nvme";
+const TString VFIODriverName = "vfio-pci";
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString ReadFile(const std::filesystem::path& path)
+{
+    return TFileInput(path).ReadAll();
+}
+
+ui16 ReadFileHex(const std::filesystem::path& path)
+{
+    const auto s = Strip(ReadFile(path));
+
+    TStringBuf buf{s};
+    buf.SkipPrefix("0x");
+
+    ui16 value = 0;
+    const auto r =
+        std::from_chars(buf.data(), buf.data() + buf.size(), value, 16);
+    if (r.ec == std::errc{}) {
+        return value;
+    }
+
+    ythrow TServiceError(E_ARGUMENT)
+        << "can't parse a hex value from the string " << s.Quote();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+nvme_ctrlr_data NVMeIdentifyCtrl(TFile& device)
 {
     nvme_ctrlr_data ctrl = {};
 
@@ -33,7 +72,7 @@ nvme_ctrlr_data NVMeIdentifyCtrl(TFileHandle& device)
         .cdw10 = NVME_IDENTIFY_CTRLR
     };
 
-    int err = ioctl(device, NVME_IOCTL_ADMIN_CMD, &cmd);
+    int err = ioctl(device.GetHandle(), NVME_IOCTL_ADMIN_CMD, &cmd);
 
     if (err) {
         int err = errno;
@@ -44,7 +83,7 @@ nvme_ctrlr_data NVMeIdentifyCtrl(TFileHandle& device)
     return ctrl;
 }
 
-nvme_ns_data NVMeIdentifyNs(TFileHandle& device, ui32 nsId)
+nvme_ns_data NVMeIdentifyNs(TFile& device, ui32 nsId)
 {
     nvme_ns_data ns = {};
 
@@ -56,7 +95,7 @@ nvme_ns_data NVMeIdentifyNs(TFileHandle& device, ui32 nsId)
         .cdw10 = NVME_IDENTIFY_NS
     };
 
-    int err = ioctl(device, NVME_IOCTL_ADMIN_CMD, &cmd);
+    int err = ioctl(device.GetHandle(), NVME_IOCTL_ADMIN_CMD, &cmd);
 
     if (err) {
         int err = errno;
@@ -68,7 +107,7 @@ nvme_ns_data NVMeIdentifyNs(TFileHandle& device, ui32 nsId)
 }
 
 void NVMeFormatImpl(
-    TFileHandle& device,
+    TFile& device,
     ui32 nsId,
     nvme_format format,
     TDuration timeout)
@@ -81,7 +120,7 @@ void NVMeFormatImpl(
 
     memcpy(&cmd.cdw10, &format, sizeof(ui32));
 
-    int err = ioctl(device, NVME_IOCTL_ADMIN_CMD, &cmd);
+    int err = ioctl(device.GetHandle(), NVME_IOCTL_ADMIN_CMD, &cmd);
 
     if (err) {
         int err = errno;
@@ -90,11 +129,11 @@ void NVMeFormatImpl(
     }
 }
 
-bool IsBlockOrCharDevice(TFileHandle& device)
+bool IsBlockOrCharDevice(TFile& device)
 {
     struct stat deviceStat = {};
 
-    if (fstat(device, &deviceStat) < 0) {
+    if (fstat(device.GetHandle(), &deviceStat) < 0) {
         int err = errno;
         ythrow TServiceError(MAKE_SYSTEM_ERROR(err))
             << "fstat error: " << strerror(err);
@@ -103,10 +142,10 @@ bool IsBlockOrCharDevice(TFileHandle& device)
     return S_ISCHR(deviceStat.st_mode) || S_ISBLK(deviceStat.st_mode);
 }
 
-hd_driveid HDIdentity(TFileHandle& device)
+hd_driveid HDIdentity(TFile& device)
 {
     hd_driveid hd {};
-    int err = ioctl(device, HDIO_GET_IDENTITY, &hd);
+    int err = ioctl(device.GetHandle(), HDIO_GET_IDENTITY, &hd);
 
     if (err) {
         int err = errno;
@@ -117,16 +156,25 @@ hd_driveid HDIdentity(TFileHandle& device)
     return hd;
 }
 
-TResultOrError<bool> IsRotational(TFileHandle& device)
+TResultOrError<bool> IsRotational(TFile& device)
 {
     unsigned short val = 0;
-    int err = ioctl(device, BLKROTATIONAL, &val);
+    int err = ioctl(device.GetHandle(), BLKROTATIONAL, &val);
     if (err) {
         int err = errno;
         return MakeError(MAKE_SYSTEM_ERROR(err), strerror(err));
     }
 
     return val != 0;
+}
+
+template <typename T, size_t N>
+TString ToString(T (&arr)[N])
+{
+    auto* it = std::bit_cast<const char*>(&arr[0]);
+    auto end = std::find(it, it + sizeof(arr), '\0');
+
+    return TString(it, end);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -142,7 +190,7 @@ private:
         const TString& path,
         nvme_secure_erase_setting ses)
     {
-        TFileHandle device(path, OpenExisting | RdOnly);
+        TFile device(path, OpenExisting | RdOnly);
 
         Y_ENSURE(IsBlockOrCharDevice(device), "expected block or character device");
 
@@ -154,7 +202,7 @@ private:
             ses != NVME_FMT_NVM_SES_CRYPTO_ERASE || ctrl.fna.crypto_erase_supported == 1,
             "cryptographic erase is not supported");
 
-        const int nsId = ioctl(device, NVME_IOCTL_ID);
+        const int nsId = ioctl(device.GetHandle(), NVME_IOCTL_ID);
 
         Y_ENSURE(nsId > 0, "unexpected namespace id");
 
@@ -172,11 +220,11 @@ private:
 
     void DeallocateImpl(const TString& path, ui64 offsetBytes, ui64 sizeBytes)
     {
-        TFileHandle device(path, OpenExisting | RdWr);
+        TFile device(path, OpenExisting | RdWr);
         Y_ENSURE(IsBlockOrCharDevice(device), "expected block or character device");
 
         ui64 devSizeBytes = 0;
-        int err = ioctl(device, BLKGETSIZE64, &devSizeBytes);
+        int err = ioctl(device.GetHandle(), BLKGETSIZE64, &devSizeBytes);
         if (err) {
             err = errno;
             ythrow TServiceError(MAKE_SYSTEM_ERROR(err))
@@ -191,7 +239,7 @@ private:
             ", devSizeBytes=" << devSizeBytes);
 
         ui64 range[2] = { offsetBytes, sizeBytes };
-        err = ioctl(device, BLKDISCARD, range);
+        err = ioctl(device.GetHandle(), BLKDISCARD, range);
         if (err) {
             err = errno;
             ythrow TServiceError(MAKE_SYSTEM_ERROR(err))
@@ -202,7 +250,7 @@ private:
 
 public:
     TNvmeManager(ITaskQueuePtr executor, TDuration timeout)
-        : Executor(executor)
+        : Executor(std::move(executor))
         , Timeout(timeout)
     {}
 
@@ -225,7 +273,7 @@ public:
         ui64 offsetBytes,
         ui64 sizeBytes) override
     {
-        return Executor->Execute([=, this] {
+        return Executor->Execute([this, path, offsetBytes, sizeBytes] {
             try {
                 DeallocateImpl(path, offsetBytes, sizeBytes);
                 return NProto::TError();
@@ -239,33 +287,28 @@ public:
 
     TResultOrError<TString> GetSerialNumber(const TString& path) override
     {
-        return SafeExecute<TResultOrError<TString>>([&] {
-            TFileHandle device(path, OpenExisting | RdOnly);
+        return SafeExecute<TResultOrError<TString>>(
+            [&]
+            {
+                TFile device(path, OpenExisting | RdOnly);
 
-            auto str = [] (auto& arr) {
-                auto* sn = std::bit_cast<const char*>(&arr[0]);
-                auto end = std::find(sn, sn + sizeof(arr), '\0');
+                auto [isRot, error] = IsRotational(device);
 
-                return TString(sn, end);
-            };
+                if (!HasError(error) && isRot) {
+                    auto hd = HDIdentity(device);
+                    return ToString(hd.serial_no);
+                }
 
-            auto [isRot, error] = IsRotational(device);
+                auto ctrl = NVMeIdentifyCtrl(device);
 
-            if (!HasError(error) && isRot) {
-                auto hd = HDIdentity(device);
-                return str(hd.serial_no);
-            }
-
-            auto ctrl = NVMeIdentifyCtrl(device);
-
-            return str(ctrl.sn);
-        });
+                return ToString(ctrl.sn);
+            });
     }
 
     TResultOrError<bool> IsSsd(const TString& path) override
     {
         return SafeExecute<TResultOrError<bool>>([&] {
-            TFileHandle device(path, OpenExisting | RdOnly);
+            TFile device(path, OpenExisting | RdOnly);
 
             auto [isRot, error] = IsRotational(device);
             if (HasError(error)) {
@@ -275,6 +318,143 @@ public:
 
             return TResultOrError { !isRot };
         });
+    }
+
+    TResultOrError<TVector<TControllerData>> ListControllers() final
+    {
+        namespace NFs = std::filesystem;
+
+        return SafeExecute<TResultOrError<TVector<TControllerData>>>(
+            [&]
+            {
+                TVector<TControllerData> result;
+
+                for (const auto& e:
+                     NFs::directory_iterator{"/sys/class/nvme"}) {
+                    const NFs::path devicePath = "/dev" / e.path().filename();
+
+                    TFile device(devicePath, OpenExisting | RdOnly);
+
+                    nvme_ctrlr_data data = NVMeIdentifyCtrl(device);
+                    Y_ABORT_IF(
+                        data.tnvmcap[1] > 0,
+                        "unexpected NVMe device capacity");
+
+                    result.push_back({
+                        .DevicePath = devicePath.string(),
+                        .SerialNumber = ToString(data.sn),
+                        .ModelNumber = ToString(data.mn),
+                        .Capacity = data.tnvmcap[0],
+                    });
+                }
+                return result;
+            });
+    }
+
+    TResultOrError<TPCIAddress> GetPCIAddress(const TString& devicePath) final
+    {
+        namespace NFs = std::filesystem;
+
+        return SafeExecute<TResultOrError<TPCIAddress>>(
+            [&]
+            {
+                const auto filename = NFs::path{devicePath.c_str()}.filename();
+                TString address =
+                    Strip(ReadFile("/sys/class/nvme" / filename / "address"));
+                Y_ENSURE(!address.empty());
+
+                const auto base = NFs::path{"/sys/bus/pci/devices"} /
+                                  std::string_view{address};
+
+                return TPCIAddress{
+                    .VendorId = ReadFileHex(base / "vendor"),
+                    .DeviceId = ReadFileHex(base / "device"),
+                    .Address = std::move(address),
+                };
+            });
+    }
+
+    TResultOrError<TString> GetDriverName(const TPCIAddress& pci) final
+    {
+        namespace NFs = std::filesystem;
+
+        return SafeExecute<TResultOrError<TString>>(
+            [&]
+            {
+                const auto address = NFs::path{"/sys/bus/pci/devices"} /
+                                  std::string_view{pci.Address};
+
+                if (!NFs::exists(address)) {
+                    return TString{};
+                }
+
+                if (pci.VendorId != ReadFileHex(address / "vendor") ||
+                    pci.DeviceId != ReadFileHex(address / "device"))
+                {
+                    return TString{};
+                }
+
+                return TString{
+                    NFs::read_symlink(address / "driver").filename().string()};
+            });
+    }
+
+    NProto::TError BindToVFIO(const TPCIAddress& pci) final
+    {
+        if (!pci) {
+            return MakeError(E_ARGUMENT, "empty PCI address");
+        }
+
+        // Allow vfio driver to handle devices with vendorId:deviceId
+        {
+            TFileOutput out("/sys/bus/pci/drivers/vfio-pci/new_id");
+            out << Hex(pci.VendorId, {}) << " " << Hex(pci.DeviceId, {});
+        }
+
+        return RebindDriver(pci, NVMeDriverName, VFIODriverName);
+    }
+
+    NProto::TError BindToNVME(const TPCIAddress& pci) final
+    {
+        if (!pci) {
+            return MakeError(E_ARGUMENT, "empty PCI address");
+        }
+
+        return RebindDriver(pci, VFIODriverName, NVMeDriverName);
+    }
+
+    auto RebindDriver(
+        const TPCIAddress& pci,
+        const TString& from,
+        const TString& to) -> NProto::TError
+    {
+        auto [currentDriver, error] = GetDriverName(pci);
+        if (HasError(error)) {
+            return error;
+        }
+
+        if (to == currentDriver) {
+            return MakeError(S_ALREADY);
+        }
+
+        if (from != currentDriver) {
+            return MakeError(
+                E_PRECONDITION_FAILED,
+                TStringBuilder() << "unexpected driver: " << currentDriver);
+        }
+
+        return SafeExecute<NProto::TError>(
+            [&]
+            {
+                const TString unbind =
+                    "/sys/bus/pci/drivers/" + from + "/unbind";
+                const TString bind = "/sys/bus/pci/drivers/" + to + "/bind";
+
+                TFileOutput(unbind).Write(pci.Address);
+                TFileOutput(bind).Write(pci.Address);
+
+                return NProto::TError{};
+            });
     }
 };
 

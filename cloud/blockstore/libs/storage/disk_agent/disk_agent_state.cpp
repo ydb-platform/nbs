@@ -558,6 +558,7 @@ TFuture<TInitializeResult> TDiskAgentState::Initialize()
                 AgentConfig->GetKickOutOldClientsEnabled());
 
             InitRdmaTarget();
+            InitNVMeDeviceList();
 
             if (AgentConfig->GetDisableBrokenDevices()) {
                 for (const auto& uuid: r.DevicesWithSuspendedIO) {
@@ -573,6 +574,17 @@ TFuture<TInitializeResult> TDiskAgentState::Initialize()
 
             return r;
         });
+}
+
+void TDiskAgentState::InitNVMeDeviceList()
+{
+    if (AgentConfig->GetNVMeDevices().empty()) {
+        return;
+    }
+
+    NVMeDevices.emplace(NvmeManager, AgentConfig, Log);
+
+    // TODO(sharpeye): check if any NVMe occupied by FileDevices
 }
 
 TFuture<NProto::TAgentStats> TDiskAgentState::CollectStats()
@@ -1173,6 +1185,35 @@ void TDiskAgentState::EnsureAccessToDevices(
 TVector<NProto::TDiskAgentDeviceSession> TDiskAgentState::GetSessions() const
 {
     return DeviceClient->GetSessions();
+}
+
+auto TDiskAgentState::GetNVMeDevices() const
+    -> TResultOrError<TVector<NProto::TNVMeDevice>>
+{
+    if (!NVMeDevices) {
+        return MakeError(E_PRECONDITION_FAILED, "NVMe device list is disabled");
+    }
+
+    return NVMeDevices->GetNVMeDevices();
+}
+
+TResultOrError<TString> TDiskAgentState::AcquireNVMeDevice(
+    const TString& serialNumber)
+{
+    if (!NVMeDevices) {
+        return MakeError(E_PRECONDITION_FAILED, "NVMe device list is disabled");
+    }
+
+    return NVMeDevices->BindNVMeDeviceToVFIO(serialNumber);
+}
+
+NProto::TError TDiskAgentState::ReleaseNVMeDevice(const TString& serialNumber)
+{
+    if (!NVMeDevices) {
+        return MakeError(E_PRECONDITION_FAILED, "NVMe device list is disabled");
+    }
+
+    return NVMeDevices->ResetNVMeDevice(serialNumber);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

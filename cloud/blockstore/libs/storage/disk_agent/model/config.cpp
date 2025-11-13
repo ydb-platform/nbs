@@ -46,6 +46,7 @@ namespace {
     xxx(DeviceHealthCheckDisabled,          bool,       false                 )\
     xxx(CachedConfigPath,                   TString,    ""                    )\
     xxx(CachedSessionsPath,                 TString,    ""                    )\
+    xxx(CachedNVMeDevicesPath,              TString,    ""                    )\
     xxx(TemporaryAgent,                     bool,       false                 )\
     xxx(IOParserActorCount,                 ui32,       0                     )\
     xxx(OffloadAllIORequestsParsingEnabled, bool,       false                 )\

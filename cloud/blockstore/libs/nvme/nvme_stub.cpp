@@ -60,6 +60,39 @@ public:
 
         return IsDeviceSsd;
     }
+
+    TResultOrError<TPCIAddress> GetPCIAddress(const TString& path) final
+    {
+        Y_UNUSED(path);
+
+        return TPCIAddress{};
+    }
+
+    TResultOrError<TVector<TControllerData>> ListControllers() final
+    {
+        return TVector<TControllerData>{};
+    }
+
+    TResultOrError<TString> GetDriverName(const TPCIAddress& pci) final
+    {
+        Y_UNUSED(pci);
+
+        return TString{};
+    }
+
+    NProto::TError BindToVFIO(const TPCIAddress& pci) final
+    {
+        Y_UNUSED(pci);
+
+        return {};
+    }
+
+    NProto::TError BindToNVME(const TPCIAddress& pci) final
+    {
+        Y_UNUSED(pci);
+
+        return {};
+    }
 };
 
 }   // namespace

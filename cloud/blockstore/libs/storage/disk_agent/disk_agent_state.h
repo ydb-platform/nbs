@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_guard.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/nvme_device_list.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -65,6 +66,8 @@ private:
 
     TRdmaTargetConfigPtr RdmaTargetConfig;
     TOldRequestCounters OldRequestCounters;
+
+    std::optional<NStorage::TNVMeDeviceList> NVMeDevices;
 
 public:
     TDiskAgentState(
@@ -169,6 +172,15 @@ public:
     void SetPartiallySuspended(bool partiallySuspended);
     bool GetPartiallySuspended() const;
 
+    [[nodiscard]] auto GetNVMeDevices() const
+        -> TResultOrError<TVector<NProto::TNVMeDevice>>;
+
+    [[nodiscard]] TResultOrError<TString> AcquireNVMeDevice(
+        const TString& serialNumber);
+
+    [[nodiscard]] NProto::TError ReleaseNVMeDevice(
+        const TString& serialNumber);
+
 private:
     const TDeviceState& GetDeviceState(
         const TString& uuid,
@@ -203,6 +215,7 @@ private:
     NThreading::TFuture<TInitializeResult> InitAioStorage();
 
     void InitRdmaTarget();
+    void InitNVMeDeviceList();
 
     void RestoreSessions(
         TDeviceClient& client,

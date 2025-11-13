@@ -130,24 +130,15 @@ bool IsEmpty(const google::protobuf::RepeatedField<T>& value)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IOutputStream& operator <<(IOutputStream& out, const NProto::EClientIpcType& ipcType)
+IOutputStream& operator <<(IOutputStream& out, NProto::EClientIpcType ipcType)
 {
-    switch (ipcType) {
-        case NProto::IPC_GRPC:
-            return out << "IPC_GRPC";
-        case NProto::IPC_NBD:
-            return out << "IPC_NBD";
-        case NProto::IPC_VHOST:
-            return out << "IPC_VHOST";
-        case NProto::IPC_NVME:
-            return out << "IPC_NVME";
-        case NProto::IPC_SCSI:
-            return out << "IPC_SCSI";
-        case NProto::IPC_RDMA:
-            return out << "IPC_RDMA";
-        default:
-            return out << "(Unknown value " << static_cast<int>(ipcType) << ")";
+    const auto& s = NProto::EClientIpcType_Name(ipcType);
+    if (s) {
+        out << s;
+    } else {
+        out << "(Unknown value " << static_cast<int>(ipcType) << ")";
     }
+    return out;
 }
 
 template <typename T>

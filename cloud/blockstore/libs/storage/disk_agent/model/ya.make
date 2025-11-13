@@ -12,6 +12,7 @@ SRCS(
     device_generator.cpp
     device_guard.cpp
     device_scanner.cpp
+    nvme_device_list.cpp
     probes.cpp
 )
 
@@ -20,6 +21,7 @@ PEERDIR(
     cloud/blockstore/libs/common
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/service
+    cloud/blockstore/libs/storage/protos
     cloud/blockstore/public/api/protos
 
     cloud/storage/core/libs/common
