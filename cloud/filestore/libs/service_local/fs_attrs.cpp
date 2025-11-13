@@ -120,7 +120,10 @@ NProto::TSetNodeXAttrResponse TLocalFileSystem::SetNodeXAttr(
     }
 
     node->SetXAttr(request.GetName(), request.GetValue());
-    return {};
+
+    NProto::TSetNodeXAttrResponse response;
+    response.SetVersion(++XattrVersion);
+    return response;
 }
 
 NProto::TGetNodeXAttrResponse TLocalFileSystem::GetNodeXAttr(
@@ -136,6 +139,7 @@ NProto::TGetNodeXAttrResponse TLocalFileSystem::GetNodeXAttr(
 
     NProto::TGetNodeXAttrResponse response;
     response.SetValue(node->GetXAttr(request.GetName()));
+    response.SetVersion(++XattrVersion);
     return response;
 }
 
