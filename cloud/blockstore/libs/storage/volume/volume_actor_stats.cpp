@@ -1,14 +1,16 @@
 #include "volume_actor.h"
-#include <cloud/storage/core/libs/common/format.h>
 
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/volume/actors/partition_statistics_collector_actor.h>
+#include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/verify.h>
 
+#include <util/generic/hash_set.h>
 #include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -701,6 +703,12 @@ void TVolumeActor::SendSelfStatsToService(const TActorContext& ctx)
         State->GetMeta().GetMigrations().size() == 0);
     simple.HasPerformanceProfileModifications.Set(
         HasPerformanceProfileModifications);
+
+    THashSet<ui32> allAgents;
+    for (const NProto::TDeviceConfig* device: GetAllDevices(State->GetMeta())) {
+        allAgents.insert(device->GetNodeId());
+    }
+    simple.DiskAgentCount.Set(allAgents.size());
 
     SendVolumeSelfCounters(ctx);
     VolumeSelfCounters = CreateVolumeSelfCounters(
