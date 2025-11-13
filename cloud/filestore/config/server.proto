@@ -88,6 +88,9 @@ message TIoUringConfig
 
     // Force offloading IO to the kernel thread pool.
     optional bool ForceAsyncIO = 4;
+
+    // Propagate parent thread affinity to io_uring kernel threads.
+    optional bool PropagateAffinityToKernelWorkers = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -218,6 +218,8 @@ IFileIOServicePtr CreateFileIOService(const TLocalFileStoreConfig& config)
                     .MaxKernelWorkersCount = ring.GetMaxKernelWorkersCount(),
                     .ShareKernelWorkers = ring.GetShareKernelWorkers(),
                     .ForceAsyncIO = ring.GetForceAsyncIO(),
+                    .PropagateAffinityToKernelWorkers =
+                        ring.GetPropagateAffinityToKernelWorkers(),
                 });
 
                 if (config.GetNumThreads() <= 1) {
