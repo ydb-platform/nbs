@@ -32,17 +32,6 @@ enum ECheckpointState
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
-message TPathToGeneration
-{
-    // Path to HW device.
-    string Path = 1;
-
-    //  Monotonously increasing counter, need to order attach detach requests.
-    uint64 Generation = 2;
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // Mean time between failures.
 message TMeanTimeBetweenFailures
 {
