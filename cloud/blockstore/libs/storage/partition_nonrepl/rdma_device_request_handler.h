@@ -187,6 +187,7 @@ void TRdmaDeviceRequestHandlerBase<TDerived>::OnRequestStarted(
     TDeviceOperationTracker::ERequestType requestType)
 {
     if (!DeviceOperationId) {
+        // Tracking of this request is disabled.
         return;
     }
 
@@ -206,6 +207,7 @@ void TRdmaDeviceRequestHandlerBase<TDerived>::OnRequestFinished(
     ui32 deviceIdx)
 {
     if (!DeviceOperationId) {
+        // Tracking of this request is disabled.
         return;
     }
 

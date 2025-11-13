@@ -123,6 +123,7 @@ void TDiskAgentBaseRequestActor::OnRequestStarted(
     size_t requestIndex)
 {
     if (!DeviceOperationId) {
+        // Tracking of this request is disabled.
         return;
     }
 
@@ -140,6 +141,7 @@ void TDiskAgentBaseRequestActor::OnRequestFinished(
     size_t requestIndex)
 {
     if (!DeviceOperationId) {
+        // Tracking of this request is disabled.
         return;
     }
 
