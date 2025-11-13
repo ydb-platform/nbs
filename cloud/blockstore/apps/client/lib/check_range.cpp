@@ -274,7 +274,7 @@ void TResultManager::SetBootstrapError(const NProto::TError& err)
     Y_ABORT_IF(HasBootstrapError);
     HasBootstrapError = true;
     auto j = FormatErrorJson(err);
-    WriteKV("global_error", j);
+    WriteKV("GlobalError", j);
 }
 
 void TResultManager::IncRequestCnt()
@@ -291,13 +291,13 @@ void TResultManager::SetRangeResult(
     Y_ABORT_IF(HasBootstrapError);
 
     NJson::TJsonValue res;
-    res["r_start"] = range.Start;
-    res["r_end"] = range.End;
+    res["Start"] = range.Start;
+    res["End"] = range.End;
 
     fatalErr = false;
     if (const auto& error = result.GetError(); HasError(error)) {
         ErrorCount++;
-        res["error"] = FormatErrorJson(error);
+        res["Error"] = FormatErrorJson(error);
         if (error.GetCode() == E_ARGUMENT) {
             fatalErr = true;
         }
@@ -310,8 +310,8 @@ void TResultManager::SetRangeResult(
         !resp.Has("Status"))
     {
         ErrorCount++;
-        res["error"]["Message"] = "Unknown response's format";
-        res["error"]["Code"] = E_INVALID_STATE;
+        res["Error"]["Message"] = "Unknown response's format";
+        res["Error"]["Code"] = E_INVALID_STATE;
         WriteRangeResult(res);
         return;
     }
@@ -319,19 +319,19 @@ void TResultManager::SetRangeResult(
     const auto& status = ExtractStatusValues(resp);
     if (HasError(status)) {
         ErrorCount++;
-        res["error"] = FormatErrorJson(status);
+        res["Error"] = FormatErrorJson(status);
     }
 
     if (resp.Has("Checksums") && !resp["Checksums"].GetArray().empty()) {
-        res["checksums"] = std::move(resp["Checksums"]);
+        res["Checksums"] = std::move(resp["Checksums"]);
     }
     if (resp.Has("MirrorChecksums") &&
         !resp["MirrorChecksums"].GetArray().empty())
     {
-        res["mirror_checksums"] = std::move(resp["MirrorChecksums"]);
+        res["MirrorChecksums"] = std::move(resp["MirrorChecksums"]);
     }
 
-    if (res.Has("error")) {
+    if (res.Has("Error")) {
         AddProblemRangeWithMerging(range);
     }
     WriteRangeResult(res);
@@ -358,7 +358,7 @@ void TResultManager::WriteRangeResult(const NJson::TJsonValue& rangeRes)
         Output << ",";
     } else {
         RangeWtitten = true;
-        Output << "\n\"ranges\": [";
+        Output << "\n\"Ranges\": [";
     }
     Output << NJson::WriteJson(rangeRes);
 }
@@ -367,17 +367,17 @@ void TResultManager::WriteSummary()
 {
     Y_ABORT_IF(HasBootstrapError);
     NJson::TJsonValue summary;
-    summary["errors_num"] = ErrorCount;
-    summary["requests_num"] = RequestCount;
+    summary["ErrorsNum"] = ErrorCount;
+    summary["RequestsNum"] = RequestCount;
     if (ErrorCount) {
         for (const auto& r: ProblemRanges) {
             NJson::TJsonValue range;
-            range["r_start"] = r.Start;
-            range["r_end"] = r.End;
-            summary["problem_ranges"].AppendValue(std::move(range));
+            range["Start"] = r.Start;
+            range["End"] = r.End;
+            summary["ProblemRanges"].AppendValue(std::move(range));
         }
     }
-    WriteKV("summary", summary);
+    WriteKV("Summary", summary);
 }
 
 }   // namespace

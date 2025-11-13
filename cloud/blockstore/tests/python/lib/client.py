@@ -63,6 +63,19 @@ class NbsClient:
 
         return p.stdout
 
+    def destroy_volume(self, disk_id, timeout = 30):
+        p = subprocess.run([
+            self.__binary_path,
+            "destroyvolume",
+            "--disk-id", disk_id,
+            "--timeout", str(timeout),
+            "--host", "localhost",
+            "--port", str(self.__port),
+            "--verbose", "error"
+        ], stdout=PIPE, stderr=PIPE, text=True, input=disk_id)
+
+        return p.stdout
+
     def write_blocks(self, disk_id, start_index, input_path):
         p = subprocess.run([
             self.__binary_path,
@@ -106,6 +119,22 @@ class NbsClient:
             "--port", str(self.__port),
             "--verbose", "error"
         ], stdout=PIPE, stderr=PIPE, text=True)
+
+    def checkrange(self, disk_id, output_file, blocks_count=0, blocks_per_request=1024):
+        p = subprocess.run([
+            self.__binary_path,
+            "checkrange",
+            "--disk-id", disk_id,
+            "--blocks-count", str(blocks_count),
+            "--blocks-per-request", str(blocks_per_request),
+            "--output", output_file,
+            "--host", "localhost",
+            "--port", str(self.__port),
+            "--verbose", "error"
+        ], stdout=PIPE, stderr=PIPE, text=True, input=disk_id)
+        assert p.returncode == 0, "stderr: {}".format(p.stderr)
+
+        return p.stdout
 
     def disk_registry_set_writable_state(self, state=True):
         req = {"State": state}

@@ -40,13 +40,13 @@ The utility supports the following options:
 ## Response format
 ```json
 {
-  "ranges": [
+  "Ranges": [
     {
-      "r_start": 0,
-      "r_end": 1023,
-      "error": {}, // if there was an error
-      "checksums": [], // if they were obtained
-      "mirror_checksums": [ // for mirror disks in case of checksum difference for at least 2 replicas
+      "Start": 0,
+      "End": 1023,
+      "Error": {}, // if there was an error
+      "Checksums": [], // if they were obtained
+      "MirrorChecksums": [ // for mirror disks in case of checksum difference for at least 2 replicas
         {
           "ReplicaName": "name",
           "Checksums": [1, 2, 3, 4, 5]
@@ -54,16 +54,16 @@ The utility supports the following options:
       ]
     }
   ],
-  "summary": {
-    "requests_num": 1,
-    "errors_num": 0,
-    "problem_ranges": [ // if there were errors in 2 consecutive ranges, they are merged into 1 large one
+  "Summary": {
+    "RequestsNum": 1,
+    "ErrorsNum": 0,
+    "ProblemRanges": [ // if there were errors in 2 consecutive ranges, they are merged into 1 large one
       {
-        "r_start": 0,
-        "r_end": 2046
+        "Start": 0,
+        "End": 2046
       }
     ],
-    "global_error": {
+    "GlobalError": {
       "Code": int,
       "CodeString": string,
       "Message": string,
