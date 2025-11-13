@@ -63,17 +63,6 @@ enum EPathAttachState
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
-message TPathToGeneration
-{
-    // Path to HW device.
-    string Path = 1;
-
-    // Monotonously increasing counter, needed to order attach and detach requests.
-    uint64 Generation = 2;
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // Mean time between failures.
 message TMeanTimeBetweenFailures
 {
