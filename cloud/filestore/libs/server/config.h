@@ -54,6 +54,7 @@ public:
 
     TString GetUnixSocketPath() const;
     ui32 GetUnixSocketBacklog() const;
+    ui32 GetUnixSocketAccessMode() const;
 
     TVector<TString> GetActionsNoAuth() const;
 
