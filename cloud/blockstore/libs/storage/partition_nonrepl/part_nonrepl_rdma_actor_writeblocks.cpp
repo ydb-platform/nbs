@@ -304,6 +304,11 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocks(
 
     for (size_t i = 0; i < requests.size(); ++i) {
         auto& request = requests[i];
+
+        requestResponseHandler->OnRequestStarted(
+            sentRequestCtx[i].DeviceIdx,
+            TDeviceOperationTracker::ERequestType::Write);
+
         sentRequestCtx[i].SentRequestId = request.Endpoint->SendRequest(
             std::move(request.ClientRequest),
             requestInfo->CallContext);
@@ -479,6 +484,11 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksLocal(
 
     for (size_t i = 0; i < requests.size(); ++i) {
         auto& request = requests[i];
+
+        requestResponseHandler->OnRequestStarted(
+            sentRequestCtx[i].DeviceIdx,
+            TDeviceOperationTracker::ERequestType::Write);
+
         sentRequestCtx[i].SentRequestId = request.Endpoint->SendRequest(
             std::move(request.ClientRequest),
             requestInfo->CallContext);
