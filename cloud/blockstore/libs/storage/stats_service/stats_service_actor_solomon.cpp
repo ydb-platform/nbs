@@ -3,11 +3,13 @@
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+
 #include <cloud/storage/core/libs/diagnostics/histogram.h>
 #include <cloud/storage/core/libs/diagnostics/weighted_percentile.h>
 
 #include <contrib/ydb/core/base/appdata.h>
 
+#include <util/string/join.h>
 #include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -179,8 +181,7 @@ void TStatsServiceActor::UpdateVolumeSelfCounters(const TActorContext& ctx)
 
     auto& serviceTotal = State.GetTotalCounters();
 
-    for (auto& p: State.GetVolumes()) {
-        auto& vol = p.second;
+    for (auto& [logicalDiskId, vol]: State.GetVolumes()) {
         auto& tc = State.GetCounters(vol.VolumeInfo);
 
         if (IsRecentlyStarted(ctx.Now(), vol)) {
@@ -272,9 +273,19 @@ void TStatsServiceActor::HandleRegisterVolume(
     const TActorContext& ctx)
 {
     Y_UNUSED(ctx);
+
     const auto* msg = ev->Get();
 
     auto* volume = State.GetOrAddVolume(msg->DiskId, msg->Config);
+
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::STATS_SERVICE,
+        "Volume %s register %s [%s]",
+        msg->DiskId.Quote().c_str(),
+        volume->VolumeInfo.GetDiskId().Quote().c_str(),
+        JoinSeq(",", volume->RealDiskIds).Quote().c_str());
+
     volume->VolumeTabletId = msg->TabletId;
 }
 
@@ -315,13 +326,21 @@ void TStatsServiceActor::HandleUnregisterVolume(
 {
     const auto* msg = ev->Get();
 
-    auto& volumes = State.GetVolumes();
+    if (auto* volume = State.GetVolume(msg->DiskId)) {
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::STATS_SERVICE,
+            "Volume %s unregister %s [%s]",
+            msg->DiskId.Quote().c_str(),
+            volume->VolumeInfo.GetDiskId().Quote().c_str(),
+            JoinSeq(",", volume->RealDiskIds).Quote().c_str());
 
-    if (auto it = volumes.find(msg->DiskId); it != volumes.end()) {
-        UnregisterIsLocalMountCounter(AppData(ctx)->Counters, it->second);
-        UnregisterServiceVolumeCounters(AppData(ctx)->Counters, it->second);
-
-        State.RemoveVolume(ctx.Now(), it->first);
+        volume->RealDiskIds.erase(msg->DiskId);
+        if (volume->RealDiskIds.empty()) {
+            UnregisterIsLocalMountCounter(AppData(ctx)->Counters, *volume);
+            UnregisterServiceVolumeCounters(AppData(ctx)->Counters, *volume);
+            State.RemoveVolume(ctx.Now(), msg->DiskId);
+        }
     }
 }
 
