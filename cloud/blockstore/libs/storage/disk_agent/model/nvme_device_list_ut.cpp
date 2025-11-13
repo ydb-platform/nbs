@@ -328,7 +328,7 @@ Y_UNIT_TEST_SUITE(TNVMeDeviceListTest)
             UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
 
             auto* device = FindIfPtr(devices, [&] (const auto& device) {
-                return device.GetSerialnumber() == nvme4sn;
+                return device.GetSerialNumber() == nvme4sn;
             });
             UNIT_ASSERT(!device);
         }
@@ -367,7 +367,7 @@ Y_UNIT_TEST_SUITE(TNVMeDeviceListTest)
             UNIT_ASSERT_VALUES_EQUAL(2, devices.size());
 
             auto* device = FindIfPtr(devices, [&] (const auto& device) {
-                return device.GetSerialnumber() == nvme4sn;
+                return device.GetSerialNumber() == nvme4sn;
             });
             UNIT_ASSERT(device);
         }

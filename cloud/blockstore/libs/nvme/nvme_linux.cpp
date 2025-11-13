@@ -406,9 +406,15 @@ public:
         }
 
         // Allow vfio driver to handle devices with vendorId:deviceId
-        {
-            TFileOutput out("/sys/bus/pci/drivers/vfio-pci/new_id");
-            out << Hex(pci.VendorId, {}) << " " << Hex(pci.DeviceId, {});
+        auto error = SafeExecute<NProto::TError>(
+            [&]
+            {
+                TFileOutput out("/sys/bus/pci/drivers/vfio-pci/new_id");
+                out << Hex(pci.VendorId, {}) << " " << Hex(pci.DeviceId, {});
+            });
+
+        if (HasError(error)) {
+            return error;
         }
 
         return RebindDriver(pci, NVMeDriverName, VFIODriverName);
