@@ -41,7 +41,7 @@ class IUserCounterSupplier
     : public NMonitoring::IMetricSupplier
 {
 public:
-    virtual ~IUserCounterSupplier() = default;
+    ~IUserCounterSupplier() override = default;
 
     virtual void AddUserMetric(
         NMonitoring::TLabels labels,
@@ -51,9 +51,10 @@ public:
         NMonitoring::TLabels labels,
         TStringBuf name) = 0;
 };
+using IUserCounterSupplierPtr = std::shared_ptr<IUserCounterSupplier>;
 
-std::shared_ptr<IUserCounterSupplier> CreateUserCounterSupplier();
-std::shared_ptr<IUserCounterSupplier> CreateUserCounterSupplierStub();
+IUserCounterSupplierPtr CreateUserCounterSupplier();
+IUserCounterSupplierPtr CreateUserCounterSupplierStub();
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -51,6 +51,7 @@ private:
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const NYdbStats::IYdbVolumesStatsUploaderPtr StatsUploader;
     const IStatsAggregatorPtr ClientStatsAggregator;
+    const NCloud::NStorage::NUserStats::IUserCounterSupplierPtr UserCounters;
 
     TStatsServiceState State;
 
@@ -75,8 +76,6 @@ private:
 
     bool StatsUploadScheduled = false;
 
-    std::shared_ptr<NCloud::NStorage::NUserStats::IUserCounterSupplier> UserCounters;
-
     TBackgroundBandwidth BackgroundBandwidth;
 
 public:
@@ -94,23 +93,12 @@ public:
 private:
     void RegisterCounters(const NActors::TActorContext& ctx);
 
-    void RegisterIsLocalMountCounter(
-        NMonitoring::TDynamicCounterPtr& counters,
+    void RegisterServiceVolumeCounters(
+        const NMonitoring::TDynamicCounterPtr& counters,
         TVolumeStatsInfo& volume);
 
-    void UnregisterIsLocalMountCounter(
-        NMonitoring::TDynamicCounterPtr& counters,
-        TVolumeStatsInfo& volume);
-
-    void RegisterVolumeSelfCounters(
-        std::shared_ptr<NUserCounter::IUserCounterSupplier> userCounters,
-        NMonitoring::TDynamicCounterPtr& counters,
-        TVolumeStatsInfo& volume);
-
-    void UnregisterVolumeSelfCounters(
-        std::shared_ptr<NUserCounter::IUserCounterSupplier> userCounters,
-        NMonitoring::TDynamicCounterPtr& counters,
-        const TString& diskId,
+    void UnregisterServiceVolumeCounters(
+        const NMonitoring::TDynamicCounterPtr& counters,
         TVolumeStatsInfo& volume);
 
     void ScheduleCountersUpdate(const NActors::TActorContext& ctx);
