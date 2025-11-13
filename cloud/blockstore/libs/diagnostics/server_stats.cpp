@@ -41,7 +41,7 @@ TString Capitalize(TString str)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TServerStats
+class TServerStats final
     : public IServerStats
 {
     class TMonPage;
@@ -256,7 +256,7 @@ void TServerStats::UnmountVolume(
     const TString& diskId,
     const TString& clientId)
 {
-    return VolumeStats->UnmountVolume(diskId, clientId);
+    VolumeStats->UnmountVolume(diskId, clientId);
 }
 
 void TServerStats::AlterVolume(
@@ -264,7 +264,7 @@ void TServerStats::AlterVolume(
     const TString& cloudId,
     const TString& folderId)
 {
-    return VolumeStats->AlterVolume(diskId, cloudId, folderId);
+    VolumeStats->AlterVolume(diskId, cloudId, folderId);
 }
 
 ui32 TServerStats::GetBlockSize(const TString& diskId) const
