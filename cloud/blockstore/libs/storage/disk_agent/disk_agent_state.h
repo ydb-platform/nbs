@@ -219,6 +219,10 @@ private:
         const THashSet<TString>& lostDevicesIds) const;
 
     void CheckIfDeviceIsDisabled(const TString& uuid, const TString& clientId);
+
+    TDiskAgentConfigPtr CreateConfigForAttachValidation(
+        const TVector<TString>& paths,
+        const TVector<NProto::TDeviceConfig>& devices);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

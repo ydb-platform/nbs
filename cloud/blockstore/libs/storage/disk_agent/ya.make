@@ -18,6 +18,7 @@ SRCS(
     disk_agent_actor_waitready.cpp
     disk_agent_actor.cpp
     disk_agent_counters.cpp
+    disk_agent_state_attach_detach_path.cpp
     disk_agent_state.cpp
     disk_agent.cpp
     hash_table_storage.cpp

@@ -39,6 +39,8 @@ NThreading::TFuture<TInitializeStorageResult> InitializeStorage(
     TStorageConfigPtr storageConfig,
     TDiskAgentConfigPtr agentConfig,
     IStorageProviderPtr storageProvider,
-    NNvme::INvmeManagerPtr nvmeManager);
+    NNvme::INvmeManagerPtr nvmeManager,
+    TVector<TString> pathsFilter = {},
+    bool isAttachOperation = false);
 
 }   // namespace NCloud::NBlockStore::NStorage
