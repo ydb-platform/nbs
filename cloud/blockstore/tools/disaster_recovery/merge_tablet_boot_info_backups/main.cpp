@@ -41,13 +41,14 @@ bool LoadTabletBootInfoBackup(
     }
 
     TFile file(backupPath, OpenExisting | RdOnly | Seq);
-    TUnbufferedFileInput input(file);
+    TString fileContent = TUnbufferedFileInput(file).ReadAll();
+    auto input = TStringInput(fileContent);
 
     return TryMergeFromTextFormat(
                input,
                *backupProto,
                EParseFromTextFormatOption::AllowUnknownField) ||
-           backupProto->MergeFromString(input.ReadAll());
+           backupProto->MergeFromString(fileContent);
 }
 
 void ProcessDir(
