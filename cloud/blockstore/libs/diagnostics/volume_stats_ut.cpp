@@ -291,86 +291,143 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             EVolumeStatsType::EServerStats,
             Timer);
 
+        // Mount:
+        //    volume1(client1 + instance1)
+        //    volume2(client2 + instance2)
         Mount(
             volumeStats,
-            "test1",
+            "volume1",
             "client1",
             "instance1",
             NCloud::NProto::STORAGE_MEDIA_SSD);
 
         Mount(
             volumeStats,
-            "test2",
+            "volume2",
             "client2",
             "instance2",
             NCloud::NProto::STORAGE_MEDIA_SSD);
 
         UNIT_ASSERT(counters
             ->GetSubgroup("host", "cluster")
-            ->GetSubgroup("volume", "test1")
+            ->GetSubgroup("volume", "volume1")
             ->GetSubgroup("instance", "instance1")
             ->GetSubgroup("cloud", DefaultCloudId)
             ->FindSubgroup("folder", DefaultFolderId));
 
         UNIT_ASSERT(counters
             ->GetSubgroup("host", "cluster")
-            ->GetSubgroup("volume", "test2")
+            ->GetSubgroup("volume", "volume2")
             ->GetSubgroup("instance", "instance2")
             ->GetSubgroup("cloud", DefaultCloudId)
             ->FindSubgroup("folder", DefaultFolderId));
 
+        // Since the timeout has not expired, both clients remain connected.
         Timer->AdvanceTime(inactivityTimeout * 0.5);
         volumeStats->TrimVolumes();
 
+        // Mount new client to volume2 (client3 + instance3)
         Mount(
             volumeStats,
-            "test2",
+            "volume2",
             "client3",
-            "instance1",
+            "instance3",
             NCloud::NProto::STORAGE_MEDIA_SSD);
 
+        // All three clients send metrics.
         UNIT_ASSERT(counters
             ->GetSubgroup("host", "cluster")
-            ->GetSubgroup("volume", "test1")
+            ->GetSubgroup("volume", "volume1")
             ->GetSubgroup("instance", "instance1")
             ->GetSubgroup("cloud", DefaultCloudId)
             ->FindSubgroup("folder", DefaultFolderId));
 
         UNIT_ASSERT(counters
             ->GetSubgroup("host", "cluster")
-            ->GetSubgroup("volume", "test2")
+            ->GetSubgroup("volume", "volume2")
             ->GetSubgroup("instance", "instance2")
             ->GetSubgroup("cloud", DefaultCloudId)
             ->FindSubgroup("folder", DefaultFolderId));
 
         UNIT_ASSERT(counters
             ->GetSubgroup("host", "cluster")
-            ->GetSubgroup("volume", "test2")
-            ->GetSubgroup("instance", "instance1")
+            ->GetSubgroup("volume", "volume2")
+            ->GetSubgroup("instance", "instance3")
             ->GetSubgroup("cloud", DefaultCloudId)
             ->FindSubgroup("folder", DefaultFolderId));
 
+        // Since the timeout for the first two clients has expired, only the new
+        // client sends the metrics.
         Timer->AdvanceTime(inactivityTimeout * 0.6);
         volumeStats->TrimVolumes();
 
         UNIT_ASSERT(!counters
             ->GetSubgroup("host", "cluster")
-            ->GetSubgroup("volume", "test1")
-            ->GetSubgroup("instance", "instance1")
-            ->GetSubgroup("cloud", DefaultCloudId)
-            ->FindSubgroup("folder", DefaultFolderId));
+            ->FindSubgroup("volume", "volume1"));
 
         UNIT_ASSERT(!counters
             ->GetSubgroup("host", "cluster")
-            ->GetSubgroup("volume", "test2")
-            ->GetSubgroup("instance", "instance2")
+            ->GetSubgroup("volume", "volume2")
+            ->FindSubgroup("instance", "instance2"));
+
+        UNIT_ASSERT(counters
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "volume2")
+            ->GetSubgroup("instance", "instance3")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->FindSubgroup("folder", DefaultFolderId));
+
+        // Mount new copied disk volume2-copy (client4 + instance4)
+        Mount(
+            volumeStats,
+            "volume2-copy",
+            "client4",
+            "instance4",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        // Since the timeout has not expired, both clients remain connected.
+        Timer->AdvanceTime(inactivityTimeout * 0.3);
+        volumeStats->TrimVolumes();
+
+        UNIT_ASSERT(counters
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "volume2")
+            ->GetSubgroup("instance", "instance3")
             ->GetSubgroup("cloud", DefaultCloudId)
             ->FindSubgroup("folder", DefaultFolderId));
 
         UNIT_ASSERT(counters
             ->GetSubgroup("host", "cluster")
-            ->GetSubgroup("volume", "test2")
-            ->GetSubgroup("instance", "instance1")
+            ->GetSubgroup("volume", "volume2") // volume2-copy -> volume2
+            ->GetSubgroup("instance", "instance4")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->FindSubgroup("folder", DefaultFolderId));
+
+        // Timeout for instance3 expired.
+        Timer->AdvanceTime(inactivityTimeout * 0.3);
+        volumeStats->TrimVolumes();
+
+        UNIT_ASSERT(!counters
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "volume2")
+            ->GetSubgroup("instance", "instance3")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->FindSubgroup("folder", DefaultFolderId));
+
+        UNIT_ASSERT(counters
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "volume2") // volume2-copy -> volume2
+            ->GetSubgroup("instance", "instance4")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->FindSubgroup("folder", DefaultFolderId));
+
+        // Timeout for instance4 expired.
+        Timer->AdvanceTime(inactivityTimeout * 0.5);
+        volumeStats->TrimVolumes();
+        UNIT_ASSERT(!counters
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "volume2") // volume2-copy -> volume2
+            ->GetSubgroup("instance", "instance4")
             ->GetSubgroup("cloud", DefaultCloudId)
             ->FindSubgroup("folder", DefaultFolderId));
     }
