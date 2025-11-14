@@ -2164,7 +2164,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             NvmeManager,
             nullptr,   // rdmaTargetConfig
             TOldRequestCounters(),
-            nullptr   // multiAgentWriteHandler
+            nullptr,   // multiAgentWriteHandler
+            nullptr    // backgroundThreadPool
         );
 
         auto future = state.Initialize();
