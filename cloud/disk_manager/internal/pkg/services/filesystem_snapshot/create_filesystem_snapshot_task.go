@@ -15,7 +15,7 @@ type createFilesystemSnapshotTask struct {
 }
 
 func (t *createFilesystemSnapshotTask) Save() ([]byte, error) {
-	return nil, nil
+	return []byte{}, nil
 }
 
 func (t *createFilesystemSnapshotTask) Load(request, state []byte) error {

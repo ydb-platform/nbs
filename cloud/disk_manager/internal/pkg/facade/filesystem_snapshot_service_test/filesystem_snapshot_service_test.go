@@ -33,4 +33,14 @@ func TestCreateFilesystemSnapshot(t *testing.T) {
 	require.NotNil(t, operation)
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
+	operation, err = client.DeleteFilesystemSnapshot(
+		reqCtx,
+		&disk_manager.DeleteFilesystemSnapshotRequest{
+			FilesystemSnapshotId: "test-filesystem-snapshot-id",
+		},
+	)
+	require.NoError(t, err)
+	require.NotNil(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
 }
