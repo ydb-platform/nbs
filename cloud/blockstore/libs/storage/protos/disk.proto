@@ -1847,3 +1847,29 @@ message TGetClusterCapacityResponse
     // List of capacities.
     repeated TClusterCapacityInfo Capacity = 2;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// DetachPath
+
+message TDetachPathRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // List of paths we want to detach.
+    repeated string PathsToDetach = 2;
+
+    // Monotonously increasing counters needed to order attach/detach
+    // paths requests from one generation of DR tablet.
+    uint64 DiskAgentGeneration = 3;
+
+    // Disk Registry Tablet generation needed to order attach/detach path
+    // requests sent from two different DR generations.
+    uint32 DiskRegistryGeneration = 4;
+}
+
+message TDetachPathResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}

@@ -94,6 +94,9 @@ IOutputStream& DumpDeviceState(
     if (flags & EDeviceStateFlags::LAGGING) {
         out << " [<font color=Purple>lagging</font>]";
     }
+    if (flags & EDeviceStateFlags::DETACHED) {
+        out << " [<font color=Black>detached</font>]";
+    }
     return out;
 }
 

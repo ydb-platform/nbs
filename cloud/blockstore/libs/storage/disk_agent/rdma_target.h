@@ -52,6 +52,7 @@ struct TRdmaTargetConfig
 
 using TRdmaTargetConfigPtr = std::shared_ptr<TRdmaTargetConfig>;
 
+using TStorageAdapterPtr = std::shared_ptr<TStorageAdapter>;
 struct IRdmaTarget: IStartable
 {
     virtual NProto::TError DeviceSecureEraseStart(
@@ -59,9 +60,10 @@ struct IRdmaTarget: IStartable
     virtual void DeviceSecureEraseFinish(
         const TString& deviceUUID,
         const NProto::TError& error) = 0;
+
+    virtual void DetachDevice(const TString& deviceUUID) = 0;
 };
 
-using TStorageAdapterPtr = std::shared_ptr<TStorageAdapter>;
 using IRdmaTargetPtr = std::shared_ptr<IRdmaTarget>;
 
 IRdmaTargetPtr CreateRdmaTarget(

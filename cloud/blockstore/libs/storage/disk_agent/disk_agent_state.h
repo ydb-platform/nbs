@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_guard.h>
+#include <cloud/blockstore/libs/storage/disk_common/monitoring_utils.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -38,6 +39,17 @@ private:
         std::shared_ptr<TStorageAdapter> StorageAdapter;
 
         TStorageIoStatsPtr Stats;
+
+        bool IsOpen() const
+        {
+            return StorageAdapter != nullptr;
+        }
+    };
+
+    enum class EPathAttachState
+    {
+        Attached,
+        Detached,
     };
 
 private:
@@ -66,6 +78,12 @@ private:
     TRdmaTargetConfigPtr RdmaTargetConfig;
     TOldRequestCounters OldRequestCounters;
 
+    ui32 LastDiskRegistryGenerationSeen = 0;
+    THashMap<TString, EPathAttachState> PathAttachStates;
+    ui64 DiskAgentGeneration = 0;
+
+    ITaskQueuePtr BackgroundThreadPool;
+
 public:
     TDiskAgentState(
         TStorageConfigPtr storageConfig,
@@ -80,7 +98,8 @@ public:
         NNvme::INvmeManagerPtr nvmeManager,
         TRdmaTargetConfigPtr rdmaTargetConfig,
         TOldRequestCounters oldRequestCounters,
-        IMultiAgentWriteHandlerPtr multiAgentWriteHandler);
+        IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
+        ITaskQueuePtr backgroundThreadPool);
 
     struct TInitializeResult
     {
@@ -161,6 +180,9 @@ public:
     void SuspendDevice(const TString& uuid);
     void EnableDevice(const TString& uuid);
     bool IsDeviceDisabled(const TString& uuid) const;
+    bool IsDeviceAttached(const TString& uuid) const;
+    bool IsPathAttached(const TString& path) const;
+    ui64 GetDiskAgentGeneration() const;
     bool IsDeviceSuspended(const TString& uuid) const;
     void ReportDisabledDeviceError(const TString& uuid);
 
@@ -168,6 +190,13 @@ public:
 
     void SetPartiallySuspended(bool partiallySuspended);
     bool GetPartiallySuspended() const;
+
+    TVector<TString> GetAllDeviceUUIDsForPath(const TString& path);
+
+    NThreading::TFuture<NProto::TError> DetachPath(
+        ui64 diskRegistryGeneration,
+        ui64 diskAgentGeneration,
+        const TVector<TString>& paths);
 
 private:
     const TDeviceState& GetDeviceState(
@@ -209,6 +238,26 @@ private:
         const THashSet<TString>& lostDevicesIds) const;
 
     void CheckIfDeviceIsDisabled(const TString& uuid, const TString& clientId);
+
+    NProto::TError CheckDiskRegistryGenerationAndUpdateItIfNeeded(
+        ui64 diskRegistryGeneration);
+
+    struct TCheckCanAttachDetachPathResult
+    {
+        TVector<TString> AlreadyAttachedDetachedPaths;
+        TVector<TString> PathsToAttachDetach;
+    };
+
+    TResultOrError<TCheckCanAttachDetachPathResult> CheckCanAttachDetachPath(
+        ui64 diskRegistryGeneration,
+        ui64 diskAgentGeneration,
+        const TVector<TString>& paths,
+        bool attach);
+
+    TResultOrError<TCheckCanAttachDetachPathResult> CheckCanDetachPath(
+        ui64 diskRegistryGeneration,
+        ui64 diskAgentGeneration,
+        const TVector<TString>& paths);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -38,6 +38,8 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
+#include <cloud/storage/core/libs/common/task_queue.h>
+#include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/daemon/mlock.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
@@ -268,6 +270,7 @@ void TBootstrap::Init()
 
     Timer = CreateWallClockTimer();
     Scheduler = CreateScheduler();
+    BackgroundThreadPool = CreateThreadPool("Background", 1);
 
     if (!InitKikimrService()) {
         InitHTTPServer();
@@ -541,6 +544,7 @@ bool TBootstrap::InitKikimrService()
     args.Logging = logging;
     args.NvmeManager = NvmeManager;
     args.StatsFetcher = StatsFetcher;
+    args.BackgroundThreadPool = BackgroundThreadPool;
 
     ActorSystem = NStorage::CreateDiskAgentActorSystem(args);
 
@@ -646,6 +650,7 @@ void TBootstrap::Start()
     }                                                                          \
 // START_COMPONENT
 
+    START_COMPONENT(BackgroundThreadPool);
     START_COMPONENT(AsyncLogger);
     START_COMPONENT(Logging);
     START_COMPONENT(StatsFetcher);
@@ -705,6 +710,7 @@ void TBootstrap::Stop()
     STOP_COMPONENT(StatsFetcher);
     STOP_COMPONENT(Logging);
     STOP_COMPONENT(AsyncLogger);
+    STOP_COMPONENT(BackgroundThreadPool);
 
 #undef STOP_COMPONENT
 }

@@ -309,6 +309,22 @@ public:
         return request;
     }
 
+    auto CreateDetachPathRequest(
+        ui64 drGeneration,
+        ui64 daGeneration,
+        const TVector<TString>& paths)
+    {
+        auto request = std::make_unique<TEvDiskAgent::TEvDetachPathRequest>();
+        request->Record.SetDiskRegistryGeneration(drGeneration);
+        request->Record.SetDiskAgentGeneration(daGeneration);
+
+        for (const auto& path: paths) {
+            request->Record.AddPathsToDetach(path);
+        }
+
+        return request;
+    }
+
 #define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
     template <typename... Args>                                                \
     void Send##name##Request(Args&&... args)                                   \

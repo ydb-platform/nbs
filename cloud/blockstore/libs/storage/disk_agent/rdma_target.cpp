@@ -26,6 +26,8 @@
 #include <util/generic/hash.h>
 #include <util/generic/list.h>
 
+#include <utility>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NThreading;
@@ -100,7 +102,8 @@ struct TThreadSafeData: public TSynchronized<TSynchronizedData, TAdaptiveLock>
 
 struct TDeviceData
 {
-    const TStorageAdapterPtr Device;
+    std::unique_ptr<TRWMutex> DeviceMutex = std::make_unique<TRWMutex>();
+    TStorageAdapterPtr Device;
     mutable TThreadSafeData ThreadSafeData;
 };
 
@@ -138,7 +141,8 @@ private:
     using TMultiAgentWriteDeviceBlocksResponse =
         TEvDiskAgentPrivate::TMultiAgentWriteDeviceBlocksResponse;
 
-    const THashMap<TString, TDeviceData> Devices;
+    THashMap<TString, TDeviceData> Devices;
+
     const ITaskQueuePtr TaskQueue;
 
     mutable TLogThrottler LogThrottler{LOG_THROTTLER_PERIOD};
@@ -244,6 +248,16 @@ public:
         token->RecentBlocksTracker.Reset();
     }
 
+    void DetachDevice(const TString& deviceUUID)
+    {
+        auto* d = Devices.FindPtr(deviceUUID);
+        if (!d) {
+            return;
+        }
+        TWriteGuard guard(*d->DeviceMutex);
+        d->Device.reset();
+    }
+
 private:
     NProto::TError DoHandleRequest(
         void* context,
@@ -319,7 +333,10 @@ private:
                     << "] Device disabled. Drop request.");
 
             if (const auto* deviceData = Devices.FindPtr(uuid)) {
-                deviceData->Device->ReportIOError();
+                TReadGuard guard(*deviceData->DeviceMutex);
+                if (deviceData->Device) {
+                    deviceData->Device->ReportIOError();
+                }
             }
         } else {
             STORAGE_TRACE_T(
@@ -350,7 +367,15 @@ private:
             ythrow TServiceError(E_NOT_FOUND);
         }
 
-        return it->second.Device;
+        TReadGuard guard(*it->second.DeviceMutex);
+
+        auto device = it->second.Device;
+
+        if (!device) {
+            ythrow TServiceError(E_REJECTED) << "device detached";
+        }
+
+        return device;
     }
 
     TThreadSafeData::TAccess GetAccessToken(const TString& uuid) const
@@ -1185,6 +1210,11 @@ public:
         const NProto::TError& error) override
     {
         Handler->DeviceSecureEraseFinish(deviceUUID, error);
+    }
+
+    void DetachDevice(const TString& deviceUUID) override
+    {
+        Handler->DetachDevice(deviceUUID);
     }
 };
 
