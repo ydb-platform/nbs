@@ -153,6 +153,11 @@ message TReadDataRequest
 
     // Number of bytes to read.
     uint64 Length = 6;
+
+    // Vector I/O data structure
+    // Data can be passed via Iovecs instead of Buffer to avoid excess copy
+    // Caller should ensure that total Length of Iovecs is at least Length
+    repeated TIovec Iovecs = 7;
 }
 
 message TReadDataResponse
@@ -165,6 +170,11 @@ message TReadDataResponse
 
     // Bytes read start at buffer offset.
     uint32 BufferOffset = 3;
+
+    // Size of the data read. Usually it is possible to get it from
+    // Buffer.size() - BufferOffset, but when using Iovecs, we should explicitly
+    // return the length of the data read.
+    uint64 Length = 4;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;

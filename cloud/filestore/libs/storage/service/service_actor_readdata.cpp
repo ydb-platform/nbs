@@ -98,6 +98,10 @@ private:
         const TEvService::TEvReadDataResponse::TPtr& ev,
         const TActorContext& ctx);
 
+    void MoveBufferToIovecsIfNeeded(
+        const TActorContext& ctx,
+        NProto::TReadDataResponse& response);
+
     void ReplyAndDie(const TActorContext& ctx);
     void HandleError(const TActorContext& ctx, const NProto::TError& error);
 };
@@ -524,6 +528,10 @@ void TReadDataActor::ReadData(
     request->Record = std::move(ReadRequest);
     request->Record.MutableHeaders()->SetThrottlingDisabled(true);
 
+    // Original iovecs should be preserved in this request and pruned during
+    // this forwarding on the tablet side
+    ReadRequest.MutableIovecs()->Swap(request->Record.MutableIovecs());
+
     // forward request through tablet proxy
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
 }
@@ -547,8 +555,59 @@ void TReadDataActor::HandleReadDataResponse(
 
     auto response = std::make_unique<TEvService::TEvReadDataResponse>();
     response->Record = std::move(msg->Record);
+
+    MoveBufferToIovecsIfNeeded(ctx, response->Record);
+
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TReadDataActor::MoveBufferToIovecsIfNeeded(
+    const TActorContext& ctx,
+    NProto::TReadDataResponse& response)
+{
+    // TODO(#4664): replace this with proper zero-copy iovec handling
+    if (ReadRequest.GetIovecs().empty()) {
+        return;
+    }
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "%s copying data to target iovecs",
+        LogTag.c_str());
+    auto currentOffset = response.GetBufferOffset();
+    for (const auto& iovec: ReadRequest.GetIovecs()) {
+        if (currentOffset >= response.GetBuffer().size()) {
+            break;
+        }
+        auto dataToWrite =
+            Min(iovec.GetLength(), response.GetBuffer().size() - currentOffset);
+        if (dataToWrite > 0) {
+            char* targetData = reinterpret_cast<char*>(iovec.GetBase());
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "%s copying %lu bytes to iovec at offset %lu to the target "
+                "address "
+                "%p",
+                LogTag.c_str(),
+                dataToWrite,
+                currentOffset,
+                targetData);
+            memcpy(
+                targetData,
+                response.GetBuffer().data() + currentOffset,
+                dataToWrite);
+            currentOffset += dataToWrite;
+        }
+    }
+    response.SetLength(
+        response.GetBuffer().size() - response.GetBufferOffset());
+    response.ClearBuffer();
+    response.SetBufferOffset(0);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -601,6 +660,8 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
         response->Record.set_allocated_buffer(BlockBuffer.release());
         response->Record.SetBufferOffset(bufferOffset);
     }
+
+    MoveBufferToIovecsIfNeeded(ctx, response->Record);
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
@@ -691,7 +752,23 @@ void TStorageServiceActor::HandleReadData(
         msg->Record.SetFileSystemId(fsId);
     }
 
-    if (!IsTwoStageReadEnabled(filestore)) {
+    if (msg->Record.IovecsSize() > 0) {
+        ui64 totalIovecLength = 0;
+        for (const auto& iovec: msg->Record.GetIovecs()) {
+            totalIovecLength += iovec.GetLength();
+        }
+        if (totalIovecLength < msg->Record.GetLength()) {
+            auto response = std::make_unique<TEvService::TEvReadDataResponse>(
+                ErrorInvalidArgument(Sprintf("Total iovec length %lu is less than requested read length %lu",
+                    totalIovecLength, msg->Record.GetLength())));
+            return NCloud::Reply(ctx, *ev, std::move(response));
+        }
+    }
+
+    // Iovecs are supported only in two-stage read mode for the sake of
+    // simplicity
+    // TODO(#4664): consider supporting iovecs in single-stage read mode as well
+    if (!IsTwoStageReadEnabled(filestore) && msg->Record.IovecsSize() == 0) {
         // If two-stage read is disabled, forward the request to the tablet in
         // the same way as all other requests.
         ForwardRequest<TEvService::TReadDataMethod>(ctx, ev);
