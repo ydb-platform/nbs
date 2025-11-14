@@ -59,7 +59,7 @@ class AccessService:
                     logger.info("ping attempt %i failed: %s" % (attempts, e))
                     attempts += 1
 
-                    if attempts == 10:
+                    if attempts == 100:
                         raise
 
                     time.sleep(1)
