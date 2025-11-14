@@ -9,6 +9,7 @@ import "cloud/filestore/public/api/protos/fs.proto";
 import "cloud/filestore/public/api/protos/locks.proto";
 import "cloud/filestore/public/api/protos/node.proto";
 import "cloud/filestore/public/api/protos/ping.proto";
+import "cloud/filestore/public/api/protos/server.proto";
 import "cloud/filestore/public/api/protos/session.proto";
 
 import "google/api/annotations.proto";
@@ -392,6 +393,31 @@ service TFileStoreService
     rpc ExecuteAction(TExecuteActionRequest) returns (TExecuteActionResponse) {
         option (google.api.http) = {
             post: "/execute_action"
+            body: "*"
+        };
+    }
+
+    //
+    // Shared memory transport (server-only).
+    //
+
+    rpc Mmap(TMmapRequest) returns (TMmapResponse) {
+        option (google.api.http) = {
+            post: "/mmap"
+            body: "*"
+        };
+    }
+
+    rpc Munmap(TMunmapRequest) returns (TMunmapResponse) {
+        option (google.api.http) = {
+            post: "/munmap"
+            body: "*"
+        };
+    }
+
+    rpc ListMmapRegions(TListMmapRegionsRequest) returns (TListMmapRegionsResponse) {
+        option (google.api.http) = {
+            post: "/list_mmap_regions"
             body: "*"
         };
     }
