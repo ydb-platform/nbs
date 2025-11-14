@@ -33,6 +33,8 @@ func TestCreateFilesystemSnapshot(t *testing.T) {
 	require.NotNil(t, operation)
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
+
+	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.DeleteFilesystemSnapshot(
 		reqCtx,
 		&disk_manager.DeleteFilesystemSnapshotRequest{

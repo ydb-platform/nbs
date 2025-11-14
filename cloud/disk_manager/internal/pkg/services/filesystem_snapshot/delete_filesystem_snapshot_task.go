@@ -15,7 +15,7 @@ type deleteFilesystemSnapshotTask struct {
 }
 
 func (t *deleteFilesystemSnapshotTask) Save() ([]byte, error) {
-	return nil, nil
+	return []byte{}, nil
 }
 
 func (t *deleteFilesystemSnapshotTask) Load(request, state []byte) error {
