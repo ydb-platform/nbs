@@ -165,7 +165,6 @@ public:
         TTestActorRuntimeBase& runtime,
         const TVector<std::pair<ui32, ui32>>& eventOrders,
         TTestActorRuntimeBase::TEventFilter baseFilter = nullptr)
-        : Runtime(&runtime)
     {
         for (const auto& [prerequisiteEvent, dependentEvent]: eventOrders) {
             EventDependencies[dependentEvent] = prerequisiteEvent;
@@ -175,7 +174,7 @@ public:
         runtime.SetObserverFunc(
             [this](TAutoPtr<IEventHandle>& ev) -> auto
             {
-                if (!ev || !Runtime) {
+                if (!ev) {
                     return TTestActorRuntimeBase::EEventAction::PROCESS;
                 }
 
@@ -224,7 +223,6 @@ public:
     }
 
 private:
-    TTestActorRuntimeBase* Runtime = nullptr;
     THashMap<ui32, ui32> EventDependencies;
     THashSet<ui32> PrerequisiteEvents;
     THashMap<TActorId, THashSet<ui32>> ProcessedEvents;
