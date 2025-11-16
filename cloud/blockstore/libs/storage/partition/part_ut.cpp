@@ -158,6 +158,91 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TActorExecutionOrderController
+{
+public:
+    TActorExecutionOrderController(
+        TTestActorRuntimeBase& runtime,
+        const TVector<std::pair<ui32, ui32>>& eventOrders,
+        TTestActorRuntimeBase::TEventFilter baseFilter = nullptr)
+        : Runtime(&runtime)
+    {
+        for (const auto& [prerequisiteEvent, dependentEvent]: eventOrders) {
+            EventDependencies[dependentEvent] = prerequisiteEvent;
+            PrerequisiteEvents.insert(prerequisiteEvent);
+        }
+
+        runtime.SetObserverFunc(
+            [this](TAutoPtr<IEventHandle>& ev) -> auto
+            {
+                if (!ev || !Runtime) {
+                    return TTestActorRuntimeBase::EEventAction::PROCESS;
+                }
+
+                ui32 eventType = ev->GetTypeRewrite();
+                TActorId recipient = ev->GetRecipientRewrite();
+
+                auto depIt = EventDependencies.find(eventType);
+                if (depIt != EventDependencies.end()) {
+                    ui32 prerequisiteEvent = depIt->second;
+                    if (!IsEventProcessed(recipient, prerequisiteEvent)) {
+                        return TTestActorRuntimeBase::EEventAction::RESCHEDULE;
+                    }
+                }
+
+                for (const auto& [_, prerequisiteEvent]: EventDependencies) {
+                    if (eventType == prerequisiteEvent) {
+                        MarkEventProcessed(recipient, eventType);
+                        break;
+                    }
+                }
+
+                return TTestActorRuntimeBase::EEventAction::PROCESS;
+            });
+
+        runtime.SetEventFilter(
+            [this, baseFilter](
+                TTestActorRuntimeBase& rt,
+                TAutoPtr<IEventHandle>& ev) -> bool
+            {
+                if (!ev) {
+                    return baseFilter ? baseFilter(rt, ev) : false;
+                }
+
+                TActorId recipient = ev->GetRecipientRewrite();
+                ui32 eventType = ev->GetTypeRewrite();
+
+                if (PrerequisiteEvents.contains(eventType)) {
+                    if (!ProcessedEvents[recipient].contains(eventType)) {
+                        rt.PushFront(ev);
+                        return true;
+                    }
+                }
+
+                return baseFilter ? baseFilter(rt, ev) : false;
+            });
+    }
+
+private:
+    TTestActorRuntimeBase* Runtime = nullptr;
+    THashMap<ui32, ui32> EventDependencies;
+    THashSet<ui32> PrerequisiteEvents;
+    THashMap<TActorId, THashSet<ui32>> ProcessedEvents;
+
+    bool IsEventProcessed(TActorId actorId, ui32 eventType) const
+    {
+        auto it = ProcessedEvents.find(actorId);
+        return it != ProcessedEvents.end() && it->second.contains(eventType);
+    }
+
+    void MarkEventProcessed(TActorId actorId, ui32 eventType)
+    {
+        ProcessedEvents[actorId].insert(eventType);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 void InitTestActorRuntime(
     TTestActorRuntime& runtime,
     const NProto::TStorageServiceConfig& config,
