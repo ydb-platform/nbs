@@ -225,6 +225,33 @@ def test_ls():
     return ret
 
 
+def test_ls_max_bytes():
+    client, results_path = __init_test()
+    client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
+
+    for i in range(200):
+        client.touch("fs0", f"/file_{i:03d}")
+
+    out = client.ls("fs0", "/", "--max-bytes", "10", "--limit", "1")
+    out += client.ls("fs0", "/", "--max-bytes", "100", "--limit", "10")
+    out += client.ls("fs0", "/", "--max-bytes", "1", "--all")
+
+    # replace timestamps with a constant value
+    out = re.sub(
+        rb"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)",
+        b"1970-01-01T00:00:00Z",
+        out,
+    )
+
+    client.destroy("fs0")
+
+    with open(results_path, "wb") as results_file:
+        results_file.write(out)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret
+
+
 def test_find():
     client, results_path = __init_test()
     client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
