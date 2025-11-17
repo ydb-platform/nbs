@@ -61,8 +61,15 @@ type Client interface {
 		nodeID uint64,
 	) error
 
+	DestroyCheckpoint(
+		ctx context.Context,
+		filesystemID string,
+		checkpointID string,
+	) error
+
 	CreateSession(
 		ctx context.Context,
+		checkpointID string,
 		fileSystemID string,
 		readonly bool,
 	) (Session, error)

@@ -252,13 +252,27 @@ func (c *client) CreateCheckpoint(
 	)
 }
 
+func (c *client) DestroyCheckpoint(
+	ctx context.Context,
+	filesystemID string,
+	checkpointID string,
+) error {
+
+	return c.nfs.DestroyCheckpoint(
+		ctx,
+		filesystemID,
+		checkpointID,
+	)
+}
+
 func (c *client) CreateSession(
 	ctx context.Context,
 	fileSystemID string,
+	checkpointID string,
 	readonly bool,
 ) (Session, error) {
 
-	session, err := c.nfs.CreateSession(ctx, fileSystemID, readonly)
+	session, err := c.nfs.CreateSession(ctx, fileSystemID, checkpointID, readonly)
 	return Session(session), wrapError(err)
 }
 
