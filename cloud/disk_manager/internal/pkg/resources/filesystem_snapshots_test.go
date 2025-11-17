@@ -314,9 +314,15 @@ func TestClearDeletedFilesystemSnapshots(t *testing.T) {
 
 	storage := newStorage(t, ctx, db)
 
+	err = storage.ClearDeletedFilesystemSnapshots(
+		ctx,
+		time.Now().Add(-time.Hour),
+		10,
+	)
+	require.NoError(t, err)
+
 	const checkpointID = "checkpoint"
-	filesystemSnapshot := FilesystemSnapshotMeta{
-		ID:       "fs-snapshot",
+	filesystemSnapshotTemplate := FilesystemSnapshotMeta{
 		FolderID: "folder",
 		Filesystem: &types.Filesystem{
 			FilesystemId: "fs",
@@ -329,4 +335,99 @@ func TestClearDeletedFilesystemSnapshots(t *testing.T) {
 		CreateTaskID: "create",
 		CreatingAt:   time.Now(),
 	}
+	creatingSnapshot := filesystemSnapshotTemplate
+	creatingSnapshot.ID = "creating-snapshot"
+	_, err = storage.CreateFilesystemSnapshot(ctx, creatingSnapshot)
+	require.NoError(t, err)
+
+	createdSnapshot := filesystemSnapshotTemplate
+	createdSnapshot.ID = "created-snapshot"
+	_, err = storage.CreateFilesystemSnapshot(ctx, createdSnapshot)
+	require.NoError(t, err)
+	err = storage.SnapshotCreated(
+		ctx,
+		createdSnapshot.ID,
+		checkpointID,
+		time.Now(),
+		0,
+		0,
+	)
+	require.NoError(t, err)
+
+	deletingSnapshot := filesystemSnapshotTemplate
+	deletingSnapshot.ID = "deleting-snapshot"
+	_, err = storage.CreateFilesystemSnapshot(ctx, deletingSnapshot)
+	require.NoError(t, err)
+	deletingSnapshot.DeleteTaskID = "delete"
+	_, err = storage.DeleteFilesystemSnapshot(
+		ctx,
+		deletingSnapshot.ID,
+		"delete",
+	)
+	require.NoError(t, err)
+
+	deletedSnapshot := filesystemSnapshotTemplate
+	deletedSnapshot.ID = "deleted-snapshot"
+	_, err = storage.CreateFilesystemSnapshot(ctx, deletedSnapshot)
+	require.NoError(t, err)
+	_, err = storage.DeleteFilesystemSnapshot(
+		ctx,
+		deletedSnapshot.ID,
+		"delete",
+		time.Now(),
+	)
+	require.NoError(t, err)
+	err = storage.FilesystemSnapshotDeleted(
+		ctx,
+		deletedSnapshot.ID,
+		time.Now(),
+	)
+	require.NoError(t, err)
+
+	oldDeletedSnapshot := filesystemSnapshotTemplate
+	oldDeletedSnapshot.ID = "old-deleted-snapshot"
+	_, err = storage.CreateFilesystemSnapshot(ctx, oldDeletedSnapshot)
+	require.NoError(t, err)
+	oldDeletedSnapshot.DeleteTaskID = "delete"
+	_, err = storage.DeleteFilesystemSnapshot(
+		ctx,
+		oldDeletedSnapshot.ID,
+		"delete",
+		time.Now().Add(-2*time.Hour),
+	)
+	require.NoError(t, err)
+	err = storage.FilesystemSnapshotDeleted(
+		ctx,
+		oldDeletedSnapshot.ID,
+		time.Now().Add(-2*time.Hour),
+	)
+	require.NoError(t, err)
+	_, err = storage.CreateFilesystemSnapshot(ctx, oldDeletedSnapshot)
+	require.Error(t, err)
+	require.ErrorIs(t, err, errors.NewEmptyNonCancellableError())
+
+	err = storage.ClearDeletedFilesystemSnapshots(
+		ctx,
+		time.Now().Add(-time.Hour),
+		10,
+	)
+	require.NoError(t, err)
+
+	expectedListedSnapshots := []string{
+		creatingSnapshot.ID,
+		createdSnapshot.ID,
+		deletingSnapshot.ID,
+		deletedSnapshot.ID,
+	}
+	listed, err := storage.ListFilesystemSnapshots(
+		ctx,
+		creatingSnapshot.FolderID,
+		time.Now().Add(time.Hour),
+	)
+	require.NoError(t, err)
+	require.ElementsMatch(t, expectedListedSnapshots, listed)
+
+	created, err := storage.CreateFilesystemSnapshot(ctx, oldDeletedSnapshot)
+	require.NoError(t, err)
+	require.Equal(t, oldDeletedSnapshot.ID, created.ID)
 }
