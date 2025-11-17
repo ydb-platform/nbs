@@ -99,6 +99,7 @@ func newResourceStorage(
 		imagesFolder,
 		snapshotsFolder,
 		filesystemsFolder,
+		filesystemSnapshotsFolder,
 		placementGroupsFolder,
 		db,
 		false, // dropUnusedColumns

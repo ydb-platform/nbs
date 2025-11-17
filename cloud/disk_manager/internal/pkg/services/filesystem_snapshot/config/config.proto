@@ -1,0 +1,13 @@
+syntax = "proto2";
+
+package filesystem_snapshot;
+
+import "google/protobuf/duration.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem_snapshot/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message FilesystemSnapshotsConfig {
+    optional string StorageFolder = 1 [default = "filesystem_snapshots"];
+}

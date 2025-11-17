@@ -158,7 +158,6 @@ func filesystemSnapshotStateStructTypeString() string {
 		create_task_id: Utf8,
 		creating_at: Timestamp,
 		created_at: Timestamp,
-		created_by: Utf8,
 		delete_task_id: Utf8,
 		deleting_at: Timestamp,
 		deleted_at: Timestamp,
@@ -178,7 +177,6 @@ func filesystemSnapshotStateTableDescription() persistence.CreateTableDescriptio
 		persistence.WithColumn("create_task_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("creating_at", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithColumn("created_at", persistence.Optional(persistence.TypeTimestamp)),
-		persistence.WithColumn("created_by", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("delete_task_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("deleting_at", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithColumn("deleted_at", persistence.Optional(persistence.TypeTimestamp)),
@@ -339,6 +337,7 @@ func (s *storageYDB) createFilesystemSnapshot(
 		createTaskID:  snapshot.CreateTaskID,
 		creatingAt:    snapshot.CreatingAt,
 		status:        filesystemSnapshotStatusCreating,
+		checkpointID:  snapshot.CheckpointID,
 	}
 
 	_, err = tx.Execute(ctx, fmt.Sprintf(`

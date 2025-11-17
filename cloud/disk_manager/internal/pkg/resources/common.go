@@ -57,6 +57,7 @@ func CreateYDBTables(
 	imagesFolder string,
 	snapshotsFolder string,
 	filesystemsFolder string,
+	filesystemSnapshotsFolder string,
 	placementGroupsFolder string,
 	db *persistence.YDBClient,
 	dropUnusedColumns bool,
@@ -81,6 +82,18 @@ func CreateYDBTables(
 		err = createFilesystemsYDBTables(
 			ctx,
 			filesystemsFolder,
+			db,
+			dropUnusedColumns,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	if filesystemSnapshotsFolder != "" {
+		err = createFilesystemSnapshotsYDBTables(
+			ctx,
+			filesystemSnapshotsFolder,
 			db,
 			dropUnusedColumns,
 		)

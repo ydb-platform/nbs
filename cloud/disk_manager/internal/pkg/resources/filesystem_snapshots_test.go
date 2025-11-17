@@ -70,7 +70,7 @@ func TestCreateFilesystemSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, filesystemSnapshot.ID, created.ID)
 
-	err = storage.SnapshotCreated(
+	err = storage.FilesystemSnapshotCreated(
 		ctx,
 		filesystemSnapshot.ID,
 		checkpointID,
@@ -81,7 +81,7 @@ func TestCreateFilesystemSnapshot(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check idempotency
-	err = storage.SnapshotCreated(
+	err = storage.FilesystemSnapshotCreated(
 		ctx,
 		filesystemSnapshot.ID,
 		checkpointID,
@@ -136,26 +136,45 @@ func TestDeleteFilesystemSnapshot(t *testing.T) {
 	expected := filesystemSnapshot
 	expected.CreateRequest = nil
 	expected.DeleteTaskID = "delete"
-	actual, err := storage.DeleteFilesystemSnapshot(ctx, filesystemSnapshot.ID, "delete")
+	actual, err := storage.DeleteFilesystemSnapshot(
+		ctx,
+		filesystemSnapshot.ID,
+		"delete",
+		time.Now(),
+	)
 	require.NoError(t, err)
 	requireFilesystemSnapshotsAreEqual(t, expected, *actual)
 
 	// Check idempotency
-	actual, err = storage.DeleteFilesystemSnapshot(ctx, filesystemSnapshot.ID, "delete")
+	actual, err = storage.DeleteFilesystemSnapshot(
+		ctx,
+		filesystemSnapshot.ID,
+		"delete",
+		time.Now(),
+	)
 	require.NoError(t, err)
 	requireFilesystemSnapshotsAreEqual(t, expected, *actual)
 
-	err = storage.FilesystemSnapshotDeleted(ctx, filesystemSnapshot.ID)
+	err = storage.FilesystemSnapshotDeleted(
+		ctx,
+		filesystemSnapshot.ID,
+		time.Now(),
+	)
 	require.NoError(t, err)
 
 	// Check idempotency
-	actual, err = storage.DeleteFilesystemSnapshot(ctx, filesystemSnapshot.ID, "delete")
+	actual, err = storage.DeleteFilesystemSnapshot(
+		ctx,
+		filesystemSnapshot.ID,
+		"delete",
+		time.Now(),
+	)
 	require.NoError(t, err)
 	requireFilesystemSnapshotsAreEqual(t, expected, *actual)
 
 	_, err = storage.CreateFilesystemSnapshot(ctx, filesystemSnapshot)
 	require.Error(t, err)
-	require.ErrorIs(t, err, errors.NewEmptyNonCancellableError())
+	require.ErrorIs(t, err, errors.NewEmptyNonRetriableError())
 
 	err = storage.FilesystemSnapshotCreated(
 		ctx,
@@ -166,7 +185,7 @@ func TestDeleteFilesystemSnapshot(t *testing.T) {
 		0,
 	)
 	require.Error(t, err)
-	require.ErrorIs(t, err, errors.NewEmptyNonCancellableError())
+	require.ErrorIs(t, err, errors.NewEmptyNonRetriableError())
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -213,7 +232,7 @@ func TestDeleteNonexistingFilesystemSnapshot(t *testing.T) {
 		0,
 	)
 	require.Error(t, err)
-	require.ErrorIs(t, err, errors.NewEmptyNonCancellableError())
+	require.ErrorIs(t, err, errors.NewEmptyNonRetriableError())
 
 	err = storage.FilesystemSnapshotDeleted(
 		ctx,
@@ -344,7 +363,7 @@ func TestClearDeletedFilesystemSnapshots(t *testing.T) {
 	createdSnapshot.ID = "created-snapshot"
 	_, err = storage.CreateFilesystemSnapshot(ctx, createdSnapshot)
 	require.NoError(t, err)
-	err = storage.SnapshotCreated(
+	err = storage.FilesystemSnapshotCreated(
 		ctx,
 		createdSnapshot.ID,
 		checkpointID,
@@ -363,6 +382,7 @@ func TestClearDeletedFilesystemSnapshots(t *testing.T) {
 		ctx,
 		deletingSnapshot.ID,
 		"delete",
+		time.Now(),
 	)
 	require.NoError(t, err)
 
@@ -404,7 +424,7 @@ func TestClearDeletedFilesystemSnapshots(t *testing.T) {
 	require.NoError(t, err)
 	_, err = storage.CreateFilesystemSnapshot(ctx, oldDeletedSnapshot)
 	require.Error(t, err)
-	require.ErrorIs(t, err, errors.NewEmptyNonCancellableError())
+	require.ErrorIs(t, err, errors.NewEmptyNonRetriableError())
 
 	err = storage.ClearDeletedFilesystemSnapshots(
 		ctx,
