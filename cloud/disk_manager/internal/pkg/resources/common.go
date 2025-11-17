@@ -17,6 +17,7 @@ type storageYDB struct {
 	imagesPath                      string
 	snapshotsPath                   string
 	filesystemsPath                 string
+	filesystemSnapshotsPath         string
 	placementGroupsPath             string
 	endedMigrationExpirationTimeout time.Duration
 }
@@ -28,17 +29,21 @@ func NewStorage(
 	imagesFolder string,
 	snapshotsFolder string,
 	filesystemsFolder string,
+	filesystemSnapshotsFolder string,
 	placementGroupsPath string,
 	db *persistence.YDBClient,
 	endedMigrationExpirationTimeout time.Duration,
 ) (Storage, error) {
 
 	return &storageYDB{
-		db:                              db,
-		disksPath:                       db.AbsolutePath(disksFolder),
-		imagesPath:                      db.AbsolutePath(imagesFolder),
-		snapshotsPath:                   db.AbsolutePath(snapshotsFolder),
-		filesystemsPath:                 db.AbsolutePath(filesystemsFolder),
+		db:              db,
+		disksPath:       db.AbsolutePath(disksFolder),
+		imagesPath:      db.AbsolutePath(imagesFolder),
+		snapshotsPath:   db.AbsolutePath(snapshotsFolder),
+		filesystemsPath: db.AbsolutePath(filesystemsFolder),
+		filesystemSnapshotsPath: db.AbsolutePath(
+			filesystemSnapshotsFolder,
+		),
 		placementGroupsPath:             db.AbsolutePath(placementGroupsPath),
 		endedMigrationExpirationTimeout: endedMigrationExpirationTimeout,
 	}, nil

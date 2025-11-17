@@ -53,6 +53,10 @@ func newStorage(
 	imagesFolder := fmt.Sprintf("%v/images", t.Name())
 	snapshotsFolder := fmt.Sprintf("%v/snapshots", t.Name())
 	filesystemsFolder := fmt.Sprintf("%v/filesystems", t.Name())
+	filesystemSnapshotsFolder := fmt.Sprintf(
+		"%v/filesystem_snapshots",
+		t.Name(),
+	)
 	placementGroupsFolder := fmt.Sprintf("%v/placement_groups", t.Name())
 
 	err := CreateYDBTables(
@@ -78,6 +82,7 @@ func newStorage(
 		imagesFolder,
 		snapshotsFolder,
 		filesystemsFolder,
+		filesystemSnapshotsFolder,
 		placementGroupsFolder,
 		db,
 		endedMigrationExpirationTimeout,

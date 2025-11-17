@@ -92,6 +92,20 @@ type FilesystemMeta struct {
 	ExternalStorageClusterName string `json:"external_storage_cluster_name"`
 }
 
+type FilesystemSnapshotMeta struct {
+	ID            string            `json:"id"`
+	FolderID      string            `json:"folder_id"`
+	Filesystem    *types.Filesystem `json:"filesystem"`
+	CheckpointID  string            `json:"checkpoint_id"`
+	CreateRequest proto.Message     `json:"create_request"`
+	CreateTaskID  string            `json:"create_task_id"`
+	CreatingAt    time.Time         `json:"creating_at"`
+	DeleteTaskID  string            `json:"delete_task_id"`
+	Size          uint64            `json:"size"`
+	StorageSize   uint64            `json:"storage_size"`
+	Ready         bool              `json:"ready"`
+}
+
 type PlacementGroupMeta struct {
 	ID                      string                  `json:"id"`
 	ZoneID                  string                  `json:"zone_id"`
@@ -229,6 +243,51 @@ type Storage interface {
 	// Lists all existing filesystem ids in specified |folderID|.
 	// Lists all existing filesystem ids if |folderID| is not set.
 	ListFilesystems(
+		ctx context.Context,
+		folderID string,
+		creatingBefore time.Time,
+	) ([]string, error)
+
+	// Returns FilesystemSnapshot if action has been accepted by storage and nil otherwise.
+	CreateFilesystemSnapshot(
+		ctx context.Context,
+		snapshot FilesystemSnapshotMeta,
+	) (FilesystemSnapshotMeta, error)
+
+	FilesystemSnapshotCreated(
+		ctx context.Context,
+		snapshotID string,
+		checkpointID string,
+		createdAt time.Time,
+		snapshotSize uint64,
+		snapshotStorageSize uint64,
+	) error
+
+	GetFilesystemSnapshotMeta(ctx context.Context, snapshotID string) (*FilesystemSnapshotMeta, error)
+
+	// Returns FilesystemSnapshot if action has been accepted by storage and nil otherwise.
+	DeleteFilesystemSnapshot(
+		ctx context.Context,
+		snapshotID string,
+		taskID string,
+		deletingAt time.Time,
+	) (*FilesystemSnapshotMeta, error)
+
+	FilesystemSnapshotDeleted(
+		ctx context.Context,
+		snapshotID string,
+		deletedAt time.Time,
+	) error
+
+	ClearDeletedFilesystemSnapshots(
+		ctx context.Context,
+		deletedBefore time.Time,
+		limit int,
+	) error
+
+	// Lists all existing filesystem snapshot ids in specified |folderID|.
+	// Lists all existing filesystem snapshot ids if |folderID| is not set.
+	ListFilesystemSnapshots(
 		ctx context.Context,
 		folderID string,
 		creatingBefore time.Time,
