@@ -46,6 +46,13 @@ public:
     struct TPartitionNonrepl
     {
         TString DiskId;
+        TString ActorId;
+    };
+
+    struct TPartitionMirror
+    {
+        TString DiskId;
+        TString ActorId;
     };
 
     struct TSession
@@ -80,7 +87,8 @@ private:
         TPartitionNonrepl,
         TSession,
         TClient,
-        TDiskRegistry>;
+        TDiskRegistry,
+        TPartitionMirror>;
 
     ui64 StartTime = 0;
     TData Data;

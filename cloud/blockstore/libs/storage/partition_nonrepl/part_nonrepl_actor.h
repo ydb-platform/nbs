@@ -87,7 +87,9 @@ private:
 
     TLogTitle LogTitle{
         GetCycleCount(),
-        TLogTitle::TPartitionNonrepl{.DiskId = PartConfig->GetName()}};
+        TLogTitle::TPartitionNonrepl{
+            .DiskId = PartConfig->GetName(),
+            .ActorId = SelfId().ToString()}};
 
 public:
     TNonreplicatedPartitionActor(

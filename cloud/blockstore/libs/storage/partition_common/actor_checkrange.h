@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -23,13 +24,15 @@ protected:
     const ui64 BlockSize;
     TGuardedBuffer<TString> Buffer;
     TGuardedSgList SgList;
+    TLogTitle LogTitle;
 
 public:
     TCheckRangeActor(
         const NActors::TActorId& partition,
         NProto::TCheckRangeRequest&& request,
         TRequestInfoPtr requestInfo,
-        ui64 blockSize);
+        ui64 blockSize,
+        TLogTitle logTitle);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

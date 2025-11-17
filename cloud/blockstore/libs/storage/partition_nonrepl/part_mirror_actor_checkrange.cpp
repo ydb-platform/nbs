@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
+#include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/partition_common/actor_checkrange.h>
 
 #include <cloud/storage/core/libs/common/verify.h>
@@ -103,7 +104,8 @@ void TMirrorCheckRangeActor::HandleReadBlocksResponseError(
     LOG_ERROR_S(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "reading error has occurred: " << FormatError(error));
+        "reading error has occurred: " << FormatError(error) << ". Disk: "
+                                       << LogTitle.GetWithTime().c_str());
 
     // 1 result error for all replicas
     ErrorOnReplicaReading = true;
@@ -206,13 +208,15 @@ void TMirrorPartitionActor::HandleCheckRange(
         replicaNames.push_back(
             replicaInfo.Config->GetDevices()[0].GetDeviceUUID());
     }
+
     NCloud::Register<TMirrorCheckRangeActor>(
         ctx,
         std::move(replicaNames),
         SelfId(),
         std::move(record),
         CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext),
-        State.GetBlockSize());
+        State.GetBlockSize(),
+        LogTitle);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

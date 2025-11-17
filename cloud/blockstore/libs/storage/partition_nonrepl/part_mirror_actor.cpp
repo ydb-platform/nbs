@@ -48,18 +48,18 @@ TDuration CalculateScrubbingInterval(
 ////////////////////////////////////////////////////////////////////////////////
 
 TMirrorPartitionActor::TMirrorPartitionActor(
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticsConfig,
-        IProfileLogPtr profileLog,
-        IBlockDigestGeneratorPtr digestGenerator,
-        TString rwClientId,
-        TNonreplicatedPartitionConfigPtr partConfig,
-        TMigrations migrations,
-        TVector<TDevices> replicas,
-        NRdma::IClientPtr rdmaClient,
-        TActorId volumeActorId,
-        TActorId statActorId,
-        TActorId resyncActorId)
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
+    IProfileLogPtr profileLog,
+    IBlockDigestGeneratorPtr digestGenerator,
+    TString rwClientId,
+    TNonreplicatedPartitionConfigPtr partConfig,
+    TMigrations migrations,
+    TVector<TDevices> replicas,
+    NRdma::IClientPtr rdmaClient,
+    TActorId volumeActorId,
+    TActorId statActorId,
+    TActorId resyncActorId)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
@@ -78,6 +78,11 @@ TMirrorPartitionActor::TMirrorPartitionActor(
     , MultiAgentWriteEnabled(Config->GetMultiAgentWriteEnabled())
     , MultiAgentWriteRequestSizeThreshold(
           Config->GetMultiAgentWriteRequestSizeThreshold())
+    , LogTitle{
+          GetCycleCount(),
+          TLogTitle::TPartitionMirror{
+              .DiskId = DiskId,
+              .ActorId = SelfId().ToString()}}
 {}
 
 TMirrorPartitionActor::~TMirrorPartitionActor() = default;

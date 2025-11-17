@@ -21,15 +21,21 @@ TCheckRangeActor::TCheckRangeActor(
     const TActorId& partition,
     NProto::TCheckRangeRequest&& request,
     TRequestInfoPtr requestInfo,
-    ui64 blockSize)
+    ui64 blockSize,
+    TLogTitle logTitle)
     : Partition(partition)
     , Request(std::move(request))
     , RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
+    , LogTitle(std::move(logTitle))
 {}
 
 void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
 {
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "CheckRangeActor has started for disk: '%s'", LogTitle.GetWithTime().c_str());
     SendReadBlocksRequest(ctx);
     Become(&TThis::StateWork);
 }
@@ -68,6 +74,10 @@ void TCheckRangeActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "CheckRangeActor has finished for disk: '%s'", LogTitle.GetWithTime().c_str());
     auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>(error);
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
@@ -79,6 +89,10 @@ void TCheckRangeActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TEvVolume::TEvCheckRangeResponse> response)
 {
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "CheckRangeActor has finished for disk: '%s'", LogTitle.GetWithTime().c_str());
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
     Die(ctx);
@@ -131,7 +145,8 @@ void TCheckRangeActor::HandleReadBlocksResponseError(
     LOG_ERROR_S(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "reading error has occurred: " << FormatError(error));
+        "reading error has occurred: " << FormatError(error) << ". Disk: "
+                                       << LogTitle.GetWithTime().c_str());
 
     responseStatus->CopyFrom(error);
     if (!msg->Record.FailInfo.FailedRanges.empty()) {
