@@ -63,7 +63,7 @@ class NbsClient:
 
         return p.stdout
 
-    def destroy_volume(self, disk_id, timeout = 30):
+    def destroy_volume(self, disk_id, timeout=30):
         p = subprocess.run([
             self.__binary_path,
             "destroyvolume",

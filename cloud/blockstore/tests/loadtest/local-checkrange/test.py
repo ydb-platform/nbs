@@ -5,8 +5,8 @@ import json
 
 from cloud.blockstore.config.client_pb2 import TClientAppConfig, TClientConfig
 from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig
-from cloud.blockstore.config.server_pb2 import TServerConfig, TServerAppConfig, \
-    TKikimrServiceConfig
+from cloud.blockstore.config.server_pb2 import TServerConfig, \
+    TServerAppConfig, TKikimrServiceConfig
 from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 
 from cloud.blockstore.tests.python.lib.disk_agent_runner import LocalDiskAgent
@@ -14,19 +14,24 @@ from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
 from cloud.blockstore.tests.python.lib.test_base import thread_count, \
     wait_for_nbs_server, wait_for_disk_agent, run_test, wait_for_secure_erase
 from cloud.blockstore.tests.python.lib.client import NbsClient
-from cloud.blockstore.tests.python.lib.nonreplicated_setup import setup_nonreplicated, \
-    create_devices, setup_disk_registry_config, \
-    enable_writable_state, make_agent_node_type, make_agent_id, AgentInfo, DeviceInfo
+from cloud.blockstore.tests.python.lib.nonreplicated_setup import \
+    setup_nonreplicated, create_devices, setup_disk_registry_config, \
+    enable_writable_state, make_agent_node_type, make_agent_id, AgentInfo, \
+    DeviceInfo
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
-from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
+from contrib.ydb.tests.library.harness.kikimr_cluster import \
+    kikimr_cluster_factory
+from contrib.ydb.tests.library.harness.kikimr_config import \
+    KikimrConfigGenerator
+from contrib.ydb.tests.library.harness.kikimr_runner import \
+    get_unique_path_for_current_test, ensure_path_exists
 
 import yatest.common as yatest_common
 
 DEFAULT_BLOCK_SIZE = 4096
 DEFAULT_DEVICE_COUNT = 3
 DEFAULT_BLOCK_COUNT_PER_DEVICE = 262144
+
 
 class TestCase(object):
     __test__ = False
@@ -36,7 +41,7 @@ class TestCase(object):
             name,
             config_path,
             storage_media_kind,
-            volume_name, # должно совпадать с именем в .txt конфиге теста
+            volume_name,  # должно совпадать с именем в .txt конфиге теста
             agent_count=1):
         self.name = name
         self.config_path = config_path
@@ -45,6 +50,7 @@ class TestCase(object):
         self.agent_count = agent_count
         self.disk_blocks_count = 786432
         self.blocks_per_request = 1024
+
 
 TESTS = [
     TestCase(
@@ -70,7 +76,8 @@ TESTS = [
     ),
     TestCase(
         "checkrange_nonreplicated",
-        "cloud/blockstore/tests/loadtest/local-checkrange/local-nonreplicated.txt",
+        "cloud/blockstore/tests/loadtest/local-checkrange/"
+        "local-nonreplicated.txt",
         storage_media_kind="nonreplicated",
         volume_name="test_volume_nrd0",
         agent_count=1,
@@ -105,7 +112,8 @@ def __process_config(config_path, devices_per_agent):
         next_index = config_data.find("\"", prev_index)
         assert next_index != -1
         agent_id, device_id = config_data[prev_index:next_index].split("/")
-        new_config_data += "\"%s\"" % devices_per_agent[int(agent_id)][int(device_id)].path
+        new_config_data += "\"%s\"" % devices_per_agent[int(
+            agent_id)][int(device_id)].path
         has_replacements = True
 
         prev_index = next_index + 1
@@ -123,8 +131,10 @@ def __process_config(config_path, devices_per_agent):
 
     return config_path
 
+
 def __run_test(test_case):
-    kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    kikimr_binary_path = yatest_common.binary_path(
+        "contrib/ydb/apps/ydbd/ydbd")
     configurator = KikimrConfigGenerator(
         erasure=None,
         binary_path=kikimr_binary_path,
@@ -139,12 +149,10 @@ def __run_test(test_case):
 
     kikimr_cluster = kikimr_cluster_factory(configurator=configurator)
     kikimr_cluster.start()
-
     kikimr_port = list(kikimr_cluster.nodes.values())[0].port
 
     devices_per_agent = []
     agent_infos = []
-
     if test_case.agent_count > 0:
         devices = create_devices(
             False,  # use_memory_devices
@@ -227,7 +235,8 @@ def __run_test(test_case):
         wait_for_nbs_server(nbs.nbs_port)
 
         if test_case.agent_count > 0:
-            nbs_client_binary_path = yatest_common.binary_path("cloud/blockstore/apps/client/blockstore-client")
+            nbs_client_binary_path = yatest_common.binary_path(
+                "cloud/blockstore/apps/client/blockstore-client")
             enable_writable_state(nbs.nbs_port, nbs_client_binary_path)
             setup_disk_registry_config(
                 agent_infos,
@@ -247,7 +256,8 @@ def __run_test(test_case):
                 config_sub_folder="disk_agent_configs_%s" % i,
                 log_sub_folder="disk_agent_logs_%s" % i,
                 kikimr_binary_path=kikimr_binary_path,
-                disk_agent_binary_path=yatest_common.binary_path(disk_agent_binary_path),
+                disk_agent_binary_path=yatest_common.binary_path(
+                    disk_agent_binary_path),
                 rack="rack-%s" % i,
                 node_type=make_agent_node_type(i))
 
@@ -257,11 +267,15 @@ def __run_test(test_case):
 
         config_path = test_case.config_path
         if test_case.agent_count > 0:
-            wait_for_secure_erase(nbs.mon_port, expectedAgents=test_case.agent_count)
-            config_path = __process_config(test_case.config_path, devices_per_agent)
+            wait_for_secure_erase(
+                nbs.mon_port, expectedAgents=test_case.agent_count)
+            config_path = __process_config(
+                test_case.config_path, devices_per_agent)
 
         client = NbsClient(nbs.nbs_port)
-        client.create_volume(test_case.volume_name, test_case.storage_media_kind, test_case.disk_blocks_count)
+        client.create_volume(
+            test_case.volume_name, test_case.storage_media_kind,
+            test_case.disk_blocks_count)
 
         client_config.NbdSocketSuffix = nbd_socket_suffix
         ret = run_test(
@@ -296,6 +310,7 @@ def __run_test(test_case):
 
     return ret
 
+
 def __validate_checkrange(test_case, checkrange_result_file):
     try:
         with open(checkrange_result_file, 'r') as file:
@@ -304,9 +319,10 @@ def __validate_checkrange(test_case, checkrange_result_file):
         raise Exception(f"Checkrange parse result error {e}")
 
     test_mirrors = test_case.storage_media_kind == "mirror2" \
-                or test_case.storage_media_kind == "mirror3"
+        or test_case.storage_media_kind == "mirror3"
 
-    expected_requests_num = test_case.disk_blocks_count / test_case.blocks_per_request
+    expected_requests_num = test_case.disk_blocks_count / \
+        test_case.blocks_per_request
     if test_case.disk_blocks_count % test_case.blocks_per_request:
         expected_requests_num += 1
 
@@ -320,7 +336,7 @@ def __validate_checkrange(test_case, checkrange_result_file):
     for r in data['Ranges']:
         start = r['Start']
         end = r['End']
-        have_error = r.get('Error') != None
+        have_error = r.get('Error') is not None
         if not have_error:
             checksums = r['Checksums']
             if checksums is None or len(checksums) == 0:
@@ -360,17 +376,20 @@ def __validate_checkrange(test_case, checkrange_result_file):
     merged_expected_problem_ranges = __merge_ranges(expected_problem_ranges)
     if len(merged_expected_problem_ranges) != actual_problem_ranges_size:
         raise Exception(
-            f"Expected length of merged ProblemRanges {len(merged_expected_problem_ranges)}"
+            f"Expected length of merged ProblemRanges "
+                "{len(merged_expected_problem_ranges)}"
             f" is not equal to actual {actual_problem_ranges_size}")
     if len(merged_expected_problem_ranges) != 0:
         i = 0
-        for r1, r2 in zip(merged_expected_problem_ranges, actual_problem_ranges):
+        for r1, r2 in zip(merged_expected_problem_ranges,
+                          actual_problem_ranges):
             if r1[0] != r2['Start'] or r1[1] != r2['End']:
                 raise Exception(
                     f"ProblemRanges merge algorithm problem. "
                     f"Expected {i} element '{r1[0]}-{r1[1]}', "
                     f"actual {i} element '{r2['Start']}-{r2['End']}'")
             i += 1
+
 
 def __merge_ranges(ranges):
     if not ranges:
@@ -385,6 +404,7 @@ def __merge_ranges(ranges):
             merged_ranges.append((current_start, current_end))
 
     return merged_ranges
+
 
 @pytest.mark.parametrize("test_case", TESTS, ids=[x.name for x in TESTS])
 def test_load(test_case: TestCase):
