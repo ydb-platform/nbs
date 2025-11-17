@@ -14,6 +14,7 @@
 
 #include <util/datetime/cputimer.h>
 #include <util/generic/size_literals.h>
+#include <util/stream/str.h>
 #include <util/string/cast.h>
 
 namespace NCloud {
@@ -82,21 +83,19 @@ void AddIncompleteStats(
 
 const ui32 WriteRequestType = 0;
 const ui32 ReadRequestType = 1;
+const ui32 BasicRequestType = 2;
 
-const TString RequestNames[] {
-    "WriteBlocks",
-    "ReadBlocks",
+const TVector<TRequestCounters::TRequestTypeInfo> RequestTypeInfos = {
+    {.Name = "WriteBlocks", .IsBasic = false, .IsReadWrite = true},
+    {.Name = "ReadBlocks", .IsBasic = false, .IsReadWrite = true},
+    {.Name = "BasicRequest", .IsBasic = true, .IsReadWrite = false},
 };
 
-auto RequestType2Name(TRequestCounters::TRequestType t) {
-    UNIT_ASSERT(t == 0 || t == 1);
-    return RequestNames[t];
-}
-
-auto IsReadWriteRequest(TRequestCounters::TRequestType t)
+TRequestCounters::TRequestTypeInfo GetRequestTypeInfo(
+    TRequestCounters::TRequestType t)
 {
-    UNIT_ASSERT(t == 0 || t == 1);
-    return true;
+    UNIT_ASSERT(static_cast<size_t>(t) < RequestTypeInfos.size());
+    return RequestTypeInfos[t];
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -113,9 +112,8 @@ auto MakeRequestCounters(TRequestCountersOptions options = {})
 {
     return TRequestCounters(
         CreateWallClockTimer(),
-        2,
-        RequestType2Name,
-        IsReadWriteRequest,
+        3,
+        GetRequestTypeInfo,
         options.Options,
         options.HistogramCounterOptions,
         options.ExecutionTimeSizeClasses);
@@ -125,9 +123,8 @@ auto MakeRequestCountersPtr(TRequestCountersOptions options = {})
 {
     return std::make_shared<TRequestCounters>(
         CreateWallClockTimer(),
-        2,
-        RequestType2Name,
-        IsReadWriteRequest,
+        3,
+        GetRequestTypeInfo,
         options.Options,
         options.HistogramCounterOptions,
         options.ExecutionTimeSizeClasses);
@@ -531,7 +528,7 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
 
         auto counters = monitoring
             ->GetCounters()
-            ->GetSubgroup("request", RequestType2Name(requestType));
+            ->GetSubgroup("request", GetRequestTypeInfo(requestType).Name);
 
         auto shoot = [&] (auto errorKind, ui32 errorFlags) {
             auto requestStarted = requestCounters.RequestStarted(
@@ -1088,6 +1085,33 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         checkSizeClass(4_KB, 512_KB);
 
         checkSizeClass(1_MB, 4_MB);
+    }
+
+    Y_UNIT_TEST(ShouldCreateCountersForBasicRequests)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+
+        auto requestCounters = MakeRequestCounters();
+        requestCounters.Register(*monitoring->GetCounters());
+
+        requestCounters.RequestStarted(BasicRequestType, 0);
+
+        auto counters = monitoring
+            ->GetCounters()
+            ->GetSubgroup("request", "BasicRequest");
+
+        TStringStream ss;
+        counters->OutputPlainText(ss);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "sensor=Count: 0\n"
+            "sensor=Errors/Fatal: 0\n"
+            "sensor=InProgress: 1\n"
+            "sensor=MaxInProgress: 0\n"
+            "sensor=MaxTime: 0\n"
+            "sensor=MaxTotalTime: 0\n"
+            "sensor=Time: 0\n",
+            ss.Str());
     }
 }
 

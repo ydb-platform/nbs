@@ -369,6 +369,7 @@ struct TRequestCounters::TStatCounters
         {}
     };
 
+    bool IsBasic = false;
     bool IsReadWriteRequest = false;
     bool ReportDataPlaneHistogram = false;
     bool ReportControlPlaneHistogram = false;
@@ -484,6 +485,7 @@ struct TRequestCounters::TStatCounters
 
     void Init(
         TDynamicCountersPtr countersGroup,
+        bool isBasic,
         bool isReadWriteRequest,
         bool reportDataPlaneHistogram,
         bool reportControlPlaneHistogram)
@@ -491,6 +493,7 @@ struct TRequestCounters::TStatCounters
         CountersGroup = std::move(countersGroup);
         auto& counters = *CountersGroup;
 
+        IsBasic = isBasic;
         IsReadWriteRequest = isReadWriteRequest;
         ReportDataPlaneHistogram = reportDataPlaneHistogram;
         ReportControlPlaneHistogram = reportControlPlaneHistogram;
@@ -500,6 +503,11 @@ struct TRequestCounters::TStatCounters
         Count = counters.GetCounter("Count", true);
         ErrorsFatal = counters.GetCounter("Errors/Fatal", true);
         Time = counters.GetCounter("Time", true);
+
+        if (isBasic) {
+            return;
+        }
+
         if (ReportControlPlaneHistogram) {
             TimeHist.Register(counters);
         } else {
@@ -525,6 +533,10 @@ struct TRequestCounters::TStatCounters
 
         InProgress = counters.GetCounter("InProgress");
         MaxInProgress = counters.GetCounter("MaxInProgress");
+
+        if (IsBasic) {
+            return;
+        }
 
         Errors = counters.GetCounter("Errors", true);
         ErrorsAborted = counters.GetCounter("Errors/Aborted", true);
@@ -873,13 +885,11 @@ struct TRequestCounters::TStatCounters
 TRequestCounters::TRequestCounters(
         ITimerPtr timer,
         ui32 requestCount,
-        std::function<TString(TRequestType)> requestType2Name,
-        std::function<bool(TRequestType)> isReadWriteRequestType,
+        std::function<TRequestTypeInfo(TRequestType)> getRequestTypeInfo,
         EOptions options,
         EHistogramCounterOptions histogramCounterOptions,
         const TVector<TSizeInterval>& executionTimeSizeClasses)
-    : RequestType2Name(std::move(requestType2Name))
-    , IsReadWriteRequestType(std::move(isReadWriteRequestType))
+    : GetRequestTypeInfo(std::move(getRequestTypeInfo))
     , Options(options)
 {
     if (Options & EOption::AddSpecialCounters) {
@@ -914,22 +924,29 @@ void TRequestCounters::Register(TDynamicCounters& counters)
         SpecialCounters->Init(counters);
     }
 
+    RequestTypeInfos.resize(CountersByRequest.size());
+    for (size_t t = 0; t < CountersByRequest.size(); ++t) {
+        RequestTypeInfos[t] = GetRequestTypeInfo(t);
+    }
+
     for (TRequestType t = 0; t < CountersByRequest.size(); ++t) {
         if (ShouldReport(t)) {
+            const auto& requestTypeInfo = RequestTypeInfos[t];
             auto requestGroup = counters.GetSubgroup(
                 "request",
-                RequestType2Name(t));
+                requestTypeInfo.Name);
 
             CountersByRequest[t].Init(
                 std::move(requestGroup),
-                IsReadWriteRequestType(t),
+                requestTypeInfo.IsBasic,
+                requestTypeInfo.IsReadWrite,
                 Options & EOption::ReportDataPlaneHistogram,
                 Options & EOption::ReportControlPlaneHistogram);
 
             // ReadWrite counters are usually the most important ones so let's
             // report zeroes for them instead of not reporting anything at all
             const bool lazyInit = Options & EOption::LazyRequestInitialization
-                && !IsReadWriteRequestType(t);
+                && !requestTypeInfo.IsReadWrite;
 
             if (!lazyInit) {
                 CountersByRequest[t].FullInitIfNeeded();
@@ -943,7 +960,7 @@ void TRequestCounters::Subscribe(TRequestCountersPtr subscriber)
     Subscribers.push_back(std::move(subscriber));
 }
 
-ui64 TRequestCounters::RequestStarted(
+TRequestCounters::TTimestamp TRequestCounters::RequestStarted(
     TRequestType requestType,
     ui64 requestBytes)
 {
@@ -953,14 +970,14 @@ ui64 TRequestCounters::RequestStarted(
 
 TRequestCounters::TRequestTime TRequestCounters::RequestCompleted(
     TRequestType requestType,
-    ui64 requestStarted,
+    TTimestamp requestStarted,
     TDuration postponedTime,
     ui64 requestBytes,
     EDiagnosticsErrorKind errorKind,
     ui32 errorFlags,
     bool unaligned,
     ECalcMaxTime calcMaxTime,
-    ui64 responseSent)
+    TTimestamp responseSent)
 {
     auto requestCompleted = GetCycleCount();
     auto requestTime = CyclesToDurationSafe(requestCompleted - requestStarted);
@@ -1166,8 +1183,8 @@ void TRequestCounters::RequestCompletedImpl(
 
 bool TRequestCounters::ShouldReport(TRequestType requestType) const
 {
-    return requestType < CountersByRequest.size()
-        && (IsReadWriteRequestType(requestType)
+    return requestType < RequestTypeInfos.size()
+        && (RequestTypeInfos[requestType].IsReadWrite
         || !(Options & EOption::OnlyReadWriteRequests));
 }
 
