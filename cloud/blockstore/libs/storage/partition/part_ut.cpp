@@ -181,19 +181,16 @@ public:
                 ui32 eventType = ev->GetTypeRewrite();
                 TActorId recipient = ev->GetRecipientRewrite();
 
-                auto depIt = EventDependencies.find(eventType);
-                if (depIt != EventDependencies.end()) {
-                    ui32 prerequisiteEvent = depIt->second;
-                    if (!IsEventProcessed(recipient, prerequisiteEvent)) {
+                if (EventDependencies.contains(eventType)) {
+                    ui32 prerequisiteEvent = EventDependencies[eventType];
+                    if (!ProcessedEvents[recipient].contains(
+                            prerequisiteEvent)) {
                         return TTestActorRuntimeBase::EEventAction::RESCHEDULE;
                     }
                 }
 
-                for (const auto& [_, prerequisiteEvent]: EventDependencies) {
-                    if (eventType == prerequisiteEvent) {
-                        MarkEventProcessed(recipient, eventType);
-                        break;
-                    }
+                if (PrerequisiteEvents.contains(eventType)) {
+                    ProcessedEvents[recipient].insert(eventType);
                 }
 
                 return TTestActorRuntimeBase::EEventAction::PROCESS;
@@ -226,17 +223,6 @@ private:
     THashMap<ui32, ui32> EventDependencies;
     THashSet<ui32> PrerequisiteEvents;
     THashMap<TActorId, THashSet<ui32>> ProcessedEvents;
-
-    bool IsEventProcessed(TActorId actorId, ui32 eventType) const
-    {
-        auto it = ProcessedEvents.find(actorId);
-        return it != ProcessedEvents.end() && it->second.contains(eventType);
-    }
-
-    void MarkEventProcessed(TActorId actorId, ui32 eventType)
-    {
-        ProcessedEvents[actorId].insert(eventType);
-    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
