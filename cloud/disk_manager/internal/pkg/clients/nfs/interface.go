@@ -69,8 +69,8 @@ type Client interface {
 
 	CreateSession(
 		ctx context.Context,
-		checkpointID string,
 		fileSystemID string,
+		checkpointID string,
 		readonly bool,
 	) (Session, error)
 
