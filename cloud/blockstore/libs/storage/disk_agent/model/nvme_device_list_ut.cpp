@@ -26,7 +26,7 @@ struct TTestNVMeManager final
 {
     struct TController: NNvme::TControllerData
     {
-        NNvme::TPCIAddress PCIAddress;
+        NNvme::TPCIDeviceInfo PCIInfo;
     };
 
     TVector<TController> Controllers;
@@ -69,24 +69,24 @@ struct TTestNVMeManager final
         return MakeError(E_NOT_FOUND);
     }
 
-    TResultOrError<NNvme::TPCIAddress> GetPCIAddress(const TString& path) final
+    TResultOrError<NNvme::TPCIDeviceInfo> GetPCIDeviceInfo(const TString& path) final
     {
         auto* device = FindIfPtr(Controllers, [&] (const auto& d) {
             return d.DevicePath == path;
         });
 
         if (device) {
-            return device->PCIAddress;
+            return device->PCIInfo;
         }
 
         return MakeError(E_NOT_FOUND);
     }
 
-    TResultOrError<TString> GetDriverName(const NNvme::TPCIAddress& pci) final
+    TResultOrError<TString> GetDriverName(const NNvme::TPCIDeviceInfo& pci) final
     {
         auto cmp = [&](const TController& d)
         {
-            return d.PCIAddress == pci;
+            return d.PCIInfo == pci;
         };
 
         if (FindIfPtr(BoundToVFIO, cmp)) {
@@ -103,28 +103,27 @@ struct TTestNVMeManager final
             Controllers.end());
     }
 
-    NProto::TError BindToVFIO(const NNvme::TPCIAddress& pci) final
+    NProto::TError BindToVFIO(const NNvme::TPCIDeviceInfo& pci) final
     {
         return BindImpl(pci, Controllers, BoundToVFIO);
     }
 
-    NProto::TError BindToNVME(const NNvme::TPCIAddress& pci) final
+    NProto::TError BindToNVME(const NNvme::TPCIDeviceInfo& pci) final
     {
         return BindImpl(pci, BoundToVFIO, Controllers);
     }
 
     static NProto::TError BindImpl(
-        const NNvme::TPCIAddress& pci,
+        const NNvme::TPCIDeviceInfo& pci,
         TVector<TController>& src,
         TVector<TController>& dst)
     {
         auto cmp = [&](const TController& d)
         {
-            return d.PCIAddress == pci;
+            return d.PCIInfo == pci;
         };
 
         auto it = FindIf(src, cmp);
-
         if (it == src.end()) {
             if (FindIfPtr(dst, cmp)) {
                 return MakeError(S_ALREADY);
@@ -160,32 +159,32 @@ struct TFixture: public NUnitTest::TBaseFixture
               .SerialNumber = "S6EYNE0R103562",
               .ModelNumber = "SAMSUNG MZWLR3T8HBLS-00007",
               .Capacity = 3276_GB},
-             {0x144d, 0xa828, "31:00.0"}},
+             {0x144d, 0xa828, "31:00.0", 1}},
             {{.DevicePath = "/dev/nvme1",
               .SerialNumber = "S4YPNC0R705326",
               .ModelNumber = "SAMSUNG MZWLJ3T8HBLS-00007",
               .Capacity = 3276_GB},
-             {0x144d, 0xa828, "32:00.0"}},
+             {0x144d, 0xa828, "32:00.0", 2}},
             {{.DevicePath = "/dev/nvme2",
               .SerialNumber = "S6EYNA0R104173",
               .ModelNumber = "SAMSUNG MZWLR3T8HBLS-00007",
               .Capacity = 3276_GB},
-             {0x144d, 0xa828, "33:00.0"}},
+             {0x144d, 0xa828, "33:00.0", 3}},
             {{.DevicePath = "/dev/nvme3",
               .SerialNumber = "S6EYNA0R104150",
               .ModelNumber = "SAMSUNG MZWLR3T8HBLS-00007",
               .Capacity = 3276_GB},
-             {0x144d, 0xa828, "34:00.0"}},
+             {0x144d, 0xa828, "34:00.0", 4}},
             {{.DevicePath = "/dev/nvme4",
               .SerialNumber = "S4YPNC0R501553",
               .ModelNumber = "SAMSUNG MZWLJ3T8HBLS-00007",
               .Capacity = 3276_GB},
-             {0x144d, 0xa828, "f1:00.0"}},
+             {0x144d, 0xa828, "f1:00.0", 5}},
             {{.DevicePath = "/dev/nvme5",
               .SerialNumber = "S4YPNC0R500432",
               .ModelNumber = "SAMSUNG MZWLJ3T8HBLS-00007",
               .Capacity = 3276_GB},
-             {0x144d, 0xa828, "f2:00.0"}},
+             {0x144d, 0xa828, "f2:00.0", 6}},
         };
     }
 
@@ -232,7 +231,7 @@ Y_UNIT_TEST_SUITE(TNVMeDeviceListTest)
             nvme3.GetSerialNumber());
 
         UNIT_ASSERT_VALUES_EQUAL(
-            NVMeManager->Controllers[3].PCIAddress.Address,
+            NVMeManager->Controllers[3].PCIInfo.Address,
             nvme3.GetPCIAddress());
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -240,7 +239,7 @@ Y_UNIT_TEST_SUITE(TNVMeDeviceListTest)
             nvme4.GetSerialNumber());
 
         UNIT_ASSERT_VALUES_EQUAL(
-            NVMeManager->Controllers[4].PCIAddress.Address,
+            NVMeManager->Controllers[4].PCIInfo.Address,
             nvme4.GetPCIAddress());
     }
 
@@ -294,8 +293,8 @@ Y_UNIT_TEST_SUITE(TNVMeDeviceListTest)
     Y_UNIT_TEST_F(ShouldFindBoundNVMeDevicesInCache, TFixture)
     {
         const TString nvme4sn = NVMeManager->Controllers[4].SerialNumber;
-        const NNvme::TPCIAddress nvme4pci =
-            NVMeManager->Controllers[4].PCIAddress;
+        const NNvme::TPCIDeviceInfo nvme4pci =
+            NVMeManager->Controllers[4].PCIInfo;
 
         NProto::TDiskAgentConfig configProto;
         configProto.AddNvmeDevices()->SetSerialNumber(

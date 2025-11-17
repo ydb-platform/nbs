@@ -175,6 +175,8 @@ message TNVMeDevice
     uint32 PCIVendorId = 4;
     uint32 PCIDeviceId = 5;
     string PCIAddress = 6;
+
+    optional uint32 IOMMUGroup = 7;
 };
 
 message TNVMeDeviceList

@@ -46,12 +46,19 @@ struct TBySerialNumber
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NNvme::TPCIAddress GetPCIAddress(const NProto::TNVMeDevice& d)
+NNvme::TPCIDeviceInfo GetPCIDeviceInfo(const NProto::TNVMeDevice& d)
 {
+    std::optional<ui32> iommuGroup;
+    if (d.HasIOMMUGroup()) {
+        iommuGroup = d.GetIOMMUGroup();
+    }
+
     return {
         .VendorId = static_cast<ui16>(d.GetPCIVendorId()),
         .DeviceId = static_cast<ui16>(d.GetPCIDeviceId()),
-        .Address = d.GetPCIAddress()};
+        .Address = d.GetPCIAddress(),
+        .IOMMUGroup = iommuGroup,
+    };
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -167,7 +174,7 @@ void TNVMeDeviceList::DiscoverNVMeDevices()
             TBySerialNumber(spec.GetSerialNumber()));
 
         if (device) {
-            auto [pci, error] = NVMeManager->GetPCIAddress(device->DevicePath);
+            auto [pci, error] = NVMeManager->GetPCIDeviceInfo(device->DevicePath);
             if (HasError(error)) {
                 STORAGE_ERROR(
                     "Can't get PCIe address for NVMe device "
@@ -181,8 +188,8 @@ void TNVMeDeviceList::DiscoverNVMeDevices()
                 "Found NVMe device "
                 << spec.GetSerialNumber().Quote() << ": " << device->ModelNumber
                 << " " << FormatByteSize(device->Capacity) << " ("
-                << Hex(pci.VendorId) << ":" << Hex(pci.DeviceId) << " "
-                << pci.Address << ")");
+                << Hex(pci.VendorId) << " " << Hex(pci.DeviceId) << " "
+                << pci.Address << " " << pci.IOMMUGroup << ")");
 
             NProto::TNVMeDevice& d = NVMeDevices.emplace_back();
             d.SetSerialNumber(device->SerialNumber);
@@ -191,6 +198,9 @@ void TNVMeDeviceList::DiscoverNVMeDevices()
             d.SetPCIVendorId(pci.VendorId);
             d.SetPCIDeviceId(pci.DeviceId);
             d.SetPCIAddress(pci.Address);
+            if (pci.IOMMUGroup) {
+                d.SetIOMMUGroup(pci.IOMMUGroup.value());
+            }
 
             continue;
         }
@@ -208,7 +218,7 @@ void TNVMeDeviceList::DiscoverNVMeDevices()
         // should be bound to VFIO driver
 
         auto [driver, error] =
-            NVMeManager->GetDriverName(GetPCIAddress(*cachedDeviceIt));
+            NVMeManager->GetDriverName(GetPCIDeviceInfo(*cachedDeviceIt));
 
         if (HasError(error)) {
             STORAGE_WARN(
@@ -260,7 +270,7 @@ NProto::TError TNVMeDeviceList::BindNVMeDeviceToVFIO(
         return MakeError(E_NOT_FOUND, "NVMe device not found");
     }
 
-    return NVMeManager->BindToVFIO(GetPCIAddress(*device));
+    return NVMeManager->BindToVFIO(GetPCIDeviceInfo(*device));
 }
 
 NProto::TError TNVMeDeviceList::ResetNVMeDevice(const TString& serialNumber)
@@ -270,7 +280,7 @@ NProto::TError TNVMeDeviceList::ResetNVMeDevice(const TString& serialNumber)
         return MakeError(E_NOT_FOUND, "NVMe device not found");
     }
 
-    auto error = NVMeManager->BindToNVME(GetPCIAddress(*device));
+    auto error = NVMeManager->BindToNVME(GetPCIDeviceInfo(*device));
     if (HasError(error)) {
         STORAGE_ERROR(
             "Can't bind NVMe device "

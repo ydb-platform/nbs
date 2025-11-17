@@ -21,13 +21,16 @@ struct TControllerData
     ui64 Capacity = 0;
 };
 
-struct TPCIAddress
+struct TPCIDeviceInfo
 {
     ui16 VendorId = 0;
     ui16 DeviceId = 0;
+
     TString Address;
 
-    bool operator == (const TPCIAddress&) const = default;
+    std::optional<ui32> IOMMUGroup;
+
+    [[nodiscard]] bool operator == (const TPCIDeviceInfo&) const = default;
     [[nodiscard]] explicit operator bool () const
     {
         return VendorId != 0 && DeviceId != 0 && !Address.empty();
@@ -52,13 +55,13 @@ struct INvmeManager
     virtual TResultOrError<TString> GetSerialNumber(const TString& path) = 0;
     virtual TResultOrError<TVector<TControllerData>> ListControllers() = 0;
 
-    virtual TResultOrError<TPCIAddress> GetPCIAddress(
+    virtual TResultOrError<TPCIDeviceInfo> GetPCIDeviceInfo(
         const TString& devicePath) = 0;
 
-    virtual TResultOrError<TString> GetDriverName(const TPCIAddress& pci) = 0;
+    virtual TResultOrError<TString> GetDriverName(const TPCIDeviceInfo& pci) = 0;
 
-    virtual NProto::TError BindToVFIO(const TPCIAddress& pci) = 0;
-    virtual NProto::TError BindToNVME(const TPCIAddress& pci) = 0;
+    virtual NProto::TError BindToVFIO(const TPCIDeviceInfo& pci) = 0;
+    virtual NProto::TError BindToNVME(const TPCIDeviceInfo& pci) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

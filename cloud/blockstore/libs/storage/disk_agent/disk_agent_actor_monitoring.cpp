@@ -2,10 +2,12 @@
 
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/storage/disk_common/monitoring_utils.h>
+
 #include <cloud/storage/core/libs/common/format.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
+#include <util/stream/format.h>
 #include <util/stream/str.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -89,6 +91,7 @@ void TDiskAgentActor::RenderNVMeDevices(IOutputStream& out) const
                     TABLEH() { out << "Model"; }
                     TABLEH() { out << "Capacity"; }
                     TABLEH() { out << "PCI"; }
+                    TABLEH() { out << "IOMMU group"; }
                 }
 
                 for (const auto& d: devices) {
@@ -100,9 +103,14 @@ void TDiskAgentActor::RenderNVMeDevices(IOutputStream& out) const
                                 << d.GetCapacity() << " B)";
                         }
                         TABLED () {
-                            out << d.GetPCIVendorId() << ":"
-                                << d.GetPCIDeviceId() << " "
+                            out << "(" << Hex(d.GetPCIVendorId()) << " "
+                                << Hex(d.GetPCIDeviceId()) << ") "
                                 << d.GetPCIAddress();
+                        }
+                        TABLED () {
+                            if (d.HasIOMMUGroup()) {
+                                out << d.GetIOMMUGroup();
+                            }
                         }
                     }
                 }

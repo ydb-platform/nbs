@@ -351,11 +351,11 @@ public:
             });
     }
 
-    TResultOrError<TPCIAddress> GetPCIAddress(const TString& devicePath) final
+    TResultOrError<TPCIDeviceInfo> GetPCIDeviceInfo(const TString& devicePath) final
     {
         namespace NFs = std::filesystem;
 
-        return SafeExecute<TResultOrError<TPCIAddress>>(
+        return SafeExecute<TResultOrError<TPCIDeviceInfo>>(
             [&]
             {
                 const auto filename = NFs::path{devicePath.c_str()}.filename();
@@ -366,15 +366,24 @@ public:
                 const auto base = NFs::path{"/sys/bus/pci/devices"} /
                                   std::string_view{address};
 
-                return TPCIAddress{
+                std::optional<ui32> iommuGroup;
+                if (NFs::exists(base / "iommu_group")) {
+                    iommuGroup = std::stoi(
+                        NFs::read_symlink(base / "iommu_group")
+                            .filename()
+                            .string());
+                }
+
+                return TPCIDeviceInfo{
                     .VendorId = ReadFileHex(base / "vendor"),
                     .DeviceId = ReadFileHex(base / "device"),
                     .Address = std::move(address),
+                    .IOMMUGroup = iommuGroup,
                 };
             });
     }
 
-    TResultOrError<TString> GetDriverName(const TPCIAddress& pci) final
+    TResultOrError<TString> GetDriverName(const TPCIDeviceInfo& pci) final
     {
         namespace NFs = std::filesystem;
 
@@ -399,7 +408,7 @@ public:
             });
     }
 
-    NProto::TError BindToVFIO(const TPCIAddress& pci) final
+    NProto::TError BindToVFIO(const TPCIDeviceInfo& pci) final
     {
         if (!pci) {
             return MakeError(E_ARGUMENT, "empty PCI address");
@@ -411,6 +420,8 @@ public:
             {
                 TFileOutput out("/sys/bus/pci/drivers/vfio-pci/new_id");
                 out << Hex(pci.VendorId, {}) << " " << Hex(pci.DeviceId, {});
+
+                return NProto::TError();
             });
 
         if (HasError(error)) {
@@ -420,7 +431,7 @@ public:
         return RebindDriver(pci, NVMeDriverName, VFIODriverName);
     }
 
-    NProto::TError BindToNVME(const TPCIAddress& pci) final
+    NProto::TError BindToNVME(const TPCIDeviceInfo& pci) final
     {
         if (!pci) {
             return MakeError(E_ARGUMENT, "empty PCI address");
@@ -430,7 +441,7 @@ public:
     }
 
     auto RebindDriver(
-        const TPCIAddress& pci,
+        const TPCIDeviceInfo& pci,
         const TString& from,
         const TString& to) -> NProto::TError
     {

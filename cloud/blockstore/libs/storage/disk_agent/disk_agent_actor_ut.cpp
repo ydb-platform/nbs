@@ -118,11 +118,11 @@ struct TTestNvmeManager
         return true;
     }
 
-    TResultOrError<NNvme::TPCIAddress> GetPCIAddress(const TString& path) final
+    TResultOrError<NNvme::TPCIDeviceInfo> GetPCIDeviceInfo(const TString& path) final
     {
         Y_UNUSED(path);
 
-        return NNvme::TPCIAddress{};
+        return NNvme::TPCIDeviceInfo{};
     }
 
     TResultOrError<TVector<NNvme::TControllerData>> ListControllers() final
@@ -130,21 +130,21 @@ struct TTestNvmeManager
         return TVector<NNvme::TControllerData>{};
     }
 
-    TResultOrError<TString> GetDriverName(const NNvme::TPCIAddress& pci) final
+    TResultOrError<TString> GetDriverName(const NNvme::TPCIDeviceInfo& pci) final
     {
         Y_UNUSED(pci);
 
         return TString{};
     }
 
-    NProto::TError BindToVFIO(const NNvme::TPCIAddress& pci) final
+    NProto::TError BindToVFIO(const NNvme::TPCIDeviceInfo& pci) final
     {
         Y_UNUSED(pci);
 
         return {};
     }
 
-    NProto::TError BindToNVME(const NNvme::TPCIAddress& pci) final
+    NProto::TError BindToNVME(const NNvme::TPCIDeviceInfo& pci) final
     {
         Y_UNUSED(pci);
 
