@@ -1858,6 +1858,8 @@ static void do_init(fuse_req_t req, fuse_ino_t nodeid, const void *inarg)
 		outarg.flags |= FUSE_FLOCK_LOCKS;
 	if (f->conn.want & FUSE_CAP_WRITEBACK_CACHE)
 		outarg.flags |= FUSE_WRITEBACK_CACHE;
+	if (f->conn.want & FUSE_CAP_HANDLE_KILLPRIV_V2)
+		outarg.flags |= FUSE_HANDLE_KILLPRIV_V2;
 
 	outarg.max_readahead = f->conn.max_readahead;
 	outarg.max_write = f->conn.max_write;

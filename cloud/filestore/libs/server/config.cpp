@@ -39,6 +39,7 @@ constexpr TDuration Seconds(int s)
     xxx(Certs,                       TVector<TCertificate>,     {}            )\
     xxx(UnixSocketPath,              TString,                   {}            )\
     xxx(UnixSocketBacklog,           ui32,                      16            )\
+    xxx(UnixSocketAccessMode,        ui32,                      0660          )\
                                                                                \
     xxx(ActionsNoAuth,               TVector<TString>,          {}            )\
 // FILESTORE_SERVER_CONFIG

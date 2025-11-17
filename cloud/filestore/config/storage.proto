@@ -669,4 +669,7 @@ message TStorageConfig
 
     // Capacity for DirectoryHandles persistent table.
     optional uint64 DirectoryHandlesTableSize = 467;
+
+    // Enable FUSE_HANDLE_KILLPRIV_V2 on guest (FUSE client)
+    optional bool GuestHandleKillPrivV2Enabled = 468;
 }

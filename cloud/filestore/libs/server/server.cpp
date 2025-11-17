@@ -13,6 +13,7 @@
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/public/api/grpc/service.grpc.pb.h>
+#include <cloud/filestore/public/api/protos/server.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/thread.h>
@@ -28,10 +29,6 @@
 #include <cloud/storage/core/libs/uds/client_storage.h>
 #include <cloud/storage/core/libs/uds/endpoint_poller.h>
 
-#include <contrib/ydb/library/actors/prof/tag.h>
-#include <library/cpp/deprecated/atomic/atomic.h>
-#include <library/cpp/threading/atomic/bool.h>
-
 #include <contrib/libs/grpc/include/grpcpp/completion_queue.h>
 #include <contrib/libs/grpc/include/grpcpp/resource_quota.h>
 #include <contrib/libs/grpc/include/grpcpp/security/auth_metadata_processor.h>
@@ -41,11 +38,15 @@
 #include <contrib/libs/grpc/include/grpcpp/server_context.h>
 #include <contrib/libs/grpc/include/grpcpp/server_posix.h>
 #include <contrib/libs/grpc/include/grpcpp/support/status.h>
+#include <contrib/ydb/library/actors/prof/tag.h>
+
+#include <library/cpp/deprecated/atomic/atomic.h>
+#include <library/cpp/threading/atomic/bool.h>
 
 #include <util/generic/deque.h>
 #include <util/generic/hash_set.h>
-#include <util/string/builder.h>
 #include <util/stream/file.h>
+#include <util/string/builder.h>
 #include <util/string/join.h>
 #include <util/system/file.h>
 #include <util/system/thread.h>
@@ -1076,6 +1077,210 @@ private:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+// Template base class for custom sync handlers
+
+template <typename TRequestType, typename TResponseType, typename TDerived>
+class TCustomHandlerBase: public TServerRequestHandlerBase
+{
+protected:
+    TFileStoreContext& AppCtx;
+    TExecutorContext& ExecCtx;
+
+    std::unique_ptr<grpc::ServerContext> Context =
+        std::make_unique<grpc::ServerContext>();
+    grpc::ServerAsyncResponseWriter<TResponseType> Writer;
+
+    std::shared_ptr<TRequestType> Request = std::make_shared<TRequestType>();
+    ui64 RequestId = 0;
+
+    enum
+    {
+        WaitingForRequest,
+        SendingResponse,
+        RequestCompleted,
+    };
+    TAtomic RequestState = WaitingForRequest;
+
+public:
+    TCustomHandlerBase(TExecutorContext& execCtx, TFileStoreContext& appCtx)
+        : AppCtx(appCtx)
+        , ExecCtx(execCtx)
+        , Writer(Context.get())
+    {}
+
+    static void Start(TExecutorContext& execCtx, TFileStoreContext& appCtx)
+    {
+        execCtx.StartRequestHandler<TDerived>(appCtx);
+    }
+
+    void Process(bool ok) override
+    {
+        if (AtomicGet(AppCtx.ShouldStop) == 0 &&
+            AtomicGet(RequestState) == WaitingForRequest)
+        {
+            // There always should be handler waiting for request.
+            // Spawn new request only when handling request from server queue.
+            Start(ExecCtx, AppCtx);
+        }
+
+        if (!ok) {
+            auto prevState = AtomicSwap(&RequestState, RequestCompleted);
+            if (prevState != WaitingForRequest) {
+                static_cast<TDerived*>(this)->CompleteRequest();
+            }
+        }
+
+        for (;;) {
+            switch (AtomicGet(RequestState)) {
+                case WaitingForRequest:
+                    if (AtomicCas(
+                            &RequestState,
+                            SendingResponse,
+                            WaitingForRequest))
+                    {
+                        PrepareRequestContext();
+                        static_cast<TDerived*>(this)->ProcessAndSendResponse();
+                        return;
+                    }
+                    break;
+
+                case SendingResponse:
+                    if (AtomicCas(
+                            &RequestState,
+                            RequestCompleted,
+                            SendingResponse))
+                    {
+                        static_cast<TDerived*>(this)->CompleteRequest();
+                    }
+                    break;
+
+                case RequestCompleted:
+                    ExecCtx.RequestsInFlight.Unregister(this);
+                    Context.reset();
+                    return;
+            }
+        }
+    }
+
+    void Cancel() override
+    {
+        if (Context->c_call()) {
+            Context->TryCancel();
+        }
+    }
+
+    void PrepareRequest()
+    {
+        static_cast<TDerived*>(this)->PrepareRequestImpl();
+    }
+
+protected:
+    void PrepareRequestContext()
+    {
+        auto& headers = *Request->MutableHeaders();
+        RequestId = headers.GetRequestId();
+        if (!RequestId) {
+            RequestId = CreateRequestId();
+            headers.SetRequestId(RequestId);
+        }
+        CallContext->RequestId = RequestId;
+    }
+
+    void ProcessAndSendResponse()
+    {
+        TResponseType response;
+        auto* error = response.MutableError();
+        error->SetCode(E_NOT_IMPLEMENTED);
+        error->SetMessage("shared memory transport not implemented yet");
+
+        Writer.Finish(response, grpc::Status::OK, AcquireCompletionTag());
+    }
+
+    void CompleteRequest()
+    {}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Custom sync handlers for the shared memory transport
+// TODO(4649): implement actual logic
+
+class TListMmapRegionsCustomHandler final
+    : public TCustomHandlerBase<
+          NProto::TListMmapRegionsRequest,
+          NProto::TListMmapRegionsResponse,
+          TListMmapRegionsCustomHandler>
+{
+public:
+    using TCustomHandlerBase<
+        NProto::TListMmapRegionsRequest,
+        NProto::TListMmapRegionsResponse,
+        TListMmapRegionsCustomHandler>::TCustomHandlerBase;
+
+    void PrepareRequestImpl()
+    {
+        this->AppCtx.Service.RequestListMmapRegions(
+            this->Context.get(),
+            this->Request.get(),
+            &this->Writer,
+            this->ExecCtx.CompletionQueue.get(),
+            this->ExecCtx.CompletionQueue.get(),
+            this);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TMmapCustomHandler final
+    : public TCustomHandlerBase<
+          NProto::TMmapRequest,
+          NProto::TMmapResponse,
+          TMmapCustomHandler>
+{
+public:
+    using TCustomHandlerBase<
+        NProto::TMmapRequest,
+        NProto::TMmapResponse,
+        TMmapCustomHandler>::TCustomHandlerBase;
+
+    void PrepareRequestImpl()
+    {
+        this->AppCtx.Service.RequestMmap(
+            this->Context.get(),
+            this->Request.get(),
+            &this->Writer,
+            this->ExecCtx.CompletionQueue.get(),
+            this->ExecCtx.CompletionQueue.get(),
+            this);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TMunmapCustomHandler final
+    : public TCustomHandlerBase<
+          NProto::TMunmapRequest,
+          NProto::TMunmapResponse,
+          TMunmapCustomHandler>
+{
+public:
+    using TCustomHandlerBase<
+        NProto::TMunmapRequest,
+        NProto::TMunmapResponse,
+        TMunmapCustomHandler>::TCustomHandlerBase;
+
+    void PrepareRequestImpl()
+    {
+        this->AppCtx.Service.RequestMunmap(
+            this->Context.get(),
+            this->Request.get(),
+            &this->Writer,
+            this->ExecCtx.CompletionQueue.get(),
+            this->ExecCtx.CompletionQueue.get(),
+            this);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
 using TFileStoreHandler = TRequestHandler<TFileStoreContext, T>;
@@ -1094,6 +1299,12 @@ void StartRequests(TExecutorContext& execCtx, TFileStoreContext& appCtx)
 #undef FILESTORE_START_REQUEST
 
     TFileStoreStreamHandler<TGetSessionEventsStreamMethod>::Start(execCtx, appCtx);
+
+    // Custom handlers for the shared memory transport
+    // TODO(4649): after implementation Start only upon a feature flag
+    TListMmapRegionsCustomHandler::Start(execCtx, appCtx);
+    TMmapCustomHandler::Start(execCtx, appCtx);
+    TMunmapCustomHandler::Start(execCtx, appCtx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1235,7 +1446,10 @@ public:
         auto unixSocketPath = Config->GetUnixSocketPath();
         if (unixSocketPath) {
             ui32 backlog = Config->GetUnixSocketBacklog();
-            StartListenUnixSocket(unixSocketPath, backlog);
+            StartListenUnixSocket(
+                unixSocketPath,
+                backlog,
+                Config->GetUnixSocketAccessMode());
         }
 
         with_lock (ExecutorsLock) {
@@ -1337,7 +1551,10 @@ private:
         return sslOptions;
     }
 
-    void StartListenUnixSocket(const TString& unixSocketPath, ui32 backlog)
+    void StartListenUnixSocket(
+        const TString& unixSocketPath,
+        ui32 backlog,
+        ui32 accessMode)
     {
         auto& Log = AppCtx.Log;
 
@@ -1349,7 +1566,7 @@ private:
         auto error = EndpointPoller->StartListenEndpoint(
             unixSocketPath,
             backlog,
-            S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR, // accessMode
+            accessMode,
             true,   // multiClient
             NProto::SOURCE_FD_CONTROL_CHANNEL,
             AppCtx.SessionStorage->CreateClientStorage());

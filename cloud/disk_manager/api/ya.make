@@ -19,6 +19,7 @@ SRCS(
     image.proto
     image_service.proto
     filesystem_service.proto
+    filesystem_snapshot_service.proto
     operation.proto
     operation_service.proto
     placement_group.proto

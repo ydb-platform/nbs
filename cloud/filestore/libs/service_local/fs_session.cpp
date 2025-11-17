@@ -58,6 +58,8 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
             features->SetDirectoryHandlesTableSize(
                 Config->GetDirectoryHandlesTableSize());
         }
+        features->SetGuestHandleKillPrivV2Enabled(
+            Config->GetGuestHandleKillPrivV2Enabled());
         return response;
     };
 

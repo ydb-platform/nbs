@@ -107,6 +107,8 @@ private:
     TCluster Cluster;
     TMutex ClusterLock;
 
+    std::atomic<ui64> XattrVersion = 0;
+
 public:
     TLocalFileSystem(
         TLocalFileStoreConfigPtr config,

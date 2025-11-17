@@ -4026,6 +4026,72 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.AssertWriteDataFailed(headers, fs, nodeId, handle, 0, data);
     }
 
+    Y_UNIT_TEST(ShouldUseIovecsForReadDataRequest)
+    {
+        // TODO(#4664): add more comprehensive tests for zero-copy read
+        TTestEnv env;
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
+        auto headers = service.InitSession(fs, "client");
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        const auto& data = GenerateValidateData(256_KB);
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
+
+        TVector<std::array<char, 4_KB>> buffers(64);
+        TVector<std::span<char>> spans;
+        for (size_t i = 0; i < buffers.size(); ++i) {
+            spans.push_back(std::span<char>(buffers[i].data(), buffers[i].size()));
+        }
+
+        auto readDataResult = service.ReadData(
+            headers,
+            fs,
+            nodeId,
+            handle,
+            0,
+            data.size(),
+            spans);
+
+        TString result;
+        for (const auto& buf: spans) {
+            result.append(buf.data(), buf.size());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetLength(), data.size());
+        UNIT_ASSERT_VALUES_EQUAL(result, data);
+
+        // Passing less target data than requested size should fail
+        spans.pop_back();
+        service.AssertReadDataFailed(
+            headers,
+            fs,
+            nodeId,
+            handle,
+            0,
+            data.size(),
+            spans);
+    }
+
     Y_UNIT_TEST(ShouldHandleToggleServiceState)
     {
         TTestEnv env;

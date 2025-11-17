@@ -184,6 +184,8 @@ public:
             .SubmissionQueueEntries = Params.SubmissionQueueEntries,
             .MaxKernelWorkersCount = Params.MaxKernelWorkersCount,
             .WqOwner = WqOwner.get(),
+            .PropagateAffinityToKernelWorkers =
+                Params.PropagateAffinityToKernelWorkers,
         };
 
         const ui32 sqeFlags = Params.ForceAsyncIO ? IOSQE_ASYNC : 0;

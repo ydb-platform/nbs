@@ -605,7 +605,7 @@ public:
         const TString& folderId) override
     {
         TWriteGuard guard(Lock);
-        return AlterVolumeImpl(diskId, cloudId, folderId);
+        AlterVolumeImpl(diskId, cloudId, folderId);
     }
 
     IVolumeInfoPtr GetVolumeInfo(
@@ -644,7 +644,7 @@ public:
 
     ui32 GetBlockSize(const TString& diskId) const override
     {
-        TWriteGuard guard(Lock);
+        TReadGuard guard(Lock);
 
         const auto volumeIt = Volumes.find(diskId);
         return volumeIt != Volumes.end()

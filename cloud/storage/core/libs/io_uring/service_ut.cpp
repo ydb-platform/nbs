@@ -11,7 +11,9 @@
 #include <util/generic/array_ref.h>
 #include <util/generic/scope.h>
 #include <util/generic/size_literals.h>
+#include <util/random/random.h>
 #include <util/stream/file.h>
+#include <util/string/strip.h>
 #include <util/system/file.h>
 
 #include <atomic>
@@ -51,6 +53,7 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     TFileHandle FileData;
     TVector<IFileIOServicePtr> Services;
+    cpu_set_t IoWqThreadCpuset;
 
     void SetUp(NUnitTest::TTestContext& context) final
     {
@@ -69,8 +72,10 @@ struct TFixture: public NUnitTest::TBaseFixture
             .MaxKernelWorkersCount = 1,
             .ShareKernelWorkers = true,
             .ForceAsyncIO = true,
+            .PropagateAffinityToKernelWorkers = true,
         });
 
+        SelectIoWqThreadAffinity();
         Services.reserve(ServicesCount);
         for (ui32 i = 0; i != ServicesCount; ++i) {
             Services.push_back(factory->CreateFileIOService());
@@ -85,8 +90,66 @@ struct TFixture: public NUnitTest::TBaseFixture
     {
         Y_UNUSED(context);
 
+        ValidateIoWqThreadAffinity();
+
         for (const auto& service: Services) {
             service->Stop();
+        }
+    }
+
+    void SelectIoWqThreadAffinity()
+    {
+        auto coresNum = sysconf(_SC_NPROCESSORS_ONLN);
+        auto selectedCore = RandomNumber<ui32>(coresNum);
+
+        CPU_ZERO(&IoWqThreadCpuset);
+        CPU_SET(selectedCore, &IoWqThreadCpuset);
+
+        int res = sched_setaffinity(0, sizeof(IoWqThreadCpuset), &IoWqThreadCpuset);
+        UNIT_ASSERT(res == 0);
+    }
+
+    void ValidateIoWqThreadAffinity()
+    {
+        TFsPath taskDir("/proc/self/task");
+
+        TVector<TString> threadIds;
+        taskDir.ListNames(threadIds);
+
+        for (const auto& threadId : threadIds) {
+            auto threadDir = taskDir / threadId;
+            auto threadName = TFileInput(threadDir / "comm").ReadAll();
+            StripInPlace(threadName);
+            if (!threadName.StartsWith("iou-wrk")) {
+                continue;
+            }
+
+            cpu_set_t cpuset;
+            pid_t tid = FromString(threadId);
+            int res = sched_getaffinity(tid, sizeof(cpu_set_t), &cpuset);
+            UNIT_ASSERT_C(res == 0, "sched_getaffinity failed: " << res);
+
+            res = std::memcmp(&cpuset, &IoWqThreadCpuset, sizeof(cpuset));
+            if (res != 0 ) {
+                auto dumpCpuset = [](auto& out, auto &cpuset) {
+                    for (int i = 0; i < CPU_SETSIZE; ++i) {
+                        if (CPU_ISSET(i, &cpuset)) {
+                            out << i << " ";
+                        }
+                    }
+                };
+
+                TStringBuilder out;
+                out << "Thread ID: " << threadId << ", Comm: " << threadName;
+                out << ", Expected affinity: ";
+                dumpCpuset(out, IoWqThreadCpuset);
+                out << ", Observed affinity: ";
+                dumpCpuset(out, cpuset);
+
+                UNIT_ASSERT_C(false, out);
+            }
+
+            Cerr << Endl;
         }
     }
 };

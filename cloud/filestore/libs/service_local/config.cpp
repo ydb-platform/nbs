@@ -48,6 +48,7 @@ namespace {
     xxx(XAttrCacheTimeout,           TDuration,     TDuration::Seconds(15)    )\
     xxx(DirectoryHandlesStorageEnabled, bool,       false                     )\
     xxx(DirectoryHandlesTableSize,   ui64,          100'000                   )\
+    xxx(GuestHandleKillPrivV2Enabled,   bool,       false                     )\
 // FILESTORE_SERVICE_CONFIG
 
 #define FILESTORE_SERVICE_NULL_FILE_IO_CONFIG(xxx)                             \
@@ -62,6 +63,7 @@ namespace {
     xxx(ShareKernelWorkers,          bool,          false                     )\
     xxx(MaxKernelWorkersCount,       ui32,          0                         )\
     xxx(ForceAsyncIO,                bool,          false                     )\
+    xxx(PropagateAffinityToKernelWorkers, bool,     false                     )\
 // FILESTORE_SERVICE_IO_URING_CONFIG
 
 #define FILESTORE_SERVICE_DECLARE_CONFIG(name, type, value)                    \

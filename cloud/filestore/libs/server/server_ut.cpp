@@ -174,6 +174,11 @@ public:
     {
         ServerConfig.SetUnixSocketPath(path);
     }
+
+    void SetUnixSocketAccessMode(ui32 accessMode)
+    {
+        ServerConfig.SetUnixSocketAccessMode(accessMode);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -723,6 +728,29 @@ Y_UNIT_TEST_SUITE(TServerTest)
         UNIT_ASSERT_VALUES_EQUAL(0, static_cast<int>(*errorCounter));
         bootstrap.Start();
         UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*errorCounter));
+    }
+
+    Y_UNIT_TEST(ShouldRespectUnixSocketAccessMode)
+    {
+        TFsPath unixSocket(CreateGuidAsString() + ".sock");
+        const int expectedMode = 0666;
+
+        TTestServerBuilder serverConfigBuilder;
+        serverConfigBuilder.SetUnixSocketPath(unixSocket.GetPath());
+        serverConfigBuilder.SetUnixSocketAccessMode(expectedMode);
+
+        TBootstrap<TVHostSetup> bootstrap(
+            serverConfigBuilder.BuildServerConfig());
+
+        bootstrap.Start();
+
+        struct stat fileStat;
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            stat(unixSocket.GetPath().c_str(), &fileStat));
+
+        const int actualMode = fileStat.st_mode & 0777;
+        UNIT_ASSERT_VALUES_EQUAL(expectedMode, actualMode);
     }
 
     Y_UNIT_TEST(ShouldStartUnixSocketEndpointForFilestoreServer)

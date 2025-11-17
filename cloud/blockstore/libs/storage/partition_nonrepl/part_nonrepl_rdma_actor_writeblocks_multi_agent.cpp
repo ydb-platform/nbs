@@ -302,6 +302,10 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
         writeDeviceBlocksRequest,
         GetSgList(msg->Record.GetBlocks()));
 
+    requestResponseHandler->OnRequestStarted(
+        deviceRequest.DeviceIdx,
+        TDeviceOperationTracker::ERequestType::Write);
+
     const auto sentRequestId =
         ep->SendRequest(std::move(req), requestInfo->CallContext);
 
