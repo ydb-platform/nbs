@@ -1377,6 +1377,15 @@ private:
     void ReallocateDisksWithLostOrReappearedDevices(
         const TAgentList::TAgentRegistrationResult& r,
         THashSet<TDiskId>& disksToReallocate);
+
+    TDeviceList::TNodeRankingFunc GetNodeRankingFunc(
+        const TString& newDiskId,
+        const TString& cloudId) const;
+
+    void UserAntiAffinityNodeRankingFunc(
+        const TString& newDiskId,
+        const TString& cloudId,
+        std::span<ui32> nodeIds) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

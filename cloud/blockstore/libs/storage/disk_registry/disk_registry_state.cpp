@@ -1427,6 +1427,7 @@ NProto::TError TDiskRegistryState::ReplaceDeviceWithoutDiskStateUpdate(
         TDeviceList::TAllocationQuery query {
             .ForbiddenRacks = CollectForbiddenRacks(diskId, disk, "ReplaceDevice"),
             .PreferredRacks = CollectPreferredRacks(diskId),
+            .NodeRankingFunc = GetNodeRankingFunc(diskId, disk.CloudId),
             .LogicalBlockSize = disk.LogicalBlockSize,
             .BlockCount = logicalBlockCount,
             .PoolName = devicePtr->GetPoolName(),
@@ -1670,6 +1671,7 @@ TDeviceList::TAllocationQuery TDiskRegistryState::MakeMigrationQuery(
     TDeviceList::TAllocationQuery query {
         .ForbiddenRacks = CollectForbiddenRacks(sourceDiskId, disk, "StartDeviceMigration"),
         .PreferredRacks = CollectPreferredRacks(sourceDiskId),
+        .NodeRankingFunc = GetNodeRankingFunc(sourceDiskId, disk.CloudId),
         .LogicalBlockSize = disk.LogicalBlockSize,
         .BlockCount = logicalBlockCount,
         .PoolName = sourceDevice.GetPoolName(),
@@ -2140,6 +2142,65 @@ NProto::TError TDiskRegistryState::ValidateDiskLocation(
     return {};
 }
 
+TDeviceList::TNodeRankingFunc TDiskRegistryState::GetNodeRankingFunc(
+    const TString& newDiskId,
+    const TString& cloudId) const
+{
+    if (StorageConfig->GetNonreplAllocationPolicy() !=
+        NProto::NONREPL_ALLOC_POLICY_USER_ANTI_AFFINITY)
+    {
+        return {};
+    }
+
+    if (cloudId.empty()) {
+        return {};
+    }
+
+    return [this, diskId = newDiskId, cloudId = cloudId](
+               std::span<ui32> nodeIds)
+    {
+        UserAntiAffinityNodeRankingFunc(diskId, cloudId, nodeIds);
+    };
+}
+
+void TDiskRegistryState::UserAntiAffinityNodeRankingFunc(
+    const TString& newDiskId,
+    const TString& cloudId,
+    std::span<ui32> nodeIds) const
+{
+    THashMap<ui32, i32> nodeWeights;
+
+    for (const auto& [diskId, ds]: Disks) {
+        if (ds.CloudId != cloudId) {
+            continue;
+        }
+
+        THashSet<ui32> nodes;
+
+        for (const auto& uuid: ds.Devices) {
+            nodes.insert(DeviceList.FindNodeId(uuid));
+        }
+
+        for (const auto& [uuid, _]: ds.MigrationTarget2Source) {
+            nodes.insert(DeviceList.FindNodeId(uuid));
+        }
+
+        if (diskId == newDiskId) {
+            for (ui32 nodeId: nodes) {
+                nodeWeights[nodeId] = Min<i32>();
+            }
+        } else {
+            for (ui32 nodeId: nodes) {
+                ++nodeWeights[nodeId];
+            }
+        }
+    }
+
+    StableSort(nodeIds, [&](ui32 lhs, ui32 rhs) {
+        return nodeWeights[lhs] < nodeWeights[rhs];
+    });
+}
+
 TResultOrError<TDeviceList::TAllocationQuery> TDiskRegistryState::PrepareAllocationQuery(
     ui64 blocksToAllocate,
     const TDiskPlacementInfo& placementInfo,
@@ -2202,6 +2263,7 @@ TResultOrError<TDeviceList::TAllocationQuery> TDiskRegistryState::PrepareAllocat
     return TDeviceList::TAllocationQuery {
         .ForbiddenRacks = std::move(forbiddenDiskRacks),
         .PreferredRacks = std::move(preferredDiskRacks),
+        .NodeRankingFunc = GetNodeRankingFunc(params.DiskId, params.CloudId),
         .LogicalBlockSize = params.BlockSize,
         .BlockCount = blocksToAllocate,
         .PoolName = params.PoolName,
