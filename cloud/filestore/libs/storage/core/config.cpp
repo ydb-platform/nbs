@@ -163,6 +163,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(MaxResponseBytes,              ui32,      4_MB                        )\
     xxx(MaxResponseEntries,            ui32,      1000                        )\
+    xxx(MaxBytesMultiplier,            ui32,      10                          )\
                                                                                \
     xxx(DupCacheEntryCount,            ui32,      1024/*iod 128 but NBS-4016*/)\
     xxx(DisableLocalService,           bool,      false                       )\
