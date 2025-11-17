@@ -1,4 +1,4 @@
-name: Build and test NBS on demand
+name: Build and test NBS on hybrid runners
 
 on:
   workflow_dispatch:
@@ -122,7 +122,7 @@ jobs:
     name: Start self-hosted runner (${{ inputs.build_preset }})
     timeout-minutes: 60
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, "self-hosted", "runner_light" ]
     outputs:
       label: ${{ steps.start-runner.outputs.LABEL }}
       instance-id: ${{ steps.start-runner.outputs.INSTANCE_ID }}
@@ -221,7 +221,7 @@ jobs:
     needs:
       - provide-runner # required to get output from the start-runner job
       - build-and-test # required to wait when the main job is done
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, "self-hosted", "runner_light" ]
     steps:
       - name: Sleep ${{ needs.build-and-test.outputs.sleep_after_tests  || '0' }}s if build failed
         shell: bash
@@ -238,7 +238,7 @@ jobs:
       - provide-runner  # required to get output from the start-runner job
       - build-and-test  # required to wait when the main job is done
       - sleep-if-needed # required to wait until all debug is done
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, "self-hosted", "runner_light" ]
     if: always()
     steps:
       - name: checkout PR

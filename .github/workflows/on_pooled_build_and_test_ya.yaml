@@ -1,4 +1,4 @@
-name: Build and test
+name: Build and test (ya) on pooled runners
 
 on:
   workflow_call:
@@ -185,6 +185,7 @@ jobs:
         build_preset: ${{ inputs.build_preset }}
         install: false
 
+    # TODO: remove after this step is added to base image
     - name: install unattended-upgrades
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: |
@@ -282,8 +283,8 @@ jobs:
     needs: 
       - calculate-runs-on
       - build-and-test
-    # we can only rely on fact that test_failed can be null or 
-    if: ${{ failure() && (needs.build-and-test.outputs.test_failed == null && needs.build-and-test.outputs.test_run_outcome == null) }}
+    # we can only rely on fact that test_failed can be null
+    if: ${{ failure() && vars.POOLED_ENABLE_FAILED_TESTS_RETRY_ON_NODE_FAILURE == 'yes' && (needs.build-and-test.outputs.test_failed == null && needs.build-and-test.outputs.test_run_outcome == null) }}
     steps:
       - name: Prepare workspace
         shell: bash --noprofile --norc -eo pipefail -x {0}

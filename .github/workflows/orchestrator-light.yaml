@@ -13,7 +13,6 @@ concurrency:
 jobs:
   orchestrator:
     name: Run orchestrator.yaml workflow
- 
     uses: ./.github/workflows/orchestrator.yaml
     secrets: inherit
     with:

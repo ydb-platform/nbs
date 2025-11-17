@@ -124,7 +124,7 @@ jobs:
 
   build-and-test:
     name: Build and test
-    uses: ./.github/workflows/build_and_test_ya.yaml
+    uses: ./.github/workflows/on_demand_build_and_test_ya.yaml
     needs:
       - provide-runner
     with:
