@@ -158,10 +158,10 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TActorExecutionOrderController
+class TEventExecutionOrderController
 {
 public:
-    TActorExecutionOrderController(
+    TEventExecutionOrderController(
         TTestActorRuntimeBase& runtime,
         const TVector<std::pair<ui32, ui32>>& eventOrders,
         TTestActorRuntimeBase::TEventFilter baseFilter = nullptr)
@@ -174,9 +174,7 @@ public:
         runtime.SetObserverFunc(
             [this](TAutoPtr<IEventHandle>& ev) -> auto
             {
-                if (!ev) {
-                    return TTestActorRuntimeBase::EEventAction::PROCESS;
-                }
+                Y_ABORT_UNLESS(ev);
 
                 ui32 eventType = ev->GetTypeRewrite();
                 TActorId recipient = ev->GetRecipientRewrite();
@@ -201,9 +199,7 @@ public:
                 TTestActorRuntimeBase& rt,
                 TAutoPtr<IEventHandle>& ev) -> bool
             {
-                if (!ev) {
-                    return baseFilter ? baseFilter(rt, ev) : false;
-                }
+                Y_ABORT_UNLESS(ev);
 
                 TActorId recipient = ev->GetRecipientRewrite();
                 ui32 eventType = ev->GetTypeRewrite();
@@ -13079,7 +13075,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldCorrectlyHandleErrorsInWriteBlocksWithUnconfirmedBlobs)
+    Y_UNIT_TEST(ShouldCorrectlyHandleWriteBlocksErrorsWithUnconfirmedBlobs)
     {
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(1);
@@ -13090,8 +13086,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             {},
             {.MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID});
 
-        // Create event filter for WriteBlobResponse rejection
-        TTestActorRuntimeBase::TEventFilter rejectionFilter =
+        TTestActorRuntimeBase::TEventFilter rejectWriteBlobFilter =
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
         {
             switch (ev->GetTypeRewrite()) {
@@ -13108,12 +13103,12 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         // Set up event order controller to ensure that
         // AddUnconfirmedBlobsResponse is processed before WriteBlobResponse
-        TActorExecutionOrderController orderController(
+        TEventExecutionOrderController orderController(
             *runtime,
             TVector<std::pair<ui32, ui32>>{
                 {TEvPartitionPrivate::EvAddUnconfirmedBlobsResponse,
                  TEvPartitionPrivate::EvWriteBlobResponse}},
-            rejectionFilter);
+            rejectWriteBlobFilter);
 
         TPartitionClient partition(*runtime);
         partition.WaitReady();
