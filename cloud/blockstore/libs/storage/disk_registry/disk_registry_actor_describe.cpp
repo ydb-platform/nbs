@@ -18,10 +18,12 @@ void TDiskRegistryActor::HandleDescribeDisk(
     const auto* msg = ev->Get();
     const TString& diskId = msg->Record.GetDiskId();
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received DescribeDisk request: DiskId=%s",
-        TabletID(),
-        diskId.c_str());
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received DescribeDisk request: %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str());
 
     if (!diskId) {
         auto response = std::make_unique<TEvDiskRegistry::TEvDescribeDiskResponse>(
@@ -35,8 +37,12 @@ void TDiskRegistryActor::HandleDescribeDisk(
     auto error = State->GetDiskInfo(diskId, diskInfo);
 
     if (HasError(error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "GetDiskInfo error: %s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s GetDiskInfo %s error: %s",
+            LogTitle.GetWithTime().c_str(),
+            diskId.c_str(),
             FormatError(error).c_str());
     }
 
@@ -60,7 +66,12 @@ void TDiskRegistryActor::HandleDescribeDisk(
         TStringBuilder error;
         error << "HandleDescribeDisk: ToLogicalBlocks failed, device: "
             << d.GetDeviceUUID().Quote().c_str();
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY, error);
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s %s",
+            LogTitle.GetWithTime().c_str(),
+            error.c_str());
     };
 
     ui64 blockCount = 0;

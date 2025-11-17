@@ -658,20 +658,6 @@ bool TNonreplicatedPartitionActor::HandleRequests(STFUNC_SIG)
     return true;
 }
 
-ui64 TNonreplicatedPartitionActor::GenerateOperationId(
-    size_t deviceRequestsCount)
-{
-    static std::atomic<ui64> DeviceOperationIdGenerator = 1;
-
-    const ui64 val = DeviceOperationIdGenerator.fetch_add(deviceRequestsCount);
-    const ui32 trackingFreq = Config->GetDeviceOperationTrackingFrequency();
-    if (trackingFreq > 0 && val % trackingFreq == 0) {
-        return val;
-    }
-
-    return 0;
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(name, ns)                      \
@@ -772,6 +758,9 @@ STFUNC(TNonreplicatedPartitionActor::StateZombie)
         HFunc(
             TEvNonreplPartitionPrivate::TEvGetDeviceForRangeRequest,
             GetDeviceForRangeCompanion.RejectGetDeviceForRange);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvMultiAgentWriteRequest,
+            RejectMultiAgentWrite);
 
         HFunc(TEvNonreplPartitionPrivate::TEvReadBlocksCompleted, HandleReadBlocksCompleted);
         HFunc(TEvNonreplPartitionPrivate::TEvWriteBlocksCompleted, HandleWriteBlocksCompleted);

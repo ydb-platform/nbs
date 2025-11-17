@@ -61,6 +61,18 @@ func (c *ClientMock) DescribeModel(
 	return res, args.Error(1)
 }
 
+func (c *ClientMock) CreateCheckpoint(
+	ctx context.Context,
+	session nfs.Session,
+	filesystemID string,
+	checkpointID string,
+	nodeID uint64,
+) error {
+
+	args := c.Called(ctx, session, filesystemID, checkpointID, nodeID)
+	return args.Error(0)
+}
+
 func (c *ClientMock) CreateSession(
 	ctx context.Context,
 	fileSystemID string,

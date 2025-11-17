@@ -107,6 +107,8 @@ private:
     TCluster Cluster;
     TMutex ClusterLock;
 
+    std::atomic<ui64> XattrVersion = 0;
+
 public:
     TLocalFileSystem(
         TLocalFileStoreConfigPtr config,
@@ -178,6 +180,6 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void ConvertStats(const TFileStat& stat, NProto::TNodeAttr& node);
+void ConvertStats(const NLowLevel::TFileStatEx& stat, NProto::TNodeAttr& node);
 
 }   // namespace NCloud::NFileStore

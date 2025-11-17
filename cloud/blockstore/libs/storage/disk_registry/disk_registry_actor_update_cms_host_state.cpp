@@ -22,11 +22,14 @@ void TDiskRegistryActor::HandleUpdateCmsHostState(
         ev->Cookie,
         msg->CallContext);
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received UpdateCmsHostState request: Host=%s, State=%u",
-        TabletID(),
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received UpdateCmsHostState request: Host=%s, State=%s %s",
+        LogTitle.GetWithTime().c_str(),
         msg->Host.c_str(),
-        static_cast<ui32>(msg->State));
+        NProto::EAgentState_Name(msg->State).c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TUpdateCmsHostState>(
         ctx,
@@ -79,12 +82,16 @@ void TDiskRegistryActor::CompleteUpdateCmsHostState(
     const TActorContext& ctx,
     TTxDiskRegistry::TUpdateCmsHostState& args)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "UpdateCmsHost result: Host=%s Error=%s Timeout=%u AffectedDisks=%s",
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s UpdateCmsHost result: Host=%s Error=%s Timeout=%u AffectedDisks=%s",
+        LogTitle.GetWithTime().c_str(),
         args.Host.c_str(),
         FormatError(args.Error).c_str(),
         args.Timeout.Seconds(),
-        [&] {
+        [&]
+        {
             TStringStream out;
             out << "[";
             for (const auto& diskId: args.AffectedDisks) {
@@ -93,7 +100,8 @@ void TDiskRegistryActor::CompleteUpdateCmsHostState(
             }
             out << " ]";
             return out.Str();
-        }().c_str());
+        }()
+            .c_str());
 
     ReallocateDisks(ctx);
     NotifyUsers(ctx);

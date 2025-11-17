@@ -218,6 +218,8 @@ IFileIOServicePtr CreateFileIOService(const TLocalFileStoreConfig& config)
                     .MaxKernelWorkersCount = ring.GetMaxKernelWorkersCount(),
                     .ShareKernelWorkers = ring.GetShareKernelWorkers(),
                     .ForceAsyncIO = ring.GetForceAsyncIO(),
+                    .PropagateAffinityToKernelWorkers =
+                        ring.GetPropagateAffinityToKernelWorkers(),
                 });
 
                 if (config.GetNumThreads() <= 1) {
@@ -419,7 +421,12 @@ void TBootstrapVhost::InitEndpoints()
                     ->GetWriteBackCacheFlushMaxWriteRequestsCount(),
             .FlushMaxSumWriteRequestsSize =
                 Configs->VhostServiceConfig
-                    ->GetWriteBackCacheFlushMaxSumWriteRequestsSize(),
+                    ->GetWriteBackCacheFlushMaxSumWriteRequestsSize()
+        },
+        TDirectoryHandlesStorageConfig{
+            .PathPrefix = Configs->VhostServiceConfig->GetDirectoryHandlesStoragePath(),
+            .InitialDataSize =
+                Configs->VhostServiceConfig->GetDirectoryHandlesInitialDataSize()
         }
     );
 

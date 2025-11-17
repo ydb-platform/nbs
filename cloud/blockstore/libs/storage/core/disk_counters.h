@@ -612,6 +612,10 @@ struct TVolumeSelfSimpleCounters
         EPublishingPolicy::DiskRegistryBased,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter DiskAgentCount{
+        EPublishingPolicy::DiskRegistryBased,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
 
     static constexpr TMeta AllCounters[] = {
         MakeMeta<&TVolumeSelfSimpleCounters::MaxReadBandwidth>(),
@@ -644,6 +648,7 @@ struct TVolumeSelfSimpleCounters
         MakeMeta<&TVolumeSelfSimpleCounters::HasLaggingDevices>(),
         MakeMeta<&TVolumeSelfSimpleCounters::LaggingDevicesCount>(),
         MakeMeta<&TVolumeSelfSimpleCounters::LaggingMigrationProgress>(),
+        MakeMeta<&TVolumeSelfSimpleCounters::DiskAgentCount>(),
     };
 };
 static_assert(

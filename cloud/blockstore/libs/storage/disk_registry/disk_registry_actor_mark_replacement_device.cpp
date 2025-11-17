@@ -17,12 +17,13 @@ void TDiskRegistryActor::HandleMarkReplacementDevice(
 
     const auto& record = ev->Get()->Record;
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received MarkReplacementDevice %s, %s, %d",
-        TabletID(),
-        record.GetDiskId().c_str(),
-        record.GetDeviceId().c_str(),
-        record.GetIsReplacement());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received MarkReplacementDevice request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TMarkReplacementDevice>(
         ctx,
@@ -63,15 +64,21 @@ void TDiskRegistryActor::ExecuteMarkReplacementDevice(
         args.IsReplacement);
 
     if (HasError(args.Error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "MarkReplacementDevice %s execution failed: %s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s MarkReplacementDevice %s execution failed: %s",
+            LogTitle.GetWithTime().c_str(),
             args.ToString().c_str(),
             FormatError(args.Error).c_str());
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "MarkReplacementDevice %s execution succeeded",
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s MarkReplacementDevice %s execution succeeded",
+        LogTitle.GetWithTime().c_str(),
         args.ToString().c_str());
 }
 
@@ -79,8 +86,11 @@ void TDiskRegistryActor::CompleteMarkReplacementDevice(
     const TActorContext& ctx,
     TTxDiskRegistry::TMarkReplacementDevice& args)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "MarkReplacementDevice %s complete",
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s MarkReplacementDevice %s complete",
+        LogTitle.GetWithTime().c_str(),
         args.ToString().c_str());
 
     ReallocateDisks(ctx);
@@ -93,4 +103,3 @@ void TDiskRegistryActor::CompleteMarkReplacementDevice(
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
-

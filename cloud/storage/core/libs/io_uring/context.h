@@ -20,6 +20,7 @@ private:
 
     ITaskQueuePtr SubmissionThread;
     TThread CompletionThread;
+    bool PropagateAffinityToKernelWorkers = false;
 
     NThreading::TFuture<void> Started;
 
@@ -37,6 +38,8 @@ public:
 
         // Share kernel worker threads with `WqOwner`
         TContext* WqOwner = nullptr;
+
+        bool PropagateAffinityToKernelWorkers = false;
     };
 
     explicit TContext(TParams params);

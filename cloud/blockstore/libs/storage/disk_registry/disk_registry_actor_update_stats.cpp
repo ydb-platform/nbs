@@ -15,16 +15,21 @@ void TDiskRegistryActor::HandleUpdateAgentStats(
     auto* msg = ev->Get();
     auto& stats = *msg->Record.MutableAgentStats();
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received UpdateAgentStats request: NodeId=%u",
-        TabletID(),
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received UpdateAgentStats request: NodeId=%u",
+        LogTitle.GetWithTime().c_str(),
         stats.GetNodeId());
 
     auto error = State->UpdateAgentCounters(stats);
 
     if (HasError(error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "UpdateAgentCounters error: %s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s UpdateAgentCounters error: %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(error).c_str());
     }
 
@@ -34,8 +39,12 @@ void TDiskRegistryActor::HandleUpdateAgentStats(
     NCloud::Reply(ctx, *ev, std::move(response));
 
     for (const auto& uuid: State->CollectBrokenDevices(stats)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "Device with IO errors detected: %s", uuid.c_str());
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s Device with IO errors detected: %s",
+            LogTitle.GetWithTime().c_str(),
+            uuid.c_str());
 
         auto request = std::make_unique<TEvDiskRegistry::TEvChangeDeviceStateRequest>();
         request->Record.SetDeviceUUID(uuid);

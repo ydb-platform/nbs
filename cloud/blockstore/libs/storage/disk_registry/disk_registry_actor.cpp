@@ -51,6 +51,9 @@ TDiskRegistryActor::TDiskRegistryActor(
     , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
     , Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
+    , LogTitle(
+          GetCycleCount(),
+          TLogTitle::TDiskRegistry{.TabletId = TabletID()})
     , LogbrokerService(std::move(logbrokerService))
     , NotifyService(std::move(notifyService))
     , Logging(std::move(logging))

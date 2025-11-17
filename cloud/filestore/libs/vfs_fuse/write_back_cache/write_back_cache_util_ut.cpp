@@ -1,7 +1,6 @@
 #include "write_back_cache_impl.h"
 
-#include "disjoint_interval_map.h"
-
+#include <cloud/storage/core/libs/common/disjoint_interval_map.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/testing/unittest/registar.h>

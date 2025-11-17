@@ -38,8 +38,7 @@ public:
         const TActorId& part,
         ui32 blockSize,
         bool assignVolumeRequestId,
-        TChildLogTitle logTitle,
-        ui64 deviceOperationId);
+        TChildLogTitle logTitle);
 
 protected:
     void SendRequest(const NActors::TActorContext& ctx) override;
@@ -69,8 +68,7 @@ TDiskAgentZeroActor::TDiskAgentZeroActor(
         const TActorId& part,
         ui32 blockSize,
         bool assignVolumeRequestId,
-        TChildLogTitle logTitle,
-        ui64 deviceOperationId)
+        TChildLogTitle logTitle)
     :TDiskAgentBaseRequestActor(
           std::move(requestInfo),
           GetRequestId(request),
@@ -80,8 +78,7 @@ TDiskAgentZeroActor::TDiskAgentZeroActor(
           std::move(partConfig),
           volumeActorId,
           part,
-          std::move(logTitle),
-          deviceOperationId)
+          std::move(logTitle))
     , Request(std::move(request))
     , BlockSize(blockSize)
     , AssignVolumeRequestId(assignVolumeRequestId)
@@ -237,8 +234,6 @@ void TNonreplicatedPartitionActor::HandleZeroBlocks(
         return;
     }
 
-    ui64 operationId = GenerateOperationId(deviceRequests.size());
-
     auto actorId = NCloud::Register<TDiskAgentZeroActor>(
         ctx,
         requestInfo,
@@ -250,8 +245,7 @@ void TNonreplicatedPartitionActor::HandleZeroBlocks(
         SelfId(),
         PartConfig->GetBlockSize(),
         Config->GetAssignIdToWriteAndZeroRequestsEnabled(),
-        LogTitle.GetChild(GetCycleCount()),
-        operationId);
+        LogTitle.GetChild(GetCycleCount()));
 
     RequestsInProgress.AddWriteRequest(actorId, std::move(request));
 }

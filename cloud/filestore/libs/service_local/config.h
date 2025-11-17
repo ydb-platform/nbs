@@ -55,6 +55,7 @@ public:
     [[nodiscard]] bool GetShareKernelWorkers() const;
     [[nodiscard]] ui32 GetMaxKernelWorkersCount() const;
     [[nodiscard]] bool GetForceAsyncIO() const;
+    [[nodiscard]] bool GetPropagateAffinityToKernelWorkers() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -116,6 +117,20 @@ public:
     bool GetZeroCopyWriteEnabled() const;
 
     bool GetFSyncQueueDisabled() const;
+
+    TDuration GetEntryTimeout() const;
+
+    TDuration GetNegativeEntryTimeout() const;
+
+    TDuration GetAttrTimeout() const;
+
+    TDuration GetXAttrCacheTimeout() const;
+
+    bool GetDirectoryHandlesStorageEnabled() const;
+
+    ui64 GetDirectoryHandlesTableSize() const;
+
+    bool GetGuestHandleKillPrivV2Enabled() const;
 };
 
 }   // namespace NCloud::NFileStore

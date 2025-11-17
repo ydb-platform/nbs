@@ -7,6 +7,7 @@ PEERDIR(
 )
 
 TEST_SRCS(
+    shared_memory_test.py
     test.py
 )
 

@@ -383,7 +383,8 @@ public:
         };
     }
 
-    std::unique_ptr<TEvVolume::TEvWaitReadyRequest> CreateWaitReadyRequest();
+    std::unique_ptr<TEvVolume::TEvWaitReadyRequest> CreateWaitReadyRequest(
+        TString diskId = {});
 
     std::unique_ptr<TEvVolume::TEvAddClientRequest> CreateAddClientRequest(
         const NProto::TVolumeClientInfo& info);
@@ -653,6 +654,10 @@ void CheckVolumeSendsStatsEvenIfPartitionsAreDead(
     bool isReplicatedVolume);
 
 void CheckRebuildMetadata(ui32 partCount, ui32 blocksPerStripe);
+
+TVector<NProto::TDeviceConfig> MakeDeviceList(
+    ui32 agentCount,
+    ui32 deviceCount);
 
 }   // namespace NTestVolume
 

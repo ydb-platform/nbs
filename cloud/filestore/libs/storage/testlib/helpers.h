@@ -33,6 +33,8 @@ enum class ENodeType
     SymLink,
     Sock,
     Fifo,
+    CharDev,
+    BlockDev,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -48,6 +50,8 @@ struct TCreateNodeArgs
     TString TargetPath;
 
     TString ShardId;
+
+    ui64 DevId = 0;
 
     TCreateNodeArgs(
             ENodeType nodeType,
@@ -102,6 +106,20 @@ struct TCreateNodeArgs
                 fifo->SetMode(Mode);
                 break;
             }
+
+            case ENodeType::CharDev: {
+                auto* charDev = request.MutableCharDevice();
+                charDev->SetMode(Mode);
+                charDev->SetDevice(DevId);
+                break;
+            }
+
+            case ENodeType::BlockDev: {
+                auto* blockDev = request.MutableBlockDevice();
+                blockDev->SetMode(Mode);
+                blockDev->SetDevice(DevId);
+                break;
+            }
         }
     }
 
@@ -148,6 +166,24 @@ struct TCreateNodeArgs
     {
         TCreateNodeArgs args(ENodeType::Fifo, parent, name);
         args.Mode = mode;
+        return args;
+    }
+
+    static TCreateNodeArgs
+    CharDev(ui64 parent, const TString& name, ui32 mode = 0, ui64 dev = 0)
+    {
+        TCreateNodeArgs args(ENodeType::CharDev, parent, name);
+        args.Mode = mode;
+        args.DevId = dev;
+        return args;
+    }
+
+    static TCreateNodeArgs
+    BlockDev(ui64 parent, const TString& name, ui32 mode = 0, ui64 dev = 0)
+    {
+        TCreateNodeArgs args(ENodeType::BlockDev, parent, name);
+        args.Mode = mode;
+        args.DevId = dev;
         return args;
     }
 };
@@ -254,7 +290,7 @@ struct TCreateHandleArgs
 
     static constexpr ui32 TRUNC
         = ProtoFlag(NProto::TCreateHandleRequest::E_TRUNCATE);
-    
+
     static constexpr ui32 DIRECT
         = ProtoFlag(NProto::TCreateHandleRequest::E_DIRECT);
 };

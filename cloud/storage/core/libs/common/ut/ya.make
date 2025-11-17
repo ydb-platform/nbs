@@ -22,6 +22,7 @@ SRCS(
     block_data_ref_ut.cpp
     concurrent_queue_ut.cpp
     context_ut.cpp
+    disjoint_interval_map_ut.cpp
     error_ut.cpp
     file_io_service_ut.cpp
     file_ring_buffer_ut.cpp

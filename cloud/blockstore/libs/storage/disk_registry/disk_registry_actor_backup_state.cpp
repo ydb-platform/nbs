@@ -17,13 +17,13 @@ void TDiskRegistryActor::HandleBackupDiskRegistryState(
 
     const auto* msg = ev->Get();
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received BackupDiskRegistryState request."
-        "BackupLocalDB=%s,"
-        "BackupFilePath=%s",
-        TabletID(),
-        msg->Record.GetBackupLocalDB() ? "true" : "false",
-        msg->Record.GetBackupFilePath().c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received BackupDiskRegistryState request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     if (!msg->Record.GetBackupLocalDB()) {
         auto response = std::make_unique<

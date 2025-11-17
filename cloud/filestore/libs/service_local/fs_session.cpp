@@ -37,15 +37,29 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         features->SetAsyncHandleOperationPeriod(
             Config->GetAsyncHandleOperationPeriod().MilliSeconds());
         features->SetZeroCopyEnabled(Config->GetZeroCopyEnabled());
-        features->SetGuestPageCacheDisabled(Config->GetGuestPageCacheDisabled());
-        features->SetExtendedAttributesDisabled(Config->GetExtendedAttributesDisabled());
+        features->SetGuestPageCacheDisabled(
+            Config->GetGuestPageCacheDisabled());
+        features->SetExtendedAttributesDisabled(
+            Config->GetExtendedAttributesDisabled());
         features->SetServerWriteBackCacheEnabled(
             Config->GetServerWriteBackCacheEnabled());
-        features->SetMaxBackground(
-            Config->GetMaxBackground());
-        features->SetMaxFuseLoopThreads(
-            Config->GetMaxFuseLoopThreads());
+        features->SetMaxBackground(Config->GetMaxBackground());
+        features->SetMaxFuseLoopThreads(Config->GetMaxFuseLoopThreads());
         features->SetFSyncQueueDisabled(Config->GetFSyncQueueDisabled());
+        features->SetEntryTimeout(Config->GetEntryTimeout().MilliSeconds());
+        features->SetNegativeEntryTimeout(
+            Config->GetNegativeEntryTimeout().MilliSeconds());
+        features->SetAttrTimeout(Config->GetAttrTimeout().MilliSeconds());
+        features->SetXAttrCacheTimeout(
+            Config->GetXAttrCacheTimeout().MilliSeconds());
+        features->SetDirectoryHandlesStorageEnabled(
+            Config->GetDirectoryHandlesStorageEnabled());
+        if (Config->GetDirectoryHandlesStorageEnabled()) {
+            features->SetDirectoryHandlesTableSize(
+                Config->GetDirectoryHandlesTableSize());
+        }
+        features->SetGuestHandleKillPrivV2Enabled(
+            Config->GetGuestHandleKillPrivV2Enabled());
         return response;
     };
 

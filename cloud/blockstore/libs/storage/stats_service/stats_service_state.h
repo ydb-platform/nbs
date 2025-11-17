@@ -45,6 +45,10 @@ struct TDiskPerfData
         , YdbDiskCounters(policy, histCounterOptions)
         , YdbVolumeSelfCounters(policy, histCounterOptions)
     {}
+
+    void Register(
+        TIntrusivePtr<NMonitoring::TDynamicCounters> serviceVolumeCounters);
+    void Publish(TInstant now);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -129,11 +133,9 @@ struct TVolumeStatsInfo
     NProto::TVolume VolumeInfo;
     ui64 VolumeTabletId = 0;
 
-    bool IsLocalMountCounterRegistered = false;
-    bool SelfCountersRegistered = false;
-
     bool IsLocalMount = false;
     NMonitoring::TDynamicCounters::TCounterPtr IsLocalMountCounter;
+    TIntrusivePtr<NMonitoring::TDynamicCounters> ServiceVolumeCounters;
 
     TDiskPerfData PerfCounters;
     NBlobMetrics::TBlobLoadMetrics OffsetBlobMetrics;

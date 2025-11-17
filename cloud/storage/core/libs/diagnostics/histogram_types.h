@@ -28,6 +28,7 @@ struct TRequestUsTimeBuckets
     }};
 
     static constexpr TStringBuf Units = "usec";
+    static constexpr double PercentileMultiplier = 1.0;
 
     static TVector<TString> MakeNames();
 
@@ -57,6 +58,7 @@ struct TRequestUsTimeBucketsLowResolution
     }};
 
     static constexpr TStringBuf Units = "usec";
+    static constexpr double PercentileMultiplier = 1.0;
 
     static TVector<TString> MakeNames();
 };
@@ -67,13 +69,17 @@ struct TRequestMsTimeBuckets
 {
     static constexpr size_t BUCKETS_COUNT =
         TRequestUsTimeBuckets::BUCKETS_COUNT;
+    static constexpr TStringBuf Units = "";
+    // Uses buckets in milliseconds for the histogram, but reports values in
+    // microseconds for percentiles.
+    static constexpr double PercentileMultiplier = 1000.0;
 
-    static constexpr auto MakeArray = [](
-        const std::array<double, BUCKETS_COUNT>& array)
+    static constexpr auto MakeArray =
+        [](const std::array<double, BUCKETS_COUNT>& array)
     {
         std::array<double, BUCKETS_COUNT> result;
         for (size_t i = 0; i + 1 < array.size(); ++i) {
-            result[i] = array[i] / 1000;
+            result[i] = array[i] / PercentileMultiplier;
         }
         result.back() = std::numeric_limits<double>::max();
         return result;
@@ -81,8 +87,6 @@ struct TRequestMsTimeBuckets
 
     static constexpr std::array<double, BUCKETS_COUNT> Buckets =
         MakeArray(TRequestUsTimeBuckets::Buckets);
-
-    static constexpr TStringBuf Units = "msec";
 
     static TVector<TString> MakeNames();
 };
@@ -102,6 +106,7 @@ struct TQueueSizeBuckets
     }};
 
     static constexpr TStringBuf Units = "";
+    static constexpr double PercentileMultiplier = 1.0;
 
     static TVector<TString> MakeNames();
 };
@@ -117,6 +122,9 @@ struct TKbSizeBuckets
     }};
 
     static constexpr TStringBuf Units = "KB";
+    // NOTE: maybe should be using multiplier of 1024 to increase the
+    // percentiles resolution.
+    static constexpr double PercentileMultiplier = 1.0;
 
     static TVector<TString> MakeNames();
 };

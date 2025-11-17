@@ -278,3 +278,27 @@ create_file() {
 		fi
 	fi
 }
+
+# POSIX:
+# {NAME_MAX}
+#     Maximum number of bytes in a filename (not including terminating null).
+namegen_max()
+{
+	name_max=`${fstest} pathconf . _PC_NAME_MAX`
+	namegen_len ${name_max}
+}
+
+namegen_len()
+{
+	len="${1}"
+
+	name=""
+	while :; do
+		namepart="`dd if=/dev/urandom bs=64 count=1 2>/dev/null | openssl md5 | awk '{print $NF}'`"
+		name="${name}${namepart}"
+		curlen=`printf "%s" "${name}" | wc -c`
+		[ ${curlen} -lt ${len} ] || break
+	done
+	name=`echo "${name}" | cut -b -${len}`
+	printf "%s" "${name}"
+}

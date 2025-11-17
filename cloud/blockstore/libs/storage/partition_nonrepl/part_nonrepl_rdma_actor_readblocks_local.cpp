@@ -50,6 +50,7 @@ public:
             size_t requestCount,
             TGuardedSgList sglist,
             TBlockRange64 blockRange,
+            NActors::TActorId volumeActorId,
             NActors::TActorId parentActorId,
             ui64 requestId,
             bool checkVoidBlocks,
@@ -59,6 +60,7 @@ public:
               std::move(partConfig),
               std::move(requestInfo),
               requestId,
+              volumeActorId,
               parentActorId,
               blockRange.Size(),
               requestCount)
@@ -202,6 +204,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksLocal(
         deviceRequests.size(),
         std::move(msg->Record.Sglist),
         blockRange,
+        VolumeActorId,
         SelfId(),
         requestId,
         Config->GetOptimizeVoidBuffersTransferForReadsEnabled(),

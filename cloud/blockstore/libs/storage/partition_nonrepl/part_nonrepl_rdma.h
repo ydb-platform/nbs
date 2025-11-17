@@ -18,6 +18,7 @@ NActors::IActorPtr CreateNonreplicatedPartitionRdma(
     TDiagnosticsConfigPtr diagnosticsConfig,
     TNonreplicatedPartitionConfigPtr partConfig,
     NRdma::IClientPtr rdmaClient,
+    NActors::TActorId volumeActorId,
     NActors::TActorId statActorId);
 
 }   // namespace NCloud::NBlockStore::NStorage

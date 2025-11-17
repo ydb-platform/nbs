@@ -51,6 +51,10 @@ public:
 
     bool GetServerWriteBackCacheEnabled() const;
 
+    bool GetDirectoryHandlesStorageEnabled() const;
+
+    ui64 GetDirectoryHandlesTableSize() const;
+
     bool GetGuestKeepCacheAllowed() const;
 
     ui32 GetMaxBackground() const;
@@ -60,6 +64,8 @@ public:
     bool GetZeroCopyWriteEnabled() const;
 
     bool GetFSyncQueueDisabled() const;
+
+    bool GetGuestHandleKillPrivV2Enabled() const;
 
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;

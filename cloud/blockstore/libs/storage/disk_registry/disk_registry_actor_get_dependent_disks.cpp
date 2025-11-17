@@ -15,11 +15,12 @@ void TDiskRegistryActor::HandleGetDependentDisks(
 
     auto* msg = ev->Get();
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received GetDependentDisks request: Host=%s, Path=%s",
-        TabletID(),
-        msg->Record.GetHost().c_str(),
-        msg->Record.GetPath().c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received GetDependentDisks request: %s",
+        LogTitle.GetWithTime().c_str(),
+        msg->Record.ShortDebugString().c_str());
 
     using TResponse = TEvDiskRegistry::TEvGetDependentDisksResponse;
 
@@ -32,7 +33,7 @@ void TDiskRegistryActor::HandleGetDependentDisks(
     auto response = std::make_unique<TResponse>();
     *response->Record.MutableError() = std::move(error);
     for (const auto& id: diskIds) {
-        response->Record.AddDependentDiskIds(std::move(id));
+        response->Record.AddDependentDiskIds(id);
     }
 
     NCloud::Reply(ctx, *ev, std::move(response));

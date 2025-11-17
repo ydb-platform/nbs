@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	images_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/config"
@@ -21,6 +22,7 @@ func RegisterForExecution(
 	storage resources.Storage,
 	nbsFactory nbs.Factory,
 	poolService pools.Service,
+	cellSelector cells.CellSelector,
 ) error {
 
 	deletedImageExpirationTimeout, err := time.ParseDuration(
@@ -75,11 +77,12 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("images.CreateImageFromDisk", func() tasks.Task {
 		return &createImageFromDiskTask{
-			config:      config,
-			scheduler:   taskScheduler,
-			storage:     storage,
-			nbsFactory:  nbsFactory,
-			poolService: poolService,
+			config:       config,
+			scheduler:    taskScheduler,
+			storage:      storage,
+			nbsFactory:   nbsFactory,
+			poolService:  poolService,
+			cellSelector: cellSelector,
 		}
 	})
 	if err != nil {

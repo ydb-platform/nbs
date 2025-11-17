@@ -117,6 +117,20 @@ struct TOptions
     }
 };
 
+NProto::TDiskRegistryConfig MakeConfig(
+    const TVector<NProto::TAgentConfig>& agents)
+{
+    NProto::TDiskRegistryConfig newConfig;
+
+    for (const auto& agent: agents) {
+        if (agent.DevicesSize() > 0) {
+            *newConfig.AddKnownAgents() = agent;
+        }
+    }
+
+    return newConfig;
+}
+
 template <typename TTag>
 void Generate(
     const std::span<const TEntityInfo<TTag>>& entities,
@@ -252,6 +266,7 @@ std::unique_ptr<TDiskRegistryState> GenerateAll(ui64 seed)
                                  ->GetSubgroup("component", "disk_registry");
     auto statePtr =
         NDiskRegistryStateTest::TDiskRegistryStateBuilder()
+            .WithConfig(MakeConfig(agents))
             .AddDevicePoolConfig("", 93_GB, NProto::DEVICE_POOL_KIND_DEFAULT)
             .With(diskRegistryGroup)
             .WithAgents(std::move(agents))

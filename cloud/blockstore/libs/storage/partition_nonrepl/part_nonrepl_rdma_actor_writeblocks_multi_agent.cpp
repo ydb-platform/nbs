@@ -54,6 +54,7 @@ public:
             TRequestInfoPtr requestInfo,
             ui32 requestBlockCount,
             size_t replicationTargetCount,
+            NActors::TActorId volumeActorId,
             NActors::TActorId parentActorId,
             ui64 requestId)
         : TBase(
@@ -61,6 +62,7 @@ public:
               std::move(partConfig),
               std::move(requestInfo),
               requestId,
+              volumeActorId,
               parentActorId,
               requestBlockCount,
               1)
@@ -258,6 +260,7 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
             requestInfo,
             msg->Record.Range.Size(),
             msg->Record.DevicesAndRanges.size(),
+            VolumeActorId,
             SelfId(),
             requestId);
 
@@ -299,14 +302,18 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
         writeDeviceBlocksRequest,
         GetSgList(msg->Record.GetBlocks()));
 
+    requestResponseHandler->OnRequestStarted(
+        deviceRequest.DeviceIdx,
+        TDeviceOperationTracker::ERequestType::Write);
+
     const auto sentRequestId =
         ep->SendRequest(std::move(req), requestInfo->CallContext);
 
-    RequestsInProgress.AddWriteRequest(
-        requestId,
-        TRequestContext{TDeviceRequestContext{
-            .DeviceIndex = deviceRequest.DeviceIdx,
-            .SentRequestId = sentRequestId}});
+    TRequestContext sentRequestCtx{
+        {.DeviceIdx = deviceRequest.DeviceIdx,
+         .SentRequestId = sentRequestId}};
+
+    RequestsInProgress.AddWriteRequest(requestId, sentRequestCtx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

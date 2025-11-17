@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request.h>
 #include <cloud/blockstore/libs/service/service.h>
+#include <cloud/blockstore/libs/service/service_method.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/startable.h>
@@ -50,7 +51,7 @@ IBlockStorePtr CreateClient(
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TMultiClientEndpoint
-    : public IMultiClientEndpoint
+    : public TBlockStoreImpl<TMultiClientEndpoint, IMultiClientEndpoint>
     , public std::enable_shared_from_this<TMultiClientEndpoint>
 {
     const IBlockStorePtr Client;
@@ -103,26 +104,21 @@ struct TMultiClientEndpoint
         return Client->AllocateBuffer(bytesCount);
     }
 
-    #define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                             \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        return Client->name(                                                   \
-            std::move(callContext),                                            \
-            std::move(request));                                               \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
-
-    BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
-
-#undef BLOCKSTORE_IMPLEMENT_METHOD
+    template <typename TMethod>
+    TFuture<typename TMethod::TResponse> Execute(
+        TCallContextPtr callContext,
+        std::shared_ptr<typename TMethod::TRequest> request)
+    {
+        return TMethod::Execute(
+            Client.get(),
+            std::move(callContext),
+            std::move(request));
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TClientEndpoint
-    : public IBlockStore
+struct TClientEndpoint: public TBlockStoreImpl<TClientEndpoint, IBlockStore>
 {
     const IBlockStorePtr Client;
     const std::weak_ptr<TMultiClientEndpoint> Owner;
@@ -175,21 +171,17 @@ struct TClientEndpoint
         return Client->AllocateBuffer(bytesCount);
     }
 
-    #define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                             \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        PrepareRequest(*request);                                              \
-        return Client->name(                                                   \
-            std::move(callContext),                                            \
-            std::move(request));                                               \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
-
-    BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
-
-#undef BLOCKSTORE_IMPLEMENT_METHOD
+    template <typename TMethod>
+    TFuture<typename TMethod::TResponse> Execute(
+        TCallContextPtr callContext,
+        std::shared_ptr<typename TMethod::TRequest> request)
+    {
+        PrepareRequest(*request);
+        return TMethod::Execute(
+            Client.get(),
+            std::move(callContext),
+            std::move(request));
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -201,10 +193,10 @@ IBlockStorePtr CreateClient(
     TString instanceId)
 {
     return std::make_shared<TClientEndpoint>(
-        client,
-        owner,
-        clientId,
-        instanceId);
+        std::move(client),
+        std::move(owner),
+        std::move(clientId),
+        std::move(instanceId));
 }
 
 }  // namespace

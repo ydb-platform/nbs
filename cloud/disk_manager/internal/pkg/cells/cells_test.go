@@ -13,6 +13,8 @@ import (
 	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/storage/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/mocks"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
+	resources_storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
@@ -192,6 +194,17 @@ func TestCellSelectorSelectsCorrectCell(t *testing.T) {
 		shardedZoneID,
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
+		true, // requireExactCellIDMatch
+	)
+	require.NoError(t, err)
+	require.Equal(t, shardedZoneID, selectedCell)
+
+	selectedCell, err = selector.selectCell(
+		ctx,
+		shardedZoneID,
+		"folder",
+		types.DiskKind_DISK_KIND_SSD,
+		false, // requireExactCellIDMatch
 	)
 	require.NoError(t, err)
 	require.Equal(t, cellID2, selectedCell) // First in the config.
@@ -201,6 +214,7 @@ func TestCellSelectorSelectsCorrectCell(t *testing.T) {
 		cellID2,
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
+		false, // requireExactCellIDMatch
 	)
 	require.NoError(t, err)
 	require.Equal(t, cellID2, selectedCell)
@@ -210,6 +224,7 @@ func TestCellSelectorSelectsCorrectCell(t *testing.T) {
 		otherZoneID,
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
+		false, // requireExactCellIDMatch
 	)
 	require.NoError(t, err)
 	require.Equal(t, otherZoneID, selectedCell)
@@ -219,6 +234,7 @@ func TestCellSelectorSelectsCorrectCell(t *testing.T) {
 		"incorrectZoneID",
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
+		false, // requireExactCellIDMatch
 	)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "incorrect zone ID provided")
@@ -234,6 +250,7 @@ func TestCellSelectorReturnsCorrectNBSClientIfConfigsIsNotSet(t *testing.T) {
 		otherZoneID,
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
+		false, // requireExactCellIDMatch
 	)
 	require.NoError(t, err)
 	require.Equal(t, otherZoneID, selectedCell)
@@ -272,6 +289,7 @@ func TestCellSelectorReturnsCorrectCellWithMaxFreeBytesPolicy(t *testing.T) {
 		shardedZoneID,
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
+		false, // requireExactCellIDMatch
 	)
 	require.NoError(t, err)
 	require.Equal(t, cellID1, selectedCell)
@@ -309,6 +327,7 @@ func TestCellSelectorReturnsCorrectCellWithMaxFreeBytesPolicyIfNoCapacities(
 		shardedZoneID,
 		"folder",
 		types.DiskKind_DISK_KIND_SSD,
+		false, // requireExactCellIDMatch
 	)
 	require.NoError(t, err)
 	require.Equal(t, cellID1, selectedCell)
@@ -492,4 +511,112 @@ func TestSelectCellForLocalDiskReturnsCorrectNBSClientIfConfigsIsNotSet(
 	require.NoError(t, err)
 	require.Equal(t, nbsClient, client)
 	mock.AssertExpectationsForObjects(t, nbsFactory, nbsClient)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestReplaceZoneIdWithCellIdInDiskMeta(t *testing.T) {
+	ctx := context.Background()
+	storage := resources_storage_mocks.NewStorageMock()
+	cellsConfig := &cells_config.CellsConfig{
+		Cells: map[string]*cells_config.ZoneCells{
+			shardedZoneID: {Cells: []string{cellID1, cellID2}},
+			otherZoneID:   {Cells: []string{otherZoneID}},
+		},
+	}
+	cellSelector := cellSelector{
+		config: cellsConfig,
+	}
+
+	disk1 := &types.Disk{
+		DiskId: "disk1",
+		ZoneId: shardedZoneID,
+	}
+	disk2 := &types.Disk{
+		DiskId: "disk2",
+		ZoneId: otherZoneID,
+	}
+	disk3 := &types.Disk{
+		DiskId: "disk3",
+		ZoneId: otherZoneID,
+	}
+	disk4 := &types.Disk{
+		DiskId: "disk4",
+		ZoneId: otherZoneID,
+	}
+
+	storage.On("GetDiskMeta", ctx, "disk1").Return(&resources.DiskMeta{
+		ZoneID: cellID2,
+	}, nil)
+	storage.On("GetDiskMeta", ctx, "disk2").Return(&resources.DiskMeta{
+		ZoneID: otherZoneID,
+	}, nil)
+	storage.On("GetDiskMeta", ctx, "disk3").Return(&resources.DiskMeta{
+		ZoneID: cellID1,
+	}, nil)
+	storage.On("GetDiskMeta", ctx, "disk4").Return(
+		(*resources.DiskMeta)(nil),
+		nil,
+	)
+
+	processedDisk1, err := cellSelector.ReplaceZoneIdWithCellIdInDiskMeta(
+		ctx,
+		storage,
+		disk1,
+	)
+	require.NoError(t, err)
+	require.Equal(
+		t,
+		&types.Disk{DiskId: "disk1", ZoneId: cellID2},
+		processedDisk1,
+	)
+
+	processedDisk2, err := cellSelector.ReplaceZoneIdWithCellIdInDiskMeta(
+		ctx,
+		storage,
+		disk2,
+	)
+	require.NoError(t, err)
+	require.Equal(t, disk2, processedDisk2) // Should get the exact disk.
+
+	processedDisk3, err := cellSelector.ReplaceZoneIdWithCellIdInDiskMeta(
+		ctx,
+		storage,
+		disk3,
+	)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "is not in zone")
+	require.Nil(t, processedDisk3)
+
+	processedDisk4, err := cellSelector.ReplaceZoneIdWithCellIdInDiskMeta(
+		ctx,
+		storage,
+		disk4,
+	)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "no such disk:")
+	require.Nil(t, processedDisk4)
+
+	mock.AssertExpectationsForObjects(t, storage)
+}
+
+func TestReplaceZoneIdWithCellIdInDiskMetaIfConfigIsNotSet(t *testing.T) {
+	ctx := context.Background()
+	storage := resources_storage_mocks.NewStorageMock()
+	cellSelector := cellSelector{}
+
+	disk := &types.Disk{
+		DiskId: "disk",
+		ZoneId: otherZoneID,
+	}
+
+	processedDisk, err := cellSelector.ReplaceZoneIdWithCellIdInDiskMeta(
+		ctx,
+		storage,
+		disk,
+	)
+	require.NoError(t, err)
+	require.Equal(t, disk, processedDisk) // Should get the exact disk.
+
+	mock.AssertExpectationsForObjects(t, storage)
 }

@@ -1,5 +1,7 @@
 #include "write_back_cache.h"
 
+#include "overlapping_interval_set.h"
+
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/filestore_test.h>
 
@@ -14,11 +16,12 @@
 #include <util/generic/hash.h>
 #include <util/generic/string.h>
 #include <util/random/random.h>
+#include <util/system/mutex.h>
+#include <util/system/spinlock.h>
 #include <util/system/tempfile.h>
 
 #include <latch>
 #include <memory>
-#include <mutex>
 #include <thread>
 
 namespace NCloud::NFileStore::NFuse {
@@ -33,7 +36,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 CacheCapacityBytes = 1024*1024 + 1024;
+constexpr ui32 CacheCapacityBytes = 1024 * 1024 + 1024;
 
 constexpr ui32 DefaultMaxWriteRequestSize = 1_MB;
 constexpr ui32 DefaultMaxWriteRequestsCount = 64;
@@ -56,7 +59,7 @@ void SleepForRandomDurationMs(ui32 maxDurationMs)
 struct TInFlightRequestTracker
 {
     TVector<ui32> InFlightRequests;
-    std::mutex Mutex;
+    TMutex Mutex;
 
     ui32 Count(ui64 offset, ui64 length)
     {
@@ -291,14 +294,26 @@ struct TTestTimer
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TBootstrapArgs
+{
+    TDuration AutomaticFlushPeriod = {};
+    ui32 MaxWriteRequestSize = DefaultMaxWriteRequestSize;
+    ui32 MaxWriteRequestsCount = DefaultMaxWriteRequestsCount;
+    ui32 MaxSumWriteRequestsSize = DefaultMaxSumWriteRequestsSize;
+    bool UseTestTimerAndScheduler = true;
+    bool ZeroCopyWriteEnabled = false;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TBootstrap
 {
     ILoggingServicePtr Logging;
     TLog Log;
 
     std::shared_ptr<TFileStoreTest> Session;
-    std::shared_ptr<TTestTimer> Timer;
-    std::shared_ptr<TTestScheduler> Scheduler;
+    ITimerPtr Timer;
+    ISchedulerPtr Scheduler;
     std::shared_ptr<TWriteBackCacheStats> Stats;
     TDuration CacheAutomaticFlushPeriod;
     TDuration CacheFlushRetryPeriod;
@@ -308,20 +323,21 @@ struct TBootstrap
     ui32 MaxWriteRequestSize = 0;
     ui32 MaxWriteRequestsCount = 0;
     ui32 MaxSumWriteRequestsSize = 0;
+    bool ZeroCopyWriteEnabled = false;
 
     TCallContextPtr CallContext;
 
     // Maps nodeId to data
     THashMap<ui64, TString> ExpectedData;
-    std::mutex ExpectedDataMutex;
+    TMutex ExpectedDataMutex;
 
     // Maps nodeId to data
     THashMap<ui64, TString> UnflushedData;
-    std::mutex UnflushedDataMutex;
+    TMutex UnflushedDataMutex;
 
     // Maps nodeId to data
     THashMap<ui64, TString> FlushedData;
-    std::mutex FlushedDataMutex;
+    TMutex FlushedDataMutex;
 
     // Ensures that the data is not flushed twice, does not work well with cache
     // recreation because after recreation, the data may be flushed again
@@ -332,30 +348,26 @@ struct TBootstrap
 
     std::atomic<int> SessionWriteDataHandlerCalled;
 
-    TBootstrap(
-            TDuration cacheAutomaticFlushPeriod = {},
-            ui32 maxWriteRequestSize = 0,
-            ui32 maxWriteRequestsCount = 0,
-            ui32 maxSumWriteRequestsSize = 0)
-        : MaxWriteRequestSize(maxWriteRequestSize > 0
-            ? maxWriteRequestSize
-            : DefaultMaxWriteRequestSize)
-        , MaxWriteRequestsCount(maxWriteRequestsCount > 0
-            ? maxWriteRequestsCount
-            : DefaultMaxWriteRequestsCount)
-        , MaxSumWriteRequestsSize(maxSumWriteRequestsSize > 0
-            ? maxSumWriteRequestsSize
-            : DefaultMaxSumWriteRequestsSize)
+    TBootstrap(const TBootstrapArgs& args = {})
+        : CacheAutomaticFlushPeriod(args.AutomaticFlushPeriod)
+        , MaxWriteRequestSize(args.MaxWriteRequestSize)
+        , MaxWriteRequestsCount(args.MaxWriteRequestsCount)
+        , MaxSumWriteRequestsSize(args.MaxSumWriteRequestsSize)
+        , ZeroCopyWriteEnabled(args.ZeroCopyWriteEnabled)
     {
-        CacheAutomaticFlushPeriod = cacheAutomaticFlushPeriod;
         CacheFlushRetryPeriod = TDuration::MilliSeconds(100);
 
         Logging = CreateLoggingService("console", TLogSettings{});
         Logging->Start();
         Log = Logging->CreateLog("WRITE_BACK_CACHE");
 
-        Timer = std::make_shared<TTestTimer>();
-        Scheduler = std::make_shared<TTestScheduler>();
+        if (args.UseTestTimerAndScheduler) {
+            Timer = std::make_shared<TTestTimer>();
+            Scheduler = std::make_shared<TTestScheduler>();
+        } else {
+            Timer = CreateWallClockTimer();
+            Scheduler = CreateScheduler(Timer);
+        }
         Scheduler->Start();
 
         Stats = std::make_shared<TWriteBackCacheStats>();
@@ -407,6 +419,7 @@ struct TBootstrap
         };
 
         Session->WriteDataHandler = [&] (auto, auto request) {
+            MoveIovecsToBuffer(*request);
             const auto nodeId = request->GetNodeId();
             const auto offset = request->GetOffset();
             const auto length = request->GetBuffer().length();
@@ -464,6 +477,28 @@ struct TBootstrap
         CallContext = MakeIntrusive<TCallContext>();
     }
 
+    void MoveIovecsToBuffer(NProto::TWriteDataRequest& request) const
+    {
+        if (!request.GetIovecs().empty()) {
+            UNIT_ASSERT_C(
+                ZeroCopyWriteEnabled,
+                "TWriteDataRequest request generated by TWriteBackCache may "
+                "contain Iovecs only if ZeroCopyWriteEnabled flag is enabled");
+            UNIT_ASSERT_C(request.GetBuffer().empty(),
+                "Buffer should be empty if a request contains Iovecs");
+            UNIT_ASSERT_VALUES_EQUAL_C(0, request.GetBufferOffset(),
+                "BufferOffset should be zero if a request contains Iovecs");
+            TString buf;
+            for (const auto& iovec: request.GetIovecs()) {
+                buf.append(
+                    reinterpret_cast<const char*>(iovec.GetBase()),
+                    iovec.GetLength());
+            }
+            request.SetBuffer(std::move(buf));
+            request.ClearIovecs();
+        }
+    }
+
     ~TBootstrap()
     {
         Scheduler->Stop();
@@ -478,13 +513,17 @@ struct TBootstrap
             Scheduler,
             Timer,
             Stats,
+            Log,
+            "FileSystemId",
+            "ClientId",
             TempFileHandle.GetName(),
             CacheCapacityBytes,
             CacheAutomaticFlushPeriod,
             CacheFlushRetryPeriod,
             MaxWriteRequestSize,
             MaxWriteRequestsCount,
-            MaxSumWriteRequestsSize);
+            MaxSumWriteRequestsSize,
+            ZeroCopyWriteEnabled);
     }
 
     TFuture<NProto::TReadDataResponse> ReadFromCache(
@@ -786,18 +825,26 @@ struct TBootstrap
             expectedCount,
             expectedMinTime);
     }
+
+    void RunAllScheduledTasks()
+    {
+        auto* testScheduler = dynamic_cast<TTestScheduler*>(Scheduler.get());
+        Y_ABORT_UNLESS(testScheduler != nullptr);
+        testScheduler->RunAllScheduledTasks();
+    }
 };
 
-struct TWriteRequestLogger
+struct TWriteDataRequestLogger
 {
-    struct TRequest
+    struct TRequestInfo
     {
         ui64 NodeId = 0;
         ui64 Offset = 0;
         ui64 Length = 0;
+        TVector<ui64> IovecsLengths;
     };
 
-    TVector<TRequest> Requests;
+    TVector<TRequestInfo> Requests;
 
     void Subscribe(TBootstrap& b)
     {
@@ -807,17 +854,28 @@ struct TWriteRequestLogger
              previousHandler =
                  std::move(previousHandler)](auto context, auto request) mutable
         {
-            Requests.push_back(
-                {.NodeId = request->GetNodeId(),
-                 .Offset = request->GetOffset(),
-                 .Length =
-                     request->GetBuffer().size() - request->GetBufferOffset()});
+            TRequestInfo info;
+            info.NodeId = request->GetNodeId();
+            info.Offset = request->GetOffset();
+
+            if (request->GetIovecs().empty()) {
+                info.Length =
+                    request->GetBuffer().size() - request->GetBufferOffset();
+            } else {
+                info.Length = 0;
+                for (const auto& iovec : request->GetIovecs()) {
+                    info.IovecsLengths.push_back(iovec.GetLength());
+                    info.Length += iovec.GetLength();
+                }
+            }
+
+            Requests.push_back(info);
 
             return previousHandler(std::move(context), std::move(request));
         };
     }
 
-    TString GetLog(ui64 nodeId) const
+    TString RangesToString(ui64 nodeId) const
     {
         TStringBuilder sb;
         for (const auto& request : Requests) {
@@ -828,6 +886,28 @@ struct TWriteRequestLogger
                 sb << ", ";
             }
             sb << "(" << request.Offset << ", " << request.Length << ")";
+        }
+        return sb;
+    }
+
+    TString IovecsLengthsToString(ui64 nodeId) const
+    {
+        TStringBuilder sb;
+        for (const auto& request : Requests) {
+            if (request.NodeId != nodeId) {
+                continue;
+            }
+            if (!sb.empty()) {
+                sb << ", ";
+            }
+            sb << "[";
+            for (size_t i = 0; i < request.IovecsLengths.size(); ++i) {
+                if (i > 0) {
+                    sb << ", ";
+                }
+                sb << request.IovecsLengths[i];
+            }
+            sb << "]";
         }
         return sb;
     }
@@ -970,6 +1050,32 @@ struct TStatsCalculator
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+class TIntervalLock
+{
+private:
+    TAdaptiveLock Mutex;
+    TOverlappingIntervalSet Set;
+
+public:
+    bool TryLock(ui64 offset, ui64 length)
+    {
+        std::unique_lock lock(Mutex);
+        if (Set.HasIntersection(offset, offset + length)) {
+            return false;
+        }
+        Set.AddInterval(offset, offset + length);
+        return true;
+    }
+
+    void Unlock(ui64 offset, ui64 length)
+    {
+        std::unique_lock lock(Mutex);
+        Set.RemoveInterval(offset, offset + length);
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1023,6 +1129,11 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         bool flushed = false;
 
         b.Session->WriteDataHandler = [&] (auto, auto request) {
+            // If ZeroCopyWriteEnabled feature is enabled,
+            // WriteBackCache generates WriteData requests in Flush that
+            // references the buffer directly in the cache using Iovecs.
+            // We copy the data to Buffer for easier validation.
+            b.MoveIovecsToBuffer(*request);
             UNIT_ASSERT(!flushed);
             flushed = true;
 
@@ -1180,7 +1291,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     Y_UNIT_TEST(ShouldFlushAutomatically)
     {
         const auto automaticFlushPeriod = TDuration::MilliSeconds(1);
-        TBootstrap b(automaticFlushPeriod);
+        TBootstrap b({.AutomaticFlushPeriod = automaticFlushPeriod});
 
         auto checkFlush = [&](int attempt)
         {
@@ -1191,39 +1302,45 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         };
 
         b.WriteToCacheSync(1, 11, "abcde");
-        b.Scheduler->RunAllScheduledTasks();
+        b.RunAllScheduledTasks();
         checkFlush(1);
 
         b.WriteToCacheSync(1, 22, "efghij");
-        b.Scheduler->RunAllScheduledTasks();
+        b.RunAllScheduledTasks();
         checkFlush(2);
     }
 
     Y_UNIT_TEST(ShouldFlushAutomaticallyForDifferentNodes)
     {
         const auto automaticFlushPeriod = TDuration::MilliSeconds(1);
-        TBootstrap b(automaticFlushPeriod);
+        TBootstrap b({.AutomaticFlushPeriod = automaticFlushPeriod});
 
         // Prevent write requests initiated by Flush from completing immediately
         TManualProceedHandlers writeRequests(b.Session->WriteDataHandler);
 
         b.WriteToCacheSync(1, 11, "abcde");
-        b.Scheduler->RunAllScheduledTasks();
+        b.RunAllScheduledTasks();
         UNIT_ASSERT_EQUAL(1, writeRequests.size());
 
         // Stuck at flushing for one node should not affect automatic flushing
         // for another node
         b.WriteToCacheSync(2, 22, "efghij");
-        b.Scheduler->RunAllScheduledTasks();
+        b.RunAllScheduledTasks();
         UNIT_ASSERT_EQUAL(2, writeRequests.size());
     }
 
-    void TestShouldReadAfterWriteRandomized(bool withRecreation = false) {
-        TBootstrap b;
+    struct TTestArgs
+    {
+        bool WithCacheRecreation = false;
+        bool ZeroCopyWriteEnabled = false;
+    };
+
+    void TestShouldReadAfterWriteRandomized(const TTestArgs& args) {
+        TBootstrap b({.ZeroCopyWriteEnabled = args.ZeroCopyWriteEnabled});
         // Ensures that the data is not flushed twice, does not work well with
         // cache recreation because after recreation, the data may be flushed
         // again
-        b.EraseExpectedUnflushedDataAfterFirstUse = !withRecreation;
+        b.EraseExpectedUnflushedDataAfterFirstUse = !args.WithCacheRecreation;
 
         const TString alphabet = "abcdefghijklmnopqrstuvwxyz";
 
@@ -1262,7 +1379,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                 flushesRemaining--;
             }
 
-            if (withRecreation && RandomNumber(20u) == 0) {
+            if (args.WithCacheRecreation && RandomNumber(20u) == 0) {
                 b.RecreateCache();
                 stats.Unflush();
             }
@@ -1280,7 +1397,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             UNIT_ASSERT_EQUAL(stats.FlushCount, b.Stats->CompletedFlushCount);
         }
 
-        if (withRecreation) {
+        if (args.WithCacheRecreation) {
             b.RecreateCache();
         }
 
@@ -1292,12 +1409,23 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
     Y_UNIT_TEST(ShouldReadAfterWriteRandomized)
     {
-        TestShouldReadAfterWriteRandomized();
+        TestShouldReadAfterWriteRandomized({});
     }
 
     Y_UNIT_TEST(ShouldReadAfterWriteRandomizedWithRecreation)
     {
-        TestShouldReadAfterWriteRandomized(true /* withRecreation */);
+        TestShouldReadAfterWriteRandomized({.WithCacheRecreation = true});
+    }
+
+    Y_UNIT_TEST(ShouldReadAfterWriteRandomizedWithZeroCopy)
+    {
+        TestShouldReadAfterWriteRandomized({.ZeroCopyWriteEnabled = true});
+    }
+
+    Y_UNIT_TEST(ShouldReadAfterWriteRandomizedWithRecreationAndZeroCopy)
+    {
+        TestShouldReadAfterWriteRandomized(
+            {.WithCacheRecreation = true, .ZeroCopyWriteEnabled = true});
     }
 
     Y_UNIT_TEST(ShouldWriteAndFlushConcurrently)
@@ -1338,7 +1466,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     {
         const auto automaticFlushPeriod =
             withAutomaticFlush ? TDuration::MilliSeconds(1) : TDuration();
-        TBootstrap b(automaticFlushPeriod);
+        TBootstrap b(
+            {.AutomaticFlushPeriod = automaticFlushPeriod,
+             .UseTestTimerAndScheduler = true});
 
         const TString alphabet = "abcdefghijklmnopqrstuvwxyz";
 
@@ -1347,6 +1477,11 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         const auto threadCount = rwThreadCount + roThreadCount;
 
         std::latch start{threadCount};
+
+        // Concurrent overlapping writes can be completed in any order.
+        // There is no way to validate cache in this case.
+        // Therefore, we allow only non-overlapping conurrent writes.
+        TIntervalLock intervalLock;
 
         TVector<std::thread> threads;
 
@@ -1360,10 +1495,18 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                 while (writesRemaining--) {
                     SleepForRandomDurationMs(10);
 
-                    const ui64 offset = RandomNumber(alphabet.length());
-                    const ui64 length = Max(
-                        1ul,
-                        RandomNumber(alphabet.length() - offset));
+                    ui64 offset = 0;
+                    ui64 length = 0;
+
+                    while (true) {
+                        offset = RandomNumber(alphabet.length());
+                        length =
+                            Max(1ul, RandomNumber(alphabet.length() - offset));
+
+                        if (intervalLock.TryLock(offset, length)) {
+                            break;
+                        }
+                    }
 
                     auto data = TStringBuf(alphabet).SubString(offset, length);
 
@@ -1371,6 +1514,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                         nodeId,
                         offset + RandomNumber(11u),
                         TString(data));
+
+                    intervalLock.Unlock(offset, length);
 
                     if (withManualFlush) {
                         if (RandomNumber(10u) == 0 && flushesRemaining > 0) {
@@ -1489,7 +1634,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         // WriteData request from Flush succeeds after WriteAttemptsThreshold
         // attempts.
         for (int i = 1; i < WriteAttemptsThreshold; i++) {
-            b.Scheduler->RunAllScheduledTasks();
+            b.RunAllScheduledTasks();
         }
 
         UNIT_ASSERT(flushFuture.HasValue());
@@ -1498,10 +1643,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
     Y_UNIT_TEST(ShouldSplitLargeWriteRequestsAtFlush)
     {
-        // Set MaxWriteRequestSize to 2 bytes
-        TBootstrap b({}, 2, 0, 0);
+        TBootstrap b({.MaxWriteRequestSize = 2});
 
-        TWriteRequestLogger logger;
+        TWriteDataRequestLogger logger;
         logger.Subscribe(b);
 
         b.WriteToCacheSync(1, 0, "aa");
@@ -1514,15 +1658,14 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             "(0, 2), (2, 2), (4, 2), (6, 2), (8, 2)",
-            logger.GetLog(1));
+            logger.RangesToString(1));
     }
 
     Y_UNIT_TEST(ShouldLimitTotalWriteRequestSizeAtFlush)
     {
-        // Set MaxSumWriteRequestsSize to 7 bytes
-        TBootstrap b({}, 0, 0, 7);
+        TBootstrap b({.MaxSumWriteRequestsSize = 7});
 
-        TWriteRequestLogger logger;
+        TWriteDataRequestLogger logger;
         logger.Subscribe(b);
 
         b.WriteToCacheSync(1, 0, "aa");
@@ -1535,15 +1678,14 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             "(0, 6), (6, 4)",
-            logger.GetLog(1));
+            logger.RangesToString(1));
     }
 
     Y_UNIT_TEST(ShouldLimitWriteRequestsCountAtFlush)
     {
-        // Set MaxWriteRequestsCount to 3
-        TBootstrap b({}, 0, 3, 0);
+        TBootstrap b({.MaxWriteRequestsCount = 3});
 
-        TWriteRequestLogger logger;
+        TWriteDataRequestLogger logger;
         logger.Subscribe(b);
 
         b.WriteToCacheSync(1, 8, "a");
@@ -1557,15 +1699,14 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         // Parts are going in the increased order in each flush operation
         UNIT_ASSERT_VALUES_EQUAL(
             "(4, 1), (6, 1), (8, 1), (0, 1), (2, 1)",
-            logger.GetLog(1));
+            logger.RangesToString(1));
     }
 
     Y_UNIT_TEST(ShouldTryToFlushWhenRequestSizeIsGreaterThanLimit)
     {
-        // Set MaxWriteRequestSize to 2 bytes and MaxWriteRequestsCount to 1
-        TBootstrap b({}, 2, 1, 0);
+        TBootstrap b({.MaxWriteRequestSize = 2, .MaxWriteRequestsCount = 1});
 
-        TWriteRequestLogger logger;
+        TWriteDataRequestLogger logger;
         logger.Subscribe(b);
 
         b.WriteToCacheSync(1, 0, "a");
@@ -1578,7 +1719,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             "(0, 1), (1, 2), (3, 2), (5, 2)",
-            logger.GetLog(1));
+            logger.RangesToString(1));
     }
 
     Y_UNIT_TEST(ShouldShareCacheBetweenHandles)
@@ -1683,7 +1824,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_EQUAL(now, stats.FlushingStats.MinTime);
 
         b.Timer->Sleep(TDuration::Seconds(1));
-        b.Scheduler->RunAllScheduledTasks();
+        b.RunAllScheduledTasks();
         auto flushFuture2 = b.Cache.FlushNodeData(2);
 
         UNIT_ASSERT(!flushFuture1.HasValue());
@@ -1694,7 +1835,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_EQUAL(now, stats.FlushingStats.MinTime);
 
         b.Timer->Sleep(TDuration::Seconds(1));
-        b.Scheduler->RunAllScheduledTasks();
+        b.RunAllScheduledTasks();
 
         UNIT_ASSERT(flushFuture1.HasValue());
         UNIT_ASSERT_EQUAL(2, stats.CompletedFlushCount);
@@ -1912,7 +2053,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_EQUAL(TDuration::Seconds(1), stats.Data[3]);
     }
 
-    /* TODO(svartmetal): fix tests with automatic flush
     Y_UNIT_TEST(ShouldReadAfterWriteConcurrentlyWithAutomaticFlush)
     {
         TestShouldReadAfterWriteConcurrently(
@@ -1926,7 +2066,21 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             true,   // withManualFlush
             true);  // withAutomaticFlush
     }
-    */
+
+    Y_UNIT_TEST(ShouldUseIovecsForWriteRequests)
+    {
+        TBootstrap b({.ZeroCopyWriteEnabled = true});
+
+        TWriteDataRequestLogger logger;
+        logger.Subscribe(b);
+
+        b.WriteToCacheSync(1, 0, "abcde");
+        b.WriteToCacheSync(1, 5, "eeeeee");
+        b.FlushCache();
+
+        UNIT_ASSERT_VALUES_EQUAL("(0, 11)", logger.RangesToString(1));
+        UNIT_ASSERT_VALUES_EQUAL("[5, 6]", logger.IovecsLengthsToString(1));
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse

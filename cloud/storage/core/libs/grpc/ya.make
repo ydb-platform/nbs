@@ -1,5 +1,7 @@
 LIBRARY()
 
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/deny_ydb_dependency.inc)
+
 SRCS(
     auth_metadata.cpp
     channel_arguments.cpp

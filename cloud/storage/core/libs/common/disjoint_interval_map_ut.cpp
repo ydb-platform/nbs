@@ -4,7 +4,7 @@
 
 #include <util/generic/string.h>
 
-namespace NCloud::NFileStore::NFuse {
+namespace NCloud {
 
 namespace {
 

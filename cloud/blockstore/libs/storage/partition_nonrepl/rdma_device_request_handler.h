@@ -6,9 +6,11 @@
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
+#include <cloud/blockstore/libs/storage/core/device_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_common.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/public.h>
+#include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
 #include <contrib/ydb/library/actors/core/actorsystem.h>
 
@@ -18,18 +20,27 @@ namespace NCloud::NBlockStore::NStorage {
 
 struct TDeviceRequestRdmaContext: public NRdma::TNullContext
 {
-    ui32 DeviceIdx = 0;
+    // Index of the device in the partition config.
+    const ui32 DeviceIdx;
 
-    TDeviceRequestRdmaContext() = default;
     explicit TDeviceRequestRdmaContext(ui32 deviceIdx)
         : DeviceIdx(deviceIdx)
     {}
 };
 
+struct IClientHandlerWithTracking: public NRdma::IClientHandler
+{
+    virtual void OnRequestStarted(
+        ui32 deviceIdx,
+        TDeviceOperationTracker::ERequestType requestType) = 0;
+};
+using IClientHandlerWithTrackingPtr =
+    std::shared_ptr<IClientHandlerWithTracking>;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TDerived>
-class TRdmaDeviceRequestHandlerBase: public NRdma::IClientHandler
+class TRdmaDeviceRequestHandlerBase: public IClientHandlerWithTracking
 {
     using TDeviceRequestResult =
         TEvNonreplPartitionPrivate::TOperationCompleted::TDeviceRequestResult;
@@ -39,9 +50,17 @@ private:
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const TRequestInfoPtr RequestInfo;
     const ui64 RequestId;
+    const NActors::TActorId VolumeActorId;
     const NActors::TActorId ParentActorId;
     const ui32 RequestBlockCount;
+    const ui64 DeviceOperationId;
     ui32 ResponseCount;
+
+    // Which device the requests were made to.  The vector contains a maximum of
+    // two elements, because a user request can lie on the border of only two
+    // devices. Each element contains the index of the device in the partition
+    // config.
+    TStackVec<ui32, 2> DeviceIndexes;
 
     // Results of requests for each device.
     TStackVec<TDeviceRequestResult, 2> RequestResults;
@@ -55,6 +74,7 @@ public:
         TNonreplicatedPartitionConfigPtr partConfig,
         TRequestInfoPtr requestInfo,
         ui64 requestId,
+        NActors::TActorId volumeActorId,
         NActors::TActorId parentActorId,
         ui32 requestBlockCount,
         ui32 responseCount);
@@ -86,7 +106,13 @@ public:
         return *RequestInfo;
     }
 
+    void OnRequestStarted(
+        ui32 deviceIdx,
+        TDeviceOperationTracker::ERequestType requestType) override;
+
 private:
+    void OnRequestFinished(ui32 deviceIdx);
+
     TDerived& GetDerived()
     {
         return static_cast<TDerived&>(*this);
@@ -140,6 +166,7 @@ TRdmaDeviceRequestHandlerBase<TDerived>::TRdmaDeviceRequestHandlerBase(
         TNonreplicatedPartitionConfigPtr partConfig,
         TRequestInfoPtr requestInfo,
         ui64 requestId,
+        NActors::TActorId volumeActorId,
         NActors::TActorId parentActorId,
         ui32 requestBlockCount,
         ui32 responseCount)
@@ -147,10 +174,58 @@ TRdmaDeviceRequestHandlerBase<TDerived>::TRdmaDeviceRequestHandlerBase(
     , PartConfig(std::move(partConfig))
     , RequestInfo(std::move(requestInfo))
     , RequestId(requestId)
+    , VolumeActorId(volumeActorId)
     , ParentActorId(parentActorId)
     , RequestBlockCount(requestBlockCount)
+    , DeviceOperationId(TDeviceOperationTracker::GenerateId(responseCount))
     , ResponseCount(responseCount)
 {}
+
+template <typename TDerived>
+void TRdmaDeviceRequestHandlerBase<TDerived>::OnRequestStarted(
+    ui32 deviceIdx,
+    TDeviceOperationTracker::ERequestType requestType)
+{
+    if (!DeviceOperationId) {
+        // Tracking of this request is disabled.
+        return;
+    }
+
+    const auto& devices = PartConfig->GetDevices();
+
+    auto startEvent = std::make_unique<
+        TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted>(
+        devices[deviceIdx].GetDeviceUUID(),
+        requestType,
+        DeviceOperationId + DeviceIndexes.size());
+    DeviceIndexes.push_back(deviceIdx);
+    ActorSystem->Send(VolumeActorId, startEvent.release());
+}
+
+template <typename TDerived>
+void TRdmaDeviceRequestHandlerBase<TDerived>::OnRequestFinished(
+    ui32 deviceIdx)
+{
+    if (!DeviceOperationId) {
+        // Tracking of this request is disabled.
+        return;
+    }
+
+    std::optional<size_t> requestIndex = 0;
+    for (size_t i = 0; i < DeviceIndexes.size(); ++i) {
+        if (DeviceIndexes[i] == deviceIdx) {
+            requestIndex = i;
+            break;
+        }
+    }
+    Y_DEBUG_ABORT_UNLESS(requestIndex.has_value());
+
+    auto finishEvent = std::make_unique<
+        TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished>(
+        DeviceOperationId + requestIndex.value_or(0));
+
+    ActorSystem->Send(VolumeActorId, finishEvent.release());
+}
 
 template <typename TDerived>
 bool TRdmaDeviceRequestHandlerBase<TDerived>::HandleSubResponse(
@@ -158,6 +233,7 @@ bool TRdmaDeviceRequestHandlerBase<TDerived>::HandleSubResponse(
     ui32 status,
     TStringBuf buffer)
 {
+    OnRequestFinished(reqCtx.DeviceIdx);
     RequestResults.emplace_back(reqCtx.DeviceIdx);
 
     if (status == NRdma::RDMA_PROTO_OK) {

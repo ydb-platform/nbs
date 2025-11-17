@@ -360,6 +360,32 @@ public:
         return request;
     }
 
+    static auto CreateReadDataRequest(
+        const THeaders& headers,
+        const TString& fileSystemId,
+        ui64 nodeId,
+        ui64 handle,
+        ui64 offset,
+        ui64 length,
+        const TVector<std::span<char>>& buffers)
+    {
+        auto request = std::make_unique<TEvService::TEvReadDataRequest>();
+        headers.Fill(request->Record);
+        request->Record.SetFileSystemId(fileSystemId);
+        request->Record.SetNodeId(nodeId);
+        request->Record.SetHandle(handle);
+        request->Record.SetOffset(offset);
+        request->Record.SetLength(length);
+
+        for (const auto& buf: buffers) {
+            auto* evIovec = request->Record.AddIovecs();
+            evIovec->SetBase(reinterpret_cast<ui64>(buf.data()));
+            evIovec->SetLength(buf.size());
+        }
+
+        return request;
+    }
+
     static auto CreateCreateHandleRequest(
         const THeaders& headers,
         const TString& fileSystemId,

@@ -115,7 +115,10 @@ private:
             HFunc(TEvDiskAgent::TEvReleaseDevicesRequest, HandleReleaseDevicesRequest);
 
             default:
-                Y_ABORT("Unexpected event %x", ev->GetTypeRewrite());
+                Y_ABORT(
+                    "Unexpected event %x %s",
+                    ev->GetTypeRewrite(),
+                    ev->GetTypeName().c_str());
         }
     }
 

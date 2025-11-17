@@ -42,7 +42,9 @@ def __run_load_test(file_name, scenario="aligned", engine="asyncio", direct=True
     if not direct:
         params.append('--no-direct')
 
-    return run(params, stdout=PIPE, stderr=PIPE, universal_newlines=True, timeout=timeout)
+    result = run(params, stdout=PIPE, stderr=PIPE, universal_newlines=True, timeout=timeout)
+    print(result.stderr)
+    return result
 
 
 @pytest.mark.parametrize("scenario,engine,direct", _SCENARIOS)
@@ -51,7 +53,7 @@ def test_load_fails(scenario, engine, direct):
 
     with ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(__run_load_test, tmp_file.name, scenario, engine, direct)
-        time.sleep(10)
+        time.sleep(20)
 
         cnt = 0
         while future.running():

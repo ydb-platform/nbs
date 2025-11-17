@@ -1708,8 +1708,11 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         auto attributes = bootstrap.ListNodeXAttr(id).GetNames();
         UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 0);
 
+        ui64 attrVersion = 0;
         // 1 attribute
-        bootstrap.SetNodeXAttr(id, "user.xattr1", "");
+        auto rsp = bootstrap.SetNodeXAttr(id, "user.xattr1", "");
+        attrVersion = rsp.GetVersion();
+
 
         attributes = bootstrap.ListNodeXAttr(id).GetNames();
         UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 1);
@@ -1718,7 +1721,9 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         auto val = bootstrap.GetNodeXAttr(id, "user.xattr1").GetValue();
         UNIT_ASSERT_VALUES_EQUAL(val, "");
 
-        bootstrap.SetNodeXAttr(id, "user.xattr1", "valueeee1");
+        rsp = bootstrap.SetNodeXAttr(id, "user.xattr1", "valueeee1");
+        UNIT_ASSERT_GT(rsp.GetVersion(), attrVersion);
+        attrVersion = rsp.GetVersion();
 
         attributes = bootstrap.ListNodeXAttr(id).GetNames();
         UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 1);
@@ -1728,7 +1733,8 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         UNIT_ASSERT_VALUES_EQUAL(val, "valueeee1");
 
         // 2 attributes
-        bootstrap.SetNodeXAttr(id, "user.xattr2", "valueeee2");
+        rsp = bootstrap.SetNodeXAttr(id, "user.xattr2", "valueeee2");
+        attrVersion = rsp.GetVersion();
 
         attributes = bootstrap.ListNodeXAttr(id).GetNames();
         UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 2);
@@ -1741,7 +1747,9 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         val = bootstrap.GetNodeXAttr(id, "user.xattr2").GetValue();
         UNIT_ASSERT_VALUES_EQUAL(val, "valueeee2");
 
-        bootstrap.SetNodeXAttr(id, "user.xattr2", "valueeee");
+        rsp = bootstrap.SetNodeXAttr(id, "user.xattr2", "valueeee");
+        UNIT_ASSERT_GT(rsp.GetVersion(), attrVersion);
+
         attributes = bootstrap.ListNodeXAttr(id).GetNames();
         UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 2);
         UNIT_ASSERT_VALUES_EQUAL(attributes[0], "user.xattr1");
@@ -1780,8 +1788,10 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         auto attributes = bootstrap.ListNodeXAttr(id).GetNames();
         UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 0);
 
+        ui64 attrVersion = 0;
         // 1 attribute
-        bootstrap.SetNodeXAttr(id, "user.xattr1", "");
+        auto rsp = bootstrap.SetNodeXAttr(id, "user.xattr1", "");
+        attrVersion = rsp.GetVersion();
 
         attributes = bootstrap.ListNodeXAttr(id).GetNames();
         UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 1);
@@ -1790,7 +1800,8 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         auto val = bootstrap.GetNodeXAttr(id, "user.xattr1").GetValue();
         UNIT_ASSERT_VALUES_EQUAL(val, "");
 
-        bootstrap.SetNodeXAttr(id, "user.xattr1", "valueeee1");
+        rsp = bootstrap.SetNodeXAttr(id, "user.xattr1", "valueeee1");
+        UNIT_ASSERT_GT(rsp.GetVersion(), attrVersion);
 
         attributes = bootstrap.ListNodeXAttr(id).GetNames();
         UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 1);
@@ -1800,7 +1811,8 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         UNIT_ASSERT_VALUES_EQUAL(val, "valueeee1");
 
         // 2 attributes
-        bootstrap.SetNodeXAttr(id, "user.xattr2", "valueeee2");
+        rsp = bootstrap.SetNodeXAttr(id, "user.xattr2", "valueeee2");
+        attrVersion = rsp.GetVersion();
 
         attributes = bootstrap.ListNodeXAttr(id).GetNames();
         UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 2);
@@ -1813,7 +1825,8 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         val = bootstrap.GetNodeXAttr(id, "user.xattr2").GetValue();
         UNIT_ASSERT_VALUES_EQUAL(val, "valueeee2");
 
-        bootstrap.SetNodeXAttr(id, "user.xattr2", "valueeee");
+        rsp = bootstrap.SetNodeXAttr(id, "user.xattr2", "valueeee");
+        UNIT_ASSERT_GT(rsp.GetVersion(), attrVersion);
         attributes = bootstrap.ListNodeXAttr(id).GetNames();
         UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 2);
         UNIT_ASSERT_VALUES_EQUAL(attributes[0], "user.xattr1");

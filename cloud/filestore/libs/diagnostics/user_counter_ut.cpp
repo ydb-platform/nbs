@@ -153,6 +153,38 @@ void SetTimeHistogramCountersUs(
     subgroup->GetCounter("Inf")->Set(15);
 }
 
+void SetTimeHistogramCountersMs(
+    const TIntrusivePtr<NMonitoring::TDynamicCounters>& counters,
+    const TString& histName)
+{
+    auto subgroup = counters->GetSubgroup("histogram", histName);
+    subgroup->GetCounter("0.001ms")->Set(1);
+    subgroup->GetCounter("0.1ms")->Set(2);
+    subgroup->GetCounter("0.2ms")->Set(3);
+    subgroup->GetCounter("0.3ms")->Set(4);
+    subgroup->GetCounter("0.4ms")->Set(5);
+    subgroup->GetCounter("0.5ms")->Set(6);
+    subgroup->GetCounter("0.6ms")->Set(7);
+    subgroup->GetCounter("0.7ms")->Set(8);
+    subgroup->GetCounter("0.8ms")->Set(9);
+    subgroup->GetCounter("0.9ms")->Set(0);
+    subgroup->GetCounter("1ms")->Set(1);
+    subgroup->GetCounter("2ms")->Set(2);
+    subgroup->GetCounter("5ms")->Set(3);
+    subgroup->GetCounter("10ms")->Set(4);
+    subgroup->GetCounter("20ms")->Set(5);
+    subgroup->GetCounter("50ms")->Set(6);
+    subgroup->GetCounter("100ms")->Set(7);
+    subgroup->GetCounter("200ms")->Set(8);
+    subgroup->GetCounter("500ms")->Set(9);
+    subgroup->GetCounter("1000ms")->Set(10);
+    subgroup->GetCounter("2000ms")->Set(11);
+    subgroup->GetCounter("5000ms")->Set(12);
+    subgroup->GetCounter("10000ms")->Set(13);
+    subgroup->GetCounter("35000ms")->Set(14);
+    subgroup->GetCounter("Inf")->Set(15);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 const TString METRIC_COMPONENT = "test";
@@ -252,6 +284,65 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
             requestCounters->GetCounter("Time")->Set(100500);
 
             SetTimeHistogramCountersUs(requestCounters, "Time");
+        };
+
+        auto requests = {
+            "AllocateData",  "CreateHandle", "CreateNode",    "DestroyHandle",
+            "GetNodeAttr",   "GetNodeXAttr", "ListNodeXAttr", "ListNodes",
+            "RenameNode",    "SetNodeAttr",  "SetNodeXAttr",  "UnlinkNode",
+            "StatFileStore", "ReadLink",     "AccessNode",    "RemoveNodeXAttr",
+            "ReleaseLock",   "AcquireLock",  "WriteData",     "ReadData",
+        };
+
+        for (const auto& request: requests) {
+            setSourceRequestsCounters(request);
+        }
+
+        Registry->UpdateStats(true);
+
+        const TString testResult = NResource::Find("user_counters.json");
+        auto expectedJson = NJson::ReadJsonFastTree(testResult, true);
+        ValidateTestResult(Supplier, expectedJson);
+    }
+
+    Y_UNIT_TEST_F(ShouldReportUserStatsIsSourceMetricsChangedWithMsUnits, TEnv)
+    {
+        const TString fsId = "test_fs";
+        const TString clientId = "test_client";
+        const TString cloudId = "test_cloud";
+        const TString folderId = "test_folder";
+
+        {
+            NProto::TDiagnosticsConfig diagnosticsConfig;
+            diagnosticsConfig.SetUseMsUnitsForTimeHistogram(true);
+            Registry = CreateRequestStatsRegistry(
+                METRIC_COMPONENT,
+                std::make_shared<TDiagnosticsConfig>(
+                    std::move(diagnosticsConfig)),
+                Counters,
+                Timer,
+                Supplier);
+        }
+
+        Registry->GetFileSystemStats(fsId, clientId, cloudId, folderId);
+        Registry->RegisterUserStats(fsId, clientId, cloudId, folderId);
+
+        auto counters = Counters->GetSubgroup("component", METRIC_FS_COMPONENT)
+                            ->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("filesystem", fsId)
+                            ->GetSubgroup("client", clientId)
+                            ->GetSubgroup("cloud", cloudId)
+                            ->GetSubgroup("folder", folderId);
+
+        auto setSourceRequestsCounters = [&counters](const TString& request)
+        {
+            auto requestCounters = counters->GetSubgroup("request", request);
+            requestCounters->GetCounter("Count")->Set(42);
+            requestCounters->GetCounter("MaxCount")->Set(142);
+            requestCounters->GetCounter("Errors/Fatal")->Set(7);
+            requestCounters->GetCounter("Time")->Set(100500);
+
+            SetTimeHistogramCountersMs(requestCounters, "Time");
         };
 
         auto requests = {

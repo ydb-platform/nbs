@@ -13,6 +13,7 @@ IActorPtr CreateNonreplicatedPartitionRdma(
     TDiagnosticsConfigPtr diagnosticsConfig,
     TNonreplicatedPartitionConfigPtr partConfig,
     NRdma::IClientPtr rdmaClient,
+    TActorId volumeActorId,
     TActorId statActorId)
 {
     return std::make_unique<TNonreplicatedPartitionRdmaActor>(
@@ -20,6 +21,7 @@ IActorPtr CreateNonreplicatedPartitionRdma(
         std::move(diagnosticsConfig),
         std::move(partConfig),
         std::move(rdmaClient),
+        volumeActorId,
         statActorId);
 }
 

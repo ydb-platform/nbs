@@ -3,8 +3,9 @@
 #include "monitoring.h"
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/timer.h>
-#include "cloud/storage/core/libs/diagnostics/histogram_types.h"
+#include <cloud/storage/core/libs/diagnostics/histogram_types.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/string_utils/quote/quote.h>
@@ -13,6 +14,7 @@
 
 #include <util/datetime/cputimer.h>
 #include <util/generic/size_literals.h>
+#include <util/string/cast.h>
 
 namespace NCloud {
 
@@ -99,32 +101,36 @@ auto IsReadWriteRequest(TRequestCounters::TRequestType t)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-auto MakeRequestCounters(
-    TRequestCounters::EOption options = {},
-    EHistogramCounterOptions histogramCounterOptions =
-        EHistogramCounterOption::ReportMultipleCounters)
+struct TRequestCountersOptions
+{
+    TRequestCounters::EOption Options = {};
+    EHistogramCounterOptions HistogramCounterOptions =
+        EHistogramCounterOption::ReportMultipleCounters;
+    TVector<TSizeInterval> ExecutionTimeSizeClasses;
+};
+
+auto MakeRequestCounters(TRequestCountersOptions options = {})
 {
     return TRequestCounters(
         CreateWallClockTimer(),
         2,
         RequestType2Name,
         IsReadWriteRequest,
-        options,
-        histogramCounterOptions);
+        options.Options,
+        options.HistogramCounterOptions,
+        options.ExecutionTimeSizeClasses);
 }
 
-auto MakeRequestCountersPtr(
-    TRequestCounters::EOption options = {},
-    EHistogramCounterOptions histogramCounterOptions =
-        EHistogramCounterOption::ReportMultipleCounters)
+auto MakeRequestCountersPtr(TRequestCountersOptions options = {})
 {
     return std::make_shared<TRequestCounters>(
         CreateWallClockTimer(),
         2,
         RequestType2Name,
         IsReadWriteRequest,
-        options,
-        histogramCounterOptions);
+        options.Options,
+        options.HistogramCounterOptions,
+        options.ExecutionTimeSizeClasses);
 }
 
 }   // namespace
@@ -516,8 +522,9 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
     {
         auto monitoring = CreateMonitoringServiceStub();
 
-        auto requestCounters =
-            MakeRequestCounters(TRequestCounters::EOption::AddSpecialCounters);
+        auto requestCounters = MakeRequestCounters(
+            {.Options = TRequestCounters::EOption::AddSpecialCounters,
+             .ExecutionTimeSizeClasses = {}});
         requestCounters.Register(*monitoring->GetCounters());
 
         const auto requestType = ReadRequestType;
@@ -679,7 +686,8 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
     {
         auto monitoring = CreateMonitoringServiceStub();
         auto counters = MakeRequestCountersPtr(
-            TRequestCounters::EOption::ReportDataPlaneHistogram);
+            {.Options = TRequestCounters::EOption::ReportDataPlaneHistogram,
+             .ExecutionTimeSizeClasses = {}});
         counters->Register(*monitoring->GetCounters());
 
         AddRequestStats(*counters, WriteRequestType, {
@@ -703,12 +711,182 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         }
     }
 
+    void ShouldReportCompoundTimeHistogramWithMultipleCounters(
+        EHistogramCounterOptions options)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = MakeRequestCountersPtr(
+            {.Options = TRequestCounters::EOption::ReportDataPlaneHistogram,
+             .HistogramCounterOptions =
+                 options | EHistogramCounterOption::ReportMultipleCounters});
+        counters->Register(*monitoring->GetCounters());
+
+        AddRequestStats(
+            *counters,
+            WriteRequestType,
+            {
+                {1_KB, TDuration::Seconds(8), TDuration::Zero()},
+                {1_KB, TDuration::Seconds(20), TDuration::Zero()},
+                {1_KB, TDuration::Seconds(30), TDuration::Zero()},
+                {1_KB, TDuration::Seconds(37), TDuration::Zero()},
+                {1_KB, TDuration::Seconds(50), TDuration::Zero()},
+                {1_KB, TDuration::Seconds(100), TDuration::Zero()},
+            });
+
+        counters->UpdateStats();
+        const auto timeHist = monitoring->GetCounters()
+                                  ->GetSubgroup("request", "WriteBlocks")
+                                  ->GetSubgroup("histogram", "Time");
+
+        const auto usGroup = timeHist->GetSubgroup("units", "usec");
+        const auto msGroup = timeHist;
+
+        const auto validateCounters =
+            [](TIntrusivePtr<NMonitoring::TDynamicCounters> group,
+               TVector<TString> bucketNames,
+               TStringBuf suffix,
+               bool shouldExist)
+        {
+            TMap<TString, uint64_t> expectedHistogramValues;
+            for (const auto& bucketName: bucketNames) {
+                expectedHistogramValues[bucketName] = 0;
+            }
+            expectedHistogramValues[TString("10000") + suffix] = 1;
+            expectedHistogramValues[TString("35000") + suffix] = 2;
+            expectedHistogramValues["Inf"] = 3;
+
+            for (const auto& [name, value]: expectedHistogramValues) {
+                const auto counter = group->FindCounter(name);
+                if (shouldExist) {
+                    UNIT_ASSERT_C(
+                        counter,
+                        "Counter " + name.Quote() + " not found");
+                    UNIT_ASSERT_VALUES_EQUAL(counter->Val(), value);
+                } else {
+                    UNIT_ASSERT_C(
+                        !counter,
+                        "Counter " + name.Quote() + " should not exist");
+                }
+            }
+        };
+
+        validateCounters(
+            usGroup,
+            TRequestUsTimeBuckets::MakeNames(),
+            "000",
+            !(options & EHistogramCounterOption::UseMsUnitsForTimeHistogram));
+        validateCounters(
+            msGroup,
+            TRequestMsTimeBuckets::MakeNames(),
+            "ms",
+            options & EHistogramCounterOption::UseMsUnitsForTimeHistogram);
+    }
+
+    Y_UNIT_TEST(ShouldReportCompoundTimeHistogram_UseMsUnitsForTimeHistogram)
+    {
+        ShouldReportCompoundTimeHistogramWithMultipleCounters(
+            EHistogramCounterOption::UseMsUnitsForTimeHistogram);
+    }
+
+    Y_UNIT_TEST(ShouldReportCompoundTimeHistogram_UseUsUnitsForTimeHistogram)
+    {
+        ShouldReportCompoundTimeHistogramWithMultipleCounters(
+            EHistogramCounterOptions());
+    }
+
+    void ShouldReportCompoundTimeHistogramWithSingleCounter(
+        EHistogramCounterOptions options)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = MakeRequestCountersPtr(
+            {.Options = TRequestCounters::EOption::ReportDataPlaneHistogram,
+             .HistogramCounterOptions =
+                 options | EHistogramCounterOption::ReportSingleCounter});
+        counters->Register(*monitoring->GetCounters());
+
+        AddRequestStats(
+            *counters,
+            WriteRequestType,
+            {
+                {1_KB, TDuration::Seconds(8), TDuration::Zero()},
+                {1_KB, TDuration::Seconds(20), TDuration::Zero()},
+                {1_KB, TDuration::Seconds(30), TDuration::Zero()},
+                {1_KB, TDuration::Seconds(37), TDuration::Zero()},
+                {1_KB, TDuration::Seconds(50), TDuration::Zero()},
+                {1_KB, TDuration::Seconds(100), TDuration::Zero()},
+            });
+
+        const TMap<size_t, uint64_t> expectedHistogramValues = {
+            {22, 1},   // 10000ms
+            {23, 2},   // 35000ms
+            {24, 3},   // Inf
+        };
+
+        counters->UpdateStats();
+
+        const auto timeHist = monitoring->GetCounters()
+                                  ->GetSubgroup("request", "WriteBlocks")
+                                  ->GetSubgroup("histogram", "Time");
+
+        const auto usGroup = timeHist->GetSubgroup("units", "usec");
+        const auto msGroup = timeHist;
+
+        const auto validateCounters =
+            [expectedHistogramValues](
+                TIntrusivePtr<NMonitoring::TDynamicCounters> group,
+                bool shouldExist)
+        {
+            const auto histogram = group->FindHistogram("Time");
+            if (!shouldExist) {
+                UNIT_ASSERT(!histogram);
+                return;
+            }
+            UNIT_ASSERT(histogram);
+            const auto snapshot = histogram->Snapshot();
+            UNIT_ASSERT_VALUES_EQUAL(
+                snapshot->Count(),
+                TRequestMsTimeBuckets::Buckets.size());
+            for (size_t bucketId = 0; bucketId < snapshot->Count(); bucketId++)
+            {
+                auto expectedValue = expectedHistogramValues.contains(bucketId)
+                                         ? expectedHistogramValues.at(bucketId)
+                                         : 0;
+                UNIT_ASSERT_VALUES_EQUAL(
+                    snapshot->Value(bucketId),
+                    expectedValue);
+            }
+        };
+
+        validateCounters(
+            usGroup,
+            !(options & EHistogramCounterOption::UseMsUnitsForTimeHistogram));
+        validateCounters(
+            msGroup,
+            options & EHistogramCounterOption::UseMsUnitsForTimeHistogram);
+    }
+
+    Y_UNIT_TEST(
+        ShouldReportCompoundTimeHistogramWithSingleCounter_UseMsUnitsForTimeHistogram)
+    {
+        ShouldReportCompoundTimeHistogramWithSingleCounter(
+            EHistogramCounterOption::UseMsUnitsForTimeHistogram);
+    }
+
+    Y_UNIT_TEST(
+        ShouldReportCompoundTimeHistogramWithSingleCounter_UseUsUnitsForTimeHistogram)
+    {
+        ShouldReportCompoundTimeHistogramWithSingleCounter(
+            EHistogramCounterOptions());
+    }
+
     Y_UNIT_TEST(ShouldReportHistogramAsMultipleSensors)
     {
         auto monitoring = CreateMonitoringServiceStub();
         auto counters = MakeRequestCountersPtr(
-            TRequestCounters::EOption::ReportDataPlaneHistogram,
-            EHistogramCounterOption::ReportMultipleCounters);
+            {.Options = TRequestCounters::EOption::ReportDataPlaneHistogram,
+             .HistogramCounterOptions =
+                 EHistogramCounterOption::ReportMultipleCounters,
+             .ExecutionTimeSizeClasses = {}});
         counters->Register(*monitoring->GetCounters());
 
         AddRequestStats(*counters, WriteRequestType, {
@@ -746,8 +924,10 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
     {
         auto monitoring = CreateMonitoringServiceStub();
         auto counters = MakeRequestCountersPtr(
-            TRequestCounters::EOption::ReportDataPlaneHistogram,
-            EHistogramCounterOption::ReportSingleCounter);
+            {.Options = TRequestCounters::EOption::ReportDataPlaneHistogram,
+             .HistogramCounterOptions =
+                 EHistogramCounterOption::ReportSingleCounter,
+             .ExecutionTimeSizeClasses = {}});
         counters->Register(*monitoring->GetCounters());
 
         AddRequestStats(*counters, WriteRequestType, {
@@ -788,8 +968,8 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
     {
         auto monitoring = CreateMonitoringServiceStub();
         auto counters = MakeRequestCountersPtr(
-            TRequestCounters::EOption::ReportDataPlaneHistogram,
-            {});
+            {.Options = TRequestCounters::EOption::ReportDataPlaneHistogram,
+             .ExecutionTimeSizeClasses = {}});
         counters->Register(*monitoring->GetCounters());
 
         AddRequestStats(*counters, WriteRequestType, {
@@ -838,6 +1018,76 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
                                 ->GetCounter("RequestBytes");
 
         UNIT_ASSERT_EQUAL_C(8_GB, requestBytes->Val(), requestBytes->Val());
+    }
+
+    Y_UNIT_TEST(ShouldFillTimePercentilesForDifferentSizeClassesSeparately)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+
+        auto requestCounters = MakeRequestCountersPtr(
+            {.Options = TRequestCounters::EOption::ReportDataPlaneHistogram,
+             .ExecutionTimeSizeClasses = {{4_KB, 512_KB}, {1_MB, 4_MB}}});
+        requestCounters->Register(*monitoring->GetCounters());
+
+        auto writeBlocks =
+            monitoring->GetCounters()->GetSubgroup("request", "WriteBlocks");
+
+        auto addRequestStats = [&](ui64 size)
+        {
+            AddRequestStats(
+                *requestCounters,
+                WriteRequestType,
+                {
+                    {size, TDuration::Seconds(8), TDuration::Zero()},
+                    {size, TDuration::Seconds(20), TDuration::Zero()},
+                    {size, TDuration::Seconds(30), TDuration::Zero()},
+                    {size, TDuration::Seconds(37), TDuration::Zero()},
+                    {size, TDuration::Seconds(50), TDuration::Zero()},
+                    {size, TDuration::Seconds(100), TDuration::Zero()},
+                });
+        };
+
+        // 1 size class
+        addRequestStats(4_KB);
+        // 2 size class
+        addRequestStats(1_MB);
+
+        // no size class
+        addRequestStats(512_KB);
+        addRequestStats(4_MB);
+
+        TMap<TString, uint64_t> expectedHistogramValues;
+        for (const auto& bucketName: TRequestUsTimeBuckets::MakeNames()) {
+            expectedHistogramValues[bucketName] = 0;
+        }
+        expectedHistogramValues["10000000"] = 1;
+        expectedHistogramValues["35000000"] = 2;
+        expectedHistogramValues["Inf"] = 3;
+
+        requestCounters->UpdateStats();
+
+        auto checkSizeClass = [&](ui64 start, ui64 end)
+        {
+            const auto group = monitoring->GetCounters()
+                                   ->GetSubgroup("request", "WriteBlocks")
+                                   ->GetSubgroup(
+                                       "sizeclass",
+                                       ToString(TSizeInterval{start, end}))
+                                   ->GetSubgroup("histogram", "ExecutionTime")
+                                   ->GetSubgroup("units", "usec");
+
+            for (const auto& [name, value]: expectedHistogramValues) {
+                const auto counter = group->FindCounter(name);
+                UNIT_ASSERT_C(
+                    counter,
+                    "Counter " + name.Quote() + " not found");
+                UNIT_ASSERT_VALUES_EQUAL(counter->Val(), value);
+            }
+        };
+
+        checkSizeClass(4_KB, 512_KB);
+
+        checkSizeClass(1_MB, 4_MB);
     }
 }
 

@@ -249,6 +249,56 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             UNIT_ASSERT_VALUES_EQUAL("", config.GetTagsStr());
         }
 
+        {
+            NPrivateProto::TModifyTagsRequest request;
+            request.SetDiskId(DefaultDiskId);
+            *request.AddTagsToAdd() = "source-disk-id=disk-id";
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("ModifyTags", buf);
+        }
+
+        {
+            NPrivateProto::TDescribeVolumeRequest request;
+            request.SetDiskId(DefaultDiskId);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto response = service.ExecuteAction("DescribeVolume", buf);
+            NKikimrSchemeOp::TBlockStoreVolumeDescription pathDescr;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(),
+                &pathDescr
+            ).ok());
+            const auto& config = pathDescr.GetVolumeConfig();
+            UNIT_ASSERT_VALUES_EQUAL("source-disk-id=disk-id", config.GetTagsStr());
+        }
+
+        {
+            NPrivateProto::TModifyTagsRequest request;
+            request.SetDiskId(DefaultDiskId);
+            *request.AddTagsToRemove() = "source-disk-id=disk-id";
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("ModifyTags", buf);
+        }
+
+        {
+            NPrivateProto::TDescribeVolumeRequest request;
+            request.SetDiskId(DefaultDiskId);
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto response = service.ExecuteAction("DescribeVolume", buf);
+            NKikimrSchemeOp::TBlockStoreVolumeDescription pathDescr;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                response->Record.GetOutput(),
+                &pathDescr
+            ).ok());
+            const auto& config = pathDescr.GetVolumeConfig();
+            UNIT_ASSERT_VALUES_EQUAL("", config.GetTagsStr());
+        }
+
         // Test AddTagsRequest
         {
             service.SendAddTagsRequest(

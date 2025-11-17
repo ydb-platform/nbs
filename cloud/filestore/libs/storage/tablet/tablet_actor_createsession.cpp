@@ -61,6 +61,14 @@ void FillFeatures(
     features->SetParentlessFilesOnly(config.GetParentlessFilesOnly());
     features->SetAllowHandlelessIO(config.GetAllowHandlelessIO());
 
+    features->SetDirectoryHandlesStorageEnabled(
+        config.GetDirectoryHandlesStorageEnabled());
+
+    if (config.GetDirectoryHandlesStorageEnabled()) {
+        features->SetDirectoryHandlesTableSize(
+            config.GetDirectoryHandlesTableSize());
+    }
+
     features->SetDirectoryCreationInShardsEnabled(
         fileSystem.GetDirectoryCreationInShardsEnabled());
 
@@ -78,6 +86,9 @@ void FillFeatures(
     features->SetZeroCopyWriteEnabled(config.GetZeroCopyWriteEnabled());
 
     features->SetFSyncQueueDisabled(config.GetFSyncQueueDisabled());
+
+    features->SetGuestHandleKillPrivV2Enabled(
+        config.GetGuestHandleKillPrivV2Enabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -133,6 +133,7 @@ public:
     bool GetReportHistogramAsMultipleCounters() const;
     bool GetReportHistogramAsSingleCounter() const;
     EHistogramCounterOptions GetHistogramCounterOptions() const;
+    bool GetUseMsUnitsForTimeHistogram() const;
 
     TFileSystemPerformanceProfile GetHDDFileSystemPerformanceProfile() const;
     TFileSystemPerformanceProfile GetSSDFileSystemPerformanceProfile() const;

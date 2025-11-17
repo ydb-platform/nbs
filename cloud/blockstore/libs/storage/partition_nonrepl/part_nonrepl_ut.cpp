@@ -1358,41 +1358,46 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionTest)
 
         TPartitionClient client(runtime, env.ActorId);
 
-        runtime.SetEventFilter(
-            [&](auto&, TAutoPtr<IEventHandle>& event)
-            {
-                if (event->GetTypeRewrite() ==
-                    TEvDiskAgent::EvReadDeviceBlocksResponse)
+        for (int ec: {EIO, EREMOTEIO}) {
+            runtime.SetEventFilter(
+                [&](auto&, TAutoPtr<IEventHandle>& event)
                 {
-                    auto response = std::make_unique<
-                        TEvDiskAgent::TEvReadDeviceBlocksResponse>(MakeError(
-                        MAKE_SYSTEM_ERROR(EIO),
-                        "async IO operation failed"));
+                    if (event->GetTypeRewrite() ==
+                        TEvDiskAgent::EvReadDeviceBlocksResponse)
+                    {
+                        auto response = std::make_unique<
+                            TEvDiskAgent::TEvReadDeviceBlocksResponse>(
+                            MakeError(
+                                MAKE_SYSTEM_ERROR(ec),
+                                "async IO operation failed"));
 
-                    std::unique_ptr<IEventHandle> handle{new IEventHandle(
-                        event->Recipient,
-                        event->Sender,
-                        response.release(),
-                        0,
-                        event->Cookie)};
-                    event.Reset(handle.release());
-                }
+                        std::unique_ptr<IEventHandle> handle{new IEventHandle(
+                            event->Recipient,
+                            event->Sender,
+                            response.release(),
+                            0,
+                            event->Cookie)};
+                        event.Reset(handle.release());
+                    }
 
-                return false;
-            });
+                    return false;
+                });
 
-        client.SendReadBlocksRequest(
-            TBlockRange64::MakeClosedInterval(0, 1024));
+            client.SendReadBlocksRequest(
+                TBlockRange64::MakeClosedInterval(0, 1024));
 
-        auto response = client.RecvReadBlocksResponse();
-        UNIT_ASSERT_C(
-            HasProtoFlag(response->GetError().GetFlags(), NProto::EF_SILENT),
-            FormatError(response->GetError()));
-        UNIT_ASSERT_C(
-            HasProtoFlag(
-                response->GetError().GetFlags(),
-                NProto::EF_HW_PROBLEMS_DETECTED),
-            FormatError(response->GetError()));
+            auto response = client.RecvReadBlocksResponse();
+            UNIT_ASSERT_C(
+                HasProtoFlag(
+                    response->GetError().GetFlags(),
+                    NProto::EF_SILENT),
+                FormatError(response->GetError()));
+            UNIT_ASSERT_C(
+                HasProtoFlag(
+                    response->GetError().GetFlags(),
+                    NProto::EF_HW_PROBLEMS_DETECTED),
+                FormatError(response->GetError()));
+        }
     }
 
     Y_UNIT_TEST(ShouldHandleLostDevice)

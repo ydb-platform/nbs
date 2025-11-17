@@ -14,6 +14,7 @@ RECURSE_FOR_TESTS(
     client_two_stage_read
     close_to_open_consistency
     config_dispatcher
+    directory_handles
     endpoints
     fio
     fio_index

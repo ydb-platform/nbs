@@ -4,6 +4,7 @@
 #include "fs.h"
 #include "fuse.h"
 #include "handle_ops_queue.h"
+#include "directory_handles_storage.h"
 #include "log.h"
 
 #include <cloud/filestore/libs/client/session.h>
@@ -54,6 +55,7 @@ namespace {
 
 static constexpr TStringBuf HandleOpsQueueFileName = "handle_ops_queue";
 static constexpr TStringBuf WriteBackCacheFileName = "write_back_cache";
+static constexpr TStringBuf DirectoryHandlesStorageFileName = "directory_handles_storage";
 
 NProto::TError CreateAndLockFile(
     const TString& dir,
@@ -641,9 +643,11 @@ private:
 
     THolder<TFileLock> HandleOpsQueueFileLock;
     THolder<TFileLock> WriteBackCacheFileLock;
+    THolder<TFileLock> DirectoryHandlesStorageFileLock;
 
     bool HandleOpsQueueInitialized = false;
     bool WriteBackCacheInitialized = false;
+    bool DirectoryHandlesStorageInitialized = false;
 
 public:
     TFileSystemLoop(
@@ -771,6 +775,18 @@ public:
                             p->WriteBackCacheFileLock);
                         if (HasError(error)) {
                             ReportWriteBackCacheCreatingOrDeletingError(
+                                error.GetMessage());
+                        }
+                    }
+
+                    if (p->DirectoryHandlesStorageInitialized) {
+                        auto error = UnlockAndDeleteFile(
+                            TFsPath(
+                                p->Config->GetDirectoryHandlesStoragePath()) /
+                                p->Config->GetFileSystemId() / p->SessionId,
+                            p->DirectoryHandlesStorageFileLock);
+                        if (HasError(error)) {
+                            ReportDirectoryHandlesStorageError(
                                 error.GetMessage());
                         }
                     }
@@ -953,8 +969,12 @@ private:
                         HandleOpsQueueFileLock);
 
                     if (HasError(error)) {
-                        ReportHandleOpsQueueCreatingOrDeletingError(
-                            error.GetMessage());
+                        ReportHandleOpsQueueCreatingOrDeletingError(Sprintf(
+                            "[f:%s][c:%s] CreateAndLockFile error: %s (%s)",
+                            Config->GetFileSystemId().Quote().c_str(),
+                            Config->GetClientId().Quote().c_str(),
+                            error.GetMessage().c_str(),
+                            path.c_str()));
                         return error;
                     }
 
@@ -963,14 +983,11 @@ private:
                         Config->GetHandleOpsQueueSize());
                     HandleOpsQueueInitialized = true;
                 } else {
-                    TString msg = "Error initializing HandleOpsQueue: "
-                        "HandleOpsQueuePath is not set";
-                    STORAGE_WARN("[f:%s][c:%s] %s",
+                    ReportHandleOpsQueueCreatingOrDeletingError(Sprintf(
+                        "[f:%s][c:%s] Error initializing HandleOpsQueue: "
+                        "HandleOpsQueuePath is not set",
                         Config->GetFileSystemId().Quote().c_str(),
-                        Config->GetClientId().Quote().c_str(),
-                        msg.c_str()
-                    );
-                    ReportHandleOpsQueueCreatingOrDeletingError(msg);
+                        Config->GetClientId().Quote().c_str()));
                 }
             }
 
@@ -987,8 +1004,12 @@ private:
                         WriteBackCacheFileLock);
 
                     if (HasError(error)) {
-                        ReportWriteBackCacheCreatingOrDeletingError(
-                            error.GetMessage());
+                        ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
+                            "[f:%s][c:%s] CreateAndLockFile error: %s (%s)",
+                            Config->GetFileSystemId().Quote().c_str(),
+                            Config->GetClientId().Quote().c_str(),
+                            error.GetMessage().c_str(),
+                            path.c_str()));
                         return error;
                     }
 
@@ -997,26 +1018,53 @@ private:
                         Scheduler,
                         Timer,
                         CreateDummyWriteBackCacheStats(),
+                        Log,
+                        Config->GetFileSystemId(),
+                        Config->GetClientId(),
                         path / WriteBackCacheFileName,
                         Config->GetWriteBackCacheCapacity(),
                         Config->GetWriteBackCacheAutomaticFlushPeriod(),
                         Config->GetWriteBackCacheFlushRetryPeriod(),
                         Config->GetWriteBackCacheFlushMaxWriteRequestSize(),
                         Config->GetWriteBackCacheFlushMaxWriteRequestsCount(),
-                        Config->GetWriteBackCacheFlushMaxSumWriteRequestsSize()
+                        Config->GetWriteBackCacheFlushMaxSumWriteRequestsSize(),
+                        FileSystemConfig->GetZeroCopyWriteEnabled()
                     );
                     WriteBackCacheInitialized = true;
                 } else {
-                    TString msg =
-                        "Error initializing WriteBackCache: "
-                        "WriteBackCachePath is not set";
-                    STORAGE_WARN(
-                        "[f:%s][c:%s] %s",
+                    ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
+                        "[f:%s][c:%s] Error initializing WriteBackCache: "
+                        "WriteBackCachePath is not set",
                         Config->GetFileSystemId().Quote().c_str(),
-                        Config->GetClientId().Quote().c_str(),
-                        msg.c_str());
-                    ReportWriteBackCacheCreatingOrDeletingError(msg);
+                        Config->GetClientId().Quote().c_str()));
                 }
+            }
+
+            TDirectoryHandlesStoragePtr directoryHandlesStorage;
+            if (FileSystemConfig->GetDirectoryHandlesStorageEnabled() &&
+                Config->GetDirectoryHandlesStoragePath())
+            {
+                auto path = TFsPath(Config->GetDirectoryHandlesStoragePath()) /
+                            FileSystemConfig->GetFileSystemId() / SessionId;
+
+                auto error = CreateAndLockFile(
+                    path,
+                    DirectoryHandlesStorageFileName,
+                    DirectoryHandlesStorageFileLock);
+
+                if (HasError(error)) {
+                    ReportDirectoryHandlesStorageError(error.GetMessage());
+                    return error;
+                }
+
+                directoryHandlesStorage = CreateDirectoryHandlesStorage(
+                    Log,
+                    path / DirectoryHandlesStorageFileName,
+                    FileSystemConfig->GetDirectoryHandlesTableSize(),
+                    Config->GetDirectoryHandlesInitialDataSize(),
+                    FileSystemConfig->GetMaxBufferSize());
+
+                DirectoryHandlesStorageInitialized = true;
             }
 
             FileSystem = CreateFileSystem(
@@ -1029,6 +1077,7 @@ private:
                 RequestStats,
                 CompletionQueue,
                 std::move(handleOpsQueue),
+                std::move(directoryHandlesStorage),
                 std::move(writeBackCache));
 
             RequestStats->RegisterIncompleteRequestProvider(CompletionQueue);
@@ -1110,6 +1159,9 @@ private:
         if (features.GetAttrTimeout()) {
             config.SetAttrTimeout(features.GetAttrTimeout());
         }
+        if (features.GetXAttrCacheTimeout()) {
+            config.SetXAttrCacheTimeout(features.GetXAttrCacheTimeout());
+        }
         config.SetAsyncDestroyHandleEnabled(
             features.GetAsyncDestroyHandleEnabled());
         config.SetAsyncHandleOperationPeriod(
@@ -1124,6 +1176,12 @@ private:
         config.SetServerWriteBackCacheEnabled(
             features.GetServerWriteBackCacheEnabled());
 
+        config.SetDirectoryHandlesStorageEnabled(
+            features.GetDirectoryHandlesStorageEnabled());
+
+        config.SetDirectoryHandlesTableSize(
+            features.GetDirectoryHandlesTableSize());
+
         config.SetZeroCopyEnabled(features.GetZeroCopyEnabled());
 
         config.SetGuestPageCacheDisabled(features.GetGuestPageCacheDisabled());
@@ -1137,6 +1195,9 @@ private:
         config.SetZeroCopyWriteEnabled(features.GetZeroCopyWriteEnabled());
 
         config.SetFSyncQueueDisabled(features.GetFSyncQueueDisabled());
+
+        config.SetGuestHandleKillPrivV2Enabled(
+            features.GetGuestHandleKillPrivV2Enabled());
 
         return std::make_shared<TFileSystemConfig>(config);
     }
@@ -1173,6 +1234,10 @@ private:
 
         if (FileSystemConfig->GetGuestWriteBackCacheEnabled()) {
             conn->want |= FUSE_CAP_WRITEBACK_CACHE;
+        }
+
+        if (FileSystemConfig->GetGuestHandleKillPrivV2Enabled()) {
+            conn->want |= FUSE_CAP_HANDLE_KILLPRIV_V2;
         }
 
         FileSystem->Init();

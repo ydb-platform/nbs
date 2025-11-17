@@ -185,6 +185,7 @@ auto CreateDiskAgentStateSpdk(TDiskAgentConfigPtr config)
 struct TTestStorageState: TAtomicRefCount<TTestStorageState>
 {
     bool DropRequests = false;
+    NProto::TError Error;
 };
 
 using TTestStorageStatePtr = TIntrusivePtr<TTestStorageState>;
@@ -209,7 +210,10 @@ struct TTestStorage: IStorage
             return NewPromise<NProto::TReadBlocksLocalResponse>();
         }
 
-        return MakeFuture<NProto::TReadBlocksLocalResponse>();
+        NProto::TReadBlocksLocalResponse response;
+        *response.MutableError() = StorageState->Error;
+
+        return MakeFuture(std::move(response));
     }
 
     TFuture<NProto::TWriteBlocksLocalResponse> WriteBlocksLocal(
@@ -223,7 +227,10 @@ struct TTestStorage: IStorage
             return NewPromise<NProto::TWriteBlocksLocalResponse>();
         }
 
-        return MakeFuture<NProto::TWriteBlocksLocalResponse>();
+        NProto::TWriteBlocksLocalResponse response;
+        *response.MutableError() = StorageState->Error;
+
+        return MakeFuture(std::move(response));
     }
 
     TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
@@ -237,7 +244,10 @@ struct TTestStorage: IStorage
             return NewPromise<NProto::TZeroBlocksResponse>();
         }
 
-        return MakeFuture<NProto::TZeroBlocksResponse>();
+        NProto::TZeroBlocksResponse response;
+        *response.MutableError() = StorageState->Error;
+
+        return MakeFuture(std::move(response));
     }
 
     TFuture<NProto::TError> EraseDevice(
@@ -2123,6 +2133,87 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             UNIT_ASSERT_VALUES_EQUAL("uuid-1", devices[0].GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL("uuid-2", devices[1].GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL("uuid-3", devices[2].GetDeviceUUID());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldConvertSystemIoErrorsToE_IO, TFiles)
+    {
+        auto config = CreateNullConfig({ .Files = Nvme3s });
+
+        TTestStorageStatePtr storageState = MakeIntrusive<TTestStorageState>();
+
+        TDiskAgentState state(
+            CreateStorageConfig(),
+            config,
+            nullptr,   // spdk
+            CreateTestAllocator(),
+            std::make_shared<TTestStorageProvider>(storageState),
+            CreateProfileLogStub(),
+            CreateBlockDigestGeneratorStub(),
+            CreateLoggingService("console"),
+            nullptr,   // rdmaServer
+            NvmeManager,
+            nullptr,   // rdmaTargetConfig
+            TOldRequestCounters(),
+            nullptr   // multiAgentWriteHandler
+        );
+
+        auto future = state.Initialize();
+        const auto& r = future.GetValue(WaitTimeout);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, r.Errors.size());
+        UNIT_ASSERT_VALUES_EQUAL(3, r.Configs.size());
+
+        auto stats = state.CollectStats().GetValue(WaitTimeout);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetInitErrorsCount());
+        UNIT_ASSERT_VALUES_EQUAL(3, stats.GetDeviceStats().size());
+
+        NProto::TReadDeviceBlocksRequest readRequest;
+        readRequest.SetDeviceUUID("uuid-1");
+        readRequest.SetStartIndex(1);
+        readRequest.SetBlockSize(4_KB);
+        readRequest.SetBlocksCount(10);
+
+        NProto::TWriteDeviceBlocksRequest writeRequest;
+        writeRequest.SetDeviceUUID("uuid-1");
+        writeRequest.SetStartIndex(1);
+        writeRequest.SetBlockSize(4_KB);
+        ResizeIOVector(*writeRequest.MutableBlocks(), 10, 4_KB);
+
+        NProto::TZeroDeviceBlocksRequest zeroRequest;
+        zeroRequest.SetDeviceUUID("uuid-1");
+        zeroRequest.SetStartIndex(1);
+        zeroRequest.SetBlockSize(4_KB);
+        zeroRequest.SetBlocksCount(10);
+
+        for (int ec: {EIO, EREMOTEIO}) {
+            storageState->Error = MakeError(MAKE_SYSTEM_ERROR(ec), "Error");
+
+            {
+                auto future = state.Read(Now(), readRequest);
+                const auto& response = future.GetValueSync();
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_IO,
+                    response.GetError().GetCode(),
+                    FormatError(response.GetError()));
+            }
+            {
+                auto future = state.Write(Now(), writeRequest);
+                const auto& response = future.GetValueSync();
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_IO,
+                    response.GetError().GetCode(),
+                    FormatError(response.GetError()));
+            }
+            {
+                auto future = state.WriteZeroes(Now(), zeroRequest);
+                const auto& response = future.GetValueSync();
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_IO,
+                    response.GetError().GetCode(),
+                    FormatError(response.GetError()));
+            }
         }
     }
 }

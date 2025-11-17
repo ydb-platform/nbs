@@ -345,6 +345,11 @@ public:
     bool GetZeroCopyWriteEnabled() const;
 
     bool GetFSyncQueueDisabled() const;
+
+    bool GetDirectoryHandlesStorageEnabled() const;
+    ui64 GetDirectoryHandlesTableSize() const;
+
+    bool GetGuestHandleKillPrivV2Enabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

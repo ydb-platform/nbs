@@ -15,6 +15,7 @@ SRCS(
     locks.proto
     node.proto
     ping.proto
+    server.proto
     session.proto
 )
 

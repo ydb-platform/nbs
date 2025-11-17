@@ -21,7 +21,9 @@ size_t DumpValues(const NJson::TJsonValue::TMapType& map)
 
     size_t nonEmptyCount = 0;
     for (const auto& [key, val]: ordered) {
-        if (val != "" && val != "0" && val != "0 B") {
+        if (val != "" && val != "0" && val != "0 B" &&
+            !key.EndsWith("OpsPerSec") && !key.EndsWith("BytesPerSec"))
+        {
             Cout << key << "=" << val << Endl;
             ++nonEmptyCount;
         }
@@ -339,6 +341,95 @@ Y_UNIT_TEST_SUITE(TRequestsTimeTrackerTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "1",
             valueAfter["stat"]["W_1_inflight_Count"].GetString());
+    }
+
+    Y_UNIT_TEST(ShouldCalculateThroughputStatistics)
+    {
+        const ui64 baseTime = 1000000000000ULL;
+        TRequestsTimeTracker requestsTimeTracker(baseTime);
+
+        requestsTimeTracker.OnRequestStarted(
+            TRequestsTimeTracker::ERequestType::Read,
+            1,
+            TBlockRange64::WithLength(0, 4),
+            baseTime + 100000);
+
+        requestsTimeTracker.OnRequestStarted(
+            TRequestsTimeTracker::ERequestType::Read,
+            2,
+            TBlockRange64::WithLength(0, 8),
+            baseTime + 200000);
+
+        requestsTimeTracker.OnRequestStarted(
+            TRequestsTimeTracker::ERequestType::Write,
+            3,
+            TBlockRange64::WithLength(0, 16),
+            baseTime + 300000);
+
+        Y_UNUSED(requestsTimeTracker.GetStatJson(baseTime + 350000, 4096));
+
+        auto readStat1 =
+            requestsTimeTracker.OnRequestFinished(1, true, baseTime + 400000);
+        auto readStat2 =
+            requestsTimeTracker.OnRequestFinished(2, true, baseTime + 500000);
+        auto writeStat =
+            requestsTimeTracker.OnRequestFinished(3, true, baseTime + 600000);
+
+        UNIT_ASSERT(readStat1.has_value());
+        UNIT_ASSERT(!readStat2.has_value());
+        UNIT_ASSERT(writeStat.has_value());
+
+        auto json =
+            requestsTimeTracker.GetStatJson(baseTime + 1000100000, 4096);
+
+        NJson::TJsonValue value;
+        NJson::ReadJsonTree(json, &value, true);
+
+        auto getStat = [&](const TString& key) -> TString
+        {
+            if (!value["stat"].Has(key)) {
+                return "KEY_MISSING";
+            }
+            return value["stat"][key].GetString();
+        };
+
+        auto readOps = getStat("R_Total_OpsPerSec");
+        auto writeOps = getStat("W_Total_OpsPerSec");
+
+        UNIT_ASSERT(readOps != "KEY_MISSING");
+        UNIT_ASSERT(writeOps != "KEY_MISSING");
+        UNIT_ASSERT(readOps != "0");
+        UNIT_ASSERT(writeOps != "0");
+
+        auto readBytes = getStat("R_Total_BytesPerSec");
+        auto writeBytes = getStat("W_Total_BytesPerSec");
+        UNIT_ASSERT(readBytes != "0 B/s");
+        UNIT_ASSERT(writeBytes != "0 B/s");
+        UNIT_ASSERT(readBytes.Contains("/s"));
+        UNIT_ASSERT(writeBytes.Contains("/s"));
+
+        UNIT_ASSERT_VALUES_EQUAL("0", getStat("Z_Total_OpsPerSec"));
+        UNIT_ASSERT_VALUES_EQUAL("0 B/s", getStat("Z_Total_BytesPerSec"));
+        UNIT_ASSERT_VALUES_EQUAL("0", getStat("D_Total_OpsPerSec"));
+        UNIT_ASSERT_VALUES_EQUAL("0 B/s", getStat("D_Total_BytesPerSec"));
+
+        auto json2 =
+            requestsTimeTracker.GetStatJson(baseTime + 2000200000, 4096);
+        NJson::TJsonValue value2;
+        NJson::ReadJsonTree(json2, &value2, true);
+
+        auto getStat2 = [&](const TString& key) -> TString
+        {
+            if (!value2["stat"].Has(key)) {
+                return "KEY_MISSING";
+            }
+            return value2["stat"][key].GetString();
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL("0", getStat2("R_Total_OpsPerSec"));
+        UNIT_ASSERT_VALUES_EQUAL("0 B/s", getStat2("R_Total_BytesPerSec"));
+        UNIT_ASSERT_VALUES_EQUAL("0", getStat2("W_Total_OpsPerSec"));
+        UNIT_ASSERT_VALUES_EQUAL("0 B/s", getStat2("W_Total_BytesPerSec"));
     }
 }
 

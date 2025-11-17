@@ -5,7 +5,7 @@
 
 #include <functional>
 
-namespace NCloud::NFileStore::NFuse {
+namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -17,12 +17,14 @@ public:
     {
         const TKey Begin;
         const TKey End;
-        const TValue Value;
+        TValue Value;
     };
 
     using TData = TMap<TKey, TItem>;
+    using TIterator = typename TData::iterator;
+    using TVisitor = std::function<void(TIterator it)>;
     using TConstIterator = typename TData::const_iterator;
-    using TVisitor = std::function<void(TConstIterator it)>;
+    using TConstVisitor = std::function<void(TConstIterator it)>;
 
 private:
     TData Data;
@@ -48,10 +50,10 @@ public:
                 << ") failed because it overlaps with the existing interval ["
                 << it->second.Begin << ", " << it->second.End << ")");
 
-        Data.emplace_hint(it, end, TItem{
-            .Begin = begin,
-            .End = end,
-            .Value = std::move(value)});
+        Data.emplace_hint(
+            it,
+            end,
+            TItem{.Begin = begin, .End = end, .Value = std::move(value)});
     }
 
     void Remove(TConstIterator iterator)
@@ -61,7 +63,7 @@ public:
 
     // Visit each interval that intersects with [begin, end)
     // Note: it is allowed to remove the current element from the visitor
-    void VisitOverlapping(TKey begin, TKey end, const TVisitor& visitor) const
+    void VisitOverlapping(TKey begin, TKey end, const TVisitor& visitor)
     {
         // Find first TItem with .End > begin
         auto it = Data.upper_bound(begin);
@@ -71,6 +73,30 @@ public:
             visitor(it);
             it = next;
         }
+    }
+
+    // Visit each interval that intersects with [begin, end)
+    // Note: it is allowed to remove the current element from the visitor
+    void VisitOverlapping(TKey begin, TKey end, const TConstVisitor& visitor) const
+    {
+        // Find first TItem with .End > begin
+        auto it = Data.upper_bound(begin);
+
+        while (it != Data.end() && it->second.Begin < end) {
+            auto next = std::next(it);
+            visitor(it);
+            it = next;
+        }
+    }
+
+    TIterator begin()
+    {
+        return Data.begin();
+    }
+
+    TIterator end()
+    {
+        return Data.end();
     }
 
     TConstIterator begin() const
@@ -84,4 +110,4 @@ public:
     }
 };
 
-}   // namespace NCloud::NFileStore::NFuse
+}   // namespace NCloud

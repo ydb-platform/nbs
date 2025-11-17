@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 )
 
@@ -20,14 +21,25 @@ func NewCellSelectorMock() *CellSelectorMock {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func (s *CellSelectorMock) ReplaceZoneIdWithCellIdInDiskMeta(
+	ctx context.Context,
+	storage resources.Storage,
+	disk *types.Disk,
+) (*types.Disk, error) {
+
+	args := s.Called(ctx, storage, disk)
+	return args.Get(0).(*types.Disk), args.Error(1)
+}
+
 func (s *CellSelectorMock) SelectCell(
 	ctx context.Context,
 	zoneID string,
 	folderID string,
 	kind types.DiskKind,
+	requireExactCellIDMatch bool,
 ) (nbs.Client, error) {
 
-	args := s.Called(ctx, zoneID, folderID, kind)
+	args := s.Called(ctx, zoneID, folderID, kind, requireExactCellIDMatch)
 	return args.Get(0).(nbs.Client), args.Error(1)
 }
 

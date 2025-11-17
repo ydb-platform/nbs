@@ -26,13 +26,6 @@ TString CreateInputDescription(
     return CreateInputDescription(args.MasterDiskId, args.ReplicaCount);
 }
 
-TString CreateInputDescription(
-    const NProto::TUpdateDiskReplicaCountRequest& request)
-{
-    return CreateInputDescription(request.GetMasterDiskId(),
-        request.GetReplicaCount());
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -45,10 +38,13 @@ void TDiskRegistryActor::HandleUpdateDiskReplicaCount(
 
     const auto& record = ev->Get()->Record;
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "[%lu] Received UpdateDiskReplicaCount request: %s",
-        TabletID(),
-        CreateInputDescription(record).c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s Received UpdateDiskReplicaCount request: %s %s",
+        LogTitle.GetWithTime().c_str(),
+        record.ShortDebugString().c_str(),
+        TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     ExecuteTx<TUpdateDiskReplicaCount>(
         ctx,
@@ -84,15 +80,21 @@ void TDiskRegistryActor::ExecuteUpdateDiskReplicaCount(
         args.ReplicaCount);
 
     if (HasError(args.Error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "UpdateDiskReplicaCount execution errored: %s. %s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "%s UpdateDiskReplicaCount execution errored: %s. %s",
+            LogTitle.GetWithTime().c_str(),
             FormatError(args.Error).c_str(),
             CreateInputDescription(args).c_str());
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "UpdateDiskReplicaCount execution succeeded. %s",
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s UpdateDiskReplicaCount execution succeeded. %s",
+        LogTitle.GetWithTime().c_str(),
         CreateInputDescription(args).c_str());
 }
 
@@ -100,8 +102,11 @@ void TDiskRegistryActor::CompleteUpdateDiskReplicaCount(
     const TActorContext& ctx,
     TTxDiskRegistry::TUpdateDiskReplicaCount& args)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "UpdateDiskReplicaCount complete. %s",
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
+        "%s UpdateDiskReplicaCount complete. %s",
+        LogTitle.GetWithTime().c_str(),
         CreateInputDescription(args).c_str());
 
     ReallocateDisks(ctx);
@@ -114,4 +119,3 @@ void TDiskRegistryActor::CompleteUpdateDiskReplicaCount(
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
-

@@ -6,6 +6,24 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TDiskPerfData::Register(
+    TIntrusivePtr<NMonitoring::TDynamicCounters> serviceVolumeCounters)
+{
+    DiskCounters.Register(serviceVolumeCounters, false);
+    VolumeSelfCounters.Register(serviceVolumeCounters, false);
+    VolumeBindingCounter =
+        serviceVolumeCounters->GetCounter("LocalVolume", false);
+}
+
+void TDiskPerfData::Publish(TInstant now)
+{
+    DiskCounters.Publish(now);
+    VolumeSelfCounters.Publish(now);
+    *VolumeBindingCounter = !IsPreempted;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void TTotalCounters::Register(NMonitoring::TDynamicCountersPtr counters)
 {
     PartAcc.Register(counters, true);
