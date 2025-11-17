@@ -376,8 +376,8 @@ def __validate_checkrange(test_case, checkrange_result_file):
     merged_expected_problem_ranges = __merge_ranges(expected_problem_ranges)
     if len(merged_expected_problem_ranges) != actual_problem_ranges_size:
         raise Exception(
-            f"Expected length of merged ProblemRanges "
-                "{len(merged_expected_problem_ranges)}"
+            f"Expected length of merged ProblemRanges"
+                " {len(merged_expected_problem_ranges)}"
             f" is not equal to actual {actual_problem_ranges_size}")
     if len(merged_expected_problem_ranges) != 0:
         i = 0
