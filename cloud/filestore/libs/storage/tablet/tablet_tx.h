@@ -978,11 +978,10 @@ struct TTxIndexTablet
         const TRequestInfoPtr RequestInfo;
         const NProto::TRenameNodeRequest Request;
         const NProtoPrivate::TRenameNodeInDestinationResponse Response;
+        const ui64 OpLogEntryId;
 
         ui64 CommitId = InvalidCommitId;
         TMaybe<IIndexTabletDatabase::TNodeRef> ChildRef;
-
-        const ui64 OpLogEntryId;
 
         TCommitRenameNodeInSource(
                 TRequestInfoPtr requestInfo,
@@ -1454,11 +1453,11 @@ struct TTxIndexTablet
             IsNewShardNode = false;
             TargetNode.Clear();
             ParentNode.Clear();
+            UpdatedNodes.clear();
 
             OpLogEntry.Clear();
 
             Response.Clear();
-            UpdatedNodes.clear();
         }
     };
 
@@ -1579,7 +1578,7 @@ struct TTxIndexTablet
         const bool DescribeOnly;
         // Used when we want to read data from a specific node, not the node
         // inferred from the handle.
-        ui64 ExplicitNodeId = InvalidNodeId;
+        const ui64 ExplicitNodeId = InvalidNodeId;
 
         ui64 CommitId = InvalidCommitId;
         ui64 NodeId = InvalidNodeId;
@@ -1646,8 +1645,7 @@ struct TTxIndexTablet
         /*const*/ IBlockBufferPtr Buffer;
         // Used when we want to write data to a specific node, not the node
         // inferred from the handle.
-        ui64 ExplicitNodeId = InvalidNodeId;
-
+        const ui64 ExplicitNodeId = InvalidNodeId;
 
         ui64 CommitId = InvalidCommitId;
         ui64 NodeId = InvalidNodeId;
@@ -1698,7 +1696,7 @@ struct TTxIndexTablet
         ui64 CommitId;
         // Used when we want to access a specific node, not the node
         // inferred from the handle.
-        ui64 ExplicitNodeId = InvalidNodeId;
+        const ui64 ExplicitNodeId = InvalidNodeId;
 
         ui64 NodeId = InvalidNodeId;
         TMaybe<IIndexTabletDatabase::TNode> Node;
@@ -1758,6 +1756,7 @@ struct TTxIndexTablet
             CommitId = InvalidCommitId;
             WriteRanges.clear();
             Nodes.clear();
+            Error.Clear();
         }
     };
 
@@ -1908,6 +1907,7 @@ struct TTxIndexTablet
         {
             TProfileAware::Clear();
             TrimmedBytes = 0;
+            TrimmedAll = false;
         }
     };
 
@@ -2415,6 +2415,7 @@ struct TTxIndexTablet
         const ui64 NodeId;
         const TString Cookie;
         const ui64 Limit;
+
         TVector<IIndexTabletDatabase::TNodeRef> Refs;
         ui64 NextNodeId = 0;
         TString NextCookie;
