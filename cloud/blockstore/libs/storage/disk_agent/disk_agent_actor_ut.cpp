@@ -6851,10 +6851,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             1,
             FindProcessesWithOpenFile(Devices[0]).size());
 
-        diskAgent.DetachPaths(
-            0,   // drGeneration
-            1,   // daGeneration
-            TVector<TString>{{PartLabels[0]}});
+        diskAgent.DetachPaths(TVector<TString>{{PartLabels[0]}});
 
         UNIT_ASSERT_VALUES_EQUAL(
             0,

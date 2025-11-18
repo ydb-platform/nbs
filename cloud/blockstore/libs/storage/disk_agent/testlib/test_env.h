@@ -309,14 +309,9 @@ public:
         return request;
     }
 
-    auto CreateDetachPathsRequest(
-        ui64 drGeneration,
-        ui64 daGeneration,
-        const TVector<TString>& paths)
+    auto CreateDetachPathsRequest(const TVector<TString>& paths)
     {
         auto request = std::make_unique<TEvDiskAgent::TEvDetachPathsRequest>();
-        request->Record.SetDiskRegistryGeneration(drGeneration);
-        request->Record.SetDiskAgentGeneration(daGeneration);
 
         for (const auto& path: paths) {
             request->Record.AddPathsToDetach(path);
