@@ -768,7 +768,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         {
             return compactionCounter == 4;
         };
-        env.GetRuntime().DispatchEvents(options, TDuration::Seconds(5));
+        env.GetRuntime().DispatchEvents(options);
 
         UNIT_ASSERT_VALUES_EQUAL(4, compactionCounter);
 
