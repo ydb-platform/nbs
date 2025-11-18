@@ -35,7 +35,8 @@ The utility supports the following options:
   - migrate data to another disk (maybe even of a different type);
   - compare checksums.
 
-- TODO: add an example parser in Python or something similar.
+## Example parser
+ - example Python parser can be found in load tests: nbs/cloud/blockstore/tests/loadtest/local-checkrange/test.py
 
 ## Response format
 ```json
