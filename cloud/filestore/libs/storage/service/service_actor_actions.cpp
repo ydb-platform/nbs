@@ -111,6 +111,10 @@ void TStorageServiceActor::HandleExecuteAction(
         {
             "sethasxattrs",
             &TStorageServiceActor::CreateSetHasXAttrsActionActor
+        },
+        {
+            "marknoderefsexhaustive",
+            &TStorageServiceActor::CreateMarkNodeRefsExhaustiveActionActor
         }
     };
 

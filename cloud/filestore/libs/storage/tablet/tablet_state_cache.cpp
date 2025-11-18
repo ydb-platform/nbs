@@ -43,6 +43,11 @@ void TInMemoryIndexState::MarkNodeRefsLoadComplete()
     NodeRefsExhaustivenessInfo.MarkNodeRefsLoadComplete();
 }
 
+void TInMemoryIndexState::MarkNodeRefsExhaustive(ui64 nodeId)
+{
+    NodeRefsExhaustivenessInfo.MarkNodeRefsExhaustive(nodeId);
+}
+
 TInMemoryIndexStateStats TInMemoryIndexState::GetStats() const
 {
     return TInMemoryIndexStateStats{

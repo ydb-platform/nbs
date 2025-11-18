@@ -104,6 +104,28 @@ NProtoPrivate::TGetStorageStatsResponse GetStorageStats(
     return response;
 }
 
+NProtoPrivate::TMarkNodeRefsExhaustiveResponse ExecuteMarkNodeRefsExhaustive(
+    TServiceClient& service,
+    const TString& fsId,
+    ui64 nodeId)
+{
+    NProtoPrivate::TMarkNodeRefsExhaustiveRequest request;
+    request.SetFileSystemId(fsId);
+    request.SetNodeId(nodeId);
+
+    TString buf;
+    google::protobuf::util::MessageToJsonString(request, &buf);
+
+    auto jsonResponse = service.ExecuteAction("marknoderefsexhaustive", buf);
+    NProtoPrivate::TMarkNodeRefsExhaustiveResponse response;
+    UNIT_ASSERT(
+        google::protobuf::util::JsonStringToMessage(
+            jsonResponse->Record.GetOutput(),
+            &response)
+            .ok());
+    return response;
+}
+
 auto GetFileSystemCounters(TTestEnv& env, const TString& fsId)
 {
     const auto counters = env.GetRuntime().GetAppData().Counters;
@@ -810,6 +832,61 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         UNIT_ASSERT_VALUES_EQUAL(
             4,
             subgroup->GetCounter("Compaction.Count")->GetAtomic());
+    }
+
+    Y_UNIT_TEST(ShouldMarkNodeRefsExhaustive)
+    {
+        NProto::TStorageConfig config;
+        config.SetInMemoryIndexCacheEnabled(true);
+        config.SetInMemoryIndexCacheNodesCapacity(10);
+        config.SetInMemoryIndexCacheNodeRefsCapacity(10);
+        config.SetInMemoryIndexCacheNodeRefsExhaustivenessCapacity(5);
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fsId = "test";
+        service.CreateFileStore(fsId, 1'000);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        auto getCacheHit = [&]() -> i64
+        {
+            env.GetRegistry()->Update(env.GetRuntime().GetCurrentTime());
+            return GetFileSystemCounters(env, fsId)
+                ->GetCounter("InMemoryIndexStateROCacheHitCount")
+                ->GetAtomic();
+        };
+
+        // Create a directory
+        const ui64 dirId =
+            service
+                .CreateNode(
+                    headers,
+                    TCreateNodeArgs::Directory(RootNodeId, "testdir"))
+                ->Record.GetNode()
+                .GetId();
+
+        // Create some children
+        service.CreateNode(headers, TCreateNodeArgs::File(dirId, "file1"));
+        service.CreateNode(headers, TCreateNodeArgs::File(dirId, "file2"));
+
+        // Listing the directory should be a cache miss
+        auto listResponse = service.ListNodes(headers, dirId);
+        UNIT_ASSERT_VALUES_EQUAL(2, listResponse->Record.GetNodes().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, getCacheHit());
+
+        // Mark the directory as exhaustive using the action
+        auto response = ExecuteMarkNodeRefsExhaustive(service, fsId, dirId);
+        UNIT_ASSERT_C(!HasError(response.GetError()), response.GetError());
+
+        // List the directory to verify the nodes are there
+        listResponse = service.ListNodes(headers, dirId);
+        UNIT_ASSERT_VALUES_EQUAL(2, listResponse->Record.GetNodes().size());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, getCacheHit());
     }
 }
 

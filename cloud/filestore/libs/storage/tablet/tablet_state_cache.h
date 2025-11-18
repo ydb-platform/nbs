@@ -46,6 +46,8 @@ public:
 
     void MarkNodeRefsLoadComplete();
 
+    void MarkNodeRefsExhaustive(ui64 nodeId);
+
     [[nodiscard]] TInMemoryIndexStateStats GetStats() const;
 
     //

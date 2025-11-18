@@ -261,6 +261,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    NActors::IActorPtr CreateMarkNodeRefsExhaustiveActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     void PerformToggleServiceStateAction(
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,
