@@ -762,7 +762,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
 
         UNIT_ASSERT(completion);
         env.GetRuntime().Send(completion.Release());
-        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&compactionCounter]()
+        {
+            return compactionCounter == 4;
+        };
+        env.GetRuntime().DispatchEvents(options);
+
+        UNIT_ASSERT_VALUES_EQUAL(4, compactionCounter);
 
         {
             NProtoPrivate::TForcedOperationStatusRequest request;
