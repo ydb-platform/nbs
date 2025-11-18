@@ -2,8 +2,8 @@ name: Create Test PR
 run-name: ${{ format('Create Test PR ({0})', github.event_name) }}
 
 on:
-  schedule:
-    - cron: "0 * * * *" 
+  # schedule:
+  #   - cron: "0 * * * *" 
   workflow_dispatch:
 
 jobs:
@@ -115,7 +115,7 @@ jobs:
           PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
           echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
   remove-old-prs:
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, "self-hosted", "runner_light" ]
     needs: create-test-pr
     concurrency:
       group: remove-old-prs
