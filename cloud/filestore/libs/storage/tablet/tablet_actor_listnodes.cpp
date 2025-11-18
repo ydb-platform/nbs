@@ -76,7 +76,8 @@ void TIndexTabletActor::HandleListNodes(
         ctx,
         std::move(requestInfo),
         msg->Record,
-        maxBytes);
+        maxBytes,
+        Config->GetMaxBytesMultiplier());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
