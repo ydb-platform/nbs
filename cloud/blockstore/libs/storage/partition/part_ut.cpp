@@ -168,34 +168,10 @@ public:
     {
         for (const auto& [prerequisiteEvent, dependentEvent]: eventOrders) {
             EventDependencies[dependentEvent] = prerequisiteEvent;
-            PrerequisiteEvents.insert(prerequisiteEvent);
         }
 
-        runtime.SetObserverFunc(
-            [this](TAutoPtr<IEventHandle>& ev) -> auto
-            {
-                Y_ABORT_UNLESS(ev);
-
-                ui32 eventType = ev->GetTypeRewrite();
-                TActorId recipient = ev->GetRecipientRewrite();
-
-                if (EventDependencies.contains(eventType)) {
-                    ui32 prerequisiteEvent = EventDependencies[eventType];
-                    if (!ProcessedEvents[recipient].contains(
-                            prerequisiteEvent)) {
-                        return TTestActorRuntimeBase::EEventAction::RESCHEDULE;
-                    }
-                }
-
-                if (PrerequisiteEvents.contains(eventType)) {
-                    ProcessedEvents[recipient].insert(eventType);
-                }
-
-                return TTestActorRuntimeBase::EEventAction::PROCESS;
-            });
-
         runtime.SetEventFilter(
-            [this, baseFilter](
+            [this, baseFilter, &runtime](
                 TTestActorRuntimeBase& rt,
                 TAutoPtr<IEventHandle>& ev) -> bool
             {
@@ -204,21 +180,44 @@ public:
                 TActorId recipient = ev->GetRecipientRewrite();
                 ui32 eventType = ev->GetTypeRewrite();
 
-                if (PrerequisiteEvents.contains(eventType)) {
-                    if (!ProcessedEvents[recipient].contains(eventType)) {
-                        rt.PushFront(ev);
+                bool baseFilterResult = baseFilter ? baseFilter(rt, ev) : false;
+
+                auto it = EventDependencies.find(eventType);
+                if (it != EventDependencies.end()) {
+                    ui32 prerequisiteEvent = it->second;
+                    auto& actorProcessed = ProcessedEvents[recipient];
+                    if (!actorProcessed.contains(prerequisiteEvent)) {
+                        DelayedEvents[recipient][prerequisiteEvent] =
+                            std::move(ev);
                         return true;
                     }
                 }
 
-                return baseFilter ? baseFilter(rt, ev) : false;
+                auto& actorDelayed = DelayedEvents[recipient];
+                auto delayedIt = actorDelayed.find(eventType);
+                if (delayedIt != actorDelayed.end()) {
+                    ProcessedEvents[recipient].insert(eventType);
+                    TAutoPtr<IEventHandle> delayedEvent =
+                        std::move(delayedIt->second);
+                    actorDelayed.erase(delayedIt);
+
+                    if (actorDelayed.empty()) {
+                        DelayedEvents.erase(recipient);
+                    }
+
+                    runtime.Schedule(
+                        delayedEvent,
+                        TDuration::MilliSeconds(100));
+                }
+
+                return baseFilterResult;
             });
     }
 
 private:
     THashMap<ui32, ui32> EventDependencies;
-    THashSet<ui32> PrerequisiteEvents;
     THashMap<TActorId, THashSet<ui32>> ProcessedEvents;
+    THashMap<TActorId, THashMap<ui32, TAutoPtr<IEventHandle>>> DelayedEvents;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
