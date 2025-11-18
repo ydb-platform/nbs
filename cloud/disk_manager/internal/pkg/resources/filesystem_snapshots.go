@@ -189,41 +189,6 @@ func filesystemSnapshotStateTableDescription() persistence.CreateTableDescriptio
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (s *storageYDB) filesystemSnapshotExists(
-	ctx context.Context,
-	tx *persistence.Transaction,
-	snapshotID string,
-) (bool, error) {
-
-	res, err := tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $id as Utf8;
-
-		select count(*)
-		from filesystem_snapshots
-		where id = $id
-	`, s.filesystemSnapshotsPath),
-		persistence.ValueParam("$id", persistence.UTF8Value(snapshotID)),
-	)
-	if err != nil {
-		return false, err
-	}
-	defer res.Close()
-
-	if !res.NextResultSet(ctx) || !res.NextRow() {
-		return false, nil
-	}
-
-	var count uint64
-	err = res.ScanWithDefaults(&count)
-	if err != nil {
-		return false, err
-	}
-
-	return count != 0, nil
-}
-
 func (s *storageYDB) getFilesystemSnapshotMeta(
 	ctx context.Context,
 	session *persistence.Session,
@@ -625,7 +590,7 @@ func (s *storageYDB) filesystemSnapshotDeleted(
 		declare $deleted_at as Timestamp;
 		declare $filesystem_snapshot_id as Utf8;
 
-		upsert into deleted_filesystem_snapshots (deleted_at, filesystem_snapshot_id)
+		upsert into deleted (deleted_at, filesystem_snapshot_id)
 		values ($deleted_at, $filesystem_snapshot_id)
 	`, s.filesystemSnapshotsPath),
 		persistence.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
@@ -652,7 +617,7 @@ func (s *storageYDB) clearDeletedFilesystemSnapshots(
 		declare $limit as Uint64;
 
 		select *
-		from deleted_filesystem_snapshots
+		from deleted
 		where deleted_at < $deleted_before
 		limit $limit
 	`, s.filesystemSnapshotsPath),
@@ -688,7 +653,7 @@ func (s *storageYDB) clearDeletedFilesystemSnapshots(
 				delete from filesystem_snapshots
 				where id = $filesystem_snapshot_id and status = $status;
 
-				delete from deleted_filesystem_snapshots
+				delete from deleted
 				where deleted_at = $deleted_at and filesystem_snapshot_id = $filesystem_snapshot_id
 			`, s.filesystemSnapshotsPath),
 				persistence.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
@@ -877,7 +842,7 @@ func createFilesystemSnapshotsYDBTables(
 	err = db.CreateOrAlterTable(
 		ctx,
 		folder,
-		"deleted_filesystem_snapshots",
+		"deleted",
 		persistence.NewCreateTableDescription(
 			persistence.WithColumn("deleted_at", persistence.Optional(persistence.TypeTimestamp)),
 			persistence.WithColumn("filesystem_snapshot_id", persistence.Optional(persistence.TypeUTF8)),
@@ -888,7 +853,7 @@ func createFilesystemSnapshotsYDBTables(
 	if err != nil {
 		return err
 	}
-	logging.Info(ctx, "Created deleted_filesystem_snapshots table")
+	logging.Info(ctx, "Created deleted table")
 
 	logging.Info(ctx, "Created tables for filesystem snapshots")
 
@@ -909,11 +874,11 @@ func dropFilesystemSnapshotsYDBTables(
 	}
 	logging.Info(ctx, "Dropped filesystem_snapshots table")
 
-	err = db.DropTable(ctx, folder, "deleted_filesystem_snapshots")
+	err = db.DropTable(ctx, folder, "deleted")
 	if err != nil {
 		return err
 	}
-	logging.Info(ctx, "Dropped deleted_filesystem_snapshots table")
+	logging.Info(ctx, "Dropped deleted table")
 
 	logging.Info(ctx, "Dropped tables for filesystem snapshots")
 
