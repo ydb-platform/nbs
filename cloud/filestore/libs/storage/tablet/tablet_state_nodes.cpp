@@ -643,6 +643,11 @@ void TIndexTabletState::MarkNodeRefsLoadComplete()
     Impl->InMemoryIndexState.MarkNodeRefsLoadComplete();
 }
 
+void TIndexTabletState::MarkNodeRefExhaustive(ui64 nodeId)
+{
+    Impl->InMemoryIndexState.MarkNodeRefExhaustive(nodeId);
+}
+
 TInMemoryIndexStateStats TIndexTabletState::GetInMemoryIndexStateStats() const
 {
     return Impl->InMemoryIndexState.GetStats();

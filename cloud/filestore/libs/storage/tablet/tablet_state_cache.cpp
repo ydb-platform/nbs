@@ -43,6 +43,11 @@ void TInMemoryIndexState::MarkNodeRefsLoadComplete()
     NodeRefsExhaustivenessInfo.MarkNodeRefsLoadComplete();
 }
 
+void TInMemoryIndexState::MarkNodeRefExhaustive(ui64 nodeId)
+{
+    NodeRefsExhaustivenessInfo.MarkNodeRefExhaustive(nodeId);
+}
+
 TInMemoryIndexStateStats TInMemoryIndexState::GetStats() const
 {
     return TInMemoryIndexStateStats{
@@ -479,7 +484,7 @@ void TInMemoryIndexState::UpdateState(
                 std::get_if<TMarkNodeRefsAsCachedRequest>(&update))
         {
             if (NodeRefs.size() >= request->RefsSize) {
-                NodeRefsExhaustivenessInfo.MarkNodeRefsExhaustive(
+                NodeRefsExhaustivenessInfo.MarkNodeRefExhaustive(
                     request->NodeId);
             }
         } else {
