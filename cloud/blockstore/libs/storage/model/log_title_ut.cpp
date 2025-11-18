@@ -213,13 +213,32 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
     {
         TLogTitle logTitle{
             GetCycleCount(),
-            TLogTitle::TPartitionNonrepl{.DiskId = "disk1"}};
+            TLogTitle::TPartitionNonrepl{
+                .DiskId = "disk1",
+                .ActorId = "[0:0:0]"}};
 
+        TString base = "nrd:disk1 actor_id:[0:0:0]";
         UNIT_ASSERT_STRINGS_EQUAL(
-            "[nrd:disk1]",
+            "[" + base + "]",
             logTitle.Get(TLogTitle::EDetails::Brief));
 
-        UNIT_ASSERT_STRING_CONTAINS(logTitle.GetWithTime(), "[nrd:disk1 t:");
+        UNIT_ASSERT_STRING_CONTAINS(logTitle.GetWithTime(), "[" + base + " t:");
+    }
+
+    Y_UNIT_TEST(GetForPartitionMirror)
+    {
+        TLogTitle logTitle{
+            GetCycleCount(),
+            TLogTitle::TPartitionMirror{
+                .DiskId = "disk1",
+                .ActorId = "[0:0:0]"}};
+
+        TString base = "mirror:disk1 actor_id:[0:0:0]";
+        UNIT_ASSERT_STRINGS_EQUAL(
+            "[" + base + "]",
+            logTitle.Get(TLogTitle::EDetails::Brief));
+
+        UNIT_ASSERT_STRING_CONTAINS(logTitle.GetWithTime(), "[" + base + " t:");
     }
 
     Y_UNIT_TEST(GetChildLogger)
