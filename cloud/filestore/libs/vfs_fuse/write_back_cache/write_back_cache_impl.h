@@ -34,13 +34,22 @@ struct TWriteBackCache::TWriteDataEntryDeserializationStats
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct Y_PACKED TWriteBackCache::TCachedWriteDataRequestHeader
+struct Y_PACKED TWriteBackCache::TCachedWriteDataRequest
 {
     ui64 NodeId = 0;
     ui64 Handle = 0;
     ui64 Offset = 0;
     ui32 Length = 0;
+
     // Data goes right after the header, |Length| bytes
+    // The validity is ensured by code logic
+    TStringBuf GetBuffer() const
+    {
+        return {
+            reinterpret_cast<const char*>(this) +
+                sizeof(TCachedWriteDataRequest),
+            Length};
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -53,10 +62,10 @@ private:
     // persistent queue is performed.
     // The idea is to deduplicate memory and to reference request buffer
     // directly in the persistent buffer if the request is stored there.
-    std::shared_ptr<NProto::TWriteDataRequest> Request;
+    std::shared_ptr<NProto::TWriteDataRequest> PendingRequest;
 
-    // Memory allocated in CachedEntriesPersistentQueue
-    const TCachedWriteDataRequestHeader* AllocationPtr = nullptr;
+    // WriteData request stored in CachedEntriesPersistentQueue
+    const TCachedWriteDataRequest* CachedRequest = nullptr;
 
     NThreading::TPromise<NProto::TWriteDataResponse> CachedPromise;
     NThreading::TPromise<void> FlushPromise;
@@ -76,60 +85,58 @@ public:
 
     ui64 GetNodeId() const
     {
-        if (AllocationPtr) {
-            return AllocationPtr->NodeId;
+        if (CachedRequest) {
+            return CachedRequest->NodeId;
         }
-        if (Request) {
-            return Request->GetNodeId();
+        if (PendingRequest) {
+            return PendingRequest->GetNodeId();
         }
         Y_ABORT("The request is in the invalid state (GetNodeId)");
     }
 
     ui64 GetHandle() const
     {
-        if (AllocationPtr) {
-            return AllocationPtr->Handle;
+        if (CachedRequest) {
+            return CachedRequest->Handle;
         }
-        if (Request) {
-            return Request->GetHandle();
+        if (PendingRequest) {
+            return PendingRequest->GetHandle();
         }
         Y_ABORT("The request is in the invalid state (GetHandle)");
     }
 
     TStringBuf GetBuffer() const
     {
-        if (AllocationPtr) {
-            return {
-                reinterpret_cast<const char*>(AllocationPtr) +
-                    sizeof(TCachedWriteDataRequestHeader),
-                AllocationPtr->Length};
+        if (CachedRequest) {
+            return CachedRequest->GetBuffer();
         }
-        if (Request) {
-            return TStringBuf(Request->GetBuffer())
-                .Skip(Request->GetBufferOffset());
+        if (PendingRequest) {
+            return TStringBuf(PendingRequest->GetBuffer())
+                .Skip(PendingRequest->GetBufferOffset());
         }
         Y_ABORT("The request is in the invalid state (GetBuffer)");
     }
 
     ui64 Offset() const
     {
-        if (AllocationPtr) {
-            return AllocationPtr->Offset;
+        if (CachedRequest) {
+            return CachedRequest->Offset;
         }
-        if (Request) {
-            return Request->GetOffset();
+        if (PendingRequest) {
+            return PendingRequest->GetOffset();
         }
         Y_ABORT("The request is in the invalid state (Offset)");
     }
 
     ui64 End() const
     {
-        if (AllocationPtr) {
-            return AllocationPtr->Offset + AllocationPtr->Length;
+        if (CachedRequest) {
+            return CachedRequest->Offset + CachedRequest->Length;
         }
-        if (Request) {
-            return Request->GetOffset() + Request->GetBuffer().size() -
-                   Request->GetBufferOffset();
+        if (PendingRequest) {
+            return PendingRequest->GetOffset() +
+                   PendingRequest->GetBuffer().size() -
+                   PendingRequest->GetBufferOffset();
         }
         Y_ABORT("The request is in the invalid state (End)");
     }

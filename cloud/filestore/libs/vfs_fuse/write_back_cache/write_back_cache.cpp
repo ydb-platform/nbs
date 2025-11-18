@@ -1397,7 +1397,7 @@ TFuture<void> TWriteBackCache::FlushAllData()
 
 TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
         std::shared_ptr<NProto::TWriteDataRequest> request)
-    : Request(std::move(request))
+    : PendingRequest(std::move(request))
     , CachedPromise(NewPromise<NProto::TWriteDataResponse>())
 {}
 
@@ -1423,7 +1423,7 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
     //    return;
     //}
 
-    if (serializedRequest.size() < sizeof(TCachedWriteDataRequestHeader)) {
+    if (serializedRequest.size() < sizeof(TCachedWriteDataRequest)) {
         deserializationStats.EntrySizeMismatchCount++;
         ReportWriteBackCacheCorruptionError(
             "TWriteDataEntry deserialization error: entry size is too small");
@@ -1432,11 +1432,11 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
     }
 
     const auto* allocationPtr =
-        reinterpret_cast<const TCachedWriteDataRequestHeader*>(
+        reinterpret_cast<const TCachedWriteDataRequest*>(
             serializedRequest.data());
 
     if (allocationPtr->Length >
-        serializedRequest.size() - sizeof(TCachedWriteDataRequestHeader))
+        serializedRequest.size() - sizeof(TCachedWriteDataRequest))
     {
         deserializationStats.EntrySizeMismatchCount++;
         ReportWriteBackCacheCorruptionError(
@@ -1445,13 +1445,13 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
         return;
     }
 
-    AllocationPtr = allocationPtr;
+    CachedRequest = allocationPtr;
     SetStatus(EWriteDataRequestStatus::Cached, impl);
 }
 
 size_t TWriteBackCache::TWriteDataEntry::GetSerializedSize() const
 {
-    return sizeof(TCachedWriteDataRequestHeader) + GetBuffer().size();
+    return sizeof(TCachedWriteDataRequest) + GetBuffer().size();
 }
 
 void TWriteBackCache::TWriteDataEntry::SetPending(TImpl* impl)
@@ -1465,27 +1465,27 @@ void TWriteBackCache::TWriteDataEntry::SerializeAndMoveRequestBuffer(
     TPendingOperations& pendingOperations,
     TImpl* impl)
 {
-    Y_ABORT_UNLESS(Request);
-    Y_ABORT_UNLESS(AllocationPtr == nullptr);
-    Y_ABORT_UNLESS(sizeof(TCachedWriteDataRequestHeader) <= allocation.size());
+    Y_ABORT_UNLESS(PendingRequest);
+    Y_ABORT_UNLESS(CachedRequest == nullptr);
+    Y_ABORT_UNLESS(sizeof(TCachedWriteDataRequest) <= allocation.size());
 
     auto buffer = GetBuffer();
 
-    auto* header =
-        reinterpret_cast<TCachedWriteDataRequestHeader*>(allocation.data());
+    auto* cachedRequest =
+        reinterpret_cast<TCachedWriteDataRequest*>(allocation.data());
 
-    header->NodeId = Request->GetNodeId();
-    header->Handle = Request->GetHandle();
-    header->Offset = Request->GetOffset();
-    header->Length = buffer.size();
+    cachedRequest->NodeId = PendingRequest->GetNodeId();
+    cachedRequest->Handle = PendingRequest->GetHandle();
+    cachedRequest->Offset = PendingRequest->GetOffset();
+    cachedRequest->Length = buffer.size();
 
-    allocation = allocation.subspan(sizeof(TCachedWriteDataRequestHeader));
+    allocation = allocation.subspan(sizeof(TCachedWriteDataRequest));
     Y_ABORT_UNLESS(buffer.size() <= allocation.size());
 
     buffer.copy(allocation.data(), buffer.size());
 
-    AllocationPtr = header;
-    Request.reset();
+    CachedRequest = cachedRequest;
+    PendingRequest.reset();
 
     SetStatus(EWriteDataRequestStatus::Cached, impl);
 
@@ -1529,7 +1529,7 @@ void TWriteBackCache::TWriteDataEntry::FinishFlush(
     Y_ABORT_UNLESS(Status == EWriteDataRequestStatus::Flushing);
 
     SetStatus(EWriteDataRequestStatus::Flushed, impl);
-    AllocationPtr = nullptr;
+    CachedRequest = nullptr;
 
     if (FlushPromise.Initialized()) {
         pendingOperations.FlushCompleted.push_back(
