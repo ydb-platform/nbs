@@ -80,6 +80,8 @@ var (
 		{name: "FilesystemService.Create", permission: "disk-manager.filesystems.create"},
 		{name: "FilesystemService.Delete", permission: "disk-manager.filesystems.delete"},
 		{name: "FilesystemService.Resize", permission: "disk-manager.filesystems.update"},
+		{name: "FilesystemSnapshotService.Create", permission: "disk-manager.filesystem_snapshots.create"},
+		{name: "FilesystemSnapshotService.Delete", permission: "disk-manager.filesystem_snapshots.delete"},
 	}
 )
 

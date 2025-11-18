@@ -21,6 +21,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem_snapshot"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/placementgroup"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
@@ -331,6 +332,16 @@ func registerControlplaneTasks(
 			logging.Error(ctx, "Failed to register filesystem tasks: %v", err)
 			return err
 		}
+
+		err = filesystem_snapshot.RegisterForExecution(
+			ctx,
+			taskRegistry,
+			taskScheduler,
+		)
+		if err != nil {
+			logging.Error(ctx, "Failed to register filesystem snapshot tasks: %v", err)
+			return err
+		}
 	}
 
 	logging.Info(ctx, "Registering placementgroup tasks")
@@ -399,11 +410,16 @@ func initControlplane(
 	poolService := pools.NewService(taskScheduler, poolStorage)
 
 	var filesystemService filesystem.Service
+	var filesystemSnapshotService filesystem_snapshot.Service
 	if config.GetFilesystemConfig() != nil {
 		filesystemService = filesystem.NewService(
 			taskScheduler,
 			config.GetFilesystemConfig(),
 			nfsFactory,
+		)
+
+		filesystemSnapshotService = filesystem_snapshot.NewService(
+			taskScheduler,
 		)
 	}
 
@@ -520,6 +536,14 @@ func initControlplane(
 			server,
 			taskScheduler,
 			filesystemService,
+		)
+	}
+
+	if filesystemSnapshotService != nil {
+		facade.RegisterFilesystemSnapshotService(
+			server,
+			taskScheduler,
+			filesystemSnapshotService,
 		)
 	}
 

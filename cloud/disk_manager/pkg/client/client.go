@@ -50,12 +50,13 @@ func NewClient(
 		operationPollPeriod: operationPollPeriod,
 		conn:                conn,
 
-		diskServiceClient:           disk_manager.NewDiskServiceClient(conn),
-		imageServiceClient:          disk_manager.NewImageServiceClient(conn),
-		operationServiceClient:      disk_manager.NewOperationServiceClient(conn),
-		placementGroupServiceClient: disk_manager.NewPlacementGroupServiceClient(conn),
-		snapshotServiceClient:       disk_manager.NewSnapshotServiceClient(conn),
-		filesystemServiceClient:     disk_manager.NewFilesystemServiceClient(conn),
+		diskServiceClient:               disk_manager.NewDiskServiceClient(conn),
+		imageServiceClient:              disk_manager.NewImageServiceClient(conn),
+		operationServiceClient:          disk_manager.NewOperationServiceClient(conn),
+		placementGroupServiceClient:     disk_manager.NewPlacementGroupServiceClient(conn),
+		snapshotServiceClient:           disk_manager.NewSnapshotServiceClient(conn),
+		filesystemServiceClient:         disk_manager.NewFilesystemServiceClient(conn),
+		filesystemSnapshotServiceClient: disk_manager.NewFilesystemSnapshotServiceClient(conn),
 	}, nil
 }
 
@@ -65,12 +66,13 @@ type client struct {
 	operationPollPeriod time.Duration
 	conn                *grpc.ClientConn
 
-	diskServiceClient           disk_manager.DiskServiceClient
-	imageServiceClient          disk_manager.ImageServiceClient
-	operationServiceClient      disk_manager.OperationServiceClient
-	placementGroupServiceClient disk_manager.PlacementGroupServiceClient
-	snapshotServiceClient       disk_manager.SnapshotServiceClient
-	filesystemServiceClient     disk_manager.FilesystemServiceClient
+	diskServiceClient               disk_manager.DiskServiceClient
+	imageServiceClient              disk_manager.ImageServiceClient
+	operationServiceClient          disk_manager.OperationServiceClient
+	placementGroupServiceClient     disk_manager.PlacementGroupServiceClient
+	snapshotServiceClient           disk_manager.SnapshotServiceClient
+	filesystemServiceClient         disk_manager.FilesystemServiceClient
+	filesystemSnapshotServiceClient disk_manager.FilesystemSnapshotServiceClient
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -335,4 +337,20 @@ func (c *client) DescribeFilesystemModel(
 ) (*disk_manager.FilesystemModel, error) {
 
 	return c.filesystemServiceClient.DescribeModel(ctx, req)
+}
+
+func (c *client) CreateFilesystemSnapshot(
+	ctx context.Context,
+	req *disk_manager.CreateFilesystemSnapshotRequest,
+) (*disk_manager.Operation, error) {
+
+	return c.filesystemSnapshotServiceClient.Create(ctx, req)
+}
+
+func (c *client) DeleteFilesystemSnapshot(
+	ctx context.Context,
+	req *disk_manager.DeleteFilesystemSnapshotRequest,
+) (*disk_manager.Operation, error) {
+
+	return c.filesystemSnapshotServiceClient.Delete(ctx, req)
 }
