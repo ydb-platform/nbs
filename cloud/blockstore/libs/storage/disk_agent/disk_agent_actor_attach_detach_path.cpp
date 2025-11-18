@@ -90,7 +90,7 @@ void TDiskAgentActor::HandlePathsDetached(
     }
 
     auto response =
-        std::make_unique<TEvDiskAgent::TEvDetachPathResponse>(error);
+        std::make_unique<TEvDiskAgent::TEvDetachPathsResponse>(error);
     NCloud::Reply(ctx, *PendingAttachDetachPathsRequest, std::move(response));
 }
 
