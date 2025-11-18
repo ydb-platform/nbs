@@ -42,7 +42,8 @@ void TIndexTabletActor::HandleMarkNodeRefsExhaustive(
             LogTag.c_str());
     }
 
-    auto response = std::make_unique<TEvIndexTablet::TEvMarkNodeRefsExhaustiveResponse>();
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvMarkNodeRefsExhaustiveResponse>();
     NCloud::Reply(ctx, *requestInfo, std::move(response));
 }
 

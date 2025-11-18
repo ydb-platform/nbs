@@ -853,9 +853,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         };
 
         // Create a directory
-        const ui64 dirId = service.CreateNode(
-            headers,
-            TCreateNodeArgs::Directory(RootNodeId, "testdir"))->Record.GetNode().GetId();
+        const ui64 dirId =
+            service
+                .CreateNode(
+                    headers,
+                    TCreateNodeArgs::Directory(RootNodeId, "testdir"))
+                ->Record.GetNode()
+                .GetId();
 
         // Create some children
         service.CreateNode(headers, TCreateNodeArgs::File(dirId, "file1"));
