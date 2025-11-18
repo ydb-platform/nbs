@@ -104,20 +104,20 @@ NProtoPrivate::TGetStorageStatsResponse GetStorageStats(
     return response;
 }
 
-NProtoPrivate::TMarkNodeRefExhaustiveResponse ExecuteMarkNodeRefExhaustive(
+NProtoPrivate::TMarkNodeRefsExhaustiveResponse ExecuteMarkNodeRefsExhaustive(
     TServiceClient& service,
     const TString& fsId,
     ui64 nodeId)
 {
-    NProtoPrivate::TMarkNodeRefExhaustiveRequest request;
+    NProtoPrivate::TMarkNodeRefsExhaustiveRequest request;
     request.SetFileSystemId(fsId);
     request.SetNodeId(nodeId);
 
     TString buf;
     google::protobuf::util::MessageToJsonString(request, &buf);
 
-    auto jsonResponse = service.ExecuteAction("mark_node_ref_exhaustive", buf);
-    NProtoPrivate::TMarkNodeRefExhaustiveResponse response;
+    auto jsonResponse = service.ExecuteAction("marknoderefsexhaustive", buf);
+    NProtoPrivate::TMarkNodeRefsExhaustiveResponse response;
     UNIT_ASSERT(
         google::protobuf::util::JsonStringToMessage(
             jsonResponse->Record.GetOutput(),
@@ -826,7 +826,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             subgroup->GetCounter("Compaction.Count")->GetAtomic());
     }
 
-    Y_UNIT_TEST(ShouldMarkNodeRefExhaustive)
+    Y_UNIT_TEST(ShouldMarkNodeRefsExhaustive)
     {
         NProto::TStorageConfig config;
         config.SetInMemoryIndexCacheEnabled(true);
@@ -867,7 +867,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         UNIT_ASSERT_VALUES_EQUAL(0, getCacheHit());
 
         // Mark the directory as exhaustive using the action
-        auto response = ExecuteMarkNodeRefExhaustive(service, fsId, dirId);
+        auto response = ExecuteMarkNodeRefsExhaustive(service, fsId, dirId);
         UNIT_ASSERT_C(!HasError(response.GetError()), response.GetError());
 
         // List the directory to verify the nodes are there

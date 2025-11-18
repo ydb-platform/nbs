@@ -920,9 +920,9 @@ message TSetHasXAttrsResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// MarkNodeRefExhaustive request/response
+// MarkNodeRefsExhaustive request/response
 
-message TMarkNodeRefExhaustiveRequest
+message TMarkNodeRefsExhaustiveRequest
 {
     // Optional request headers.
     NProto.THeaders Headers = 1;
@@ -934,7 +934,7 @@ message TMarkNodeRefExhaustiveRequest
     uint64 NodeId = 3;
 }
 
-message TMarkNodeRefExhaustiveResponse
+message TMarkNodeRefsExhaustiveResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;

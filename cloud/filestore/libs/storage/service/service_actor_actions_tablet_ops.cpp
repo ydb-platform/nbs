@@ -152,17 +152,17 @@ IActorPtr TStorageServiceActor::CreateSetHasXAttrsActionActor(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// MarkNodeRefExhaustive
+// MarkNodeRefsExhaustive
 
-IActorPtr TStorageServiceActor::CreateMarkNodeRefExhaustiveActionActor(
+IActorPtr TStorageServiceActor::CreateMarkNodeRefsExhaustiveActionActor(
     TRequestInfoPtr requestInfo,
     TString input)
 {
-    using TMarkNodeRefExhaustiveActionActor = TTabletActionActor<
-        TEvIndexTablet::TEvMarkNodeRefExhaustiveRequest,
-        TEvIndexTablet::TEvMarkNodeRefExhaustiveResponse>;
+    using TMarkNodeRefsExhaustiveActionActor = TTabletActionActor<
+        TEvIndexTablet::TEvMarkNodeRefsExhaustiveRequest,
+        TEvIndexTablet::TEvMarkNodeRefsExhaustiveResponse>;
 
-    return std::make_unique<TMarkNodeRefExhaustiveActionActor>(
+    return std::make_unique<TMarkNodeRefsExhaustiveActionActor>(
         std::move(requestInfo),
         std::move(input));
 }

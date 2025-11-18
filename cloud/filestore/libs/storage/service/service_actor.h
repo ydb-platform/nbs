@@ -261,7 +261,7 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
-    NActors::IActorPtr CreateMarkNodeRefExhaustiveActionActor(
+    NActors::IActorPtr CreateMarkNodeRefsExhaustiveActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

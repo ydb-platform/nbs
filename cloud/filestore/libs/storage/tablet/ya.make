@@ -45,7 +45,7 @@ SRCS(
     tablet_actor_initschema.cpp
     tablet_actor_listnodes.cpp
     tablet_actor_readnoderefs.cpp
-    tablet_actor_mark_node_ref_exhaustive.cpp
+    tablet_actor_mark_node_refs_exhaustive.cpp
     tablet_actor_listnodexattr.cpp
     tablet_actor_loadstate.cpp
     tablet_actor_loadstate_noderefs.cpp

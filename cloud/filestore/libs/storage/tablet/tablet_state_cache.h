@@ -46,7 +46,7 @@ public:
 
     void MarkNodeRefsLoadComplete();
 
-    void MarkNodeRefExhaustive(ui64 nodeId);
+    void MarkNodeRefsExhaustive(ui64 nodeId);
 
     [[nodiscard]] TInMemoryIndexStateStats GetStats() const;
 
@@ -349,7 +349,7 @@ private:
             }
         }
 
-        void MarkNodeRefExhaustive(ui64 nodeId)
+        void MarkNodeRefsExhaustive(ui64 nodeId)
         {
             if (IsExhaustivePerNode.GetMaxSize()) {
                 IsExhaustivePerNode.Insert(nodeId, true);
