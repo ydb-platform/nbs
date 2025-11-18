@@ -12,8 +12,8 @@ using namespace NThreading;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TDiskAgentActor::HandleDetachPath(
-    const TEvDiskAgent::TEvDetachPathRequest::TPtr& ev,
+void TDiskAgentActor::HandleDetachPaths(
+    const TEvDiskAgent::TEvDetachPathsRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     auto* msg = ev->Get();
@@ -24,49 +24,46 @@ void TDiskAgentActor::HandleDetachPath(
         NCloud::Reply(
             ctx,
             *ev,
-            std::make_unique<TEvDiskAgent::TEvDetachPathResponse>(MakeError(
+            std::make_unique<TEvDiskAgent::TEvDetachPathsResponse>(MakeError(
                 E_PRECONDITION_FAILED,
                 "attach/detach paths is disabled")));
         return;
     }
 
-    if (PendingAttachDetachPathRequest) {
+    if (PendingAttachDetachPathsRequest) {
         NCloud::Reply(
             ctx,
             *ev,
-            std::make_unique<TEvDiskAgent::TEvDetachPathResponse>(
+            std::make_unique<TEvDiskAgent::TEvDetachPathsResponse>(
                 MakeError(E_REJECTED, "another request is in progress")));
         return;
     }
 
-    PendingAttachDetachPathRequest =
+    PendingAttachDetachPathsRequest =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     TVector<TString> pathsToDetach{
         record.GetPathsToDetach().begin(),
         record.GetPathsToDetach().end()};
 
-    auto future = State->DetachPath(
-        record.GetDiskRegistryGeneration(),
-        record.GetDiskAgentGeneration(),
-        pathsToDetach);
+    auto future = State->DetachPaths(pathsToDetach);
 
     auto* actorSystem = TActivationContext::ActorSystem();
     auto daId = ctx.SelfID;
 
     future.Subscribe(
         [actorSystem, daId, pathsToDetach = std::move(pathsToDetach)](
-            TFuture<NProto::TError> future)
+            auto) mutable
         {
             auto response =
-                std::make_unique<TEvDiskAgentPrivate::TEvPathDetached>(
-                    future.ExtractValue());
+                std::make_unique<TEvDiskAgentPrivate::TEvPathsDetached>();
+            response->PathsToDetach = std::move(pathsToDetach);
             actorSystem->Send(new IEventHandle{daId, daId, response.release()});
         });
 }
 
-void TDiskAgentActor::HandlePathDetached(
-    const TEvDiskAgentPrivate::TEvPathDetached::TPtr& ev,
+void TDiskAgentActor::HandlePathsDetached(
+    const TEvDiskAgentPrivate::TEvPathsDetached::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
     const auto& error = ev->Get()->Error;
@@ -74,7 +71,7 @@ void TDiskAgentActor::HandlePathDetached(
 
     Y_DEFER
     {
-        PendingAttachDetachPathRequest.Reset();
+        PendingAttachDetachPathsRequest.Reset();
     };
 
     if (HasError(error)) {
@@ -94,7 +91,7 @@ void TDiskAgentActor::HandlePathDetached(
 
     auto response =
         std::make_unique<TEvDiskAgent::TEvDetachPathResponse>(error);
-    NCloud::Reply(ctx, *PendingAttachDetachPathRequest, std::move(response));
+    NCloud::Reply(ctx, *PendingAttachDetachPathsRequest, std::move(response));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

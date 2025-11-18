@@ -17,6 +17,7 @@ using namespace NKikimr;
 
 namespace {
 
+////////////////////////////////////////////////////////////////////////////////
 
 EDeviceStateFlags GetDeviceStateFlags(
     const TDiskAgentState& state, const TString& uuid)

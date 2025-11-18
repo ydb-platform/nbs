@@ -193,10 +193,7 @@ public:
 
     TVector<TString> GetAllDeviceUUIDsForPath(const TString& path);
 
-    NThreading::TFuture<NProto::TError> DetachPath(
-        ui64 diskRegistryGeneration,
-        ui64 diskAgentGeneration,
-        const TVector<TString>& paths);
+    NThreading::TFuture<void> DetachPaths(const TVector<TString>& paths);
 
 private:
     const TDeviceState& GetDeviceState(
@@ -238,26 +235,6 @@ private:
         const THashSet<TString>& lostDevicesIds) const;
 
     void CheckIfDeviceIsDisabled(const TString& uuid, const TString& clientId);
-
-    NProto::TError CheckDiskRegistryGenerationAndUpdateItIfNeeded(
-        ui64 diskRegistryGeneration);
-
-    struct TCheckCanAttachDetachPathResult
-    {
-        TVector<TString> AlreadyAttachedDetachedPaths;
-        TVector<TString> PathsToAttachDetach;
-    };
-
-    TResultOrError<TCheckCanAttachDetachPathResult> CheckCanAttachDetachPath(
-        ui64 diskRegistryGeneration,
-        ui64 diskAgentGeneration,
-        const TVector<TString>& paths,
-        bool attach);
-
-    TResultOrError<TCheckCanAttachDetachPathResult> CheckCanDetachPath(
-        ui64 diskRegistryGeneration,
-        ui64 diskAgentGeneration,
-        const TVector<TString>& paths);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

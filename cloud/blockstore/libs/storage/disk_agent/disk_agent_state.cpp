@@ -573,7 +573,7 @@ TFuture<TInitializeResult> TDiskAgentState::Initialize()
                     r.LostDevicesIds.begin(),
                     r.LostDevicesIds.end()});
 
-            for (const auto& [uuid, deviceState]: this->Devices) {
+            for (const auto& [uuid, deviceState]: Devices) {
                 PathAttachStates[deviceState.Config.GetDeviceName()] =
                     EPathAttachState::Attached;
             }

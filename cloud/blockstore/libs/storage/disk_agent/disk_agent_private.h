@@ -209,7 +209,7 @@ struct TEvDiskAgentPrivate
     // PathDetached
     //
 
-    struct TPathDetached
+    struct TPathsDetached
     {
         TVector<TString> PathsToDetach;
     };
@@ -236,7 +236,7 @@ struct TEvDiskAgentPrivate
 
         EvMultiAgentWriteDeviceBlocksRequest,
 
-        EvPathDetached,
+        EvPathsDetached,
 
         BLOCKSTORE_DECLARE_EVENT_IDS(UpdateSessionCache)
 
@@ -256,7 +256,7 @@ struct TEvDiskAgentPrivate
         TSecureEraseCompleted,
         EvSecureEraseCompleted>;
 
-    using TEvPathDetached = TResponseEvent<TPathDetached, EvPathDetached>;
+    using TEvPathsDetached = TResponseEvent<TPathsDetached, EvPathsDetached>;
 
     using TEvWriteOrZeroCompleted = TResponseEvent<
         TWriteOrZeroCompleted,

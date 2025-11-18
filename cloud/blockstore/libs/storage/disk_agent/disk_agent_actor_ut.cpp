@@ -6832,7 +6832,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             FormatError(response.ReplicationResponses[1]));
     }
 
-    Y_UNIT_TEST_F(ShouldDetachPath, TFixture)
+    Y_UNIT_TEST_F(ShouldDetachPaths, TFixture)
     {
         auto storageConfig = NProto::TStorageServiceConfig();
         storageConfig.SetAttachDetachPathsEnabled(true);
@@ -6851,7 +6851,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             1,
             FindProcessesWithOpenFile(Devices[0]).size());
 
-        diskAgent.DetachPath(
+        diskAgent.DetachPaths(
             0,   // drGeneration
             1,   // daGeneration
             TVector<TString>{{PartLabels[0]}});

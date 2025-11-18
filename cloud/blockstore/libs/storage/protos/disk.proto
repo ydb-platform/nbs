@@ -1851,7 +1851,7 @@ message TGetClusterCapacityResponse
 ////////////////////////////////////////////////////////////////////////////////
 // DetachPath
 
-message TDetachPathRequest
+message TDetachPathsRequest
 {
     // Optional request headers.
     THeaders Headers = 1;
@@ -1868,7 +1868,7 @@ message TDetachPathRequest
     uint32 DiskRegistryGeneration = 4;
 }
 
-message TDetachPathResponse
+message TDetachPathsResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;

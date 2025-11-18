@@ -97,7 +97,7 @@ private:
 
     NActors::TActorId HealthCheckActor;
 
-    TRequestInfoPtr PendingAttachDetachPathRequest;
+    TRequestInfoPtr PendingAttachDetachPathsRequest;
 
     ITaskQueuePtr BackgroundThreadPool;
 
@@ -245,8 +245,8 @@ private:
             ev,
         const NActors::TActorContext& ctx);
 
-    void HandlePathDetached(
-        const TEvDiskAgentPrivate::TEvPathDetached::TPtr& ev,
+    void HandlePathsDetached(
+        const TEvDiskAgentPrivate::TEvPathsDetached::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);
