@@ -1377,5 +1377,6 @@ message TStorageServiceConfig
     // Enable to attach or detach hardware devices in runtime in Disk Agent.
     optional bool AttachDetachPathsEnabled = 468;
 
+    // Policy for allocating nonreplicated disks.
     optional ENonreplAllocationPolicy NonreplAllocationPolicy = 469;
 }

@@ -2156,11 +2156,11 @@ TDeviceList::TNodeRankingFunc TDiskRegistryState::GetNodeRankingFunc(
         return {};
     }
 
-    return [this, diskId = newDiskId, cloudId = cloudId](
-               std::span<ui32> nodeIds)
-    {
-        UserAntiAffinityNodeRankingFunc(diskId, cloudId, nodeIds);
-    };
+    return std::bind_front(
+        &TDiskRegistryState::UserAntiAffinityNodeRankingFunc,
+        this,
+        newDiskId,
+        cloudId);
 }
 
 void TDiskRegistryState::UserAntiAffinityNodeRankingFunc(
@@ -2168,7 +2168,7 @@ void TDiskRegistryState::UserAntiAffinityNodeRankingFunc(
     const TString& cloudId,
     std::span<ui32> nodeIds) const
 {
-    THashMap<ui32, i32> nodeWeights;
+    THashMap<ui32, i32> nodesWeights;
 
     for (const auto& [diskId, ds]: Disks) {
         if (ds.CloudId != cloudId) {
@@ -2190,18 +2190,19 @@ void TDiskRegistryState::UserAntiAffinityNodeRankingFunc(
         }
 
         if (diskId == newDiskId) {
+            // For resize and migration the same node should be prefered.
             for (ui32 nodeId: diskNodeIds) {
-                nodeWeights[nodeId] = Min<i32>();
+                nodesWeights[nodeId] = Min<i32>();
             }
         } else {
             for (ui32 nodeId: diskNodeIds) {
-                ++nodeWeights[nodeId];
+                ++nodesWeights[nodeId];
             }
         }
     }
 
     StableSortBy(nodeIds, [&](ui32 nodeId) {
-        return nodeWeights.Value(nodeId, 0);
+        return nodesWeights.Value(nodeId, 0);
     });
 }
 

@@ -275,25 +275,12 @@ NProto::TDeviceConfig TDeviceList::AllocateDevice(
     const TDiskId& diskId,
     const TAllocationQuery& query)
 {
-    if (query.NodeRankingFunc) {
-        auto r = AllocateDevices(diskId, query);
-        if (r.empty()) {
-            return {};
-        }
-        return r.front();
-    }
+    for (ui32 nodeId: RankNodes(query, SelectRacks(query, query.PoolName))) {
+        auto* nodeDevices = NodeDevices.FindPtr(nodeId);
+        Y_ABORT_UNLESS(nodeDevices);
 
-    for (auto& [nodeId, nodeDevices]: NodeDevices) {
-        if (!query.NodeIds.empty() && !query.NodeIds.contains(nodeId)) {
-            continue;
-        }
-
-        const auto& currentRack = nodeDevices.Rack;
-        auto& devices = nodeDevices.FreeDevices;
-
-        if (devices.empty() || query.ForbiddenRacks.contains(currentRack)) {
-            continue;
-        }
+        const auto& currentRack = nodeDevices->Rack;
+        auto& devices = nodeDevices->FreeDevices;
 
         auto it = FindIf(devices, [&] (const auto& device) {
             if (device.GetRack() != currentRack) {
