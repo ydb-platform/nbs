@@ -1,4 +1,4 @@
-name: Build and test NBS on demand
+name: Build and test NBS on pooled runners
 
 on:
   workflow_dispatch:
