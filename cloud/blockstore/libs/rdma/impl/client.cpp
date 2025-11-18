@@ -272,16 +272,16 @@ struct TEndpointCounters
         QueuedRequests = counters.GetCounter("QueuedRequests");
         ActiveRequests = counters.GetCounter("ActiveRequests");
         CompletedRequests = counters.GetCounter("CompletedRequests", true);
-        AbortedRequests = counters.GetCounter("AbortedRequests");
-        UnknownRequests = counters.GetCounter("UnknownRequests");
+        AbortedRequests = counters.GetCounter("AbortedRequests", true);
+        UnknownRequests = counters.GetCounter("UnknownRequests", true);
 
         ActiveSend = counters.GetCounter("ActiveSend");
         ActiveRecv = counters.GetCounter("ActiveRecv");
 
-        SendErrors = counters.GetCounter("SendErrors");
-        RecvErrors = counters.GetCounter("RecvErrors");
+        SendErrors = counters.GetCounter("SendErrors", true);
+        RecvErrors = counters.GetCounter("RecvErrors", true);
 
-        CompletionErrors = counters.GetCounter("CompletionErrors");
+        CompletionErrors = counters.GetCounter("CompletionErrors", true);
     }
 
     void RequestEnqueued()
