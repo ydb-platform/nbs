@@ -82,7 +82,7 @@ public:
         if (Request) {
             return Request->GetNodeId();
         }
-        Y_ABORT("The request is in the invalid state");
+        Y_ABORT("The request is in the invalid state (GetNodeId)");
     }
 
     ui64 GetHandle() const
@@ -93,7 +93,7 @@ public:
         if (Request) {
             return Request->GetHandle();
         }
-        Y_ABORT("The request is in the invalid state");
+        Y_ABORT("The request is in the invalid state (GetHandle)");
     }
 
     TStringBuf GetBuffer() const
@@ -108,7 +108,7 @@ public:
             return TStringBuf(Request->GetBuffer())
                 .Skip(Request->GetBufferOffset());
         }
-        Y_ABORT("The request is in the invalid state");
+        Y_ABORT("The request is in the invalid state (GetBuffer)");
     }
 
     ui64 Offset() const
@@ -119,7 +119,7 @@ public:
         if (Request) {
             return Request->GetOffset();
         }
-        Y_ABORT("The request is in the invalid state");
+        Y_ABORT("The request is in the invalid state (Offset)");
     }
 
     ui64 End() const
@@ -131,7 +131,7 @@ public:
             return Request->GetOffset() + Request->GetBuffer().size() -
                    Request->GetBufferOffset();
         }
-        Y_ABORT("The request is in the invalid state");
+        Y_ABORT("The request is in the invalid state (End)");
     }
 
     bool IsCached() const

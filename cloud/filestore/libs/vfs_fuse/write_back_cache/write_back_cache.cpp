@@ -551,6 +551,14 @@ public:
             return MakeFuture(std::move(response));
         }
 
+        if (request->HasHeaders()) {
+            NProto::TWriteDataResponse response;
+            *response.MutableError() = MakeError(
+                E_ARGUMENT,
+                "WriteData request has unexpected Headers field");
+            return MakeFuture(std::move(response));
+        }
+
         auto entry = std::make_unique<TWriteDataEntry>(std::move(request));
         if (entry->GetBuffer().Size() == 0) {
             NProto::TWriteDataResponse response;
