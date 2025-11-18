@@ -2175,29 +2175,33 @@ void TDiskRegistryState::UserAntiAffinityNodeRankingFunc(
             continue;
         }
 
-        THashSet<ui32> nodes;
+        THashSet<ui32> diskNodeIds;
 
         for (const auto& uuid: ds.Devices) {
-            nodes.insert(DeviceList.FindNodeId(uuid));
+            if (TNodeId nodeId = DeviceList.FindNodeId(uuid)) {
+                diskNodeIds.insert(nodeId);
+            }
         }
 
         for (const auto& [uuid, _]: ds.MigrationTarget2Source) {
-            nodes.insert(DeviceList.FindNodeId(uuid));
+            if (TNodeId nodeId = DeviceList.FindNodeId(uuid)) {
+                diskNodeIds.insert(nodeId);
+            }
         }
 
         if (diskId == newDiskId) {
-            for (ui32 nodeId: nodes) {
+            for (ui32 nodeId: diskNodeIds) {
                 nodeWeights[nodeId] = Min<i32>();
             }
         } else {
-            for (ui32 nodeId: nodes) {
+            for (ui32 nodeId: diskNodeIds) {
                 ++nodeWeights[nodeId];
             }
         }
     }
 
-    StableSort(nodeIds, [&](ui32 lhs, ui32 rhs) {
-        return nodeWeights[lhs] < nodeWeights[rhs];
+    StableSortBy(nodeIds, [&](ui32 nodeId) {
+        return nodeWeights.Value(nodeId, 0);
     });
 }
 

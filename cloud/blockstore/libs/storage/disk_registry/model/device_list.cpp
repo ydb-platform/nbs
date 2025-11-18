@@ -275,6 +275,14 @@ NProto::TDeviceConfig TDeviceList::AllocateDevice(
     const TDiskId& diskId,
     const TAllocationQuery& query)
 {
+    if (query.NodeRankingFunc) {
+        auto r = AllocateDevices(diskId, query);
+        if (r.empty()) {
+            return {};
+        }
+        return r.front();
+    }
+
     for (auto& [nodeId, nodeDevices]: NodeDevices) {
         if (!query.NodeIds.empty() && !query.NodeIds.contains(nodeId)) {
             continue;
@@ -526,7 +534,9 @@ auto TDeviceList::RankNodes(
             });
 
         for (const TNodeInfo& node: rack.Nodes) {
-            nodeIds.push_back(node.NodeId);
+            if (node.FreeSpace) {
+                nodeIds.push_back(node.NodeId);
+            }
         }
     }
 

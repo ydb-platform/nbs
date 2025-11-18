@@ -1376,4 +1376,6 @@ message TStorageServiceConfig
 
     // Enable to attach or detach hardware devices in runtime in Disk Agent.
     optional bool AttachDetachPathsEnabled = 468;
+
+    optional ENonreplAllocationPolicy NonreplAllocationPolicy = 469;
 }
