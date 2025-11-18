@@ -91,6 +91,65 @@ struct TFlushConfig
     bool ZeroCopyWriteEnabled = false;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError ValidateReadDataRequest(
+    const NProto::TReadDataRequest& request,
+    const TString& expectedFileSystemId)
+{
+    if (request.GetFileSystemId() != expectedFileSystemId) {
+        return MakeError(
+            E_ARGUMENT,
+            Sprintf(
+                "ReadData request has invalid FileSystemId, "
+                "expected: '%s', actual: '%s'",
+                expectedFileSystemId.c_str(),
+                request.GetFileSystemId().c_str()));
+    }
+
+    if (request.GetLength() == 0) {
+        return MakeError(E_ARGUMENT, "ReadData request has zero length");
+    }
+
+    return {};
+}
+
+NProto::TError ValidateWriteDataRequest(
+    const NProto::TWriteDataRequest& request,
+    const TString& expectedFileSystemId)
+{
+    if (request.HasHeaders()) {
+        return MakeError(
+            E_ARGUMENT,
+            "WriteData request has unexpected Headers field");
+    }
+
+    if (request.GetFileSystemId() != expectedFileSystemId) {
+        return MakeError(
+            E_ARGUMENT,
+            Sprintf(
+                "WriteData request has invalid FileSystemId, "
+                "expected: '%s', actual: '%s'",
+                expectedFileSystemId.c_str(),
+                request.GetFileSystemId().c_str()));
+    }
+
+    if (request.GetBufferOffset() == request.GetBuffer().size()) {
+        return MakeError(E_ARGUMENT, "WriteData request has zero length");
+    }
+
+    if (request.GetBufferOffset() > request.GetBuffer().size()) {
+        return MakeError(
+            E_ARGUMENT,
+            Sprintf(
+                "WriteData request BufferOffset %u > buffer size %lu",
+                request.GetBufferOffset(),
+                request.GetBuffer().size()));
+    }
+
+    return {};
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -300,6 +359,7 @@ private:
     const TFlushConfig FlushConfig;
     const TLog Log;
     const TString LogTag;
+    const TString FileSystemId;
 
     // All fields below should be protected by this lock
     TMutex Lock;
@@ -351,6 +411,7 @@ public:
         , Log(std::move(log))
         , LogTag(
             Sprintf("[f:%s][c:%s]", fileSystemId.c_str(), clientId.c_str()))
+        , FileSystemId(fileSystemId)
         , CachedEntriesPersistentQueue(filePath, capacityBytes)
     {
         // File ring buffer should be able to store any valid TWriteDataRequest.
@@ -477,10 +538,15 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadDataRequest> request)
     {
-        if (request->GetLength() == 0) {
+        if (request->GetFileSystemId().empty()) {
+            request->SetFileSystemId(callContext->FileSystemId);
+        }
+
+        auto error = ValidateReadDataRequest(*request, FileSystemId);
+        if (HasError(error)) {
+            Y_DEBUG_ABORT_UNLESS(false, "%s", error.GetMessage().c_str());
             NProto::TReadDataResponse response;
-            *response.MutableError() =
-                MakeError(E_ARGUMENT, "ReadData request has zero length");
+            *response.MutableError() = error;
             return MakeFuture(std::move(response));
         }
 
@@ -541,14 +607,15 @@ public:
             request->SetFileSystemId(callContext->FileSystemId);
         }
 
-        auto entry = std::make_unique<TWriteDataEntry>(std::move(request));
-        if (entry->GetBuffer().Size() == 0) {
+        auto error = ValidateWriteDataRequest(*request, FileSystemId);
+        if (HasError(error)) {
+            Y_DEBUG_ABORT_UNLESS(false, "%s", error.GetMessage().c_str());
             NProto::TWriteDataResponse response;
-            *response.MutableError() =
-                MakeError(E_ARGUMENT, "WriteData request has zero length");
+            *response.MutableError() = error;
             return MakeFuture(std::move(response));
         }
 
+        auto entry = std::make_unique<TWriteDataEntry>(std::move(request));
         auto serializedSize = entry->GetSerializedSize();
 
         Y_ABORT_UNLESS(
@@ -636,10 +703,7 @@ public:
 
             while (reader.GetRemainingSize() > 0) {
                 auto request = std::make_shared<NProto::TWriteDataRequest>();
-                request->SetFileSystemId(
-                    parts[partIndex].Source->GetRequest()->GetFileSystemId());
-                *request->MutableHeaders() =
-                    parts[partIndex].Source->GetRequest()->GetHeaders();
+                request->SetFileSystemId(FileSystemId);
                 request->SetNodeId(nodeId);
                 request->SetHandle(handle);
                 request->SetOffset(reader.GetOffset());
@@ -854,7 +918,7 @@ private:
             Y_ABORT_UNLESS(allocationPtr != nullptr);
 
             entry->SerializeAndMoveRequestBuffer(
-                allocationPtr,
+                {allocationPtr, serializedSize},
                 PendingOperations,
                 this);
 
@@ -1150,8 +1214,7 @@ private:
         state.InFlightWriteRequestsCount = state.WriteRequests.size();
 
         for (auto& request: state.WriteRequests) {
-            auto callContext =
-                MakeIntrusive<TCallContext>(request->GetFileSystemId());
+            auto callContext = MakeIntrusive<TCallContext>(FileSystemId);
             callContext->RequestType = EFileStoreRequest::WriteData;
             callContext->RequestSize = request->GetBuffer().size();
 
@@ -1383,13 +1446,9 @@ TFuture<void> TWriteBackCache::FlushAllData()
 
 TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
         std::shared_ptr<NProto::TWriteDataRequest> request)
-    : Request(std::move(request))
+    : PendingRequest(std::move(request))
     , CachedPromise(NewPromise<NProto::TWriteDataResponse>())
-{
-    RequestBuffer.swap(*Request->MutableBuffer());
-    BufferRef = TStringBuf(RequestBuffer).Skip(Request->GetBufferOffset());
-    Request->ClearBufferOffset();
-}
+{}
 
 TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
     ui32 checksum,
@@ -1413,51 +1472,41 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
     //    return;
     //}
 
-    TMemoryInput mi(serializedRequest);
-
-    ui32 bufferSize = 0;
-    mi.Read(&bufferSize, sizeof(ui32));
-    if (bufferSize == 0) {
-        // TODO(nasonov): replace this with Y_DEBUG_ABORT_UNLESS when
-        // TFileRingBuffer fully supports in-place allocation.
-        // Currently this may happen when execution stopped between allocation
-        // and Serialization. In future, this can happen only as a result of
-        // corruption
+    if (serializedRequest.size() < sizeof(TCachedWriteDataRequest)) {
         deserializationStats.EntrySizeMismatchCount++;
-        ReportWriteBackCacheCorruptionError(
-            "TWriteDataEntry deserialization error: entry is empty");
+        ReportWriteBackCacheCorruptionError(Sprintf(
+            "TWriteDataEntry deserialization error: entry size is too small, "
+            "expected: at least %lu, actual: %lu",
+            sizeof(TCachedWriteDataRequest),
+            serializedRequest.size()));
         SetStatus(EWriteDataRequestStatus::Corrupted, impl);
         return;
     }
 
-    const char* bufferPtr = mi.Buf();
+    const auto* allocationPtr =
+        reinterpret_cast<const TCachedWriteDataRequest*>(
+            serializedRequest.data());
 
-    if (mi.Skip(bufferSize) != bufferSize) {
-        deserializationStats.EntrySizeMismatchCount++;
-        ReportWriteBackCacheCorruptionError(
-            "TWriteDataEntry deserialization error: invalid entry size");
-        SetStatus(EWriteDataRequestStatus::Corrupted, impl);
-        return;
-    }
-
-    auto parsedRequest = std::make_shared<NProto::TWriteDataRequest>();
-    if (!parsedRequest->ParseFromArray(mi.Buf(), static_cast<int>(mi.Avail())))
+    if (allocationPtr->Length >
+        serializedRequest.size() - sizeof(TCachedWriteDataRequest))
     {
-        deserializationStats.ProtobufDeserializationErrorCount++;
-        ReportWriteBackCacheCorruptionError(
-            "TWriteDataEntry deserialization error: ParseFromArray has failed");
+        deserializationStats.EntrySizeMismatchCount++;
+        ReportWriteBackCacheCorruptionError(Sprintf(
+            "TWriteDataEntry deserialization error: entry size is too small, "
+            "expected: at least %lu, actual: %lu",
+            allocationPtr->Length + sizeof(TCachedWriteDataRequest),
+            serializedRequest.size()));
         SetStatus(EWriteDataRequestStatus::Corrupted, impl);
         return;
     }
 
-    Request.swap(parsedRequest);
-    BufferRef = TStringBuf(bufferPtr, bufferSize);
+    CachedRequest = allocationPtr;
     SetStatus(EWriteDataRequestStatus::Cached, impl);
 }
 
 size_t TWriteBackCache::TWriteDataEntry::GetSerializedSize() const
 {
-    return Request->ByteSizeLong() + sizeof(ui32) + BufferRef.size();
+    return sizeof(TCachedWriteDataRequest) + GetBuffer().size();
 }
 
 void TWriteBackCache::TWriteDataEntry::SetPending(TImpl* impl)
@@ -1467,29 +1516,42 @@ void TWriteBackCache::TWriteDataEntry::SetPending(TImpl* impl)
 }
 
 void TWriteBackCache::TWriteDataEntry::SerializeAndMoveRequestBuffer(
-    char* allocationPtr,
+    std::span<char> allocation,
     TPendingOperations& pendingOperations,
     TImpl* impl)
 {
-    Y_ABORT_UNLESS(AllocationPtr == nullptr);
-    Y_ABORT_UNLESS(allocationPtr != nullptr);
-    Y_ABORT_UNLESS(BufferRef.size() <= Max<ui32>());
-    Y_ABORT_UNLESS(Status == EWriteDataRequestStatus::Pending);
+    Y_ABORT_UNLESS(PendingRequest);
+    Y_ABORT_UNLESS(CachedRequest == nullptr);
+    Y_ABORT_UNLESS(
+        sizeof(TCachedWriteDataRequest) <= allocation.size(),
+        "Allocated buffer is too small to store WriteData request header, "
+        "expected size: at least %lu, actual: %lu",
+        sizeof(TCachedWriteDataRequest),
+        allocation.size());
 
-    AllocationPtr = allocationPtr;
+    auto buffer = GetBuffer();
 
-    ui32 bufferSize = static_cast<ui32>(BufferRef.size());
-    auto serializedSize = GetSerializedSize();
+    auto* cachedRequest =
+        reinterpret_cast<TCachedWriteDataRequest*>(allocation.data());
 
-    TMemoryOutput mo(allocationPtr, serializedSize);
-    mo.Write(&bufferSize, sizeof(bufferSize));
-    mo.Write(BufferRef);
+    cachedRequest->NodeId = PendingRequest->GetNodeId();
+    cachedRequest->Handle = PendingRequest->GetHandle();
+    cachedRequest->Offset = PendingRequest->GetOffset();
+    cachedRequest->Length = buffer.size();
+
+    allocation = allocation.subspan(sizeof(TCachedWriteDataRequest));
 
     Y_ABORT_UNLESS(
-        Request->SerializeToArray(mo.Buf(), static_cast<int>(mo.Avail())));
+        buffer.size() <= allocation.size(),
+        "Allocated buffer is too small to store WriteData request buffer, "
+        "expected size: at least %lu, actual: %lu",
+        sizeof(TCachedWriteDataRequest) + buffer.size(),
+        sizeof(TCachedWriteDataRequest) + allocation.size());
 
-    BufferRef = TStringBuf(allocationPtr + sizeof(ui32), bufferSize);
-    RequestBuffer.clear();
+    buffer.copy(allocation.data(), buffer.size());
+
+    CachedRequest = cachedRequest;
+    PendingRequest.reset();
 
     SetStatus(EWriteDataRequestStatus::Cached, impl);
 
@@ -1533,7 +1595,7 @@ void TWriteBackCache::TWriteDataEntry::FinishFlush(
     Y_ABORT_UNLESS(Status == EWriteDataRequestStatus::Flushing);
 
     SetStatus(EWriteDataRequestStatus::Flushed, impl);
-    BufferRef.Clear();
+    CachedRequest = nullptr;
 
     if (FlushPromise.Initialized()) {
         pendingOperations.FlushCompleted.push_back(

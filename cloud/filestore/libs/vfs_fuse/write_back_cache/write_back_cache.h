@@ -72,6 +72,7 @@ private:
     // Only for testing purposes
     friend struct TCalculateDataPartsToReadTestBootstrap;
 
+    struct TCachedWriteDataRequest;
     class TWriteDataEntry;
     struct TWriteDataEntryDeserializationStats;
     struct TWriteDataEntryPart;
