@@ -474,7 +474,7 @@ struct TBootstrap
 
         RecreateCache();
 
-        CallContext = MakeIntrusive<TCallContext>();
+        CallContext = MakeIntrusive<TCallContext>("FileSystemId");
     }
 
     void MoveIovecsToBuffer(NProto::TWriteDataRequest& request) const

@@ -12,6 +12,8 @@
 #include <util/generic/strbuf.h>
 #include <util/generic/string.h>
 
+#include <span>
+
 namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -32,22 +34,29 @@ struct TWriteBackCache::TWriteDataEntryDeserializationStats
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct Y_PACKED TWriteBackCache::TCachedWriteDataRequestHeader
+{
+    ui64 NodeId = 0;
+    ui64 Handle = 0;
+    ui64 Offset = 0;
+    ui32 Length = 0;
+    // Data goes right after the header, |Length| bytes
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TWriteBackCache::TWriteDataEntry
     : public TIntrusiveListItem<TWriteDataEntry>
 {
 private:
-    // Store request metadata and request buffer separately
+    // Original write data request is stored until serialization into
+    // persistent queue is performed.
     // The idea is to deduplicate memory and to reference request buffer
     // directly in the persistent buffer if the request is stored there.
     std::shared_ptr<NProto::TWriteDataRequest> Request;
-    TString RequestBuffer;
 
     // Memory allocated in CachedEntriesPersistentQueue
-    char* AllocationPtr = nullptr;
-
-    // Reference to either RequestBuffer or a memory region
-    // referenced by AllocationPtr in CachedEntriesPersistentQueue
-    TStringBuf BufferRef;
+    const TCachedWriteDataRequestHeader* AllocationPtr = nullptr;
 
     NThreading::TPromise<NProto::TWriteDataResponse> CachedPromise;
     NThreading::TPromise<void> FlushPromise;
@@ -65,34 +74,64 @@ public:
         TWriteDataEntryDeserializationStats& stats,
         TImpl* impl);
 
-    const NProto::TWriteDataRequest* GetRequest() const
-    {
-        return Request.get();
-    }
-
     ui64 GetNodeId() const
     {
-        return Request->GetNodeId();
+        if (AllocationPtr) {
+            return AllocationPtr->NodeId;
+        }
+        if (Request) {
+            return Request->GetNodeId();
+        }
+        Y_ABORT("The request is in the invalid state");
     }
 
     ui64 GetHandle() const
     {
-        return Request->GetHandle();
+        if (AllocationPtr) {
+            return AllocationPtr->Handle;
+        }
+        if (Request) {
+            return Request->GetHandle();
+        }
+        Y_ABORT("The request is in the invalid state");
     }
 
     TStringBuf GetBuffer() const
     {
-        return BufferRef;
+        if (AllocationPtr) {
+            return {
+                reinterpret_cast<const char*>(AllocationPtr) +
+                    sizeof(TCachedWriteDataRequestHeader),
+                AllocationPtr->Length};
+        }
+        if (Request) {
+            return TStringBuf(Request->GetBuffer())
+                .Skip(Request->GetBufferOffset());
+        }
+        Y_ABORT("The request is in the invalid state");
     }
 
     ui64 Offset() const
     {
-        return Request->GetOffset();
+        if (AllocationPtr) {
+            return AllocationPtr->Offset;
+        }
+        if (Request) {
+            return Request->GetOffset();
+        }
+        Y_ABORT("The request is in the invalid state");
     }
 
     ui64 End() const
     {
-        return Request->GetOffset() + BufferRef.size();
+        if (AllocationPtr) {
+            return AllocationPtr->Offset + AllocationPtr->Length;
+        }
+        if (Request) {
+            return Request->GetOffset() + Request->GetBuffer().size() -
+                   Request->GetBufferOffset();
+        }
+        Y_ABORT("The request is in the invalid state");
     }
 
     bool IsCached() const
@@ -121,7 +160,7 @@ public:
     void SetPending(TImpl* impl);
 
     void SerializeAndMoveRequestBuffer(
-        char* allocationPtr,
+        std::span<char> allocation,
         TPendingOperations& pendingOperations,
         TImpl* impl);
 
