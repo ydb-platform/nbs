@@ -367,15 +367,15 @@ TTestEnv TTestEnvBuilder::Build()
             FileIOService->Start();
         }
 
-        if (!NvmeManager) {
-            NvmeManager = CreateNvmeManagerStub();
-        }
-
         if (!StorageProvider) {
             StorageProvider = CreateTestStorageProvider(FileIOService, NvmeManager);
         }
     } else {
         Spdk->Start();
+    }
+
+    if (!NvmeManager) {
+        NvmeManager = CreateNvmeManagerStub();
     }
 
     auto diskAgent = CreateDiskAgent(

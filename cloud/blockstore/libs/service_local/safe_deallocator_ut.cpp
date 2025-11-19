@@ -69,6 +69,39 @@ struct TTestNvmeManager final: NNvme::INvmeManager
         Y_UNUSED(path);
         return TString("serial");
     }
+
+    TResultOrError<TPCIDeviceInfo> GetPCIDeviceInfo(const TString& path) final
+    {
+        Y_UNUSED(path);
+
+        return TPCIDeviceInfo{};
+    }
+
+    TResultOrError<TVector<TControllerData>> ListControllers() final
+    {
+        return TVector<TControllerData>{};
+    }
+
+    TResultOrError<TString> GetDriverName(const TPCIDeviceInfo& pci) final
+    {
+        Y_UNUSED(pci);
+
+        return TString{};
+    }
+
+    NProto::TError BindToVFIO(const TPCIDeviceInfo& pci) final
+    {
+        Y_UNUSED(pci);
+
+        return {};
+    }
+
+    NProto::TError BindToNVME(const TPCIDeviceInfo& pci) final
+    {
+        Y_UNUSED(pci);
+
+        return {};
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -558,6 +558,7 @@ TFuture<TInitializeResult> TDiskAgentState::Initialize()
                 AgentConfig->GetKickOutOldClientsEnabled());
 
             InitRdmaTarget();
+            InitNVMeDeviceList();
 
             if (AgentConfig->GetDisableBrokenDevices()) {
                 for (const auto& uuid: r.DevicesWithSuspendedIO) {
@@ -573,6 +574,32 @@ TFuture<TInitializeResult> TDiskAgentState::Initialize()
 
             return r;
         });
+}
+
+void TDiskAgentState::InitNVMeDeviceList()
+{
+    if (AgentConfig->GetNVMeDevices().empty()) {
+        return;
+    }
+
+    NVMeDevices.emplace(NvmeManager, AgentConfig, Log);
+
+    const auto& devices = NVMeDevices->GetNVMeDevices();
+    STORAGE_INFO(
+        "Found " << devices.size() << " NVMe device(s): [" <<
+        [&]
+        {
+            TStringStream ss;
+            for (int i = 0; const auto& d: devices) {
+                if (i++) {
+                    ss << ", " << d;
+                }
+            }
+            ss << "]";
+            return ss.Str();
+        }());
+
+    // TODO(sharpeye): check if any NVMe occupied by FileDevices
 }
 
 TFuture<NProto::TAgentStats> TDiskAgentState::CollectStats()
@@ -1173,6 +1200,34 @@ void TDiskAgentState::EnsureAccessToDevices(
 TVector<NProto::TDiskAgentDeviceSession> TDiskAgentState::GetSessions() const
 {
     return DeviceClient->GetSessions();
+}
+
+auto TDiskAgentState::GetNVMeDevices() const
+    -> TResultOrError<TVector<NProto::TNVMeDevice>>
+{
+    if (!NVMeDevices) {
+        return MakeError(E_PRECONDITION_FAILED, "NVMe device list is disabled");
+    }
+
+    return NVMeDevices->GetNVMeDevices();
+}
+
+NProto::TError TDiskAgentState::AcquireNVMeDevice(const TString& serialNumber)
+{
+    if (!NVMeDevices) {
+        return MakeError(E_PRECONDITION_FAILED, "NVMe device list is disabled");
+    }
+
+    return NVMeDevices->BindNVMeDeviceToVFIO(serialNumber);
+}
+
+NProto::TError TDiskAgentState::ReleaseNVMeDevice(const TString& serialNumber)
+{
+    if (!NVMeDevices) {
+        return MakeError(E_PRECONDITION_FAILED, "NVMe device list is disabled");
+    }
+
+    return NVMeDevices->ResetNVMeDevice(serialNumber);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -20,6 +20,9 @@ namespace NCloud::NBlockStore::NStorage {
 #define BLOCKSTORE_DISK_AGENT_REQUESTS_PRIVATE(xxx, ...)                       \
     xxx(RegisterAgent,              __VA_ARGS__)                               \
     xxx(CollectStats,               __VA_ARGS__)                               \
+    xxx(ListNVMeDevices,            __VA_ARGS__)                               \
+    xxx(AcquireNVMeDevice,          __VA_ARGS__)                               \
+    xxx(ReleaseNVMeDevice,          __VA_ARGS__)                               \
 // BLOCKSTORE_DISK_AGENT_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -203,6 +206,42 @@ struct TEvDiskAgentPrivate
         NThreading::TPromise<TMultiAgentWriteDeviceBlocksResponse>
             ResponsePromise;
     };
+
+    //
+    // ListNVMeDevices
+    //
+
+    struct TListNVMeDevicesRequest
+    {};
+
+    struct TListNVMeDevicesResponse
+    {
+        TVector<NProto::TNVMeDevice> NVMeDevices;
+    };
+
+    //
+    // AcquireNVMeDevice
+    //
+
+    struct TAcquireNVMeDeviceRequest
+    {
+        TString SerialNumber;
+    };
+
+    struct TAcquireNVMeDeviceResponse
+    {};
+
+    //
+    // ReleaseNVMeDevice
+    //
+
+    struct TReleaseNVMeDeviceRequest
+    {
+        TString SerialNumber;
+    };
+
+    struct TReleaseNVMeDeviceResponse
+    {};
 
     //
     // Events declaration

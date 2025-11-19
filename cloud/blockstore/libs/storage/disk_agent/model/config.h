@@ -103,6 +103,7 @@ public:
 
     TString GetCachedConfigPath() const;
     TString GetCachedSessionsPath() const;
+    TString GetCachedNVMeDevicesPath() const;
 
     bool GetTemporaryAgent() const;
 
