@@ -810,17 +810,17 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             EBlockStoreRequest::WriteBlocks,
             {
                 {.RequestBytes = 4_KB,   // first size class
-                 .RequestTime = TDuration::MilliSeconds(100),
-                 .PostponedTime = TDuration::MilliSeconds(0)},
+                 .RequestTime = TDuration::MilliSeconds(1100),
+                 .PostponedTime = TDuration::MilliSeconds(1000)},
                 {.RequestBytes = 512_KB,   // no size class
-                 .RequestTime = TDuration::MilliSeconds(2000),
-                 .PostponedTime = TDuration::MilliSeconds(0)},
+                 .RequestTime = TDuration::MilliSeconds(3000),
+                 .PostponedTime = TDuration::MilliSeconds(1000)},
                 {.RequestBytes = 1_MB + 512_KB,   // second size class
-                 .RequestTime = TDuration::MilliSeconds(300),
-                 .PostponedTime = TDuration::MilliSeconds(0)},
+                 .RequestTime = TDuration::MilliSeconds(1300),
+                 .PostponedTime = TDuration::MilliSeconds(1000)},
                 {.RequestBytes = 4_MB,   // no size class
-                 .RequestTime = TDuration::MilliSeconds(4000),
-                 .PostponedTime = TDuration::MilliSeconds(0)},
+                 .RequestTime = TDuration::MilliSeconds(5000),
+                 .PostponedTime = TDuration::MilliSeconds(1000)},
             });
 
         requestStats->UpdateStats(true);
