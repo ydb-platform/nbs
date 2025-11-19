@@ -65,9 +65,7 @@ private:
     TRdmaTargetConfigPtr RdmaTargetConfig;
     TOldRequestCounters OldRequestCounters;
 
-    ui32 LastDiskRegistryGenerationSeen = 0;
     THashSet<TString> AttachedPaths;
-    ui64 DiskAgentGeneration = 0;
 
     ITaskQueuePtr BackgroundThreadPool;
 
