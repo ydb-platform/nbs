@@ -52,7 +52,6 @@ struct TRdmaTargetConfig
 
 using TRdmaTargetConfigPtr = std::shared_ptr<TRdmaTargetConfig>;
 
-using TStorageAdapterPtr = std::shared_ptr<TStorageAdapter>;
 struct IRdmaTarget: IStartable
 {
     virtual NProto::TError DeviceSecureEraseStart(
@@ -60,8 +59,6 @@ struct IRdmaTarget: IStartable
     virtual void DeviceSecureEraseFinish(
         const TString& deviceUUID,
         const NProto::TError& error) = 0;
-
-    virtual void DetachDevice(const TString& deviceUUID) = 0;
 };
 
 using IRdmaTargetPtr = std::shared_ptr<IRdmaTarget>;
@@ -73,6 +70,6 @@ IRdmaTargetPtr CreateRdmaTarget(
     NRdma::IServerPtr server,
     TDeviceClientPtr deviceClient,
     IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
-    THashMap<TString, TStorageAdapterPtr> devices);
+    TVector<TString> devices);
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -23,7 +23,7 @@
 
 #include <library/cpp/threading/future/future.h>
 
-#include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/vector.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -36,14 +36,7 @@ private:
     struct TDeviceState
     {
         NProto::TDeviceConfig Config;
-        std::shared_ptr<TStorageAdapter> StorageAdapter;
-
         TStorageIoStatsPtr Stats;
-
-        bool IsOpen() const
-        {
-            return StorageAdapter != nullptr;
-        }
     };
 
     enum class EPathAttachState
@@ -79,7 +72,7 @@ private:
     TOldRequestCounters OldRequestCounters;
 
     ui32 LastDiskRegistryGenerationSeen = 0;
-    THashMap<TString, EPathAttachState> PathAttachStates;
+    THashSet<TString> AttachedPaths;
     ui64 DiskAgentGeneration = 0;
 
     ITaskQueuePtr BackgroundThreadPool;
@@ -104,6 +97,7 @@ public:
     struct TInitializeResult
     {
         TVector<NProto::TDeviceConfig> Configs;
+        TVector<IStoragePtr> Devices;
         TVector<TString> Errors;
         TVector<TString> ConfigMismatchErrors;
         TVector<TString> DevicesWithSuspendedIO;
@@ -191,21 +185,21 @@ public:
     void SetPartiallySuspended(bool partiallySuspended);
     bool GetPartiallySuspended() const;
 
-    TVector<TString> GetAllDeviceUUIDsForPath(const TString& path);
+    TVector<TString> GetAllDeviceIDsForPath(const TString& path);
 
     NThreading::TFuture<void> DetachPaths(const TVector<TString>& paths);
 
 private:
-    const TDeviceState& GetDeviceState(
+    TStorageAdapterPtr GetDeviceState(
         const TString& uuid,
         const TString& clientId,
         const NProto::EVolumeAccessMode accessMode) const;
 
-    const TDeviceState& GetDeviceStateImpl(
+    TStorageAdapterPtr GetDeviceStateImpl(
         const TString& uuid,
         const TString& clientId,
         const NProto::EVolumeAccessMode accessMode) const;
-    const TDeviceState& GetDeviceStateImpl(const TString& uuid) const;
+    TStorageAdapterPtr GetDeviceStateImpl(const TString& uuid) const;
 
     void EnsureAccessToDevices(
         const TVector<TString>& uuids,

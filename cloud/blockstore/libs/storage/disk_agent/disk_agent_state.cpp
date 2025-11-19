@@ -23,7 +23,9 @@
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/common/sglist.h>
+#include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread.h>
+#include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/common/verify.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
@@ -322,7 +324,7 @@ TDiskAgentState::TDiskAgentState(
 {
 }
 
-const TDiskAgentState::TDeviceState& TDiskAgentState::GetDeviceState(
+TStorageAdapterPtr TDiskAgentState::GetDeviceState(
     const TString& uuid,
     const TString& clientId,
     const NProto::EVolumeAccessMode accessMode) const
@@ -332,33 +334,30 @@ const TDiskAgentState::TDeviceState& TDiskAgentState::GetDeviceState(
         : GetDeviceStateImpl(uuid);
 }
 
-const TDiskAgentState::TDeviceState& TDiskAgentState::GetDeviceStateImpl(
+TStorageAdapterPtr TDiskAgentState::GetDeviceStateImpl(
     const TString& uuid,
     const TString& clientId,
     const NProto::EVolumeAccessMode accessMode) const
 {
-    auto error = DeviceClient->AccessDevice(uuid, clientId, accessMode);
+    auto [result, error] =
+        DeviceClient->AccessDevice(uuid, clientId, accessMode);
 
     if (HasError(error)) {
         ythrow TServiceError(error.GetCode()) << error.GetMessage();
     }
 
-    auto d = Devices.FindPtr(uuid);
-    STORAGE_VERIFY(d, TWellKnownEntityTypes::DEVICE, uuid);
-
-    return *d;
+    return result;
 }
 
-const TDiskAgentState::TDeviceState& TDiskAgentState::GetDeviceStateImpl(
+TStorageAdapterPtr TDiskAgentState::GetDeviceStateImpl(
     const TString& uuid) const
 {
-    auto it = Devices.find(uuid);
-    if (it == Devices.cend()) {
-        ythrow TServiceError(E_NOT_FOUND)
-            << "Device " << uuid.Quote() << " not found";
+    auto [result, error] = DeviceClient->AccessDevice(uuid);
+    if (HasError(error)) {
+        ythrow TServiceError(error.GetCode()) << error.GetMessage();
     }
 
-    return it->second;
+    return result;
 }
 
 const TString& TDiskAgentState::GetDeviceName(const TString& uuid) const
@@ -436,22 +435,11 @@ TFuture<TInitializeResult> TDiskAgentState::InitSpdkStorage()
 
             SpdkTarget = std::move(r.SpdkTarget);
 
-            TDuration ioTimeout;
-            if (!AgentConfig->GetDeviceIOTimeoutsDisabled()) {
-                ioTimeout = AgentConfig->GetDeviceIOTimeout();
-            }
-
             for (size_t i = 0; i != r.Configs.size(); ++i) {
                 const auto& config = r.Configs[i];
 
                 TDeviceState device {
                     .Config = config,
-                    .StorageAdapter = std::make_shared<TStorageAdapter>(
-                        std::move(r.Devices[i]),
-                        config.GetBlockSize(),
-                        false,  // normalize
-                        ioTimeout,
-                        AgentConfig->GetShutdownTimeout())
                 };
 
                 Devices.emplace(
@@ -459,10 +447,10 @@ TFuture<TInitializeResult> TDiskAgentState::InitSpdkStorage()
                     std::move(device));
             }
 
-            return TInitializeResult {
+            return TInitializeResult{
                 .Configs = std::move(r.Configs),
-                .Errors = std::move(r.Errors)
-            };
+                .Devices = std::move(r.Devices),
+                .Errors = std::move(r.Errors)};
         });
 }
 
@@ -482,22 +470,11 @@ TFuture<TInitializeResult> TDiskAgentState::InitAioStorage()
             Y_ABORT_UNLESS(r.Configs.size() == r.Devices.size()
                   && r.Configs.size() == r.Stats.size());
 
-            TDuration ioTimeout;
-            if (!AgentConfig->GetDeviceIOTimeoutsDisabled()) {
-                ioTimeout = AgentConfig->GetDeviceIOTimeout();
-            }
-
             for (size_t i = 0; i != r.Configs.size(); ++i) {
                 const auto& config = r.Configs[i];
 
                 TDeviceState device {
                     .Config = config,
-                    .StorageAdapter = std::make_shared<TStorageAdapter>(
-                        std::move(r.Devices[i]),
-                        config.GetBlockSize(),
-                        false,  // normalize
-                        ioTimeout,
-                        AgentConfig->GetShutdownTimeout()),
                     .Stats = std::move(r.Stats[i])
                 };
 
@@ -506,6 +483,7 @@ TFuture<TInitializeResult> TDiskAgentState::InitAioStorage()
 
             return TInitializeResult{
                 .Configs = std::move(r.Configs),
+                .Devices = std::move(r.Devices),
                 .Errors = std::move(r.Errors),
                 .ConfigMismatchErrors = std::move(r.ConfigMismatchErrors),
                 .DevicesWithSuspendedIO = std::move(r.DevicesWithSuspendedIO),
@@ -517,13 +495,14 @@ TFuture<TInitializeResult> TDiskAgentState::InitAioStorage()
 void TDiskAgentState::InitRdmaTarget()
 {
     if (RdmaServer && RdmaTargetConfig) {
-        THashMap<TString, TStorageAdapterPtr> devices;
+        TVector<TString> devices;
 
         for (auto& [uuid, state]: Devices) {
             auto* endpoint = state.Config.MutableRdmaEndpoint();
             endpoint->SetHost(RdmaTargetConfig->Host);
             endpoint->SetPort(RdmaTargetConfig->Port);
-            devices.emplace(uuid, state.StorageAdapter);
+
+            devices.emplace_back(uuid);
         }
 
         RdmaTarget = CreateRdmaTarget(
@@ -548,14 +527,29 @@ TFuture<TInitializeResult> TDiskAgentState::Initialize()
         {
             TInitializeResult r = future.ExtractValue();
 
-            TVector<TString> uuids(Reserve(Devices.size()));
-            for (const auto& x: Devices) {
-                uuids.push_back(x.first);
+            TDuration ioTimeout;
+            if (!AgentConfig->GetDeviceIOTimeoutsDisabled()) {
+                ioTimeout = AgentConfig->GetDeviceIOTimeout();
+            }
+
+            TVector<std::pair<TString, TStorageAdapterPtr>>
+                uuidToStorageAdapter(Reserve(Devices.size()));
+            for (size_t i = 0; i < r.Configs.size(); ++i) {
+                auto storageAdapter = std::make_shared<TStorageAdapter>(
+                    std::move(r.Devices[i]),
+                    r.Configs[i].GetBlockSize(),
+                    false,   // normalize
+                    ioTimeout,
+                    AgentConfig->GetShutdownTimeout());
+
+                uuidToStorageAdapter.emplace_back(
+                    r.Configs[i].GetDeviceUUID(),
+                    std::move(storageAdapter));
             }
 
             DeviceClient = std::make_shared<TDeviceClient>(
                 AgentConfig->GetReleaseInactiveSessionsTimeout(),
-                std::move(uuids),
+                std::move(uuidToStorageAdapter),
                 Logging->CreateLog("BLOCKSTORE_DISK_AGENT"),
                 AgentConfig->GetKickOutOldClientsEnabled());
 
@@ -574,8 +568,7 @@ TFuture<TInitializeResult> TDiskAgentState::Initialize()
                     r.LostDevicesIds.end()});
 
             for (const auto& [uuid, deviceState]: Devices) {
-                PathAttachStates[deviceState.Config.GetDeviceName()] =
-                    EPathAttachState::Attached;
+                AttachedPaths.emplace(deviceState.Config.GetDeviceName());
             }
 
             return r;
@@ -676,13 +669,7 @@ TFuture<NProto::TReadDeviceBlocksResponse> TDiskAgentState::Read(
     readRequest->SetStartIndex(request.GetStartIndex());
     readRequest->SetBlocksCount(request.GetBlocksCount());
 
-    if (!device.IsOpen()) {
-        NProto::TReadDeviceBlocksResponse response;
-        *response.MutableError() = MakeError(E_REJECTED, "path detached");
-        return MakeFuture(response);
-    }
-
-    auto result = device.StorageAdapter->ReadBlocks(
+    auto result = device->ReadBlocks(
         now,
         MakeIntrusive<TCallContext>(),
         std::move(readRequest),
@@ -816,13 +803,7 @@ TFuture<NProto::TWriteDeviceBlocksResponse> TDiskAgentState::WriteBlocks(
         blockSize,
         buffer);
 
-    if (!device.IsOpen()) {
-        NProto::TWriteDeviceBlocksResponse response;
-        *response.MutableError() = MakeError(E_REJECTED, "path detached");
-        return MakeFuture(response);
-    }
-
-    auto result = device.StorageAdapter->WriteBlocks(
+    auto result = device->WriteBlocks(
         now,
         MakeIntrusive<TCallContext>(),
         std::move(request),
@@ -862,13 +843,7 @@ TFuture<NProto::TZeroDeviceBlocksResponse> TDiskAgentState::WriteZeroes(
         *zeroRequest,
         request.GetBlockSize());
 
-    if (!device.IsOpen()) {
-        NProto::TZeroDeviceBlocksResponse response;
-        *response.MutableError() = MakeError(E_REJECTED, "path detached");
-        return MakeFuture(response);
-    }
-
-    auto result = device.StorageAdapter->ZeroBlocks(
+    auto result = device->ZeroBlocks(
         now,
         MakeIntrusive<TCallContext>(),
         std::move(zeroRequest),
@@ -916,10 +891,6 @@ TFuture<NProto::TError> TDiskAgentState::SecureErase(
         }
     };
 
-    if (!device.IsOpen()) {
-        return MakeFuture(MakeError(E_REJECTED, "path detached"));
-    }
-
     if (RdmaTarget) {
         auto error = RdmaTarget->DeviceSecureEraseStart(uuid);
         if (HasError(error)) {
@@ -927,8 +898,7 @@ TFuture<NProto::TError> TDiskAgentState::SecureErase(
         }
     }
 
-    return device.StorageAdapter
-        ->EraseDevice(AgentConfig->GetDeviceEraseMethod())
+    return device->EraseDevice(AgentConfig->GetDeviceEraseMethod())
         .Subscribe(std::move(onDeviceSecureEraseFinish));
 }
 
@@ -953,18 +923,12 @@ TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
     readRequest->SetStartIndex(request.GetStartIndex());
     readRequest->SetBlocksCount(request.GetBlocksCount());
 
-    if (!device.IsOpen()) {
-        NProto::TChecksumDeviceBlocksResponse response;
-        *response.MutableError() = MakeError(E_REJECTED, "path detached");
-        return MakeFuture(response);
-    }
-
-    auto result = device.StorageAdapter->ReadBlocks(
+    auto result = device->ReadBlocks(
         now,
         MakeIntrusive<TCallContext>(),
         std::move(readRequest),
         request.GetBlockSize(),
-        {} // no data buffer
+        {}   // no data buffer
     );
 
     return result.Apply(
@@ -992,10 +956,11 @@ TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
 void TDiskAgentState::CheckIOTimeouts(TInstant now)
 {
     for (auto& x: Devices) {
-        if (!x.second.IsOpen()) {
+        auto [storageAdapter, error] = DeviceClient->AccessDevice(x.first);
+        if (HasError(error)) {
             continue;
         }
-        x.second.StorageAdapter->CheckIOTimeouts(now);
+        storageAdapter->CheckIOTimeouts(now);
     }
 }
 
@@ -1095,9 +1060,7 @@ bool TDiskAgentState::IsDeviceAttached(const TString& uuid) const
 
 bool TDiskAgentState::IsPathAttached(const TString& path) const
 {
-    const auto* pathAttachState = PathAttachStates.FindPtr(path);
-    return pathAttachState &&
-           *pathAttachState == EPathAttachState::Attached;
+    return AttachedPaths.contains(path);
 }
 
 ui64 TDiskAgentState::GetDiskAgentGeneration() const
@@ -1219,7 +1182,8 @@ void TDiskAgentState::EnsureAccessToDevices(
     NProto::EVolumeAccessMode accessMode) const
 {
     for (const TString& uuid: uuids) {
-        auto error = DeviceClient->AccessDevice(uuid, clientId, accessMode);
+        auto [_, error] =
+            DeviceClient->AccessDevice(uuid, clientId, accessMode);
         if (HasError(error)) {
             ythrow TServiceError(E_REJECTED)
                 << "Disk agent is partially suspended. "
@@ -1233,6 +1197,55 @@ void TDiskAgentState::EnsureAccessToDevices(
 TVector<NProto::TDiskAgentDeviceSession> TDiskAgentState::GetSessions() const
 {
     return DeviceClient->GetSessions();
+}
+
+TVector<TString> TDiskAgentState::GetAllDeviceIDsForPath(const TString& path)
+{
+    TVector<TString> result;
+    for (const auto& [uuid, device]: Devices) {
+        if (device.Config.GetDeviceName() == path) {
+            result.emplace_back(uuid);
+        }
+    }
+    return result;
+}
+
+TFuture<void> TDiskAgentState::DetachPaths(const TVector<TString>& paths)
+{
+    TVector<TStorageAdapterPtr> storageAdaptersToDrop;
+
+    for (const auto& path: paths) {
+        if (!AttachedPaths.contains(path)) {
+            continue;
+        }
+        auto uuids = GetAllDeviceIDsForPath(path);
+
+        for (const auto& uuid: uuids) {
+            auto storageAdapter = DeviceClient->DetachDevice(uuid);
+            Y_ABORT_UNLESS(storageAdapter);
+            storageAdaptersToDrop.emplace_back(std::move(storageAdapter));
+        }
+
+        AttachedPaths.erase(path);
+    }
+
+    return BackgroundThreadPool->Execute(
+        [Log = Logging->CreateLog("BLOCKSTORE_DISK_AGENT"),
+         storageAdaptersToDrop = std::move(storageAdaptersToDrop)]() mutable
+        {
+            auto timer = CreateWallClockTimer();
+
+            for (const auto& storageAdapter: storageAdaptersToDrop) {
+                auto requestsRemained = storageAdapter->Shutdown(timer);
+                if (requestsRemained) {
+                    STORAGE_WARN(
+                        "remained " << requestsRemained
+                                    << " requests in device after detach");
+                }
+            }
+
+            storageAdaptersToDrop.clear();
+        });
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -102,25 +102,22 @@ struct TThreadSafeData: public TSynchronized<TSynchronizedData, TAdaptiveLock>
 
 struct TDeviceData
 {
-    std::unique_ptr<TRWMutex> DeviceMutex = std::make_unique<TRWMutex>();
-    TStorageAdapterPtr Device;
     mutable TThreadSafeData ThreadSafeData;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 THashMap<TString, TDeviceData> MakeDevices(
-    THashMap<TString, TStorageAdapterPtr> devices,
+    TVector<TString> devices,
     TOldRequestCounters oldRequestCounters)
 {
     THashMap<TString, TDeviceData> result;
-    for (auto& [deviceUUID, storageAdapter]: devices) {
+    for (auto& deviceUUID: devices) {
         TSynchronizedData synchronizedData{
             .RecentBlocksTracker = TRecentBlocksTracker{deviceUUID},
             .OldRequestCounters = oldRequestCounters};
 
         TDeviceData device{
-            .Device = std::move(storageAdapter),
             .ThreadSafeData = TThreadSafeData{std::move(synchronizedData)}};
 
         result.try_emplace(deviceUUID, std::move(device));
@@ -159,7 +156,7 @@ private:
 
 public:
     TRequestHandler(
-            THashMap<TString, TStorageAdapterPtr> devices,
+            TVector<TString> devices,
             ITaskQueuePtr taskQueue,
             TDeviceClientPtr deviceClient,
             IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
@@ -248,16 +245,6 @@ public:
         token->RecentBlocksTracker.Reset();
     }
 
-    void DetachDevice(const TString& deviceUUID)
-    {
-        auto* d = Devices.FindPtr(deviceUUID);
-        if (!d) {
-            return;
-        }
-        TWriteGuard guard(*d->DeviceMutex);
-        d->Device.reset();
-    }
-
 private:
     NProto::TError DoHandleRequest(
         void* context,
@@ -332,11 +319,9 @@ private:
                 "[" << uuid << "/" << clientId
                     << "] Device disabled. Drop request.");
 
-            if (const auto* deviceData = Devices.FindPtr(uuid)) {
-                TReadGuard guard(*deviceData->DeviceMutex);
-                if (deviceData->Device) {
-                    deviceData->Device->ReportIOError();
-                }
+            auto [storageAdapter, error] = DeviceClient->AccessDevice(uuid);
+            if (!HasError(error)) {
+                storageAdapter->ReportIOError();
             }
         } else {
             STORAGE_TRACE_T(
@@ -355,24 +340,11 @@ private:
     {
         CheckIfDeviceIsDisabled(uuid, clientId);
 
-        NProto::TError error =
+        auto [device, error] =
             DeviceClient->AccessDevice(uuid, clientId, accessMode);
 
         if (HasError(error)) {
             ythrow TServiceError(error.GetCode()) << error.GetMessage();
-        }
-
-        auto it = Devices.find(uuid);
-        if (it == Devices.cend()) {
-            ythrow TServiceError(E_NOT_FOUND);
-        }
-
-        TReadGuard guard(*it->second.DeviceMutex);
-
-        auto device = it->second.Device;
-
-        if (!device) {
-            ythrow TServiceError(E_REJECTED) << "device detached";
         }
 
         return device;
@@ -1161,7 +1133,7 @@ public:
             NRdma::IServerPtr server,
             TDeviceClientPtr deviceClient,
             IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
-            THashMap<TString, TStorageAdapterPtr> devices,
+            TVector<TString> devices,
             ITaskQueuePtr taskQueue)
         : Config(std::move(config))
         , Logging(std::move(logging))
@@ -1211,11 +1183,6 @@ public:
     {
         Handler->DeviceSecureEraseFinish(deviceUUID, error);
     }
-
-    void DetachDevice(const TString& deviceUUID) override
-    {
-        Handler->DetachDevice(deviceUUID);
-    }
 };
 
 }   // namespace
@@ -1227,7 +1194,7 @@ IRdmaTargetPtr CreateRdmaTarget(
     NRdma::IServerPtr server,
     TDeviceClientPtr deviceClient,
     IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
-    THashMap<TString, TStorageAdapterPtr> devices)
+    TVector<TString> devices)
 {
     auto threadPool = CreateThreadPool("RDMA", config->WorkerThreads);
     threadPool->Start();
