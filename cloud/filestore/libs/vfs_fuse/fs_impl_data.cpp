@@ -419,9 +419,8 @@ void TFileSystem::Read(
 
         const auto& response = future.GetValue();
         if (CheckResponse(self, *callContext, req, response)) {
-            const bool isZeroCopyRead =
-                Config->GetZeroCopyReadEnabled() && !WriteBackCache;
-            if (isZeroCopyRead) {
+            const auto& buffer = response.GetBuffer();
+            if (buffer.empty()) {
                 self->ReplyBuf(
                     *callContext,
                     response.GetError(),
@@ -429,7 +428,6 @@ void TFileSystem::Read(
                     nullptr,
                     response.GetLength());
             } else {
-                const auto& buffer = response.GetBuffer();
                 ui32 bufferOffset = response.GetBufferOffset();
                 self->ReplyBuf(
                     *callContext,
