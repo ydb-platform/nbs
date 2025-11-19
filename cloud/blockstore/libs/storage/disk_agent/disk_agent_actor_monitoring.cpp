@@ -1,5 +1,6 @@
 #include "disk_agent_actor.h"
 
+#include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/storage/disk_common/monitoring_utils.h>
 
@@ -92,6 +93,7 @@ void TDiskAgentActor::RenderNVMeDevices(IOutputStream& out) const
                     TABLEH() { out << "Capacity"; }
                     TABLEH() { out << "PCI"; }
                     TABLEH() { out << "IOMMU group"; }
+                    TABLEH() { out << "Current driver"; }
                 }
 
                 for (const auto& d: devices) {
@@ -103,13 +105,28 @@ void TDiskAgentActor::RenderNVMeDevices(IOutputStream& out) const
                                 << d.GetCapacity() << " B)";
                         }
                         TABLED () {
-                            out << "(" << Hex(d.GetPCIVendorId()) << " "
-                                << Hex(d.GetPCIDeviceId()) << ") "
-                                << d.GetPCIAddress();
+                            out << "(" << Hex(d.GetPCIVendorId(), HF_ADDX)
+                                << " " << Hex(d.GetPCIDeviceId(), HF_ADDX)
+                                << ") " << d.GetPCIAddress();
                         }
                         TABLED () {
                             if (d.HasIOMMUGroup()) {
                                 out << d.GetIOMMUGroup();
+                            }
+                        }
+                        TABLED () {
+                            auto [name, error] = NvmeManager->GetDriverName({
+                                .VendorId = static_cast<ui16>(d.GetPCIVendorId()),
+                                .DeviceId = static_cast<ui16>(d.GetPCIDeviceId()),
+                                .Address = d.GetPCIAddress(),
+                            });
+                            if (HasError(error)) {
+                                DIV () {
+                                    out << "Can't get a driver name: "
+                                        << FormatError(error);
+                                }
+                            } else {
+                                out << name;
                             }
                         }
                     }
