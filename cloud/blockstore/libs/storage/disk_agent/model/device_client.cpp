@@ -392,10 +392,7 @@ TStorageAdapterPtr TDeviceClient::DetachDevice(const TString& uuid) const
 
     TWriteGuard g(deviceState->Lock);
 
-    auto res = std::move(deviceState->StorageAdapter);
-    deviceState->StorageAdapter = nullptr;
-
-    return std::move(res);
+    return std::exchange(deviceState->StorageAdapter, nullptr);
 }
 
 TDeviceClient::TSessionInfo TDeviceClient::GetWriterSession(
