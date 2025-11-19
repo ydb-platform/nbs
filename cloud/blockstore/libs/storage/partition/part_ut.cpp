@@ -182,9 +182,9 @@ public:
 
                 bool baseFilterResult = baseFilter ? baseFilter(rt, ev) : false;
 
-                auto it = EventDependencies.find(eventType);
-                if (it != EventDependencies.end()) {
-                    ui32 prerequisiteEvent = it->second;
+                auto prerequisiteEventIt = EventDependencies.find(eventType);
+                if (prerequisiteEventIt != EventDependencies.end()) {
+                    ui32 prerequisiteEvent = prerequisiteEventIt->second;
                     auto& processedEventsByRecipient =
                         ProcessedEvents[recipient];
                     if (!processedEventsByRecipient.contains(
@@ -196,13 +196,15 @@ public:
                 }
 
                 auto& delayedEventsByRecipient = DelayedEvents[recipient];
-                auto delayedIt = delayedEventsByRecipient.find(eventType);
-                if (delayedIt != delayedEventsByRecipient.end()) {
+                auto delayedEventIt = delayedEventsByRecipient.find(eventType);
+                if (delayedEventIt != delayedEventsByRecipient.end()) {
                     ProcessedEvents[recipient].insert(eventType);
                     TAutoPtr<IEventHandle> delayedEvent =
-                        std::move(delayedIt->second);
-                    delayedEventsByRecipient.erase(delayedIt);
+                        std::move(delayedEventIt->second);
+                    delayedEventsByRecipient.erase(delayedEventIt);
 
+                    // Remove the recipient from the map if there are no more
+                    // delayed events
                     if (delayedEventsByRecipient.empty()) {
                         DelayedEvents.erase(recipient);
                     }
@@ -219,6 +221,7 @@ public:
 private:
     THashMap<ui32, ui32> EventDependencies;
     THashMap<TActorId, THashSet<ui32>> ProcessedEvents;
+    // Map of delayed events by recipient and event type
     THashMap<TActorId, THashMap<ui32, TAutoPtr<IEventHandle>>> DelayedEvents;
 };
 
