@@ -39,12 +39,6 @@ private:
         TStorageIoStatsPtr Stats;
     };
 
-    enum class EPathAttachState
-    {
-        Attached,
-        Detached,
-    };
-
 private:
     const TStorageConfigPtr StorageConfig;
     const TDiskAgentConfigPtr AgentConfig;
