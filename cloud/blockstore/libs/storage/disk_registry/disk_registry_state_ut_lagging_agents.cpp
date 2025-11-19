@@ -776,14 +776,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
                     state.StartDeviceMigration(Now(), db, "disk-1/2", "uuid-7");
                 UNIT_ASSERT_SUCCESS(result.GetError());
                 UNIT_ASSERT_VALUES_EQUAL(
-                    "uuid-12",
+                    "uuid-13",
                     result.GetResult().GetDeviceUUID());
 
                 result =
                     state.StartDeviceMigration(Now(), db, "disk-1/2", "uuid-8");
                 UNIT_ASSERT_SUCCESS(result.GetError());
                 UNIT_ASSERT_VALUES_EQUAL(
-                    "uuid-13",
+                    "uuid-14",
                     result.GetResult().GetDeviceUUID());
             });
     }
@@ -960,19 +960,19 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
                 "uuid-13",
                 diskInfo.Migrations[1].GetSourceDeviceId());
             UNIT_ASSERT_VALUES_EQUAL(
-                "uuid-2",
+                "uuid-19",
                 diskInfo.Migrations[0].GetTargetDevice().GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL(
-                "uuid-3",
+                "uuid-2",
                 diskInfo.Migrations[1].GetTargetDevice().GetDeviceUUID());
         }
 
         /*
                 Current disk state:
                 ┌───────────────────────────────────────────────────────┐
-                │ uuid-1──►uuid-2  │ uuid-12          │ uuid-15         │
+                │ uuid-1──►uuid-19 │ uuid-12          │ uuid-15         │
                 │──────────────────┼──────────────────┼─────────────────│
-                │ uuid-10          │ uuid-13──►uuid-3 │ uuid-16         │
+                │ uuid-10          │ uuid-13──►uuid-2 │ uuid-16         │
                 │──────────────────┼──────────────────┼─────────────────│
                 │ uuid-11          │ uuid-14          │ uuid-18(Fresh)  │
                 └───────────────────────────────────────────────────────┘
@@ -995,7 +995,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
                 laggingDevice.SetDeviceUUID("uuid-2");
                 laggingDevice.SetRowIndex(0);
                 laggingDevices.push_back(laggingDevice);
-                laggingDevice.SetDeviceUUID("uuid-3");
+                laggingDevice.SetDeviceUUID("uuid-19");
                 laggingDevice.SetRowIndex(1);
                 laggingDevices.push_back(laggingDevice);
                 laggingDevice.SetDeviceUUID("uuid-13");
@@ -1025,20 +1025,20 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
             const auto& devices = diskInfo.Devices;
             const auto& replicas = diskInfo.Replicas;
             UNIT_ASSERT_VALUES_EQUAL(3, devices.size());
-            UNIT_ASSERT_VALUES_EQUAL("uuid-2", devices[0].GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-19", devices[0].GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL("uuid-10", devices[1].GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL("uuid-11", devices[2].GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL(2, replicas.size());
             UNIT_ASSERT_VALUES_EQUAL(3, replicas[0].size());
             UNIT_ASSERT_VALUES_EQUAL("uuid-12", replicas[0][0].GetDeviceUUID());
-            UNIT_ASSERT_VALUES_EQUAL("uuid-4", replicas[0][1].GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL("uuid-20", replicas[0][1].GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL("uuid-14", replicas[0][2].GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL(3, replicas[1].size());
             UNIT_ASSERT_VALUES_EQUAL("uuid-15", replicas[1][0].GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL("uuid-16", replicas[1][1].GetDeviceUUID());
             UNIT_ASSERT_VALUES_EQUAL("uuid-18", replicas[1][2].GetDeviceUUID());
             ASSERT_VECTOR_CONTENTS_EQUAL(
-                (TVector<TString>{"uuid-18", "uuid-2", "uuid-4"}),
+                (TVector<TString>{"uuid-18", "uuid-19", "uuid-20"}),
                 diskInfo.DeviceReplacementIds);
             UNIT_ASSERT_VALUES_EQUAL(0, diskInfo.Migrations.size());
 

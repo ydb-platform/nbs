@@ -1832,6 +1832,7 @@ TResultOrError<NProto::TDeviceConfig> TDiskRegistryState::StartDeviceMigration(
 
         NProto::TDeviceConfig targetDevice
             = DeviceList.AllocateDevice(sourceDiskId, query);
+
         if (targetDevice.GetDeviceUUID().empty()) {
             return MakeError(E_BS_DISK_ALLOCATION_FAILED, TStringBuilder() <<
                 "can't allocate target for " << sourceDeviceId.Quote());
@@ -1843,7 +1844,6 @@ TResultOrError<NProto::TDeviceConfig> TDiskRegistryState::StartDeviceMigration(
         return MakeError(e.GetCode(), e.what());
     }
 }
-
 
 TResultOrError<NProto::TDeviceConfig> TDiskRegistryState::StartDeviceMigration(
     TInstant now,
@@ -2104,13 +2104,16 @@ THashSet<TString> TDiskRegistryState::CollectPreferredRacks(
 {
     THashSet<TString> thisDiskRacks;
 
-    auto diskIt = Disks.find(diskId);
-    if (diskIt == Disks.end()) {
-        return thisDiskRacks;
-    }
+    const TDiskState* ds = Disks.FindPtr(diskId);
 
-    for (const TString& deviceId: diskIt->second.Devices) {
-        thisDiskRacks.insert(DeviceList.FindRack(deviceId));
+    if (ds) {
+        for (const TString& deviceId: ds->Devices) {
+            thisDiskRacks.insert(DeviceList.FindRack(deviceId));
+        }
+
+        for (const auto& [_, deviceId]: ds->MigrationSource2Target) {
+            thisDiskRacks.insert(DeviceList.FindRack(deviceId));
+        }
     }
 
     return thisDiskRacks;
