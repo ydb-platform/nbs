@@ -1106,14 +1106,14 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     {
         TBootstrap b;
 
-        b.ValidateCache(1, 0, "\0\0\0");
-        b.ValidateCache(2, 10, "\0\0\0\0");
+        b.ValidateCache(1, 0, TString(3, '\0'));
+        b.ValidateCache(2, 10, TString(4, '\0'));
 
         b.FlushCache();
-        b.ValidateCache(1, 5, "\0\0\0");
+        b.ValidateCache(1, 5, TString(3, '\0'));
 
         b.FlushCache(1);
-        b.ValidateCache(1, 100, "\0\0\0\0\0\0");
+        b.ValidateCache(1, 100, TString(6, '\0'));
     }
 
     Y_UNIT_TEST(ShouldMergeRequestsWhenFlushing)

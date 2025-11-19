@@ -91,6 +91,65 @@ struct TFlushConfig
     bool ZeroCopyWriteEnabled = false;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError ValidateReadDataRequest(
+    const NProto::TReadDataRequest& request,
+    const TString& expectedFilesystemId)
+{
+    if (request.GetFileSystemId() != expectedFilesystemId) {
+        return MakeError(
+            E_ARGUMENT,
+            Sprintf(
+                "ReadData request has invalid FileSystemId, "
+                "expected: '%s', actual: '%s'",
+                expectedFilesystemId.c_str(),
+                request.GetFileSystemId().c_str()));
+    }
+
+    if (request.GetLength() == 0) {
+        return MakeError(E_ARGUMENT, "ReadData request has zero length");
+    }
+
+    return {};
+}
+
+NProto::TError ValidateWriteDataRequest(
+    const NProto::TWriteDataRequest& request,
+    const TString& expectedFilesystemId)
+{
+    if (request.HasHeaders()) {
+        return MakeError(
+            E_ARGUMENT,
+            "WriteData request has unexpected Headers field");
+    }
+
+    if (request.GetFileSystemId() != expectedFilesystemId) {
+        return MakeError(
+            E_ARGUMENT,
+            Sprintf(
+                "WriteData request has invalid FileSystemId, "
+                "expected: '%s', actual: '%s'",
+                expectedFilesystemId.c_str(),
+                request.GetFileSystemId().c_str()));
+    }
+
+    if (request.GetBufferOffset() == request.GetBuffer().size()) {
+        return MakeError(E_ARGUMENT, "WriteData request has zero length");
+    }
+
+    if (request.GetBufferOffset() > request.GetBuffer().size()) {
+        return MakeError(
+            E_ARGUMENT,
+            Sprintf(
+                "WriteData request BufferOffset %u > buffer size %lu",
+                request.GetBufferOffset(),
+                request.GetBuffer().size()));
+    }
+
+    return {};
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -479,10 +538,15 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadDataRequest> request)
     {
-        if (request->GetLength() == 0) {
+        if (request->GetFileSystemId().empty()) {
+            request->SetFileSystemId(callContext->FileSystemId);
+        }
+
+        auto error = ValidateReadDataRequest(*request, FileSystemId);
+        if (HasError(error)) {
+            Y_DEBUG_ABORT_UNLESS(false, "%s", error.GetMessage().c_str());
             NProto::TReadDataResponse response;
-            *response.MutableError() =
-                MakeError(E_ARGUMENT, "ReadData request has zero length");
+            *response.MutableError() = error;
             return MakeFuture(std::move(response));
         }
 
@@ -543,30 +607,15 @@ public:
             request->SetFileSystemId(callContext->FileSystemId);
         }
 
-        if (request->GetFileSystemId() != FileSystemId) {
+        auto error = ValidateWriteDataRequest(*request, FileSystemId);
+        if (HasError(error)) {
+            Y_DEBUG_ABORT_UNLESS(false, "%s", error.GetMessage().c_str());
             NProto::TWriteDataResponse response;
-            *response.MutableError() = MakeError(
-                E_ARGUMENT,
-                "WriteData request has invalid FileSystemId");
-            return MakeFuture(std::move(response));
-        }
-
-        if (request->HasHeaders()) {
-            NProto::TWriteDataResponse response;
-            *response.MutableError() = MakeError(
-                E_ARGUMENT,
-                "WriteData request has unexpected Headers field");
+            *response.MutableError() = error;
             return MakeFuture(std::move(response));
         }
 
         auto entry = std::make_unique<TWriteDataEntry>(std::move(request));
-        if (entry->GetBuffer().Size() == 0) {
-            NProto::TWriteDataResponse response;
-            *response.MutableError() =
-                MakeError(E_ARGUMENT, "WriteData request has zero length");
-            return MakeFuture(std::move(response));
-        }
-
         auto serializedSize = entry->GetSerializedSize();
 
         Y_ABORT_UNLESS(
@@ -1425,8 +1474,11 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
 
     if (serializedRequest.size() < sizeof(TCachedWriteDataRequest)) {
         deserializationStats.EntrySizeMismatchCount++;
-        ReportWriteBackCacheCorruptionError(
-            "TWriteDataEntry deserialization error: entry size is too small");
+        ReportWriteBackCacheCorruptionError(Sprintf(
+            "TWriteDataEntry deserialization error: entry size is too small, "
+            "expected: at least %lu, actual: %lu",
+            sizeof(TCachedWriteDataRequest),
+            serializedRequest.size()));
         SetStatus(EWriteDataRequestStatus::Corrupted, impl);
         return;
     }
@@ -1439,8 +1491,11 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
         serializedRequest.size() - sizeof(TCachedWriteDataRequest))
     {
         deserializationStats.EntrySizeMismatchCount++;
-        ReportWriteBackCacheCorruptionError(
-            "TWriteDataEntry deserialization error: invalid entry size");
+        ReportWriteBackCacheCorruptionError(Sprintf(
+            "TWriteDataEntry deserialization error: entry size is too small, "
+            "expected: at least %lu, actual: %lu",
+            allocationPtr->Length + sizeof(TCachedWriteDataRequest),
+            serializedRequest.size()));
         SetStatus(EWriteDataRequestStatus::Corrupted, impl);
         return;
     }
@@ -1467,7 +1522,12 @@ void TWriteBackCache::TWriteDataEntry::SerializeAndMoveRequestBuffer(
 {
     Y_ABORT_UNLESS(PendingRequest);
     Y_ABORT_UNLESS(CachedRequest == nullptr);
-    Y_ABORT_UNLESS(sizeof(TCachedWriteDataRequest) <= allocation.size());
+    Y_ABORT_UNLESS(
+        sizeof(TCachedWriteDataRequest) <= allocation.size(),
+        "Allocated buffer is too small to store the WriteData request header, "
+        "expected size: at least %lu, actual: %lu",
+        sizeof(TCachedWriteDataRequest),
+        allocation.size());
 
     auto buffer = GetBuffer();
 
@@ -1480,7 +1540,11 @@ void TWriteBackCache::TWriteDataEntry::SerializeAndMoveRequestBuffer(
     cachedRequest->Length = buffer.size();
 
     allocation = allocation.subspan(sizeof(TCachedWriteDataRequest));
-    Y_ABORT_UNLESS(buffer.size() <= allocation.size());
+    Y_ABORT_UNLESS(buffer.size() <= allocation.size(),
+        "Allocated buffer is too small to store the WriteData request buffer, "
+        "request buffer size: %lu, allocated buffer remaining size: %lu",
+        buffer.size(),
+        allocation.size());
 
     buffer.copy(allocation.data(), buffer.size());
 
