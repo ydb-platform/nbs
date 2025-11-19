@@ -350,16 +350,15 @@ func (s *StorageMock) ListFilesystems(
 func (s *StorageMock) CreateFilesystemSnapshot(
 	ctx context.Context,
 	snapshot resources.FilesystemSnapshotMeta,
-) (resources.FilesystemSnapshotMeta, error) {
+) (*resources.FilesystemSnapshotMeta, error) {
 
 	args := s.Called(ctx, snapshot)
-	return args.Get(0).(resources.FilesystemSnapshotMeta), args.Error(1)
+	return args.Get(0).(*resources.FilesystemSnapshotMeta), args.Error(1)
 }
 
 func (s *StorageMock) FilesystemSnapshotCreated(
 	ctx context.Context,
 	snapshotID string,
-	checkpointID string,
 	createdAt time.Time,
 	snapshotSize uint64,
 	snapshotStorageSize uint64,
@@ -368,7 +367,6 @@ func (s *StorageMock) FilesystemSnapshotCreated(
 	args := s.Called(
 		ctx,
 		snapshotID,
-		checkpointID,
 		createdAt,
 		snapshotSize,
 		snapshotStorageSize,

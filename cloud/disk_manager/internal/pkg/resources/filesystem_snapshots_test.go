@@ -22,7 +22,6 @@ func requireFilesystemSnapshotsAreEqual(
 	require.Equal(t, expected.ID, actual.ID)
 	require.Equal(t, expected.FolderID, actual.FolderID)
 	require.True(t, proto.Equal(expected.Filesystem, actual.Filesystem))
-	require.Equal(t, expected.CheckpointID, actual.CheckpointID)
 	require.True(t, proto.Equal(expected.CreateRequest, actual.CreateRequest))
 	require.Equal(t, expected.CreateTaskID, actual.CreateTaskID)
 	if !expected.CreatingAt.IsZero() {
@@ -45,7 +44,6 @@ func TestCreateFilesystemSnapshot(t *testing.T) {
 	defer db.Close(ctx)
 
 	storage := newStorage(t, ctx, db)
-	const checkpointID = "checkpoint"
 	filesystemSnapshot := FilesystemSnapshotMeta{
 		ID:       "fs-snapshot",
 		FolderID: "folder",
@@ -56,7 +54,6 @@ func TestCreateFilesystemSnapshot(t *testing.T) {
 		CreateRequest: &wrappers.UInt64Value{
 			Value: 1,
 		},
-		CheckpointID: checkpointID,
 		CreateTaskID: "create",
 		CreatingAt:   time.Now(),
 	}
@@ -73,7 +70,6 @@ func TestCreateFilesystemSnapshot(t *testing.T) {
 	err = storage.FilesystemSnapshotCreated(
 		ctx,
 		filesystemSnapshot.ID,
-		checkpointID,
 		time.Now(),
 		0,
 		0,
@@ -84,7 +80,6 @@ func TestCreateFilesystemSnapshot(t *testing.T) {
 	err = storage.FilesystemSnapshotCreated(
 		ctx,
 		filesystemSnapshot.ID,
-		checkpointID,
 		time.Now(),
 		0,
 		0,
@@ -113,7 +108,6 @@ func TestDeleteFilesystemSnapshot(t *testing.T) {
 	defer db.Close(ctx)
 
 	storage := newStorage(t, ctx, db)
-	const checkpointID = "checkpoint"
 	filesystemSnapshot := FilesystemSnapshotMeta{
 		ID:       "fs-snapshot",
 		FolderID: "folder",
@@ -124,7 +118,6 @@ func TestDeleteFilesystemSnapshot(t *testing.T) {
 		CreateRequest: &wrappers.UInt64Value{
 			Value: 1,
 		},
-		CheckpointID: checkpointID,
 		CreateTaskID: "create",
 		CreatingAt:   time.Now(),
 	}
@@ -179,7 +172,6 @@ func TestDeleteFilesystemSnapshot(t *testing.T) {
 	err = storage.FilesystemSnapshotCreated(
 		ctx,
 		filesystemSnapshot.ID,
-		checkpointID,
 		time.Now(),
 		0,
 		0,
@@ -205,7 +197,6 @@ func TestDeleteNonexistingFilesystemSnapshot(t *testing.T) {
 			FilesystemId: "fs",
 			ZoneId:       "zone",
 		},
-		CheckpointID: "checkpoint",
 	}
 
 	err = storage.FilesystemSnapshotDeleted(
@@ -226,7 +217,6 @@ func TestDeleteNonexistingFilesystemSnapshot(t *testing.T) {
 	err = storage.FilesystemSnapshotCreated(
 		ctx,
 		filesystemSnapshot.ID,
-		"checkpoint",
 		time.Now(),
 		0,
 		0,
@@ -256,7 +246,6 @@ func TestCreateFilesystemSnapshotShouldFailDifferentRequestSameID(
 	defer db.Close(ctx)
 
 	storage := newStorage(t, ctx, db)
-	const checkpointID = "checkpoint"
 	filesystemSnapshot := FilesystemSnapshotMeta{
 		ID:       "fs-snapshot",
 		FolderID: "folder",
@@ -267,7 +256,6 @@ func TestCreateFilesystemSnapshotShouldFailDifferentRequestSameID(
 		CreateRequest: &wrappers.UInt64Value{
 			Value: 1,
 		},
-		CheckpointID: checkpointID,
 		CreateTaskID: "create",
 		CreatingAt:   time.Now(),
 	}
@@ -295,7 +283,6 @@ func TestCreateFilesystemSnapshotShouldFailDifferentTaskID(t *testing.T) {
 	defer db.Close(ctx)
 
 	storage := newStorage(t, ctx, db)
-	const checkpointID = "checkpoint"
 	filesystemSnapshot := FilesystemSnapshotMeta{
 		ID:       "fs-snapshot",
 		FolderID: "folder",
@@ -306,7 +293,6 @@ func TestCreateFilesystemSnapshotShouldFailDifferentTaskID(t *testing.T) {
 		CreateRequest: &wrappers.UInt64Value{
 			Value: 1,
 		},
-		CheckpointID: checkpointID,
 		CreateTaskID: "create",
 		CreatingAt:   time.Now(),
 	}
@@ -340,7 +326,6 @@ func TestClearDeletedFilesystemSnapshots(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	const checkpointID = "checkpoint"
 	filesystemSnapshotTemplate := FilesystemSnapshotMeta{
 		FolderID: "folder",
 		Filesystem: &types.Filesystem{
@@ -350,7 +335,6 @@ func TestClearDeletedFilesystemSnapshots(t *testing.T) {
 		CreateRequest: &wrappers.UInt64Value{
 			Value: 1,
 		},
-		CheckpointID: checkpointID,
 		CreateTaskID: "create",
 		CreatingAt:   time.Now(),
 	}
@@ -366,7 +350,6 @@ func TestClearDeletedFilesystemSnapshots(t *testing.T) {
 	err = storage.FilesystemSnapshotCreated(
 		ctx,
 		createdSnapshot.ID,
-		checkpointID,
 		time.Now(),
 		0,
 		0,

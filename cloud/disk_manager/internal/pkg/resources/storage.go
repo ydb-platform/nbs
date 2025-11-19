@@ -96,7 +96,6 @@ type FilesystemSnapshotMeta struct {
 	ID            string            `json:"id"`
 	FolderID      string            `json:"folder_id"`
 	Filesystem    *types.Filesystem `json:"filesystem"`
-	CheckpointID  string            `json:"checkpoint_id"`
 	CreateRequest proto.Message     `json:"create_request"`
 	CreateTaskID  string            `json:"create_task_id"`
 	CreatingAt    time.Time         `json:"creating_at"`
@@ -252,12 +251,11 @@ type Storage interface {
 	CreateFilesystemSnapshot(
 		ctx context.Context,
 		snapshot FilesystemSnapshotMeta,
-	) (FilesystemSnapshotMeta, error)
+	) (*FilesystemSnapshotMeta, error)
 
 	FilesystemSnapshotCreated(
 		ctx context.Context,
 		snapshotID string,
-		checkpointID string,
 		createdAt time.Time,
 		snapshotSize uint64,
 		snapshotStorageSize uint64,

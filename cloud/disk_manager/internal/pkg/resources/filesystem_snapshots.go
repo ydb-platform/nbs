@@ -54,7 +54,6 @@ type filesystemSnapshotState struct {
 	folderID      string
 	zoneID        string
 	filesystemID  string
-	checkpointID  string
 	createRequest []byte
 	createTaskID  string
 	creatingAt    time.Time
@@ -76,7 +75,6 @@ func (s *filesystemSnapshotState) toFilesystemSnapshotMeta() *FilesystemSnapshot
 			ZoneId:       s.zoneID,
 			FilesystemId: s.filesystemID,
 		},
-		CheckpointID: s.checkpointID,
 		CreateTaskID: s.createTaskID,
 		CreatingAt:   s.creatingAt,
 		DeleteTaskID: s.deleteTaskID,
@@ -92,7 +90,6 @@ func (s *filesystemSnapshotState) structValue() persistence.Value {
 		persistence.StructFieldValue("folder_id", persistence.UTF8Value(s.folderID)),
 		persistence.StructFieldValue("zone_id", persistence.UTF8Value(s.zoneID)),
 		persistence.StructFieldValue("filesystem_id", persistence.UTF8Value(s.filesystemID)),
-		persistence.StructFieldValue("checkpoint_id", persistence.UTF8Value(s.checkpointID)),
 		persistence.StructFieldValue("create_request", persistence.StringValue(s.createRequest)),
 		persistence.StructFieldValue("create_task_id", persistence.UTF8Value(s.createTaskID)),
 		persistence.StructFieldValue("creating_at", persistence.TimestampValue(s.creatingAt)),
@@ -112,7 +109,6 @@ func scanFilesystemSnapshotState(res persistence.Result) (state filesystemSnapsh
 		persistence.OptionalWithDefault("folder_id", &state.folderID),
 		persistence.OptionalWithDefault("zone_id", &state.zoneID),
 		persistence.OptionalWithDefault("filesystem_id", &state.filesystemID),
-		persistence.OptionalWithDefault("checkpoint_id", &state.checkpointID),
 		persistence.OptionalWithDefault("create_request", &state.createRequest),
 		persistence.OptionalWithDefault("create_task_id", &state.createTaskID),
 		persistence.OptionalWithDefault("creating_at", &state.creatingAt),
@@ -153,7 +149,6 @@ func filesystemSnapshotStateStructTypeString() string {
 		folder_id: Utf8,
 		zone_id: Utf8,
 		filesystem_id: Utf8,
-		checkpoint_id: Utf8,
 		create_request: String,
 		create_task_id: Utf8,
 		creating_at: Timestamp,
@@ -172,7 +167,6 @@ func filesystemSnapshotStateTableDescription() persistence.CreateTableDescriptio
 		persistence.WithColumn("folder_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("filesystem_id", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("checkpoint_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("create_request", persistence.Optional(persistence.TypeString)),
 		persistence.WithColumn("create_task_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("creating_at", persistence.Optional(persistence.TypeTimestamp)),
@@ -226,17 +220,17 @@ func (s *storageYDB) createFilesystemSnapshot(
 	ctx context.Context,
 	session *persistence.Session,
 	snapshot FilesystemSnapshotMeta,
-) (FilesystemSnapshotMeta, error) {
+) (*FilesystemSnapshotMeta, error) {
 
 	tx, err := session.BeginRWTransaction(ctx)
 	if err != nil {
-		return FilesystemSnapshotMeta{}, err
+		return &FilesystemSnapshotMeta{}, err
 	}
 	defer tx.Rollback(ctx)
 
 	createRequest, err := proto.Marshal(snapshot.CreateRequest)
 	if err != nil {
-		return FilesystemSnapshotMeta{}, errors.NewNonRetriableErrorf(
+		return &FilesystemSnapshotMeta{}, errors.NewNonRetriableErrorf(
 			"failed to marshal create request for filesystem snapshot with id %v: %w",
 			snapshot.ID,
 			err,
@@ -255,26 +249,26 @@ func (s *storageYDB) createFilesystemSnapshot(
 		persistence.ValueParam("$id", persistence.UTF8Value(snapshot.ID)),
 	)
 	if err != nil {
-		return FilesystemSnapshotMeta{}, err
+		return &FilesystemSnapshotMeta{}, err
 	}
 	defer res.Close()
 
 	states, err := scanFilesystemSnapshotStates(ctx, res)
 	if err != nil {
-		return FilesystemSnapshotMeta{}, err
+		return &FilesystemSnapshotMeta{}, err
 	}
 
 	if len(states) != 0 {
 		err = tx.Commit(ctx)
 		if err != nil {
-			return FilesystemSnapshotMeta{}, err
+			return &FilesystemSnapshotMeta{}, err
 		}
 
 		state := states[0]
 
 		if state.status >= filesystemSnapshotStatusDeleting {
 			logging.Info(ctx, "can't create already deleting/deleted filesystem snapshot with id %v", snapshot.ID)
-			return FilesystemSnapshotMeta{}, errors.NewSilentNonRetriableErrorf(
+			return &FilesystemSnapshotMeta{}, errors.NewSilentNonRetriableErrorf(
 				"can't create already deleting/deleted filesystem snapshot with id %v",
 				snapshot.ID,
 			)
@@ -283,10 +277,10 @@ func (s *storageYDB) createFilesystemSnapshot(
 		// Check idempotency.
 		if bytes.Equal(state.createRequest, createRequest) &&
 			state.createTaskID == snapshot.CreateTaskID {
-			return *state.toFilesystemSnapshotMeta(), nil
+			return state.toFilesystemSnapshotMeta(), nil
 		}
 
-		return FilesystemSnapshotMeta{}, errors.NewNonCancellableErrorf(
+		return &FilesystemSnapshotMeta{}, errors.NewNonCancellableErrorf(
 			"filesystem snapshot with different params already exists, old=%v, new=%v",
 			state,
 			snapshot,
@@ -302,7 +296,6 @@ func (s *storageYDB) createFilesystemSnapshot(
 		createTaskID:  snapshot.CreateTaskID,
 		creatingAt:    snapshot.CreatingAt,
 		status:        filesystemSnapshotStatusCreating,
-		checkpointID:  snapshot.CheckpointID,
 	}
 
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
@@ -317,22 +310,21 @@ func (s *storageYDB) createFilesystemSnapshot(
 		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
 	)
 	if err != nil {
-		return FilesystemSnapshotMeta{}, err
+		return &FilesystemSnapshotMeta{}, err
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		return FilesystemSnapshotMeta{}, err
+		return &FilesystemSnapshotMeta{}, err
 	}
 
-	return *state.toFilesystemSnapshotMeta(), nil
+	return state.toFilesystemSnapshotMeta(), nil
 }
 
 func (s *storageYDB) filesystemSnapshotCreated(
 	ctx context.Context,
 	session *persistence.Session,
 	snapshotID string,
-	checkpointID string,
 	createdAt time.Time,
 	snapshotSize uint64,
 	snapshotStorageSize uint64,
@@ -380,17 +372,6 @@ func (s *storageYDB) filesystemSnapshotCreated(
 	state := states[0]
 
 	if state.status == filesystemSnapshotStatusReady {
-		if state.checkpointID != checkpointID {
-			return errors.NewNonRetriableErrorf(
-				"filesystem snapshot with id %v and checkpoint id %v can't be created, "+
-					"because filesystem snapshot with the same id and another "+
-					"checkpoint id %v already exists",
-				snapshotID,
-				checkpointID,
-				state.checkpointID,
-			)
-		}
-
 		// Nothing to do.
 		return tx.Commit(ctx)
 	}
@@ -404,7 +385,6 @@ func (s *storageYDB) filesystemSnapshotCreated(
 	}
 
 	state.status = filesystemSnapshotStatusReady
-	state.checkpointID = checkpointID
 	state.createdAt = createdAt
 	state.size = snapshotSize
 	state.storageSize = snapshotStorageSize
@@ -479,7 +459,6 @@ func (s *storageYDB) deleteFilesystemSnapshot(
 		return state.toFilesystemSnapshotMeta(), nil
 	}
 
-	state.id = snapshotID
 	state.status = filesystemSnapshotStatusDeleting
 	state.deleteTaskID = taskID
 	state.deletingAt = deletingAt
@@ -691,9 +670,9 @@ func (s *storageYDB) listFilesystemSnapshots(
 func (s *storageYDB) CreateFilesystemSnapshot(
 	ctx context.Context,
 	snapshot FilesystemSnapshotMeta,
-) (FilesystemSnapshotMeta, error) {
+) (*FilesystemSnapshotMeta, error) {
 
-	var created FilesystemSnapshotMeta
+	var created *FilesystemSnapshotMeta
 
 	err := s.db.Execute(
 		ctx,
@@ -709,7 +688,6 @@ func (s *storageYDB) CreateFilesystemSnapshot(
 func (s *storageYDB) FilesystemSnapshotCreated(
 	ctx context.Context,
 	snapshotID string,
-	checkpointID string,
 	createdAt time.Time,
 	snapshotSize uint64,
 	snapshotStorageSize uint64,
@@ -722,7 +700,6 @@ func (s *storageYDB) FilesystemSnapshotCreated(
 				ctx,
 				session,
 				snapshotID,
-				checkpointID,
 				createdAt,
 				snapshotSize,
 				snapshotStorageSize,
