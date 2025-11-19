@@ -168,7 +168,6 @@ public:
     bool IsDeviceDisabled(const TString& uuid) const;
     bool IsDeviceAttached(const TString& uuid) const;
     bool IsPathAttached(const TString& path) const;
-    ui64 GetDiskAgentGeneration() const;
     bool IsDeviceSuspended(const TString& uuid) const;
     void ReportDisabledDeviceError(const TString& uuid);
 

@@ -1063,11 +1063,6 @@ bool TDiskAgentState::IsPathAttached(const TString& path) const
     return AttachedPaths.contains(path);
 }
 
-ui64 TDiskAgentState::GetDiskAgentGeneration() const
-{
-    return DiskAgentGeneration;
-}
-
 bool TDiskAgentState::IsDeviceSuspended(const TString& uuid) const
 {
     return DeviceClient->IsDeviceSuspended(uuid);

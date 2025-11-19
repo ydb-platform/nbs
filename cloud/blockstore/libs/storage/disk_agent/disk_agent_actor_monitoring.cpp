@@ -66,10 +66,6 @@ void TDiskAgentActor::HandleHttpInfo(
             }
         }
 
-        DIV () {
-            out << "Disk agent generation: " << State->GetDiskAgentGeneration();
-        }
-
         TAG(TH3) { out << "Devices"; }
         RenderDevices(out);
 
