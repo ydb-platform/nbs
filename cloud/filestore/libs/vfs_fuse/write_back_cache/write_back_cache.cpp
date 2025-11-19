@@ -95,15 +95,15 @@ struct TFlushConfig
 
 NProto::TError ValidateReadDataRequest(
     const NProto::TReadDataRequest& request,
-    const TString& expectedFilesystemId)
+    const TString& expectedFileSystemId)
 {
-    if (request.GetFileSystemId() != expectedFilesystemId) {
+    if (request.GetFileSystemId() != expectedFileSystemId) {
         return MakeError(
             E_ARGUMENT,
             Sprintf(
                 "ReadData request has invalid FileSystemId, "
                 "expected: '%s', actual: '%s'",
-                expectedFilesystemId.c_str(),
+                expectedFileSystemId.c_str(),
                 request.GetFileSystemId().c_str()));
     }
 
@@ -116,7 +116,7 @@ NProto::TError ValidateReadDataRequest(
 
 NProto::TError ValidateWriteDataRequest(
     const NProto::TWriteDataRequest& request,
-    const TString& expectedFilesystemId)
+    const TString& expectedFileSystemId)
 {
     if (request.HasHeaders()) {
         return MakeError(
@@ -124,13 +124,13 @@ NProto::TError ValidateWriteDataRequest(
             "WriteData request has unexpected Headers field");
     }
 
-    if (request.GetFileSystemId() != expectedFilesystemId) {
+    if (request.GetFileSystemId() != expectedFileSystemId) {
         return MakeError(
             E_ARGUMENT,
             Sprintf(
                 "WriteData request has invalid FileSystemId, "
                 "expected: '%s', actual: '%s'",
-                expectedFilesystemId.c_str(),
+                expectedFileSystemId.c_str(),
                 request.GetFileSystemId().c_str()));
     }
 
@@ -1524,7 +1524,7 @@ void TWriteBackCache::TWriteDataEntry::SerializeAndMoveRequestBuffer(
     Y_ABORT_UNLESS(CachedRequest == nullptr);
     Y_ABORT_UNLESS(
         sizeof(TCachedWriteDataRequest) <= allocation.size(),
-        "Allocated buffer is too small to store the WriteData request header, "
+        "Allocated buffer is too small to store WriteData request header, "
         "expected size: at least %lu, actual: %lu",
         sizeof(TCachedWriteDataRequest),
         allocation.size());
@@ -1540,11 +1540,13 @@ void TWriteBackCache::TWriteDataEntry::SerializeAndMoveRequestBuffer(
     cachedRequest->Length = buffer.size();
 
     allocation = allocation.subspan(sizeof(TCachedWriteDataRequest));
-    Y_ABORT_UNLESS(buffer.size() <= allocation.size(),
-        "Allocated buffer is too small to store the WriteData request buffer, "
-        "request buffer size: %lu, allocated buffer remaining size: %lu",
-        buffer.size(),
-        allocation.size());
+
+    Y_ABORT_UNLESS(
+        buffer.size() <= allocation.size(),
+        "Allocated buffer is too small to store WriteData request buffer, "
+        "expected size: at least %lu, actual: %lu",
+        sizeof(TCachedWriteDataRequest) + buffer.size(),
+        sizeof(TCachedWriteDataRequest) + allocation.size());
 
     buffer.copy(allocation.data(), buffer.size());
 
