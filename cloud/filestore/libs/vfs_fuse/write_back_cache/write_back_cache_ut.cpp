@@ -60,6 +60,13 @@ TStringBuf ToStringBuf(const NProto::TIovec& iovec)
     return {reinterpret_cast<const char*>(iovec.GetBase()), iovec.GetLength()};
 }
 
+void Write(TString& data, ui64 offset, TStringBuf buffer)
+{
+    auto newSize = Max(data.size(), offset + buffer.size());
+    data.resize(newSize, 0);
+    data.replace(offset, buffer.size(), buffer);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TInFlightRequestTracker
@@ -156,7 +163,6 @@ struct TWriteBackCacheStats
 
     TWriteDataRequestStats PendingStats;
     TWriteDataRequestStats CachedStats;
-    TWriteDataRequestStats FlushRequestedStats;
     TWriteDataRequestStats FlushingStats;
     TWriteDataRequestStats FlushedStats;
 
@@ -175,7 +181,6 @@ struct TWriteBackCacheStats
 
         PendingStats.ResetNonDerivativeCounters();
         CachedStats.ResetNonDerivativeCounters();
-        FlushRequestedStats.ResetNonDerivativeCounters();
         FlushingStats.ResetNonDerivativeCounters();
         FlushedStats.ResetNonDerivativeCounters();
     }
@@ -213,8 +218,6 @@ struct TWriteBackCacheStats
                 return PendingStats;
             case EWriteDataRequestStatus::Cached:
                 return CachedStats;
-            case EWriteDataRequestStatus::FlushRequested:
-                return FlushRequestedStats;
             case EWriteDataRequestStatus::Flushing:
                 return FlushingStats;
             case EWriteDataRequestStatus::Flushed:
@@ -648,6 +651,11 @@ struct TBootstrap
             }
         }
 
+        {
+            std::unique_lock lock2(UnflushedDataMutex);
+            Write(UnflushedData[nodeId], offset, buffer);
+        }
+
         auto future = Cache.WriteData(CallContext, std::move(request));
 
         future.Subscribe([&, nodeId, offset, buffer] (auto) {
@@ -655,19 +663,9 @@ struct TBootstrap
                 << " to @" << nodeId
                 << " at offset " << offset);
 
-            auto write = [=] (auto* data) {
-                // append zeroes if needed
-                auto newSize = Max(data->size(), offset + buffer.size());
-                data->resize(newSize, 0);
-                data->replace(offset, buffer.size(), buffer);
-            };
-
             {
                 std::unique_lock lock1(ExpectedDataMutex);
-                std::unique_lock lock2(UnflushedDataMutex);
-
-                write(&ExpectedData[nodeId]);
-                write(&UnflushedData[nodeId]);
+                Write(ExpectedData[nodeId], offset, buffer);
             }
         });
 
@@ -759,12 +757,10 @@ struct TBootstrap
         UNIT_ASSERT_EQUAL(0, Stats->PersistentQueueStats.RawUsedBytesCount);
         UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->PendingStats.MinTime);
         UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->CachedStats.MinTime);
-        UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->FlushRequestedStats.MinTime);
         UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->FlushingStats.MinTime);
         UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->FlushedStats.MinTime);
         UNIT_ASSERT_EQUAL(0, Stats->PendingStats.InProgressCount);
         UNIT_ASSERT_EQUAL(0, Stats->CachedStats.InProgressCount);
-        UNIT_ASSERT_EQUAL(0, Stats->FlushRequestedStats.InProgressCount);
         UNIT_ASSERT_EQUAL(0, Stats->FlushingStats.InProgressCount);
         UNIT_ASSERT_EQUAL(0, Stats->FlushedStats.InProgressCount);
     }
@@ -817,19 +813,6 @@ struct TBootstrap
         CheckWriteDataRequestStats(
             Stats->CachedStats,
             "Cached",
-            expectedInProgressCount,
-            expectedCount,
-            expectedMinTime);
-    }
-
-    void CheckFlushRequestedWriteDataRequestStats(
-        ui64 expectedInProgressCount,
-        ui64 expectedCount,
-        TInstant expectedMinTime)
-    {
-        CheckWriteDataRequestStats(
-            Stats->FlushRequestedStats,
-            "FlushRequested",
             expectedInProgressCount,
             expectedCount,
             expectedMinTime);
@@ -1435,7 +1418,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             UNIT_ASSERT_EQUAL(
                 stats.GetCachedQueueRequestCount(),
                 b.Stats->CachedStats.InProgressCount +
-                    b.Stats->FlushRequestedStats.InProgressCount +
                     b.Stats->FlushingStats.InProgressCount +
                     b.Stats->FlushedStats.InProgressCount);
             UNIT_ASSERT_EQUAL(stats.GetNodeCount(), b.Stats->NodeCount);
@@ -1943,7 +1925,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         b.CheckPendingWriteDataRequestStats(0, 1, zero);
         b.CheckCachedWriteDataRequestStats(1, 0, t1);
-        b.CheckFlushRequestedWriteDataRequestStats(0, 0, zero);
         b.CheckFlushingWriteDataRequestStats(0, 0, zero);
         b.CheckFlushedWriteDataRequestStats(0, 0, zero);
 
@@ -1955,7 +1936,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         b.CheckPendingWriteDataRequestStats(0, 3, zero);
         b.CheckCachedWriteDataRequestStats(3, 0, t1);
-        b.CheckFlushRequestedWriteDataRequestStats(0, 0, zero);
         b.CheckFlushingWriteDataRequestStats(0, 0, zero);
         b.CheckFlushedWriteDataRequestStats(0, 0, zero);
 
@@ -1967,8 +1947,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.Cache.FlushNodeData(2);
 
         b.CheckPendingWriteDataRequestStats(0, 4, zero);
-        b.CheckCachedWriteDataRequestStats(1, 3, t1);
-        b.CheckFlushRequestedWriteDataRequestStats(1, 2, t3);
+        b.CheckCachedWriteDataRequestStats(2, 2, t1);
         b.CheckFlushingWriteDataRequestStats(2, 0, t3);
         b.CheckFlushedWriteDataRequestStats(0, 0, zero);
 
@@ -1978,7 +1957,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         // from the middle of the queue
         b.CheckPendingWriteDataRequestStats(0, 4, zero);
         b.CheckCachedWriteDataRequestStats(1, 3, t1);
-        b.CheckFlushRequestedWriteDataRequestStats(0, 3, zero);
         b.CheckFlushingWriteDataRequestStats(0, 3, zero);
         b.CheckFlushedWriteDataRequestStats(3, 0, t3);
 
@@ -1992,7 +1970,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         // flushed again
         b.CheckPendingWriteDataRequestStats(0, 4, zero);
         b.CheckCachedWriteDataRequestStats(4, 4, t4);
-        b.CheckFlushRequestedWriteDataRequestStats(0, 4, zero);
         b.CheckFlushingWriteDataRequestStats(0, 3, zero);
         b.CheckFlushedWriteDataRequestStats(0, 0, zero);
 
@@ -2012,7 +1989,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         // FlushAll should have been triggered by hitting cache capacity
         b.CheckPendingWriteDataRequestStats(1, count + 4, t5);
         b.CheckCachedWriteDataRequestStats(0, count + 8, zero);
-        b.CheckFlushRequestedWriteDataRequestStats(0, count + 8, zero);
         b.CheckFlushingWriteDataRequestStats(count + 4, 3, t5);
         b.CheckFlushedWriteDataRequestStats(0, 0, zero);
 
@@ -2023,7 +1999,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         b.CheckPendingWriteDataRequestStats(0, count + 5, zero);
         b.CheckCachedWriteDataRequestStats(1, count + 8, t6);
-        b.CheckFlushRequestedWriteDataRequestStats(0, count + 8, zero);
         b.CheckFlushingWriteDataRequestStats(0, count + 7, zero);
         b.CheckFlushedWriteDataRequestStats(0, count + 4, zero);
 
@@ -2036,7 +2011,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         b.CheckPendingWriteDataRequestStats(0, count + 5, zero);
         b.CheckCachedWriteDataRequestStats(0, count + 9, zero);
-        b.CheckFlushRequestedWriteDataRequestStats(0, count + 9, zero);
         b.CheckFlushingWriteDataRequestStats(0, count + 8, zero);
         b.CheckFlushedWriteDataRequestStats(0, count + 5, zero);
 
@@ -2237,6 +2211,72 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
             responseWithInvalidIovecLength.GetError().GetCode());
+    }
+
+    Y_UNIT_TEST(ShouldAutomaticallyFlushOnlyCachedRequests)
+    {
+        TBootstrap b;
+        TManualProceedHandlers writeRequests(b.Session->WriteDataHandler);
+
+        // Fill the cache until the requests become pending
+        while (true) {
+            auto writeFuture = b.WriteToCache(1, 0, "0123456789");
+            if (!writeFuture.HasValue()) {
+                break;
+            }
+        }
+
+        UNIT_ASSERT(!b.WriteToCache(2, 0, "abcdefghij").HasValue());
+
+        writeRequests.ProceedAll();
+
+        UNIT_ASSERT_VALUES_EQUAL(2, b.Stats->CachedStats.InProgressCount);
+    }
+
+    Y_UNIT_TEST(ShouldFlushPendingRequests_FlushNodeData)
+    {
+        TBootstrap b;
+        TManualProceedHandlers writeRequests(b.Session->WriteDataHandler);
+
+        // Fill the cache until the requests become pending
+        while (true) {
+            auto writeFuture = b.WriteToCache(1, 0, "0123456789");
+            if (!writeFuture.HasValue()) {
+                break;
+            }
+        }
+
+        UNIT_ASSERT(!b.WriteToCache(2, 0, "abcdefghij").HasValue());
+
+        auto flushNodeDataFuture = b.Cache.FlushNodeData(2);
+
+        writeRequests.ProceedAll();
+
+        UNIT_ASSERT(flushNodeDataFuture.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Stats->CachedStats.InProgressCount);
+    }
+
+    Y_UNIT_TEST(ShouldFlushPendingRequests_FlushAllData)
+    {
+        TBootstrap b;
+        TManualProceedHandlers writeRequests(b.Session->WriteDataHandler);
+
+        // Fill the cache until the requests become pending
+        while (true) {
+            auto writeFuture = b.WriteToCache(1, 0, "0123456789");
+            if (!writeFuture.HasValue()) {
+                break;
+            }
+        }
+
+        UNIT_ASSERT(!b.WriteToCache(2, 0, "abcdefghij").HasValue());
+
+        auto flushAllDataFuture = b.Cache.FlushAllData();
+
+        writeRequests.ProceedAll();
+
+        UNIT_ASSERT(flushAllDataFuture.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Stats->CachedStats.InProgressCount);
     }
 }
 

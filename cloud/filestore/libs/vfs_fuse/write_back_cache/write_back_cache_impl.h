@@ -57,8 +57,12 @@ struct Y_PACKED TWriteBackCache::TCachedWriteDataRequest
 
 class TWriteBackCache::TWriteDataEntry
     : public TIntrusiveListItem<TWriteDataEntry>
+    , public TIntrusiveListItem<TWriteDataEntry, TGlobalListTag>
+    , public TIntrusiveListItem<TWriteDataEntry, TNodeListTag>
 {
 private:
+    ui64 RequestId = 0;
+
     // Original write data request is stored until serialization into
     // persistent queue is performed.
     // The idea is to deduplicate memory and to reference request buffer
@@ -69,7 +73,6 @@ private:
     const TCachedWriteDataRequest* CachedRequest = nullptr;
 
     NThreading::TPromise<NProto::TWriteDataResponse> CachedPromise;
-    NThreading::TPromise<void> FlushPromise;
 
     EWriteDataRequestStatus Status = EWriteDataRequestStatus::Initial;
     TInstant StatusChangeTime = TInstant::Zero();
@@ -83,6 +86,17 @@ public:
         TStringBuf serializedRequest,
         TWriteDataEntryDeserializationStats& stats,
         TImpl* impl);
+
+    ui64 GetRequestId() const
+    {
+        return RequestId;
+    }
+
+    void SetRequestId(ui64 requestId)
+    {
+        Y_ABORT_UNLESS(RequestId == 0);
+        RequestId = requestId;
+    }
 
     ui64 GetNodeId() const
     {
@@ -144,18 +158,12 @@ public:
 
     bool IsCached() const
     {
-        return Status == EWriteDataRequestStatus::Cached ||
-               Status == EWriteDataRequestStatus::FlushRequested;
+        return Status == EWriteDataRequestStatus::Cached;
     }
 
     bool IsCorrupted() const
     {
         return Status == EWriteDataRequestStatus::Corrupted;
-    }
-
-    bool IsFlushRequested() const
-    {
-        return Status == EWriteDataRequestStatus::FlushRequested;
     }
 
     bool IsFlushed() const
@@ -172,13 +180,11 @@ public:
         TPendingOperations& pendingOperations,
         TImpl* impl);
 
-    bool RequestFlush(TImpl* impl);
     void StartFlush(TImpl* impl);
-    void FinishFlush(TPendingOperations& pendingOperations, TImpl* impl);
+    void FinishFlush(TImpl* impl);
     void Complete(TImpl* impl);
 
     NThreading::TFuture<NProto::TWriteDataResponse> GetCachedFuture();
-    NThreading::TFuture<void> GetFlushFuture();
 
 private:
     void SetStatus(EWriteDataRequestStatus status, TImpl* impl);
