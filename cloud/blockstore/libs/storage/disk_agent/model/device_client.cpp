@@ -465,7 +465,8 @@ bool TDeviceClient::IsDeviceSuspended(const TString& uuid) const
 
 bool TDeviceClient::IsDeviceEnabled(const TString& uuid) const
 {
-    return !GetDeviceIOErrorCode(uuid).has_value();
+    return !GetDeviceIOErrorCode(uuid).has_value() &&
+           !HasError(AccessDevice(uuid).GetError());
 }
 
 // static

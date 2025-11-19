@@ -82,6 +82,7 @@ void TDiskAgentActor::HandlePathsDetached(
             JoinSeq(",", pathsToDetach).c_str(),
             FormatError(error).c_str());
     } else {
+        RestartDeviceHealthChecking(ctx);
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_AGENT,
