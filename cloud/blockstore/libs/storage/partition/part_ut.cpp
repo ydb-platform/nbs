@@ -185,23 +185,25 @@ public:
                 auto it = EventDependencies.find(eventType);
                 if (it != EventDependencies.end()) {
                     ui32 prerequisiteEvent = it->second;
-                    auto& actorProcessed = ProcessedEvents[recipient];
-                    if (!actorProcessed.contains(prerequisiteEvent)) {
+                    auto& processedEventsByRecipient =
+                        ProcessedEvents[recipient];
+                    if (!processedEventsByRecipient.contains(
+                            prerequisiteEvent)) {
                         DelayedEvents[recipient][prerequisiteEvent] =
                             std::move(ev);
                         return true;
                     }
                 }
 
-                auto& actorDelayed = DelayedEvents[recipient];
-                auto delayedIt = actorDelayed.find(eventType);
-                if (delayedIt != actorDelayed.end()) {
+                auto& delayedEventsByRecipient = DelayedEvents[recipient];
+                auto delayedIt = delayedEventsByRecipient.find(eventType);
+                if (delayedIt != delayedEventsByRecipient.end()) {
                     ProcessedEvents[recipient].insert(eventType);
                     TAutoPtr<IEventHandle> delayedEvent =
                         std::move(delayedIt->second);
-                    actorDelayed.erase(delayedIt);
+                    delayedEventsByRecipient.erase(delayedIt);
 
-                    if (actorDelayed.empty()) {
+                    if (delayedEventsByRecipient.empty()) {
                         DelayedEvents.erase(recipient);
                     }
 
