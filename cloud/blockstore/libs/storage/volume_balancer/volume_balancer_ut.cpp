@@ -199,12 +199,6 @@ struct TStatsFetcherMock: public NCloud::NStorage::IStatsFetcher
         Value = std::move(value);
     }
 
-    void Start() override
-    {}
-
-    void Stop() override
-    {}
-
     TResultOrError<TDuration> GetCpuWait() override
     {
         return Value;
