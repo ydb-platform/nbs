@@ -82,6 +82,12 @@ void TDiskRegistryActor::CompleteUpdateCmsHostState(
     const TActorContext& ctx,
     TTxDiskRegistry::TUpdateCmsHostState& args)
 {
+    const auto* agent = State->FindAgent(args.Host);
+    const bool needToDetachPaths =
+        Config->GetAttachDetachPathsEnabled() &&
+        args.State == NProto::AGENT_STATE_WARNING && !HasError(args.Error) &&
+        agent && agent->GetState() != NProto::AGENT_STATE_UNAVAILABLE;
+
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
@@ -110,13 +116,38 @@ void TDiskRegistryActor::CompleteUpdateCmsHostState(
     SecureErase(ctx);
     StartMigration(ctx);
 
-    using TResponse = TEvDiskRegistryPrivate::TEvUpdateCmsHostStateResponse;
+    ProcessPathsToAttach(ctx);
 
-    auto response = std::make_unique<TResponse>(std::move(args.Error));
-    response->Timeout = args.Timeout;
-    response->DependentDiskIds = std::move(args.AffectedDisks);
+    if (!needToDetachPaths) {
+        using TResponse = TEvDiskRegistryPrivate::TEvUpdateCmsHostStateResponse;
 
-    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+        auto response = std::make_unique<TResponse>(std::move(args.Error));
+        response->Timeout = args.Timeout;
+        response->DependentDiskIds = std::move(args.AffectedDisks);
+
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+        return;
+    }
+
+    TVector<TString> paths;
+    for (const auto& [path, state]: agent->GetPathAttachStates()) {
+        if (state == NProto::PATH_ATTACH_STATE_DETACHED) {
+            paths.emplace_back(path);
+        }
+    }
+
+    for (const auto& device: agent->GetUnknownDevices()) {
+        paths.emplace_back(device.GetDeviceName());
+    }
+
+    SortUnique(paths);
+
+    TryToDetachPaths(
+        ctx,
+        args.Host,
+        std::move(paths),
+        args.RequestInfo,
+        NProto::TAction::REMOVE_HOST);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

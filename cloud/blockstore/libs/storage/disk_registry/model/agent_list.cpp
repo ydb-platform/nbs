@@ -88,7 +88,8 @@ TAgentList::TAgentList(
         const TAgentListConfig& config,
         NMonitoring::TDynamicCountersPtr counters,
         TVector<NProto::TAgentConfig> configs,
-        THashMap<TString, NProto::TDiskRegistryAgentParams> diskRegistryAgentListParams,
+        THashMap<TString, NProto::TDiskRegistryAgentParams>
+            diskRegistryAgentListParams,
         TLog log)
     : Config(config)
     , ComponentGroup(std::move(counters))
@@ -103,6 +104,14 @@ TAgentList::TAgentList(
 
     if (ComponentGroup) {
         RejectAgentTimeoutCounter.Register(ComponentGroup, "RejectAgentTimeout");
+    }
+
+    for (const auto& agents: Agents) {
+        for (const auto& [path, state]: agents.GetPathAttachStates()) {
+            if (state == NProto::PATH_ATTACH_STATE_ATTACHING) {
+                AddPathToAttach(agents.GetAgentId(), path);
+            }
+        }
     }
 }
 
@@ -647,6 +656,8 @@ void TAgentList::RemoveAgentByIdx(size_t index)
 
     auto& agent = Agents.back();
 
+    DiskAgentGenerations.erase(agent.GetAgentId());
+    PathsToAttach.erase(agent.GetAgentId());
     AgentIdToIdx.erase(agent.GetAgentId());
     NodeIdToIdx.erase(agent.GetNodeId());
 
@@ -690,6 +701,55 @@ TVector<TString> TAgentList::GetAgentIdsWithOverriddenListParams() const
         agentIds.push_back(agentId);
     }
     return agentIds;
+}
+
+ui64 TAgentList::GetDiskAgentGeneration(const TString& agentId) const
+{
+    const auto* agentGeneration = DiskAgentGenerations.FindPtr(agentId);
+
+    return agentGeneration ? *agentGeneration : 1;
+}
+
+ui64 TAgentList::InrementAndGetDiskAgentGeneration(const TString& agentId)
+{
+    auto& agentGeneration = DiskAgentGenerations[agentId];
+
+    if (!agentGeneration) {
+        agentGeneration = 1;
+    }
+
+    return ++agentGeneration;
+}
+
+auto TAgentList::GetPathsToAttach() const
+    -> const THashMap<TAgentId, THashSet<TString>>&
+{
+    return PathsToAttach;
+}
+
+void TAgentList::AddPathToAttach(
+    const TString& agentId,
+    const TString& path)
+{
+    auto& pathsForAgent = PathsToAttach[agentId];
+    pathsForAgent.insert(path);
+}
+
+void TAgentList::DeletePathToAttach(
+    const TString& agentId,
+    const TString& path)
+{
+    auto it = PathsToAttach.find(agentId);
+    if (it == PathsToAttach.end()) {
+        return;
+    }
+
+    auto& pathsForAgent = it->second;
+    pathsForAgent.erase(path);
+
+    if (!pathsForAgent) {
+        PathsToAttach.erase(it);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

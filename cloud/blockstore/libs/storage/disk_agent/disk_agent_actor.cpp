@@ -187,6 +187,20 @@ TDuration TDiskAgentActor::GetMaxRequestTimeout() const
         Config->GetNonReplicatedMaxRequestTimeoutHDD());
 }
 
+void TDiskAgentActor::HandleAttachPath(
+    const TEvDiskAgent::TEvAttachPathRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    RejectAttachPath(ev, ctx);
+}
+
+void TDiskAgentActor::HandleDetachPath(
+    const TEvDiskAgent::TEvDetachPathRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    RejectDetachPath(ev, ctx);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskAgentActor::HandleReportDelayedDiskAgentConfigMismatch(
