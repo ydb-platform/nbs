@@ -51,6 +51,7 @@ namespace {
     xxx(ZeroCopyWriteEnabled,         bool,     false                         )\
     xxx(FSyncQueueDisabled,           bool,     false                         )\
     xxx(GuestHandleKillPrivV2Enabled, bool,     false                         )\
+    xxx(ZeroCopyReadEnabled,          bool,     false                         )\
 // FILESTORE_FUSE_CONFIG
 
 #define FILESTORE_FILESYSTEM_DECLARE_CONFIG(name, type, value)                 \

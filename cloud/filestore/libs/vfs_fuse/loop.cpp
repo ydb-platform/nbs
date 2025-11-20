@@ -1193,6 +1193,7 @@ private:
         config.SetMaxFuseLoopThreads(features.GetMaxFuseLoopThreads());
 
         config.SetZeroCopyWriteEnabled(features.GetZeroCopyWriteEnabled());
+        config.SetZeroCopyReadEnabled(features.GetZeroCopyReadEnabled());
 
         config.SetFSyncQueueDisabled(features.GetFSyncQueueDisabled());
 
