@@ -38,11 +38,36 @@ ui32 GetBlockSize(const std::string& path)
     return s.st_blksize;
 }
 
-ui64 GetFileLength(const std::string& path)
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+const NProto::TStorageDiscoveryConfig::TPoolConfig* FindPoolConfig(
+    const NProto::TStorageDiscoveryConfig::TPathConfig& pathConfig,
+    ui64 fileSize)
 {
-    TFileHandle file(path.c_str(),
-          EOpenModeFlag::RdOnly
-        | EOpenModeFlag::OpenExisting);
+    return FindIfPtr(
+        pathConfig.GetPoolConfigs(),
+        [&](const auto& pool)
+        {
+            ui64 minSize = pool.GetMinSize();
+
+            if (!minSize && pool.HasLayout()) {
+                minSize = pool.GetLayout().GetHeaderSize() +
+                          pool.GetLayout().GetDeviceSize();
+            }
+
+            const ui64 maxSize = pool.GetMaxSize() ? pool.GetMaxSize() : fileSize;
+
+            return minSize <= fileSize && fileSize <= maxSize;
+        });
+}
+
+ui64 GetFileLengthWithSeek(const TString& path)
+{
+    TFileHandle file(
+        path.c_str(),
+        EOpenModeFlag::RdOnly | EOpenModeFlag::OpenExisting);
 
     if (!file.IsOpen()) {
         const int ec = errno;
@@ -59,15 +84,11 @@ ui64 GetFileLength(const std::string& path)
     }
 
     if (!size) {
-        ythrow TServiceError {E_FAIL} << "zero file size: " << path;
+        ythrow TServiceError{E_FAIL} << "zero file size: " << path;
     }
 
     return size;
 }
-
-}   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
 
 NProto::TError FindDevices(
     const NProto::TStorageDiscoveryConfig& config,
@@ -112,22 +133,8 @@ NProto::TError FindDevices(
                         << path << ": the device number can't be zero");
                 }
 
-                const ui64 size = GetFileLength(path);
-                auto* pool = FindIfPtr(p.GetPoolConfigs(), [&] (const auto& pool) {
-                    ui64 minSize = pool.GetMinSize();
-
-                    if (!minSize && pool.HasLayout()) {
-                        minSize =
-                            pool.GetLayout().GetHeaderSize() +
-                            pool.GetLayout().GetDeviceSize();
-                    }
-
-                    const ui64 maxSize = pool.GetMaxSize()
-                        ? pool.GetMaxSize()
-                        : size;
-
-                    return minSize <= size && size <= maxSize;
-                });
+                const ui64 size = GetFileLengthWithSeek(path.c_str());
+                auto* pool = FindPoolConfig(p, size);
 
                 if (!pool) {
                     return MakeError(E_NOT_FOUND, TStringBuilder()
