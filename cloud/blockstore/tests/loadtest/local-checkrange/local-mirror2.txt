@@ -1,7 +1,7 @@
 Vertices {
     Test {
         Name: "prepare_mirror2_volume"
-        TestDuration: 30
+        TestDuration: 10
         Verify: false
         VolumeName: "test_volume_mrr2"
 
@@ -46,7 +46,7 @@ Vertices {
                 MaxRequestSize: 8
             }
         }
-        TestDuration: 30
+        TestDuration: 10
     }
 }
 

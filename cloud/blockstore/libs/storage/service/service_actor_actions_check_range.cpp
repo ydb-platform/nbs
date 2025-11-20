@@ -145,13 +145,14 @@ void TCheckRangeActor::HandleCheckRangeResponse(
     auto& record = ev->Get()->Record;
     NProto::TCheckRangeResponse response;
     response.MutableStatus()->CopyFrom(record.GetStatus());
-    response.MutableChecksums()->Swap(record.MutableChecksums());
-    response.MutableMirrorChecksums()->Swap(record.MutableMirrorChecksums());
+    if (record.HasDiskChecksums()) {
+        response.MutableDiskChecksums()->Swap(record.MutableDiskChecksums());
+    } else if (record.HasMirrorChecksums()) {
+        response.MutableMirrorChecksums()->Swap(
+            record.MutableMirrorChecksums());
+    }
 
-    return ReplyAndDie(
-        ctx,
-        ev->Get()->Record.GetError(),
-        std::move(response));
+    return ReplyAndDie(ctx, ev->Get()->Record.GetError(), std::move(response));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

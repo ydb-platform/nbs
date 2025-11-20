@@ -46,13 +46,11 @@ public:
     struct TPartitionNonrepl
     {
         TString DiskId;
-        TString ActorId;
     };
 
     struct TPartitionMirror
     {
         TString DiskId;
-        TString ActorId;
     };
 
     struct TSession

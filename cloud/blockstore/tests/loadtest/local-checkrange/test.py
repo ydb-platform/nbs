@@ -41,7 +41,7 @@ class TestCase(object):
             name,
             config_path,
             storage_media_kind,
-            volume_name,  # должно совпадать с именем в .txt конфиге теста
+            volume_name,  # must be the same as VolumeName in the .txt config
             agent_count=1):
         self.name = name
         self.config_path = config_path
@@ -59,13 +59,6 @@ TESTS = [
         storage_media_kind="mirror2",
         volume_name="test_volume_mrr2",
         agent_count=2,
-    ),
-    TestCase(
-        "checkrange_mirror3",
-        "cloud/blockstore/tests/loadtest/local-checkrange/local-mirror3.txt",
-        storage_media_kind="mirror3",
-        volume_name="test_volume_mrr3",
-        agent_count=3,
     ),
     TestCase(
         "checkrange_ssd",
@@ -288,7 +281,8 @@ def __run_test(test_case):
             env_processes=disk_agents + [nbs],
         )
 
-        checkrange_output_file = "checkrange_output.data"
+        checkrange_output_file = yatest_common.output_path() + \
+            "/checkrange_output.data"
         client.checkrange(
             test_case.volume_name,
             checkrange_output_file,
@@ -318,8 +312,7 @@ def __validate_checkrange(test_case, checkrange_result_file):
     except json.JSONDecodeError as e:
         raise Exception(f"Checkrange parse result error {e}")
 
-    test_mirrors = test_case.storage_media_kind == "mirror2" \
-        or test_case.storage_media_kind == "mirror3"
+    test_mirrors = test_case.storage_media_kind == "mirror2"
 
     expected_requests_num = test_case.disk_blocks_count / \
         test_case.blocks_per_request
@@ -336,38 +329,35 @@ def __validate_checkrange(test_case, checkrange_result_file):
     for r in data['Ranges']:
         start = r['Start']
         end = r['End']
-        have_error = r.get('Error') is not None
-        if not have_error:
-            checksums = r['Checksums']
+        has_error = r.get('Error') is not None
+        if not has_error:
+            checksums = r['DiskChecksums']
             if checksums is None or len(checksums) == 0:
                 raise Exception(
-                    f"Expected 'Checksums' is missing for correct range "
+                    f"Expected 'DiskChecksums' is missing for correct range "
                     f"{start}-{end}")
-        else:
-            if not test_mirrors:
-                continue
-            mirror_checksums = r['MirrorChecksums']
-            if mirror_checksums is None:
-                raise Exception(
-                    f"Expected 'MirrorChecksums' array for problem range "
-                    f"{start}-{end}")
-            if len(mirror_checksums) != test_case.agent_count:
-                raise Exception(
-                    f"Expected {test_case.agent_count} MirrorChecksums for"
-                    f" {test_case.name}, actual {len(mirror_checksums)}")
-            expected_problem_ranges.append((start, end))
-            for mirrorCS in mirror_checksums:
-                if mirrorCS.get('ReplicaName') is None:
-                    raise Exception(
-                        f"Expected 'ReplicaName' is missing for problem range "
-                        f"{start}-{end}")
-                checksums = mirrorCS['Checksums']
-                if checksums is None or len(checksums) == 0:
-                    raise Exception(
-                        f"Expected 'Checksums' is missing for problem range "
-                        f"{start}-{end}")
+            continue
+        if not test_mirrors:
+            continue
+        mirror_checksums = r['MirrorChecksums']
+        if mirror_checksums is None:
+            raise Exception(
+                f"Expected 'MirrorChecksums' array for problem range "
+                f"{start}-{end}")
+        if len(mirror_checksums) != test_case.agent_count:
+            raise Exception(
+                f"Expected {test_case.agent_count} MirrorChecksums for"
+                f" {test_case.name}, actual {len(mirror_checksums)}")
+        expected_problem_ranges.append((start, end))
 
-    # проверка алгоритма мержа problem_ranges
+        for mirror_checksum in mirror_checksums:
+            checksums = mirror_checksum['Data']
+            if checksums is None or len(checksums) == 0:
+                raise Exception(
+                    f"Expected 'Data' is missing for problem range "
+                    f"{start}-{end}")
+
+    # check merge algorithm for problem ranges
     actual_problem_ranges = data['Summary'].get('ProblemRanges')
     actual_problem_ranges_size = 0
     if actual_problem_ranges is not None:

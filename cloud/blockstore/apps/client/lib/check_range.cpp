@@ -116,7 +116,8 @@ private:
     TString CreateNextInput(TBlockRange64 range) const;
 };
 
-TCheckRangeCommand::TCheckRangeCommand(IBlockStorePtr client): TCommand(std::move(client))
+TCheckRangeCommand::TCheckRangeCommand(IBlockStorePtr client)
+    : TCommand(std::move(client))
 {
     Opts.AddLongOption("disk-id", "volume identifier")
         .RequiredArgument("STR")
@@ -253,7 +254,8 @@ std::optional<TBlockRange64> TRequestBuilder::Next()
     return range;
 }
 
-TResultManager::TResultManager(IOutputStream& output): Output(output)
+TResultManager::TResultManager(IOutputStream& output)
+    : Output(output)
 {
     Output << "{";
 }
@@ -306,8 +308,7 @@ void TResultManager::SetRangeResult(
     }
 
     NJson::TJsonValue resp;
-    if (!NJson::ReadJsonTree(result.GetOutput(), &resp) ||
-        !resp.Has("Status"))
+    if (!NJson::ReadJsonTree(result.GetOutput(), &resp) || !resp.Has("Status"))
     {
         ErrorCount++;
         res["Error"]["Message"] = "Unknown response's format";
@@ -322,13 +323,15 @@ void TResultManager::SetRangeResult(
         res["Error"] = FormatErrorJson(status);
     }
 
-    if (resp.Has("Checksums") && !resp["Checksums"].GetArray().empty()) {
-        res["Checksums"] = std::move(resp["Checksums"]);
+    if (resp.Has("DiskChecksums") &&
+        !resp["DiskChecksums"]["Data"].GetArray().empty())
+    {
+        res["DiskChecksums"] = std::move(resp["DiskChecksums"]["Data"]);
     }
     if (resp.Has("MirrorChecksums") &&
-        !resp["MirrorChecksums"].GetArray().empty())
+        !resp["MirrorChecksums"]["Replicas"].GetArray().empty())
     {
-        res["MirrorChecksums"] = std::move(resp["MirrorChecksums"]);
+        res["MirrorChecksums"] = std::move(resp["MirrorChecksums"]["Replicas"]);
     }
 
     if (res.Has("Error")) {
@@ -339,8 +342,7 @@ void TResultManager::SetRangeResult(
 
 void TResultManager::AddProblemRangeWithMerging(const TBlockRange64& range)
 {
-    if (ProblemRanges.size() && ProblemRanges.back().End + 1 == range.Start)
-    {
+    if (ProblemRanges.size() && ProblemRanges.back().End + 1 == range.Start) {
         ProblemRanges.back().End = range.End;
     } else {
         ProblemRanges.push_back(range);

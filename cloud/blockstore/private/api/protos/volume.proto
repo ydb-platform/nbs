@@ -3,7 +3,6 @@ syntax = "proto3";
 package NCloud.NBlockStore.NPrivateProto;
 
 import "cloud/blockstore/private/api/protos/blob.proto";
-import "cloud/storage/core/protos/error.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/private/api/protos";
 
@@ -294,41 +293,4 @@ message TFinishFillDiskRequest
 
 message TFinishFillDiskResponse
 {
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// CheckRange
-
-message TMirrorChecksums
-{
-    // Checksum of blocks
-    repeated uint32 Checksums = 1;
-
-    // Name of replica which checksum belongs to
-    string ReplicaName = 2;
-}
-
-message TCheckRangeRequest
-{
-    reserved 4,5;
-
-    string DiskId = 1;
-
-    // First block index.
-    uint32 StartIndex = 2;
-
-    // Number of blobs per batch.
-    uint32 BlocksCount = 3;
-}
-
-message TCheckRangeResponse
-{
-    // Status of ReadBlocks operation.
-    NCloud.NProto.TError Status = 1;
-
-    // checksum of blocks
-    repeated uint32 Checksums = 2;
-
-    // Checksums of blocks for mirror if differ
-    repeated TMirrorChecksums MirrorChecksums = 3;
 }

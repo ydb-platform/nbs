@@ -30,21 +30,17 @@ namespace {
 class TMirrorCheckRangeActor final: public TCheckRangeActor
 {
 private:
+    const ui32 ReplicasNumber;
     bool ErrorOnReplicaReading{false};
-    uint32_t ResponseCount{0};
-    const TVector<TString> ReplicasNames;
+    ui32 ResponseCount{0};
     TVector<ui32> ReplicasSummaryChecksums;
-    NCloud::NBlockStore::NProto::TCheckRangeResponse Response;
+    NProto::TCheckRangeResponse Response;
 
 public:
-    using TCheckRangeActor::TCheckRangeActor;
     template <typename... TArgs>
     explicit TMirrorCheckRangeActor(
-        TVector<TString> replicasNames,
-        TArgs&&... args)
-        : TCheckRangeActor(std::forward<TArgs>(args)...)
-        , ReplicasNames(std::move(replicasNames))
-    {}
+        ui32 replicasNumber,
+        TArgs&&... args);
 
 protected:
     bool OnMessage(TAutoPtr<NActors::IEventHandle>& ev) override;
@@ -62,6 +58,14 @@ private:
         const ::NCloud::NProto::TError& error);
 };
 
+template <typename... TArgs>
+TMirrorCheckRangeActor::TMirrorCheckRangeActor(
+        ui32 replicasNumber,
+        TArgs&&... args)
+    : TCheckRangeActor(std::forward<TArgs>(args)...)
+    , ReplicasNumber{replicasNumber}
+{}
+
 bool TMirrorCheckRangeActor::OnMessage(TAutoPtr<NActors::IEventHandle>& ev)
 {
     switch (ev->GetTypeRewrite()) {
@@ -77,9 +81,7 @@ bool TMirrorCheckRangeActor::OnMessage(TAutoPtr<NActors::IEventHandle>& ev)
 
 void TMirrorCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 {
-    const TString clientId{CheckRangeClientId};
-
-    for (ui32 i = 1; i < ReplicasNames.size() + 1; ++i) {
+    for (ui32 i = 1; i <= ReplicasNumber; ++i) {
         auto request = std::make_unique<TEvService::TEvReadBlocksRequest>();
 
         request->Record.SetStartIndex(Request.GetStartIndex());
@@ -87,10 +89,10 @@ void TMirrorCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
 
         auto* headers = request->Record.MutableHeaders();
         headers->SetReplicaIndex(i);
-        headers->SetClientId(clientId);
+        headers->SetClientId(TString(CheckRangeClientId));
         headers->SetIsBackgroundRequest(true);
 
-        Response.MutableMirrorChecksums()->Add({});
+        Response.MutableMirrorChecksums()->MutableReplicas()->Add({});
         ReplicasSummaryChecksums.push_back(0);
         NCloud::Send(ctx, Partition, std::move(request), i);
     }
@@ -104,23 +106,23 @@ void TMirrorCheckRangeActor::HandleReadBlocksResponseError(
     LOG_ERROR_S(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "reading error has occurred: " << FormatError(error) << ". Disk: "
-                                       << LogTitle.GetWithTime().c_str());
+        LogTitle.GetWithTime()
+            << " reading error has occurred: " << FormatError(error));
 
     // 1 result error for all replicas
     ErrorOnReplicaReading = true;
     Response.MutableStatus()->SetCode(error.GetCode());
     *Response.MutableStatus()->MutableMessage() +=
-        ReplicasNames[ev->Cookie - 1] + " ";
+        "replica id: " + std::to_string(ev->Cookie - 1) + " ";
 }
 
 void TMirrorCheckRangeActor::CalculateChecksums(
     const TEvService::TEvReadBlocksResponse::TPtr& ev)
 {
-    ui32 replicaIdx = ev->Cookie - 1;
-    auto& mirrorChecksums = (*Response.MutableMirrorChecksums())[replicaIdx];
-    auto* replicaChecksums = mirrorChecksums.MutableChecksums();
-    mirrorChecksums.SetReplicaName(std::move(ReplicasNames[replicaIdx]));
+    const ui32 replicaIdx = ev->Cookie - 1;
+    auto& replica =
+        (*Response.MutableMirrorChecksums()->MutableReplicas())[replicaIdx];
+    auto* replicaChecksums = replica.MutableData();
 
     TBlockChecksum summaryChecksum;
     for (const auto& buffer: ev->Get()->Record.GetBlocks().GetBuffers()) {
@@ -144,7 +146,7 @@ void TMirrorCheckRangeActor::HandleReadBlocksResponse(
         CalculateChecksums(ev);
     }
 
-    if (ResponseCount == ReplicasNames.size()) {
+    if (ResponseCount == ReplicasNumber) {
         Done(ctx);
     }
 }
@@ -157,19 +159,21 @@ void TMirrorCheckRangeActor::Done(const NActors::TActorContext& ctx)
             ReplicasSummaryChecksums,
             std::not_equal_to{}) == std::ranges::end(ReplicasSummaryChecksums);
     if (!ErrorOnReplicaReading && checksumsEqual) {
-        *Response.MutableChecksums() =
-            std::move((*Response.MutableMirrorChecksums())[0].GetChecksums());
-        Response.ClearMirrorChecksums();
+        auto replicas = Response.MutableMirrorChecksums()->MutableReplicas();
+        auto* srcData = (*replicas)[0].MutableData();
+        std::remove_pointer_t<decltype(srcData)> hlp;
+        hlp.Swap(srcData);
+
+        auto& destData = *Response.MutableDiskChecksums()->MutableData();
+        // at this moment Response.MutableMirrorChecksums() is empty already
+        destData.Swap(&hlp);
     } else {
-        Response.ClearChecksums();
         if (!ErrorOnReplicaReading) {
             ui32 flags = 0;
             SetProtoFlag(flags, NProto::EF_CHECKSUM_MISMATCH);
-            *Response.MutableStatus() = MakeError(
-                E_IO,
-                "Replicas checksum mismatch",
-                flags);
-        } // else using error that we have already
+            *Response.MutableStatus() =
+                MakeError(E_IO, "Replicas checksum mismatch", flags);
+        }   // Else using the error that we already have
     }
 
     response->Record = std::move(Response);
@@ -199,19 +203,9 @@ void TMirrorPartitionActor::HandleCheckRange(
         return;
     }
 
-    TVector<TString> replicaNames;
-    for (const auto& replicaInfo: State.GetReplicaInfos()) {
-        STORAGE_VERIFY(
-            replicaInfo.Config->GetDevices().size() > 0,
-            NCloud::TWellKnownEntityTypes::DISK,
-            DiskId);
-        replicaNames.push_back(
-            replicaInfo.Config->GetDevices()[0].GetDeviceUUID());
-    }
-
     NCloud::Register<TMirrorCheckRangeActor>(
         ctx,
-        std::move(replicaNames),
+        State.GetReplicaInfos().size(),
         SelfId(),
         std::move(record),
         CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext),

@@ -2689,12 +2689,12 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         ui32 flags = 0;
         SetProtoFlag(flags, NProto::EF_CHECKSUM_MISMATCH);
         UNIT_ASSERT_VALUES_UNEQUAL(flags, record.GetStatus().flags());
-        UNIT_ASSERT_VALUES_EQUAL(0, record.GetChecksums().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, record.GetDiskChecksums().GetData().size());
 
         ui32 EmptyCheksumsCnt{0};
         ui32 NonEmptyCheksumsCnt{0};
-        for (const auto& cs: record.GetMirrorChecksums()) {
-            if (cs.GetChecksums().size()) {
+        for (const auto& cs: record.GetMirrorChecksums().GetReplicas()) {
+            if (cs.GetData().size()) {
                 ++NonEmptyCheksumsCnt;
             } else {
                 ++EmptyCheksumsCnt;
@@ -2724,12 +2724,12 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         ui32 flags = 0;
         SetProtoFlag(flags, NProto::EF_CHECKSUM_MISMATCH);
         UNIT_ASSERT_VALUES_EQUAL(flags, record.GetStatus().flags());
-        UNIT_ASSERT_VALUES_EQUAL(0, record.GetChecksums().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, record.GetDiskChecksums().GetData().size());
 
         ui32 EmptyCheksumsCnt{0};
         ui32 NonEmptyCheksumsCnt{0};
-        for (const auto& cs: record.GetMirrorChecksums()) {
-            if (cs.GetChecksums().size()) {
+        for (const auto& replica: record.GetMirrorChecksums().GetReplicas()) {
+            if (replica.GetData().size()) {
                 ++NonEmptyCheksumsCnt;
             } else {
                 ++EmptyCheksumsCnt;
@@ -2739,12 +2739,18 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(0, EmptyCheksumsCnt);
         int equalsChecksums{0};
         {
-            const auto &cs0 = record.GetMirrorChecksums()[0].GetChecksums();
-            const auto &cs1 = record.GetMirrorChecksums()[1].GetChecksums();
-            const auto &cs2 = record.GetMirrorChecksums()[2].GetChecksums();
-            equalsChecksums += std::equal(cs0.begin(), cs0.end(), cs1.begin(), cs1.end());
-            equalsChecksums += std::equal(cs0.begin(), cs0.end(), cs2.begin(), cs2.end());
-            equalsChecksums += std::equal(cs1.begin(), cs1.end(), cs2.begin(), cs2.end());
+            const auto& cs0 =
+                record.GetMirrorChecksums().GetReplicas()[0].GetData();
+            const auto& cs1 =
+                record.GetMirrorChecksums().GetReplicas()[1].GetData();
+            const auto& cs2 =
+                record.GetMirrorChecksums().GetReplicas()[2].GetData();
+            equalsChecksums +=
+                std::equal(cs0.begin(), cs0.end(), cs1.begin(), cs1.end());
+            equalsChecksums +=
+                std::equal(cs0.begin(), cs0.end(), cs2.begin(), cs2.end());
+            equalsChecksums +=
+                std::equal(cs1.begin(), cs1.end(), cs2.begin(), cs2.end());
         }
         UNIT_ASSERT_VALUES_EQUAL(1, equalsChecksums);
     }

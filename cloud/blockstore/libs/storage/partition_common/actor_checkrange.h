@@ -29,7 +29,7 @@ protected:
 public:
     TCheckRangeActor(
         const NActors::TActorId& partition,
-        NProto::TCheckRangeRequest&& request,
+        NProto::TCheckRangeRequest request,
         TRequestInfoPtr requestInfo,
         ui64 blockSize,
         TLogTitle logTitle);

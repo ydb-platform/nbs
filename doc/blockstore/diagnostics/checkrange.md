@@ -1,7 +1,6 @@
 # Utility checkarange
 
 ## Description
-
 This is a part of the blockstore-client application and is launched in the standard way for it: `blockstore-client checkrange`. The utility calculates the checksums of each requested block and checks the integrity of the data of the specified blocks for each supported disk type:
 - non replicated disk (data reading):
   - calculate checksums;
@@ -46,11 +45,10 @@ The utility supports the following options:
       "Start": 0,
       "End": 1023,
       "Error": {}, // if there was an error
-      "Checksums": [], // if they were obtained
+      "DiskChecksums": [1, 2, 3, 4, 5], // if they were obtained
       "MirrorChecksums": [ // for mirror disks in case of checksum difference for at least 2 replicas
         {
-          "ReplicaName": "name",
-          "Checksums": [1, 2, 3, 4, 5]
+          "Data": [1, 2, 3, 4, 5]
         }
       ]
     }

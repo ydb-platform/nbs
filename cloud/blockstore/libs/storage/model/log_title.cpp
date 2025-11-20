@@ -132,22 +132,12 @@ TString ToString(const TLogTitle::TVolumeProxy& data)
 
 TString ToString(const TLogTitle::TPartitionNonrepl& data)
 {
-    TStringBuilder stream;
-    stream << "[";
-    stream << "nrd:" << data.DiskId;
-    stream << " actor_id:" << data.ActorId;
-
-    return stream;
+    return TStringBuilder() << "[nrd:" << data.DiskId;
 }
 
 TString ToString(const TLogTitle::TPartitionMirror& data)
 {
-    TStringBuilder stream;
-    stream << "[";
-    stream << "mirror:" << data.DiskId;
-    stream << " actor_id:" << data.ActorId;
-
-    return stream;
+    return TStringBuilder() << "[md:" << data.DiskId;
 }
 
 TString ToString(const TLogTitle::TDiskRegistry& data)

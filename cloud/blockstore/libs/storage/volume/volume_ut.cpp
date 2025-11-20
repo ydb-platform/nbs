@@ -3565,7 +3565,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             const auto& record = response->Record;
             UNIT_ASSERT_VALUES_EQUAL(false, HasError(record.error()));
             UNIT_ASSERT_VALUES_EQUAL(false, HasError(record.status()));
-            UNIT_ASSERT_VALUES_EQUAL(size, record.GetChecksums().size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                size,
+                record.GetDiskChecksums().GetData().size());
         };
 
         checkRange(0, 1);
@@ -3607,16 +3609,18 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         UNIT_ASSERT_VALUES_EQUAL(false, HasError(record.error()));
         UNIT_ASSERT_VALUES_EQUAL(false, HasError(record.status()));
-        UNIT_ASSERT_VALUES_EQUAL(blockCnt, record.GetChecksums().size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            blockCnt,
+            record.GetDiskChecksums().GetData().size());
         for (ui32 i = 0; i < 2; ++i) {
             UNIT_ASSERT_VALUES_EQUAL(
-                record.GetChecksums()[i],
-                record.GetChecksums()[i + 3]);
+                record.GetDiskChecksums().GetData()[i],
+                record.GetDiskChecksums().GetData()[i + 3]);
         }
         for (ui32 i = 0; i < 2; ++i) {
             UNIT_ASSERT_VALUES_UNEQUAL(
-                record.GetChecksums()[i],
-                record.GetChecksums()[i + 1]);
+                record.GetDiskChecksums().GetData()[i],
+                record.GetDiskChecksums().GetData()[i + 1]);
         }
     }
 
@@ -3672,8 +3676,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(resp2NotNull, true);
         const auto& record2 = response2->Record;
 
-        const auto& checksums1 = record1.GetChecksums();
-        const auto& checksums2 = record2.GetChecksums();
+        const auto& checksums1 = record1.GetDiskChecksums().GetData();
+        const auto& checksums2 = record2.GetDiskChecksums().GetData();
 
         ASSERT_VECTORS_EQUAL(
             TVector<ui32>(checksums1.begin(), checksums1.end()),
@@ -3715,8 +3719,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(resp2NotNull, true);
         const auto& record2 = response2->Record;
 
-        const auto& checksums1 = record1.GetChecksums();
-        const auto& checksums2 = record2.GetChecksums();
+        const auto& checksums1 = record1.GetDiskChecksums().GetData();
+        const auto& checksums2 = record2.GetDiskChecksums().GetData();
 
         UNIT_ASSERT_VALUES_EQUAL(checksums1.size(), checksums2.size());
 

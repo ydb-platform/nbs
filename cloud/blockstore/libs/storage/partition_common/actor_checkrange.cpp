@@ -19,7 +19,7 @@ using namespace NActors;
 
 TCheckRangeActor::TCheckRangeActor(
     const TActorId& partition,
-    NProto::TCheckRangeRequest&& request,
+    NProto::TCheckRangeRequest request,
     TRequestInfoPtr requestInfo,
     ui64 blockSize,
     TLogTitle logTitle)
@@ -35,9 +35,11 @@ void TCheckRangeActor::Bootstrap(const TActorContext& ctx)
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "CheckRangeActor has started for disk: '%s'", LogTitle.GetWithTime().c_str());
-    SendReadBlocksRequest(ctx);
+        "%s CheckRangeActor has started",
+        LogTitle.GetWithTime().c_str());
+
     Become(&TThis::StateWork);
+    SendReadBlocksRequest(ctx);
 }
 
 void TCheckRangeActor::SendReadBlocksRequest(const TActorContext& ctx)
@@ -77,9 +79,10 @@ void TCheckRangeActor::ReplyAndDie(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "CheckRangeActor has finished for disk: '%s'", LogTitle.GetWithTime().c_str());
-    auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>(error);
+        "%s CheckRangeActor has finished",
+        LogTitle.GetWithTime().c_str());
 
+    auto response = std::make_unique<TEvVolume::TEvCheckRangeResponse>(error);
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
     Die(ctx);
@@ -92,9 +95,10 @@ void TCheckRangeActor::ReplyAndDie(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "CheckRangeActor has finished for disk: '%s'", LogTitle.GetWithTime().c_str());
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+        "%s CheckRangeActor has finished",
+        LogTitle.GetWithTime().c_str());
 
+    NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
 }
 
@@ -145,8 +149,8 @@ void TCheckRangeActor::HandleReadBlocksResponseError(
     LOG_ERROR_S(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "reading error has occurred: " << FormatError(error) << ". Disk: "
-                                       << LogTitle.GetWithTime().c_str());
+        LogTitle.GetWithTime()
+            << " reading error has occurred: " << FormatError(error));
 
     responseStatus->CopyFrom(error);
     if (!msg->Record.FailInfo.FailedRanges.empty()) {
@@ -182,7 +186,7 @@ void TCheckRangeActor::HandleReadBlocksResponse(
              offset += BlockSize, ++i)
         {
             const char* data = Buffer.Get().data() + offset;
-            response->Record.MutableChecksums()->Add(
+            response->Record.MutableDiskChecksums()->MutableData()->Add(
                 TBlockChecksum().Extend(data, BlockSize));
         }
     }
