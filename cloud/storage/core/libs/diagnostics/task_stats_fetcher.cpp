@@ -1,7 +1,6 @@
 #include "stats_fetcher.h"
 
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/netlink/socket.h>
 
 #include <util/generic/yexception.h>
@@ -69,9 +68,7 @@ struct TTaskStatsFetcher final: public IStatsFetcher
 {
 private:
     const TString ComponentName;
-    const ILoggingServicePtr Logging;
     int Pid;
-    TLog Log;
     const TDuration NetlinkSocketTimeout = TDuration::Seconds(1);
     TDuration Last;
 
@@ -84,25 +81,13 @@ private:
 public:
     TTaskStatsFetcher(
             TString componentName,
-            ILoggingServicePtr logging,
             int pid)
         : ComponentName(std::move(componentName))
-        , Logging(std::move(logging))
         , Pid(pid)
     {
     }
 
     ~TTaskStatsFetcher() override
-    {
-        Stop();
-    }
-
-    void Start() override
-    {
-        Log = Logging->CreateLog(ComponentName);
-    }
-
-    void Stop() override
     {
     }
 
@@ -131,12 +116,10 @@ public:
 
 IStatsFetcherPtr CreateTaskStatsFetcher(
     TString componentName,
-    ILoggingServicePtr logging,
     int pid)
 {
     return std::make_shared<TTaskStatsFetcher>(
         std::move(componentName),
-        std::move(logging),
         pid);
 }
 
