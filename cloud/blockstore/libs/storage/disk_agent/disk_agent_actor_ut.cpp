@@ -68,31 +68,17 @@ TVector<ui64> FindProcessesWithOpenFile(const TString& targetPath)
 
     namespace NFs = std::filesystem;
 
-    for (const auto& entry: NFs::directory_iterator{NFs::path{"/proc"}}) {
+    for (const auto& pid: NFs::directory_iterator{"/proc"}) {
         try {
-            const auto& path = entry.path();
-            const auto pidFilename = path.filename().string();
-
-            i64 pid = FromString<i64>(pidFilename);
-
-            TString fdsDirectory = "/proc/";
-            fdsDirectory += pidFilename;
-            fdsDirectory += "/fd";
-
-            for (const auto& entry:
-                 NFs::directory_iterator{NFs::path{fdsDirectory.c_str()}})
-            {
-                const auto& path = entry.path();
-                const auto fd = path.filename().string();
-
-                if (fd == "." || fd == "..") {
+            for (const auto& fd: NFs::directory_iterator{pid.path() / "fd"}) {
+                if (!fd.is_symlink()) {
                     continue;
                 }
 
-                auto actualFilePath = ::NFs::ReadLink(path.c_str());
-
-                if (actualFilePath == targetPath) {
-                    result.emplace_back(pid);
+                if (targetPath == NFs::read_symlink(fd).string()) {
+                    result.emplace_back(
+                        FromString<i64>(pid.path().filename().string()));
+                    break;
                 }
             }
         } catch (...) {

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "cloud/blockstore/libs/storage/disk_agent/rdma_target.h"
 #include <cloud/blockstore/config/disk.pb.h>
+#include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>

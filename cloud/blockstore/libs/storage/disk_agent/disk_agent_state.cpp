@@ -324,17 +324,17 @@ TDiskAgentState::TDiskAgentState(
 {
 }
 
-TStorageAdapterPtr TDiskAgentState::GetDeviceState(
+TStorageAdapterPtr TDiskAgentState::GetDeviceStorageAdapter(
     const TString& uuid,
     const TString& clientId,
     const NProto::EVolumeAccessMode accessMode) const
 {
     return AgentConfig->GetAcquireRequired()
-        ? GetDeviceStateImpl(uuid, clientId, accessMode)
-        : GetDeviceStateImpl(uuid);
+        ? GetDeviceStorageAdapterImpl(uuid, clientId, accessMode)
+        : GetDeviceStorageAdapterImpl(uuid);
 }
 
-TStorageAdapterPtr TDiskAgentState::GetDeviceStateImpl(
+TStorageAdapterPtr TDiskAgentState::GetDeviceStorageAdapterImpl(
     const TString& uuid,
     const TString& clientId,
     const NProto::EVolumeAccessMode accessMode) const
@@ -342,20 +342,17 @@ TStorageAdapterPtr TDiskAgentState::GetDeviceStateImpl(
     auto [result, error] =
         DeviceClient->AccessDevice(uuid, clientId, accessMode);
 
-    if (HasError(error)) {
-        ythrow TServiceError(error.GetCode()) << error.GetMessage();
-    }
+    CheckError(error);
 
     return result;
 }
 
-TStorageAdapterPtr TDiskAgentState::GetDeviceStateImpl(
+TStorageAdapterPtr TDiskAgentState::GetDeviceStorageAdapterImpl(
     const TString& uuid) const
 {
     auto [result, error] = DeviceClient->AccessDevice(uuid);
-    if (HasError(error)) {
-        ythrow TServiceError(error.GetCode()) << error.GetMessage();
-    }
+
+    CheckError(error);
 
     return result;
 }
@@ -418,6 +415,17 @@ TVector<TString> TDiskAgentState::GetDeviceIds() const
     }
 
     return uuids;
+}
+
+TVector<TString> TDiskAgentState::GetDeviceIdsByPath(const TString& path)
+{
+    TVector<TString> result;
+    for (const auto& [uuid, device]: Devices) {
+        if (device.Config.GetDeviceName() == path) {
+            result.emplace_back(uuid);
+        }
+    }
+    return result;
 }
 
 ui32 TDiskAgentState::GetDevicesCount() const
@@ -659,7 +667,7 @@ TFuture<NProto::TReadDeviceBlocksResponse> TDiskAgentState::Read(
         request.GetDeviceUUID(),
         request.GetHeaders().GetClientId());
 
-    const auto& device = GetDeviceState(
+    const auto& device = GetDeviceStorageAdapter(
         request.GetDeviceUUID(),
         request.GetHeaders().GetClientId(),
         NProto::VOLUME_ACCESS_READ_ONLY);
@@ -791,7 +799,7 @@ TFuture<NProto::TWriteDeviceBlocksResponse> TDiskAgentState::WriteBlocks(
         deviceUUID,
         request->GetHeaders().GetClientId());
 
-    const auto& device = GetDeviceState(
+    const auto& device = GetDeviceStorageAdapter(
         deviceUUID,
         request->GetHeaders().GetClientId(),
         NProto::VOLUME_ACCESS_READ_WRITE);
@@ -828,7 +836,7 @@ TFuture<NProto::TZeroDeviceBlocksResponse> TDiskAgentState::WriteZeroes(
         request.GetDeviceUUID(),
         request.GetHeaders().GetClientId());
 
-    const auto& device = GetDeviceState(
+    const auto& device = GetDeviceStorageAdapter(
         request.GetDeviceUUID(),
         request.GetHeaders().GetClientId(),
         NProto::VOLUME_ACCESS_READ_WRITE);
@@ -863,7 +871,7 @@ TFuture<NProto::TError> TDiskAgentState::SecureErase(
     const TString& uuid,
     TInstant now)
 {
-    const auto& device = GetDeviceStateImpl(uuid);
+    const auto& device = GetDeviceStorageAdapterImpl(uuid);
     const auto& sessionInfo = DeviceClient->GetWriterSession(uuid);
     if (sessionInfo.Id
             && sessionInfo.LastActivityTs
@@ -908,7 +916,7 @@ TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
 {
     Y_UNUSED(now);
 
-    const auto& device = GetDeviceState(
+    const auto& device = GetDeviceStorageAdapter(
         request.GetDeviceUUID(),
         request.GetHeaders().GetClientId(),
         NProto::VOLUME_ACCESS_READ_ONLY);
@@ -1194,17 +1202,6 @@ TVector<NProto::TDiskAgentDeviceSession> TDiskAgentState::GetSessions() const
     return DeviceClient->GetSessions();
 }
 
-TVector<TString> TDiskAgentState::GetAllDeviceIDsForPath(const TString& path)
-{
-    TVector<TString> result;
-    for (const auto& [uuid, device]: Devices) {
-        if (device.Config.GetDeviceName() == path) {
-            result.emplace_back(uuid);
-        }
-    }
-    return result;
-}
-
 TFuture<void> TDiskAgentState::DetachPaths(const TVector<TString>& paths)
 {
     TVector<TStorageAdapterPtr> storageAdaptersToDrop;
@@ -1213,11 +1210,14 @@ TFuture<void> TDiskAgentState::DetachPaths(const TVector<TString>& paths)
         if (!AttachedPaths.contains(path)) {
             continue;
         }
-        auto uuids = GetAllDeviceIDsForPath(path);
+        auto uuids = GetDeviceIdsByPath(path);
 
         for (const auto& uuid: uuids) {
             auto storageAdapter = DeviceClient->DetachDevice(uuid);
-            Y_ABORT_UNLESS(storageAdapter);
+            Y_DEBUG_ABORT_UNLESS(storageAdapter);
+            if (!storageAdapter) {
+                continue;
+            }
             storageAdaptersToDrop.emplace_back(std::move(storageAdapter));
         }
 

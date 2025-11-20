@@ -136,6 +136,7 @@ public:
     TVector<NProto::TDeviceConfig> GetEnabledDevices() const;
 
     TVector<TString> GetDeviceIds() const;
+    TVector<TString> GetDeviceIdsByPath(const TString& path);
 
     ui32 GetDevicesCount() const;
 
@@ -176,21 +177,19 @@ public:
     void SetPartiallySuspended(bool partiallySuspended);
     bool GetPartiallySuspended() const;
 
-    TVector<TString> GetAllDeviceIDsForPath(const TString& path);
-
     NThreading::TFuture<void> DetachPaths(const TVector<TString>& paths);
 
 private:
-    TStorageAdapterPtr GetDeviceState(
+    TStorageAdapterPtr GetDeviceStorageAdapter(
         const TString& uuid,
         const TString& clientId,
         const NProto::EVolumeAccessMode accessMode) const;
 
-    TStorageAdapterPtr GetDeviceStateImpl(
+    TStorageAdapterPtr GetDeviceStorageAdapterImpl(
         const TString& uuid,
         const TString& clientId,
         const NProto::EVolumeAccessMode accessMode) const;
-    TStorageAdapterPtr GetDeviceStateImpl(const TString& uuid) const;
+    TStorageAdapterPtr GetDeviceStorageAdapterImpl(const TString& uuid) const;
 
     void EnsureAccessToDevices(
         const TVector<TString>& uuids,
