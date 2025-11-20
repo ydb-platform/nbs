@@ -909,6 +909,11 @@ public:
         return future;
     }
 
+    bool IsEmpty() const
+    {
+        return AllEntries.Empty();
+    }
+
 private:
     // Check and enqueue Flush operation for the given node if needed.
     // If the node should be flushed and there is no flush currently executing
@@ -1625,6 +1630,11 @@ TFuture<void> TWriteBackCache::FlushNodeData(ui64 nodeId)
 TFuture<void> TWriteBackCache::FlushAllData()
 {
     return Impl->FlushAllData();
+}
+
+bool TWriteBackCache::IsEmpty() const
+{
+    return Impl->IsEmpty();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
