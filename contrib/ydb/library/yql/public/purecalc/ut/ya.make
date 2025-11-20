@@ -1,5 +1,7 @@
 UNITTEST()
 
+TAG(ya:manual)
+
 SRCS(
     empty_stream.h
     fake_spec.cpp
@@ -7,6 +9,7 @@ SRCS(
     test_schema.cpp
     test_sexpr.cpp
     test_sql.cpp
+    test_pg.cpp
     test_udf.cpp
     test_user_data.cpp
     test_eval.cpp

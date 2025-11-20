@@ -6,6 +6,7 @@
 
 // for 'create' funcs
 #include <contrib/ydb/core/mind/bscontroller/bsc.h>
+#include <contrib/ydb/core/backup/controller/tablet.h>
 #include <contrib/ydb/core/base/hive.h>
 #include <contrib/ydb/core/tx/coordinator/coordinator.h>
 #include <contrib/ydb/core/tx/mediator/mediator.h>
@@ -230,6 +231,9 @@ TIntrusivePtr<TTabletSetupInfo> MakeTabletSetupInfo(
         break;
     case TTabletTypes::StatisticsAggregator:
         createFunc = &NStat::CreateStatisticsAggregator;
+        break;
+    case TTabletTypes::BackupController:
+        createFunc = &NBackup::CreateBackupController;
         break;
     default:
         return nullptr;

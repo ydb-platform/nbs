@@ -10,8 +10,8 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/core/protos
     contrib/ydb/core/formats/arrow
+    contrib/ydb/library/formats/arrow/protos
 )
 
 YQL_LAST_ABI_VERSION()

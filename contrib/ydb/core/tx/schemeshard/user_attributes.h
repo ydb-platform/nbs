@@ -19,6 +19,7 @@ constexpr TStringBuf ATTR_FILESTORE_SPACE_LIMIT_SSD_SYSTEM = "__filestore_space_
 constexpr TStringBuf ATTR_EXTRA_PATH_SYMBOLS_ALLOWED = "__extra_path_symbols_allowed";
 constexpr TStringBuf ATTR_DOCUMENT_API_VERSION = "__document_api_version";
 constexpr TStringBuf ATTR_ASYNC_REPLICATION = "__async_replication";
+constexpr TStringBuf ATTR_ASYNC_REPLICA = "__async_replica";
 
 enum class EAttribute {
     USER,
@@ -33,6 +34,7 @@ enum class EAttribute {
     ASYNC_REPLICATION,
     FILESTORE_SPACE_LIMIT_SSD,
     FILESTORE_SPACE_LIMIT_HDD,
+    ASYNC_REPLICA,
     FILESTORE_SPACE_LIMIT_SSD_SYSTEM,
 };
 

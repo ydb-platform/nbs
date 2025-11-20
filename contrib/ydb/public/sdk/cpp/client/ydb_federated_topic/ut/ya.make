@@ -17,9 +17,9 @@ PEERDIR(
     contrib/ydb/public/lib/json_value
     contrib/ydb/public/lib/yson_value
     contrib/ydb/public/sdk/cpp/client/ydb_driver
-    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core
-    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core/impl
-    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core/ut/ut_utils
+    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_public
+    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_public/include
+    contrib/ydb/public/sdk/cpp/client/ydb_persqueue_public/ut/ut_utils
 
     contrib/ydb/public/sdk/cpp/client/ydb_topic/codecs
     contrib/ydb/public/sdk/cpp/client/ydb_topic

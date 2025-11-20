@@ -1,6 +1,8 @@
 #include "helpers.h"
 
 #include <contrib/ydb/core/util/pb.h>
+#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
+#include <contrib/ydb/core/protos/subdomains.pb.h>
 
 #include <util/string/join.h>
 

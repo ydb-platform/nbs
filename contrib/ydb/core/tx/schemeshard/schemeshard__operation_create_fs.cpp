@@ -305,7 +305,8 @@ THolder<TProposeResponse> TCreateFileStore::Propose(
             .NotDeleted()
             .NotUnderDeleting()
             .IsCommonSensePath()
-            .IsLikeDirectory();
+            .IsLikeDirectory()
+            .FailOnRestrictedCreateInTempZone();
 
         if (!checks) {
             result->SetError(checks.GetStatus(), checks.GetError());
@@ -425,8 +426,8 @@ THolder<TProposeResponse> TCreateFileStore::Propose(
     context.SS->ClearDescribePathCaches(dstPath.Base());
     context.OnComplete.PublishToSchemeBoard(OperationId, dstPath.Base()->PathId);
 
-    dstPath.DomainInfo()->IncPathsInside();
-    dstPath.DomainInfo()->AddInternalShards(txState);
+    dstPath.DomainInfo()->IncPathsInside(context.SS);
+    dstPath.DomainInfo()->AddInternalShards(txState, context.SS);
     dstPath.Base()->IncShardsInside(shardsToCreate);
     parentPath.Base()->IncAliveChildren();
 
@@ -494,11 +495,10 @@ TTxState& TCreateFileStore::PrepareChanges(
     context.SS->ChangeTxState(db, operationId, TTxState::CreateParts);
     context.OnComplete.ActivateTx(operationId);
 
-    context.SS->PersistPath(db, fsPath->PathId);
     if (!acl.empty()) {
         fsPath->ApplyACL(acl);
-        context.SS->PersistACL(db, fsPath);
     }
+    context.SS->PersistPath(db, fsPath->PathId);
 
     context.SS->FileStoreInfos[pathId] = fs;
     context.SS->PersistFileStoreInfo(db, pathId, fs);

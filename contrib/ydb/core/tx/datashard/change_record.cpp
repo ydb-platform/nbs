@@ -1,6 +1,7 @@
 #include "change_record.h"
 
 #include <contrib/ydb/core/protos/change_exchange.pb.h>
+#include <contrib/ydb/core/protos/tx_datashard.pb.h>
 
 namespace NKikimr::NDataShard {
 

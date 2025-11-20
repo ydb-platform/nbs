@@ -5,9 +5,9 @@
 #include <contrib/ydb/library/yql/minikql/mkql_string_util.h>
 
 #include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_holders.h>
+#include <contrib/ydb/library/yql/minikql/computation/mock_spiller_factory_ut.h>
 
 #include <cstring>
-#include <random>
 #include <algorithm>
 
 namespace NKikimr {
@@ -30,6 +30,7 @@ public:
         {}
     private:
         NUdf::EFetchStatus Fetch(NUdf::TUnboxedValue& result) override {
+
             constexpr auto size = Y_ARRAY_SIZE(g_TestYieldStreamData);
             if (Index == size) {
                 return NUdf::EFetchStatus::Finish;
@@ -47,6 +48,7 @@ public:
             items[1] =  NUdf::TUnboxedValuePod(MakeString(ToString(val)));
 
             ++Index;
+
             return NUdf::EFetchStatus::Ok;
         }
 
@@ -117,15 +119,18 @@ TRuntimeNode Combine(TProgramBuilder& pb, TRuntimeNode stream, std::function<TRu
         pb.CombineCore(stream, keyExtractor, init, update, finishLambda, 64ul << 20);
 }
 
+template<bool SPILLING>
+TRuntimeNode WideLastCombiner(TProgramBuilder& pb, TRuntimeNode flow, const TProgramBuilder::TWideLambda& extractor, const TProgramBuilder::TBinaryWideLambda& init, const TProgramBuilder::TTernaryWideLambda& update, const TProgramBuilder::TBinaryWideLambda& finish) {
+    return SPILLING ?
+        pb.WideLastCombinerWithSpilling(flow, extractor, init, update, finish):
+        pb.WideLastCombiner(flow, extractor, init, update, finish);
+}
+
 } // unnamed
 
 #if !defined(MKQL_RUNTIME_VERSION) || MKQL_RUNTIME_VERSION >= 18u
 Y_UNIT_TEST_SUITE(TMiniKQLWideCombinerTest) {
     Y_UNIT_TEST_LLVM(TestLongStringsRefCounting) {
-        if (RuntimeVersion < 46u) {
-            return;
-        }
-
         TSetup<LLVM> setup;
         TProgramBuilder& pb = *setup.PgmBuilder;
 
@@ -203,10 +208,6 @@ Y_UNIT_TEST_SUITE(TMiniKQLWideCombinerTest) {
     }
 
     Y_UNIT_TEST_LLVM(TestLongStringsPasstroughtRefCounting) {
-        if (RuntimeVersion < 46u) {
-            return;
-        }
-
         TSetup<LLVM> setup;
         TProgramBuilder& pb = *setup.PgmBuilder;
 
@@ -282,10 +283,6 @@ Y_UNIT_TEST_SUITE(TMiniKQLWideCombinerTest) {
     }
 
     Y_UNIT_TEST_LLVM(TestDoNotCalculateUnusedInput) {
-        if (RuntimeVersion < 46u) {
-            return;
-        }
-
         TSetup<LLVM> setup;
         TProgramBuilder& pb = *setup.PgmBuilder;
 
@@ -439,12 +436,8 @@ Y_UNIT_TEST_SUITE(TMiniKQLWideCombinerTest) {
         UNIT_ASSERT(!iterator.Next(item));
         UNIT_ASSERT(!iterator.Next(item));
     }
-
+#if !defined(MKQL_RUNTIME_VERSION) || MKQL_RUNTIME_VERSION >= 46u
     Y_UNIT_TEST_LLVM(TestHasLimitButPasstroughtYields) {
-        if (RuntimeVersion < 46u) {
-            return;
-        }
-
         TSetup<LLVM> setup(GetNodeFactory());
         TProgramBuilder& pb = *setup.PgmBuilder;
 
@@ -474,6 +467,7 @@ Y_UNIT_TEST_SUITE(TMiniKQLWideCombinerTest) {
         UNIT_ASSERT_EQUAL(streamVal.Fetch(result), NUdf::EFetchStatus::Finish);
         UNIT_ASSERT_EQUAL(streamVal.Fetch(result), NUdf::EFetchStatus::Finish);
     }
+#endif
 }
 
 Y_UNIT_TEST_SUITE(TMiniKQLWideCombinerPerfTest) {
@@ -1011,8 +1005,11 @@ Y_UNIT_TEST_SUITE(TMiniKQLWideCombinerPerfTest) {
 #endif
 #if !defined(MKQL_RUNTIME_VERSION) || MKQL_RUNTIME_VERSION >= 29u
 Y_UNIT_TEST_SUITE(TMiniKQLWideLastCombinerTest) {
-    Y_UNIT_TEST_LLVM(TestLongStringsRefCounting) {
-        TSetup<LLVM> setup;
+    Y_UNIT_TEST_LLVM_SPILLING(TestLongStringsRefCounting) {
+        // callable WideLastCombinerWithSpilling was introduced in 49 version of runtime
+        if (MKQL_RUNTIME_VERSION < 49U && SPILLING) return;
+
+        TSetup<LLVM, SPILLING> setup;
         TProgramBuilder& pb = *setup.PgmBuilder;
 
         const auto dataType = pb.NewDataType(NUdf::TDataType<const char*>::Id);
@@ -1050,7 +1047,7 @@ Y_UNIT_TEST_SUITE(TMiniKQLWideLastCombinerTest) {
 
         const auto list = pb.NewList(tupleType, {data1, data2, data3, data4, data5, data6, data7, data8, data9});
 
-        const auto pgmReturn = pb.Collect(pb.NarrowMap(pb.WideLastCombiner(pb.ExpandMap(pb.ToFlow(list),
+        const auto pgmReturn = pb.Collect(pb.NarrowMap(WideLastCombiner<SPILLING>(pb, pb.ExpandMap(pb.ToFlow(list),
             [&](TRuntimeNode item) -> TRuntimeNode::TList { return {pb.Nth(item, 0U), pb.Nth(item, 1U)}; }),
             [&](TRuntimeNode::TList items) -> TRuntimeNode::TList { return {items.front()}; },
             [&](TRuntimeNode::TList keys, TRuntimeNode::TList items) -> TRuntimeNode::TList {
@@ -1074,22 +1071,35 @@ Y_UNIT_TEST_SUITE(TMiniKQLWideLastCombinerTest) {
         ));
 
         const auto graph = setup.BuildGraph(pgmReturn);
+        if (SPILLING) {
+            graph->GetContext().SpillerFactory = std::make_shared<TMockSpillerFactory>();
+        }
         const auto iterator = graph->GetValue().GetListIterator();
+
+        std::unordered_set<TString> expected {
+            "key one",
+            "very long value 2 / key two",
+            "very long key one",
+            "very long value 8 / very long value 7 / very long value 6"
+        };
+
         NUdf::TUnboxedValue item;
-        UNIT_ASSERT(iterator.Next(item));
-        UNBOXED_VALUE_STR_EQUAL(item, "key one");
-        UNIT_ASSERT(iterator.Next(item));
-        UNBOXED_VALUE_STR_EQUAL(item, "very long value 2 / key two");
-        UNIT_ASSERT(iterator.Next(item));
-        UNBOXED_VALUE_STR_EQUAL(item, "very long key one");
-        UNIT_ASSERT(iterator.Next(item));
-        UNBOXED_VALUE_STR_EQUAL(item, "very long value 8 / very long value 7 / very long value 6");
+        while (!expected.empty()) {
+            UNIT_ASSERT(iterator.Next(item));
+            const auto actual = TString(item.AsStringRef());
+
+            auto it = expected.find(actual);
+            UNIT_ASSERT(it != expected.end());
+            expected.erase(it);
+        }
         UNIT_ASSERT(!iterator.Next(item));
         UNIT_ASSERT(!iterator.Next(item));
     }
 
-    Y_UNIT_TEST_LLVM(TestLongStringsPasstroughtRefCounting) {
-        TSetup<LLVM> setup;
+    Y_UNIT_TEST_LLVM_SPILLING(TestLongStringsPasstroughtRefCounting) {
+        // callable WideLastCombinerWithSpilling was introduced in 49 version of runtime
+        if (MKQL_RUNTIME_VERSION < 49U && SPILLING) return;
+        TSetup<LLVM, SPILLING> setup;
         TProgramBuilder& pb = *setup.PgmBuilder;
 
         const auto dataType = pb.NewDataType(NUdf::TDataType<const char*>::Id);
@@ -1126,7 +1136,7 @@ Y_UNIT_TEST_SUITE(TMiniKQLWideLastCombinerTest) {
 
         const auto list = pb.NewList(tupleType, {data1, data2, data3, data4, data5, data6, data7, data8, data9});
 
-        const auto pgmReturn = pb.Collect(pb.NarrowMap(pb.WideLastCombiner(pb.ExpandMap(pb.ToFlow(list),
+        const auto pgmReturn = pb.Collect(pb.NarrowMap(WideLastCombiner<SPILLING>(pb, pb.ExpandMap(pb.ToFlow(list),
             [&](TRuntimeNode item) -> TRuntimeNode::TList { return {pb.Nth(item, 0U), pb.Nth(item, 1U)}; }),
             [&](TRuntimeNode::TList items) -> TRuntimeNode::TList { return {items.front()}; },
             [&](TRuntimeNode::TList keys, TRuntimeNode::TList items) -> TRuntimeNode::TList {
@@ -1149,22 +1159,38 @@ Y_UNIT_TEST_SUITE(TMiniKQLWideLastCombinerTest) {
         ));
 
         const auto graph = setup.BuildGraph(pgmReturn);
+        if (SPILLING) {
+            graph->GetContext().SpillerFactory = std::make_shared<TMockSpillerFactory>();
+        }
         const auto iterator = graph->GetValue().GetListIterator();
+
+        std::unordered_set<TString> expected {
+            "very long value 1 / key one / very long value 1 / key one",
+            "very long value 3 / key two / very long value 2 / key two",
+            "very long value 4 / very long key one / very long value 4 / very long key one",
+            "very long value 9 / very long key two / very long value 5 / very long key two"
+        };
+
         NUdf::TUnboxedValue item;
-        UNIT_ASSERT(iterator.Next(item));
-        UNBOXED_VALUE_STR_EQUAL(item, "very long value 1 / key one / very long value 1 / key one");
-        UNIT_ASSERT(iterator.Next(item));
-        UNBOXED_VALUE_STR_EQUAL(item, "very long value 3 / key two / very long value 2 / key two");
-        UNIT_ASSERT(iterator.Next(item));
-        UNBOXED_VALUE_STR_EQUAL(item, "very long value 4 / very long key one / very long value 4 / very long key one");
-        UNIT_ASSERT(iterator.Next(item));
-        UNBOXED_VALUE_STR_EQUAL(item, "very long value 9 / very long key two / very long value 5 / very long key two");
+        while (!expected.empty()) {
+            UNIT_ASSERT(iterator.Next(item));
+            const auto actual = TString(item.AsStringRef());
+
+            auto it = expected.find(actual);
+            UNIT_ASSERT(it != expected.end());
+            expected.erase(it);
+        }
         UNIT_ASSERT(!iterator.Next(item));
         UNIT_ASSERT(!iterator.Next(item));
     }
 
-    Y_UNIT_TEST_LLVM(TestDoNotCalculateUnusedInput) {
-        TSetup<LLVM> setup;
+    Y_UNIT_TEST_LLVM_SPILLING(TestDoNotCalculateUnusedInput) {
+        // Test is broken. Remove this if after YQL-18808.
+        if (SPILLING) return;
+
+        // callable WideLastCombinerWithSpilling was introduced in 49 version of runtime
+        if (MKQL_RUNTIME_VERSION < 49U && SPILLING) return;
+        TSetup<LLVM, SPILLING> setup;
         TProgramBuilder& pb = *setup.PgmBuilder;
 
         const auto dataType = pb.NewDataType(NUdf::TDataType<const char*>::Id);
@@ -1198,7 +1224,7 @@ Y_UNIT_TEST_SUITE(TMiniKQLWideLastCombinerTest) {
 
         const auto landmine = pb.NewDataLiteral<NUdf::EDataSlot::String>("ACHTUNG MINEN!");
 
-        const auto pgmReturn = pb.Collect(pb.NarrowMap(pb.WideLastCombiner(pb.ExpandMap(pb.ToFlow(list),
+        const auto pgmReturn = pb.Collect(pb.NarrowMap(WideLastCombiner<SPILLING>(pb, pb.ExpandMap(pb.ToFlow(list),
             [&](TRuntimeNode item) -> TRuntimeNode::TList { return {pb.Nth(item, 0U), pb.Unwrap(pb.Nth(item, 1U), landmine, __FILE__, __LINE__, 0), pb.Nth(item, 2U)}; }),
             [&](TRuntimeNode::TList items) -> TRuntimeNode::TList { return {items.front()}; },
             [&](TRuntimeNode::TList keys, TRuntimeNode::TList items) -> TRuntimeNode::TList {
@@ -1222,18 +1248,32 @@ Y_UNIT_TEST_SUITE(TMiniKQLWideLastCombinerTest) {
         ));
 
         const auto graph = setup.BuildGraph(pgmReturn);
+        if (SPILLING) {
+            graph->GetContext().SpillerFactory = std::make_shared<TMockSpillerFactory>();
+        }
+        std::unordered_set<TString> expected {
+            "key one / value 2 / value 1 / value 5 / value 4",
+            "key two / value 4 / value 3 / value 3 / value 2"
+        };
+
         const auto iterator = graph->GetValue().GetListIterator();
         NUdf::TUnboxedValue item;
-        UNIT_ASSERT(iterator.Next(item));
-        UNBOXED_VALUE_STR_EQUAL(item, "key one / value 2 / value 1 / value 5 / value 4");
-        UNIT_ASSERT(iterator.Next(item));
-        UNBOXED_VALUE_STR_EQUAL(item, "key two / value 4 / value 3 / value 3 / value 2");
+        while (!expected.empty()) {
+            UNIT_ASSERT(iterator.Next(item));
+            const auto actual = TString(item.AsStringRef());
+
+            auto it = expected.find(actual);
+            UNIT_ASSERT(it != expected.end());
+            expected.erase(it);
+        }
         UNIT_ASSERT(!iterator.Next(item));
         UNIT_ASSERT(!iterator.Next(item));
     }
 
-    Y_UNIT_TEST_LLVM(TestDoNotCalculateUnusedOutput) {
-        TSetup<LLVM> setup;
+    Y_UNIT_TEST_LLVM_SPILLING(TestDoNotCalculateUnusedOutput) {
+        // callable WideLastCombinerWithSpilling was introduced in 49 version of runtime
+        if (MKQL_RUNTIME_VERSION < 49U && SPILLING) return;
+        TSetup<LLVM, SPILLING> setup;
         TProgramBuilder& pb = *setup.PgmBuilder;
 
         const auto dataType = pb.NewDataType(NUdf::TDataType<const char*>::Id);
@@ -1267,7 +1307,7 @@ Y_UNIT_TEST_SUITE(TMiniKQLWideLastCombinerTest) {
 
         const auto landmine = pb.NewDataLiteral<NUdf::EDataSlot::String>("ACHTUNG MINEN!");
 
-        const auto pgmReturn = pb.Collect(pb.NarrowMap(pb.WideLastCombiner(pb.ExpandMap(pb.ToFlow(list),
+        const auto pgmReturn = pb.Collect(pb.NarrowMap(WideLastCombiner<SPILLING>(pb, pb.ExpandMap(pb.ToFlow(list),
             [&](TRuntimeNode item) -> TRuntimeNode::TList { return {pb.Nth(item, 0U), pb.Nth(item, 1U), pb.Nth(item, 2U)}; }),
             [&](TRuntimeNode::TList items) -> TRuntimeNode::TList { return {items.front()}; },
             [&](TRuntimeNode::TList, TRuntimeNode::TList items) -> TRuntimeNode::TList {
@@ -1283,18 +1323,32 @@ Y_UNIT_TEST_SUITE(TMiniKQLWideLastCombinerTest) {
         ));
 
         const auto graph = setup.BuildGraph(pgmReturn);
+        if (SPILLING) {
+            graph->GetContext().SpillerFactory = std::make_shared<TMockSpillerFactory>();
+        }
+        std::unordered_set<TString> expected {
+            "key one: value 1, value 4, value 5, value 1, value 2",
+            "key two: value 2, value 3, value 3, value 4"
+        };
+
         const auto iterator = graph->GetValue().GetListIterator();
         NUdf::TUnboxedValue item;
-        UNIT_ASSERT(iterator.Next(item));
-        UNBOXED_VALUE_STR_EQUAL(item, "key one: value 1, value 4, value 5, value 1, value 2");
-        UNIT_ASSERT(iterator.Next(item));
-        UNBOXED_VALUE_STR_EQUAL(item, "key two: value 2, value 3, value 3, value 4");
+        while (!expected.empty()) {
+            UNIT_ASSERT(iterator.Next(item));
+            const auto actual = TString(item.AsStringRef());
+
+            auto it = expected.find(actual);
+            UNIT_ASSERT(it != expected.end());
+            expected.erase(it);
+        }
         UNIT_ASSERT(!iterator.Next(item));
         UNIT_ASSERT(!iterator.Next(item));
     }
 
-    Y_UNIT_TEST_LLVM(TestThinAllLambdas) {
-        TSetup<LLVM> setup;
+    Y_UNIT_TEST_LLVM_SPILLING(TestThinAllLambdas) {
+        // callable WideLastCombinerWithSpilling was introduced in 49 version of runtime
+        if (MKQL_RUNTIME_VERSION < 49U && SPILLING) return;
+        TSetup<LLVM, SPILLING> setup;
         TProgramBuilder& pb = *setup.PgmBuilder;
 
         const auto tupleType = pb.NewTupleType({});
@@ -1302,7 +1356,7 @@ Y_UNIT_TEST_SUITE(TMiniKQLWideLastCombinerTest) {
 
         const auto list = pb.NewList(tupleType, {data, data, data, data});
 
-        const auto pgmReturn = pb.Collect(pb.NarrowMap(pb.WideLastCombiner(pb.ExpandMap(pb.ToFlow(list),
+        const auto pgmReturn = pb.Collect(pb.NarrowMap(WideLastCombiner<SPILLING>(pb, pb.ExpandMap(pb.ToFlow(list),
             [](TRuntimeNode) -> TRuntimeNode::TList { return {}; }),
             [](TRuntimeNode::TList items) { return items; },
             [](TRuntimeNode::TList, TRuntimeNode::TList items) { return items; },

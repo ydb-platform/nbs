@@ -26,6 +26,7 @@ bool TDataShard::TTxInit::Execute(TTransactionContext& txc, const TActorContext&
         Self->NextSeqno = 1;
         Self->NextChangeRecordOrder = 1;
         Self->LastChangeRecordGroup = 1;
+        Self->Pipeline.Reset();
         Self->TransQueue.Reset();
         Self->SnapshotManager.Reset();
         Self->SchemaSnapshotManager.Reset();
@@ -425,6 +426,12 @@ bool TDataShard::TTxInit::ReadEverything(TTransactionContext &txc) {
             return false;
     }
 
+    if (Self->State != TShardState::Offline && txc.DB.GetScheme().GetTableInfo(Schema::SchemaSnapshots::TableId)) {
+        if (!Self->SchemaSnapshotManager.Load(db)) {
+            return false;
+        }
+    }
+
     if (Self->State != TShardState::Offline && txc.DB.GetScheme().GetTableInfo(Schema::ChangeRecords::TableId)) {
         if (!Self->LoadChangeRecords(db, ChangeRecords)) {
             return false;
@@ -512,12 +519,6 @@ bool TDataShard::TTxInit::ReadEverything(TTransactionContext &txc) {
         }
     }
 
-    if (Self->State != TShardState::Offline && txc.DB.GetScheme().GetTableInfo(Schema::SchemaSnapshots::TableId)) {
-        if (!Self->SchemaSnapshotManager.Load(db)) {
-            return false;
-        }
-    }
-
     if (Self->State != TShardState::Offline && txc.DB.GetScheme().GetTableInfo(Schema::Locks::TableId)) {
         TDataShardLocksDb locksDb(*Self, txc);
         if (!Self->SysLocks.Load(locksDb)) {
@@ -547,6 +548,7 @@ bool TDataShard::TTxInit::ReadEverything(TTransactionContext &txc) {
     Self->SubscribeNewLocks();
 
     Self->ScheduleRemoveAbandonedLockChanges();
+    Self->ScheduleRemoveAbandonedSchemaSnapshots();
 
     return true;
 }
@@ -606,12 +608,8 @@ public:
             LOAD_SYS_BYTES(db, Schema::Sys_SubDomainInfo, rawProcessingParams)
 
             if (rawProcessingParams.empty()) {
-                auto appdata = AppData(ctx);
-                const ui32 selfDomain = appdata->DomainsInfo->GetDomainUidByTabletId(Self->TabletID());
-                Y_ABORT_UNLESS(selfDomain != appdata->DomainsInfo->BadDomainId);
-                const auto& domain = appdata->DomainsInfo->GetDomain(selfDomain);
-
-                NKikimrSubDomains::TProcessingParams params = ExtractProcessingParams(domain);
+                auto *domain = AppData(ctx)->DomainsInfo->GetDomain();
+                NKikimrSubDomains::TProcessingParams params = ExtractProcessingParams(*domain);
                 LOG_DEBUG(ctx, NKikimrServices::TX_DATASHARD, "TxInitSchema.Execute Persist Sys_SubDomainInfo");
                 Self->PersistSys(db, Schema::Sys_SubDomainInfo, params.SerializeAsString());
             }

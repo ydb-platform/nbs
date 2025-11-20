@@ -479,7 +479,7 @@ void NTableState::UpdatePartitioningForCopyTable(TOperationId operationId, TTxSt
             dstTableInfo->PerShardPartitionConfig.erase(shard.Idx);
             context.SS->PersistShardDeleted(db, shard.Idx, context.SS->ShardInfos[shard.Idx].BindedChannels);
             context.SS->ShardInfos.erase(shard.Idx);
-            domainInfo->RemoveInternalShard(shard.Idx);
+            domainInfo->RemoveInternalShard(shard.Idx, context.SS);
             context.SS->DecrementPathDbRefCount(pathId, "remove shard from txState");
             context.SS->ShardRemoved(shard.Idx);
         }
@@ -530,7 +530,7 @@ void NTableState::UpdatePartitioningForCopyTable(TOperationId operationId, TTxSt
     ui32 newShardCout = dstTableInfo->GetPartitions().size();
 
     dstPath->SetShardsInside(newShardCout);
-    domainInfo->AddInternalShards(txState);
+    domainInfo->AddInternalShards(txState, context.SS);
 
     context.SS->PersistTable(db, txState.TargetPathId);
     context.SS->PersistTxState(db, operationId);
@@ -695,7 +695,7 @@ THolder<TEvPersQueue::TEvProposeTransaction> TConfigureParts::MakeEvProposeTrans
                                                                                        const TTopicTabletInfo& pqShard,
                                                                                        const TString& topicName,
                                                                                        const TString& topicPath,
-                                                                                       const std::optional<NKikimrPQ::TBootstrapConfig>& bootstrapConfig,
+                                                                                       const std::optional<TBootstrapConfigWrapper>& bootstrapConfig,
                                                                                        const TString& cloudId,
                                                                                        const TString& folderId,
                                                                                        const TString& databaseId,
@@ -703,7 +703,7 @@ THolder<TEvPersQueue::TEvProposeTransaction> TConfigureParts::MakeEvProposeTrans
                                                                                        TTxState::ETxType txType,
                                                                                        const TOperationContext& context)
 {
-    auto event = MakeHolder<TEvPersQueue::TEvProposeTransaction>();
+    auto event = MakeHolder<TEvPersQueue::TEvProposeTransactionBuilder>();
     event->Record.SetTxId(ui64(txId));
     ActorIdToProto(context.SS->SelfId(), event->Record.MutableSourceActor());
 
@@ -719,7 +719,7 @@ THolder<TEvPersQueue::TEvProposeTransaction> TConfigureParts::MakeEvProposeTrans
                        databasePath);
     if (bootstrapConfig) {
         Y_ABORT_UNLESS(txType == TTxState::TxCreatePQGroup);
-        event->Record.MutableConfig()->MutableBootstrapConfig()->CopyFrom(*bootstrapConfig);
+        event->PreSerializedData += bootstrapConfig->GetPreSerializedProposeTransaction();
     }
 
     LOG_DEBUG_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
@@ -734,7 +734,7 @@ THolder<TEvPersQueue::TEvUpdateConfig> TConfigureParts::MakeEvUpdateConfig(TTxId
                                                                            const TTopicTabletInfo& pqShard,
                                                                            const TString& topicName,
                                                                            const TString& topicPath,
-                                                                           const std::optional<NKikimrPQ::TBootstrapConfig>& bootstrapConfig,
+                                                                           const std::optional<TBootstrapConfigWrapper>& bootstrapConfig,
                                                                            const TString& cloudId,
                                                                            const TString& folderId,
                                                                            const TString& databaseId,
@@ -742,7 +742,7 @@ THolder<TEvPersQueue::TEvUpdateConfig> TConfigureParts::MakeEvUpdateConfig(TTxId
                                                                            TTxState::ETxType txType,
                                                                            const TOperationContext& context)
 {
-    auto event = MakeHolder<TEvPersQueue::TEvUpdateConfig>();
+    auto event = MakeHolder<TEvPersQueue::TEvUpdateConfigBuilder>();
     event->Record.SetTxId(ui64(txId));
 
     MakePQTabletConfig(context,
@@ -757,7 +757,7 @@ THolder<TEvPersQueue::TEvUpdateConfig> TConfigureParts::MakeEvUpdateConfig(TTxId
                        databasePath);
     if (bootstrapConfig) {
         Y_ABORT_UNLESS(txType == TTxState::TxCreatePQGroup);
-        event->Record.MutableBootstrapConfig()->CopyFrom(*bootstrapConfig);
+        event->PreSerializedData += bootstrapConfig->GetPreSerializedUpdateConfig();
     }
 
     LOG_DEBUG_S(context.Ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
@@ -808,7 +808,7 @@ bool TPropose::HandleReply(TEvPersQueue::TEvProposeTransactionAttachResult::TPtr
 void TPropose::PrepareShards(TTxState& txState, TSet<TTabletId>& shardSet, TOperationContext& context)
 {
     txState.UpdateShardsInProgress();
- 
+
     for (const auto& shard : txState.Shards) {
         const TShardIdx idx = shard.Idx;
         //
@@ -869,7 +869,7 @@ void TPropose::PersistState(const TTxState& txState,
 {
     NIceDb::TNiceDb db(context.GetDB());
 
-    if (txState.TxType == TTxState::TxCreatePQGroup  || txState.TxType == TTxState::TxAllocatePQ) {
+    if (txState.TxType == TTxState::TxCreatePQGroup) {
         auto parentDir = context.SS->PathsById.at(Path->ParentPathId);
         ++parentDir->DirAlterVersion;
         context.SS->PersistPathDirAlterVersion(db, parentDir);
@@ -881,6 +881,10 @@ void TPropose::PersistState(const TTxState& txState,
     context.OnComplete.PublishToSchemeBoard(OperationId, PathId);
 
     TTopicInfo::TPtr pqGroup = context.SS->Topics[PathId];
+
+    NKikimrPQ::TPQTabletConfig tabletConfig = pqGroup->GetTabletConfig();
+    NKikimrPQ::TPQTabletConfig newTabletConfig = pqGroup->AlterData->GetTabletConfig();
+
     pqGroup->FinishAlter();
 
     context.SS->PersistPersQueueGroup(db, PathId, pqGroup);

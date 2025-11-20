@@ -17,14 +17,17 @@ ELSE()
 ENDIF()
 
 SRCS(
+    kqp_analyze_ut.cpp
     kqp_explain_ut.cpp
     kqp_limits_ut.cpp
     kqp_params_ut.cpp
     kqp_query_ut.cpp
     kqp_stats_ut.cpp
+    kqp_types_ut.cpp
 )
 
 PEERDIR(
+    contrib/ydb/core/statistics/ut_common
     contrib/ydb/public/sdk/cpp/client/ydb_proto
     contrib/ydb/core/kqp
     contrib/ydb/core/kqp/ut/common

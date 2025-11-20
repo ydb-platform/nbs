@@ -10,6 +10,7 @@
 #include <contrib/ydb/library/yql/public/udf/udf_validate.h>
 #include <contrib/ydb/library/yql/core/credentials/yql_credentials.h>
 #include <contrib/ydb/library/yql/core/url_lister/interface/url_lister_manager.h>
+#include <contrib/ydb/library/yql/core/qplayer/storage/interface/yql_qstorage.h>
 #include <contrib/ydb/library/yql/ast/yql_expr.h>
 
 #include <library/cpp/yson/node/node.h>
@@ -84,6 +85,10 @@ public:
         Credentials = std::move(credentials);
     }
 
+    void SetQContext(const TQContext& qContext) {
+        QContext = qContext;
+    }
+
     void RegisterPackage(const TString& package) override;
     bool SetPackageDefaultVersion(const TString& package, ui32 version) override;
     const TExportTable* GetModule(const TString& module) const override;
@@ -111,6 +116,7 @@ private:
     IUrlLoader::TPtr UrlLoader;
     TMaybe<NYT::TNode> Parameters;
     TCredentials::TPtr Credentials;
+    TQContext QContext;
     TExprContext LibsContext;
     TSet<TString> KnownPackages;
     THashMap<TString, ui32> PackageVersions;
@@ -185,7 +191,7 @@ enum class ECostBasedOptimizerType {
     Disable /* "disable" */,
     PG /* "pg" */,
     Native /* "native" */
-}; 
+};
 
 enum class EMatchRecognizeStreamingMode {
     Disable,
@@ -208,6 +214,7 @@ struct TUdfCachedInfo {
 };
 
 struct TTypeAnnotationContext: public TThrRefBase {
+    THashMap<TString, TIntrusivePtr<TOptimizerStatistics::TColumnStatMap>> ColumnStatisticsByTableName;
     THashMap<const TExprNode*, std::shared_ptr<TOptimizerStatistics>> StatisticsMap;
     TIntrusivePtr<ITimeProvider> TimeProvider;
     TIntrusivePtr<IRandomProvider> RandomProvider;
@@ -243,8 +250,12 @@ struct TTypeAnnotationContext: public TThrRefBase {
     THashSet<TString> DisableConstraintCheck;
     bool UdfSupportsYield = false;
     ui32 EvaluateForLimit = 500;
+    ui32 EvaluateParallelForLimit = 5000;
     ui32 EvaluateOrderByColumnLimit = 100;
+    ui32 PgIterateLimit = 500;
     bool PullUpFlatMapOverJoin = true;
+    bool FilterPushdownOverJoinOptionalSide = false;
+    bool RotateJoinTree = true;
     bool DeprecatedSQL = false;
     THashMap<std::tuple<TString, TString, const TTypeAnnotationNode*>, TUdfCachedInfo> UdfTypeCache; // (name,typecfg,type)->info
     bool UseTableMetaFromGraph = false;
@@ -258,8 +269,10 @@ struct TTypeAnnotationContext: public TThrRefBase {
     ui32 FolderSubDirsLimit = 1000;
     bool UseBlocks = false;
     EBlockEngineMode BlockEngineMode = EBlockEngineMode::Disable;
-    bool PgEmitAggApply = false;
+    TMaybe<bool> PgEmitAggApply;
     IArrowResolver::TPtr ArrowResolver;
+    TFileStoragePtr FileStorage;
+    TQContext QContext;
     ECostBasedOptimizerType CostBasedOptimizer = ECostBasedOptimizerType::Disable;
     bool MatchRecognize = false;
     EMatchRecognizeStreamingMode MatchRecognizeStreaming = EMatchRecognizeStreamingMode::Force;
@@ -270,6 +283,7 @@ struct TTypeAnnotationContext: public TThrRefBase {
     bool OrderedColumns = false;
     TColumnOrderStorage::TPtr ColumnOrderStorage = new TColumnOrderStorage;
     THashSet<TString> OptimizerFlags;
+    bool StreamLookupJoin = false;
 
     TMaybe<TColumnOrder> LookupColumnOrder(const TExprNode& node) const;
     IGraphTransformer::TStatus SetColumnOrder(const TExprNode& node, const TColumnOrder& columnOrder, TExprContext& ctx);

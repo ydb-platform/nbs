@@ -120,11 +120,7 @@ const ui64& TNodeRegistrationResult::GetScopePathId() const {
 }
 
 bool TNodeRegistrationResult::HasScopePathId() const {
-    return ScopePathId_.value();
-}
-
-const TVector<TNodeInfo>& TNodeRegistrationResult::GetNodes() const {
-    return Nodes_;
+    return ScopePathId_.has_value();
 }
 
 bool TNodeRegistrationResult::HasNodeName() const {
@@ -133,6 +129,10 @@ bool TNodeRegistrationResult::HasNodeName() const {
 
 const TString& TNodeRegistrationResult::GetNodeName() const {
     return NodeName_.value();
+}
+
+const TVector<TNodeInfo>& TNodeRegistrationResult::GetNodes() const {
+    return Nodes_;
 }
 
 class TDiscoveryClient::TImpl : public TClientImplCommon<TDiscoveryClient::TImpl> {

@@ -1,5 +1,7 @@
 UNITTEST_FOR(contrib/ydb/library/yql/parser/pg_wrapper)
 
+TAG(ya:manual)
+
 TIMEOUT(600)
 SIZE(MEDIUM)
 
