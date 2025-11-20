@@ -2171,14 +2171,14 @@ void TDiskRegistryState::UserAntiAffinityNodeRankingFunc(
     const TString& cloudId,
     std::span<ui32> nodeIds) const
 {
-    THashMap<ui32, i32> nodesWeights;
+    THashMap<TNodeId, i32> nodesWeights;
 
     for (const auto& [diskId, ds]: Disks) {
         if (ds.CloudId != cloudId) {
             continue;
         }
 
-        THashSet<ui32> diskNodeIds;
+        THashSet<TNodeId> diskNodeIds;
 
         for (const auto& uuid: ds.Devices) {
             if (TNodeId nodeId = DeviceList.FindNodeId(uuid)) {
@@ -2194,17 +2194,17 @@ void TDiskRegistryState::UserAntiAffinityNodeRankingFunc(
 
         if (diskId == newDiskId) {
             // For resize and migration the same node should be prefered.
-            for (ui32 nodeId: diskNodeIds) {
+            for (TNodeId nodeId: diskNodeIds) {
                 nodesWeights[nodeId] = Min<i32>();
             }
         } else {
-            for (ui32 nodeId: diskNodeIds) {
+            for (TNodeId nodeId: diskNodeIds) {
                 ++nodesWeights[nodeId];
             }
         }
     }
 
-    StableSortBy(nodeIds, [&](ui32 nodeId) {
+    StableSortBy(nodeIds, [&](TNodeId nodeId) {
         return nodesWeights.Value(nodeId, 0);
     });
 }
