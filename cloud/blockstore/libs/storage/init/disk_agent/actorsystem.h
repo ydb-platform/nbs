@@ -46,6 +46,7 @@ struct TDiskAgentActorSystemArgs
     NRdma::IServerPtr RdmaServer;
     NNvme::INvmeManagerPtr NvmeManager;
     NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
+    ITaskQueuePtr BackgroundThreadPool;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

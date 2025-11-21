@@ -22,7 +22,7 @@
 
 #include <util/folder/tempdir.h>
 
-#include <chrono>
+#include <filesystem>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -62,8 +62,38 @@ TFsPath TryGetRamDrivePath()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestNvmeManager
-    : NNvme::INvmeManager
+TVector<ui64> FindProcessesWithOpenFile(const TString& targetPath)
+{
+    TVector<ui64> result;
+
+    namespace NFs = std::filesystem;
+
+    for (const auto& pid: NFs::directory_iterator{"/proc"}) {
+        try {
+            for (const auto& fd: NFs::directory_iterator{pid.path() / "fd"}) {
+                if (!fd.is_symlink()) {
+                    continue;
+                }
+
+                if (targetPath == NFs::read_symlink(fd).string()) {
+                    result.emplace_back(
+                        FromString<i64>(pid.path().filename().string()));
+                    break;
+                }
+            }
+        } catch (...) {
+            continue;
+        }
+    }
+
+    SortUnique(result);
+
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestNvmeManager: NNvme::INvmeManager
 {
     THashMap<TString, TString> PathToSerial;
 
@@ -6786,6 +6816,32 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             S_OK,
             response.ReplicationResponses[1].GetCode(),
             FormatError(response.ReplicationResponses[1]));
+    }
+
+    Y_UNIT_TEST_F(ShouldDetachPaths, TFixture)
+    {
+        auto storageConfig = NProto::TStorageServiceConfig();
+        storageConfig.SetAttachDetachPathsEnabled(true);
+
+        auto env = TTestEnvBuilder(*Runtime)
+                       .With(CreateDiskAgentConfig())
+                       .With(storageConfig)
+                       .Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        Runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            FindProcessesWithOpenFile(Devices[0]).size());
+
+        diskAgent.DetachPaths(TVector<TString>{{PartLabels[0]}});
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            FindProcessesWithOpenFile(Devices[0]).size());
     }
 }
 

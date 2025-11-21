@@ -737,6 +737,8 @@ public:
     [[nodiscard]] TDuration GetDynamicNodeRegistrationTimeout() const;
 
     [[nodiscard]] bool GetComputeDigestForEveryBlockOnCompaction() const;
+
+    [[nodiscard]] bool GetAttachDetachPathsEnabled() const;
 };
 
 ui64 GetAllocationUnit(
