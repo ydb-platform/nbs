@@ -539,9 +539,7 @@ void TFileSystem::WriteBuf(
         || !IsAligned(size, Config->GetBlockSize());
     auto request = StartRequest<NProto::TWriteDataRequest>(ino);
 
-    // TODO(myagkov): Support iovecs in WriteBackCache
-    const bool isZeroCopyWrite = Config->GetZeroCopyWriteEnabled() &&
-                                 !Config->GetServerWriteBackCacheEnabled();
+    const bool isZeroCopyWrite = Config->GetZeroCopyWriteEnabled();
     if (!isZeroCopyWrite) {
         TAlignedBuffer alignedBuffer(size, align);
 

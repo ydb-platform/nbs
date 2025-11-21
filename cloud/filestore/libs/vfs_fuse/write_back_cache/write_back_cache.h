@@ -44,7 +44,8 @@ public:
         ui32 maxWriteRequestSize,
         ui32 maxWriteRequestsCount,
         ui32 maxSumWriteRequestsSize,
-        bool zeroCopyWriteEnabled);
+        bool zeroCopyWriteEnabled,
+        bool disableValidationAsserts);
 
     ~TWriteBackCache();
 
@@ -65,6 +66,8 @@ public:
 
     NThreading::TFuture<void> FlushAllData();
 
+    bool IsEmpty() const;
+
     enum class EWriteDataRequestStatus;
     struct TPersistentQueueStats;
 
@@ -72,6 +75,9 @@ private:
     // Only for testing purposes
     friend struct TCalculateDataPartsToReadTestBootstrap;
 
+    struct TCachedWriteDataRequest;
+    struct TGlobalListTag;
+    struct TNodeListTag;
     class TWriteDataEntry;
     struct TWriteDataEntryDeserializationStats;
     struct TWriteDataEntryPart;
@@ -114,9 +120,6 @@ enum class TWriteBackCache::EWriteDataRequestStatus
     // Write request has been stored in the persistent buffer
     // The caller code observes the request as completed
     Cached,
-
-    // Flush has been requested for the write request
-    FlushRequested,
 
     // Write request is being flushed
     Flushing,

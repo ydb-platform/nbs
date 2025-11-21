@@ -31,6 +31,7 @@ using namespace std::chrono_literals;
 using namespace NThreading;
 
 using EWriteDataRequestStatus = TWriteBackCache::EWriteDataRequestStatus;
+using TIovecs = TVector<TStringBuf>;
 
 namespace {
 
@@ -52,6 +53,18 @@ void SleepForRandomDurationMs(ui32 maxDurationMs)
     if (durationMs != 0) {
         std::this_thread::sleep_for(durationMs*1ms);
     }
+}
+
+TStringBuf ToStringBuf(const NProto::TIovec& iovec)
+{
+    return {reinterpret_cast<const char*>(iovec.GetBase()), iovec.GetLength()};
+}
+
+void Write(TString& data, ui64 offset, TStringBuf buffer)
+{
+    auto newSize = Max(data.size(), offset + buffer.size());
+    data.resize(newSize, 0);
+    data.replace(offset, buffer.size(), buffer);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -150,7 +163,6 @@ struct TWriteBackCacheStats
 
     TWriteDataRequestStats PendingStats;
     TWriteDataRequestStats CachedStats;
-    TWriteDataRequestStats FlushRequestedStats;
     TWriteDataRequestStats FlushingStats;
     TWriteDataRequestStats FlushedStats;
 
@@ -169,7 +181,6 @@ struct TWriteBackCacheStats
 
         PendingStats.ResetNonDerivativeCounters();
         CachedStats.ResetNonDerivativeCounters();
-        FlushRequestedStats.ResetNonDerivativeCounters();
         FlushingStats.ResetNonDerivativeCounters();
         FlushedStats.ResetNonDerivativeCounters();
     }
@@ -207,8 +218,6 @@ struct TWriteBackCacheStats
                 return PendingStats;
             case EWriteDataRequestStatus::Cached:
                 return CachedStats;
-            case EWriteDataRequestStatus::FlushRequested:
-                return FlushRequestedStats;
             case EWriteDataRequestStatus::Flushing:
                 return FlushingStats;
             case EWriteDataRequestStatus::Flushed:
@@ -302,6 +311,7 @@ struct TBootstrapArgs
     ui32 MaxSumWriteRequestsSize = DefaultMaxSumWriteRequestsSize;
     bool UseTestTimerAndScheduler = true;
     bool ZeroCopyWriteEnabled = false;
+    bool DisableValidationAsserts = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -324,6 +334,7 @@ struct TBootstrap
     ui32 MaxWriteRequestsCount = 0;
     ui32 MaxSumWriteRequestsSize = 0;
     bool ZeroCopyWriteEnabled = false;
+    bool DisableValidationAsserts = false;
 
     TCallContextPtr CallContext;
 
@@ -354,6 +365,7 @@ struct TBootstrap
         , MaxWriteRequestsCount(args.MaxWriteRequestsCount)
         , MaxSumWriteRequestsSize(args.MaxSumWriteRequestsSize)
         , ZeroCopyWriteEnabled(args.ZeroCopyWriteEnabled)
+        , DisableValidationAsserts(args.DisableValidationAsserts)
     {
         CacheFlushRetryPeriod = TDuration::MilliSeconds(100);
 
@@ -474,7 +486,7 @@ struct TBootstrap
 
         RecreateCache();
 
-        CallContext = MakeIntrusive<TCallContext>();
+        CallContext = MakeIntrusive<TCallContext>("FileSystemId");
     }
 
     void MoveIovecsToBuffer(NProto::TWriteDataRequest& request) const
@@ -490,9 +502,7 @@ struct TBootstrap
                 "BufferOffset should be zero if a request contains Iovecs");
             TString buf;
             for (const auto& iovec: request.GetIovecs()) {
-                buf.append(
-                    reinterpret_cast<const char*>(iovec.GetBase()),
-                    iovec.GetLength());
+                buf.append(ToStringBuf(iovec));
             }
             request.SetBuffer(std::move(buf));
             request.ClearIovecs();
@@ -523,7 +533,8 @@ struct TBootstrap
             MaxWriteRequestSize,
             MaxWriteRequestsCount,
             MaxSumWriteRequestsSize,
-            ZeroCopyWriteEnabled);
+            ZeroCopyWriteEnabled,
+            DisableValidationAsserts);
     }
 
     TFuture<NProto::TReadDataResponse> ReadFromCache(
@@ -620,13 +631,30 @@ struct TBootstrap
         ui64 nodeId,
         ui64 handle,
         ui64 offset,
-        TString buffer)
+        TString buffer,
+        const TIovecs& iovecs)
     {
         auto request = std::make_shared<NProto::TWriteDataRequest>();
         request->SetNodeId(nodeId);
         request->SetHandle(handle);
         request->SetOffset(offset);
-        request->SetBuffer(buffer);
+
+        if (iovecs.empty()) {
+            request->SetBuffer(buffer);
+        } else {
+            request->MutableIovecs()->Reserve(static_cast<int>(iovecs.size()));
+            for (const auto& iovec: iovecs) {
+                auto* dstIovec = request->AddIovecs();
+                dstIovec->SetBase(reinterpret_cast<ui64>(iovec.data()));
+                dstIovec->SetLength(iovec.size());
+                buffer.append(iovec);
+            }
+        }
+
+        {
+            std::unique_lock lock2(UnflushedDataMutex);
+            Write(UnflushedData[nodeId], offset, buffer);
+        }
 
         auto future = Cache.WriteData(CallContext, std::move(request));
 
@@ -635,19 +663,9 @@ struct TBootstrap
                 << " to @" << nodeId
                 << " at offset " << offset);
 
-            auto write = [=] (auto* data) {
-                // append zeroes if needed
-                auto newSize = Max(data->size(), offset + buffer.size());
-                data->resize(newSize, 0);
-                data->replace(offset, buffer.size(), buffer);
-            };
-
             {
                 std::unique_lock lock1(ExpectedDataMutex);
-                std::unique_lock lock2(UnflushedDataMutex);
-
-                write(&ExpectedData[nodeId]);
-                write(&UnflushedData[nodeId]);
+                Write(ExpectedData[nodeId], offset, buffer);
             }
         });
 
@@ -660,17 +678,32 @@ struct TBootstrap
         TString buffer)
     {
         auto handle = nodeId + NodeToHandleOffset;
-        return WriteToCache(nodeId, handle, offset, std::move(buffer));
+        return WriteToCache(nodeId, handle, offset, std::move(buffer), {});
+    }
+
+    TFuture<NProto::TWriteDataResponse> WriteToCache(
+        ui64 nodeId,
+        ui64 offset,
+        const TIovecs& iovecs)
+    {
+        auto handle = nodeId + NodeToHandleOffset;
+        return WriteToCache(nodeId, handle, offset, {}, iovecs);
     }
 
     void WriteToCacheSync(ui64 nodeId, ui64 handle, ui64 offset, TString buffer)
     {
-        WriteToCache(nodeId, handle, offset, std::move(buffer)).GetValueSync();
+        WriteToCache(nodeId, handle, offset, std::move(buffer), {})
+            .GetValueSync();
     }
 
     void WriteToCacheSync(ui64 nodeId, ui64 offset, TString buffer)
     {
         WriteToCache(nodeId, offset, std::move(buffer)).GetValueSync();
+    }
+
+    void WriteToCacheSync(ui64 nodeId, ui64 offset, TIovecs iovecs)
+    {
+        WriteToCache(nodeId, offset, std::move(iovecs)).GetValueSync();
     }
 
     void FlushCache(ui64 nodeId)
@@ -724,12 +757,10 @@ struct TBootstrap
         UNIT_ASSERT_EQUAL(0, Stats->PersistentQueueStats.RawUsedBytesCount);
         UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->PendingStats.MinTime);
         UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->CachedStats.MinTime);
-        UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->FlushRequestedStats.MinTime);
         UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->FlushingStats.MinTime);
         UNIT_ASSERT_EQUAL(TInstant::Zero(), Stats->FlushedStats.MinTime);
         UNIT_ASSERT_EQUAL(0, Stats->PendingStats.InProgressCount);
         UNIT_ASSERT_EQUAL(0, Stats->CachedStats.InProgressCount);
-        UNIT_ASSERT_EQUAL(0, Stats->FlushRequestedStats.InProgressCount);
         UNIT_ASSERT_EQUAL(0, Stats->FlushingStats.InProgressCount);
         UNIT_ASSERT_EQUAL(0, Stats->FlushedStats.InProgressCount);
     }
@@ -782,19 +813,6 @@ struct TBootstrap
         CheckWriteDataRequestStats(
             Stats->CachedStats,
             "Cached",
-            expectedInProgressCount,
-            expectedCount,
-            expectedMinTime);
-    }
-
-    void CheckFlushRequestedWriteDataRequestStats(
-        ui64 expectedInProgressCount,
-        ui64 expectedCount,
-        TInstant expectedMinTime)
-    {
-        CheckWriteDataRequestStats(
-            Stats->FlushRequestedStats,
-            "FlushRequested",
             expectedInProgressCount,
             expectedCount,
             expectedMinTime);
@@ -1106,14 +1124,14 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     {
         TBootstrap b;
 
-        b.ValidateCache(1, 0, "\0\0\0");
-        b.ValidateCache(2, 10, "\0\0\0\0");
+        b.ValidateCache(1, 0, TString(3, '\0'));
+        b.ValidateCache(2, 10, TString(4, '\0'));
 
         b.FlushCache();
-        b.ValidateCache(1, 5, "\0\0\0");
+        b.ValidateCache(1, 5, TString(3, '\0'));
 
         b.FlushCache(1);
-        b.ValidateCache(1, 100, "\0\0\0\0\0\0");
+        b.ValidateCache(1, 100, TString(6, '\0'));
     }
 
     Y_UNIT_TEST(ShouldMergeRequestsWhenFlushing)
@@ -1359,10 +1377,20 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
             ui32 nodeId = RandomNumber(3u);
 
-            b.WriteToCacheSync(
-                nodeId,
-                offset + RandomNumber(11u),
-                TString(data));
+            if (args.ZeroCopyWriteEnabled && RandomNumber(2u) == 0) {
+                TIovecs iovecs;
+                while (!data.empty()) {
+                    const ui64 chunkSize = RandomNumber(data.size()) + 1;
+                    iovecs.emplace_back(data.data(), chunkSize);
+                    data.remove_prefix(chunkSize);
+                }
+                b.WriteToCacheSync(nodeId, offset + RandomNumber(11u), iovecs);
+            } else {
+                b.WriteToCacheSync(
+                    nodeId,
+                    offset + RandomNumber(11u),
+                    TString(data));
+            }
 
             stats.Write(nodeId);
 
@@ -1390,7 +1418,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             UNIT_ASSERT_EQUAL(
                 stats.GetCachedQueueRequestCount(),
                 b.Stats->CachedStats.InProgressCount +
-                    b.Stats->FlushRequestedStats.InProgressCount +
                     b.Stats->FlushingStats.InProgressCount +
                     b.Stats->FlushedStats.InProgressCount);
             UNIT_ASSERT_EQUAL(stats.GetNodeCount(), b.Stats->NodeCount);
@@ -1610,7 +1637,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         TBootstrap b;
 
-        std::atomic_int writeAttempts = 0;
+        std::atomic<int> writeAttempts = 0;
 
         auto prevWriteDataHandler = std::move(b.Session->WriteDataHandler);
         b.Session->WriteDataHandler = [&](auto context, auto request) {
@@ -1792,7 +1819,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         stats.MaxItems = 10;
 
         constexpr int WriteAttemptsThreshold = 3;
-        std::atomic_int writeAttempts = 0;
+        std::atomic<int> writeAttempts = 0;
 
         auto prevWriteDataHandler = std::move(b.Session->WriteDataHandler);
         b.Session->WriteDataHandler = [&](auto context, auto request) {
@@ -1898,7 +1925,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         b.CheckPendingWriteDataRequestStats(0, 1, zero);
         b.CheckCachedWriteDataRequestStats(1, 0, t1);
-        b.CheckFlushRequestedWriteDataRequestStats(0, 0, zero);
         b.CheckFlushingWriteDataRequestStats(0, 0, zero);
         b.CheckFlushedWriteDataRequestStats(0, 0, zero);
 
@@ -1910,7 +1936,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         b.CheckPendingWriteDataRequestStats(0, 3, zero);
         b.CheckCachedWriteDataRequestStats(3, 0, t1);
-        b.CheckFlushRequestedWriteDataRequestStats(0, 0, zero);
         b.CheckFlushingWriteDataRequestStats(0, 0, zero);
         b.CheckFlushedWriteDataRequestStats(0, 0, zero);
 
@@ -1922,8 +1947,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.Cache.FlushNodeData(2);
 
         b.CheckPendingWriteDataRequestStats(0, 4, zero);
-        b.CheckCachedWriteDataRequestStats(1, 3, t1);
-        b.CheckFlushRequestedWriteDataRequestStats(1, 2, t3);
+        b.CheckCachedWriteDataRequestStats(2, 2, t1);
         b.CheckFlushingWriteDataRequestStats(2, 0, t3);
         b.CheckFlushedWriteDataRequestStats(0, 0, zero);
 
@@ -1933,7 +1957,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         // from the middle of the queue
         b.CheckPendingWriteDataRequestStats(0, 4, zero);
         b.CheckCachedWriteDataRequestStats(1, 3, t1);
-        b.CheckFlushRequestedWriteDataRequestStats(0, 3, zero);
         b.CheckFlushingWriteDataRequestStats(0, 3, zero);
         b.CheckFlushedWriteDataRequestStats(3, 0, t3);
 
@@ -1947,7 +1970,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         // flushed again
         b.CheckPendingWriteDataRequestStats(0, 4, zero);
         b.CheckCachedWriteDataRequestStats(4, 4, t4);
-        b.CheckFlushRequestedWriteDataRequestStats(0, 4, zero);
         b.CheckFlushingWriteDataRequestStats(0, 3, zero);
         b.CheckFlushedWriteDataRequestStats(0, 0, zero);
 
@@ -1967,7 +1989,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         // FlushAll should have been triggered by hitting cache capacity
         b.CheckPendingWriteDataRequestStats(1, count + 4, t5);
         b.CheckCachedWriteDataRequestStats(0, count + 8, zero);
-        b.CheckFlushRequestedWriteDataRequestStats(0, count + 8, zero);
         b.CheckFlushingWriteDataRequestStats(count + 4, 3, t5);
         b.CheckFlushedWriteDataRequestStats(0, 0, zero);
 
@@ -1978,7 +1999,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         b.CheckPendingWriteDataRequestStats(0, count + 5, zero);
         b.CheckCachedWriteDataRequestStats(1, count + 8, t6);
-        b.CheckFlushRequestedWriteDataRequestStats(0, count + 8, zero);
         b.CheckFlushingWriteDataRequestStats(0, count + 7, zero);
         b.CheckFlushedWriteDataRequestStats(0, count + 4, zero);
 
@@ -1991,7 +2011,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         b.CheckPendingWriteDataRequestStats(0, count + 5, zero);
         b.CheckCachedWriteDataRequestStats(0, count + 9, zero);
-        b.CheckFlushRequestedWriteDataRequestStats(0, count + 9, zero);
         b.CheckFlushingWriteDataRequestStats(0, count + 8, zero);
         b.CheckFlushedWriteDataRequestStats(0, count + 5, zero);
 
@@ -2080,6 +2099,184 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         UNIT_ASSERT_VALUES_EQUAL("(0, 11)", logger.RangesToString(1));
         UNIT_ASSERT_VALUES_EQUAL("[5, 6]", logger.IovecsLengthsToString(1));
+    }
+
+    Y_UNIT_TEST(ShouldAcceptWriteDataRequestsWithIovecs)
+    {
+        TBootstrap b;
+
+        const TString data = "abcdefghij";
+        const ui64 base = reinterpret_cast<ui64>(data.data());
+
+        std::atomic<int> writeAttempts = 0;
+
+        b.Session->WriteDataHandler = [&] (auto, auto request) {
+            writeAttempts++;
+            UNIT_ASSERT_VALUES_EQUAL(1, request->GetNodeId());
+            UNIT_ASSERT_VALUES_EQUAL(0, request->GetOffset());
+            UNIT_ASSERT_VALUES_EQUAL("defghabcij", request->GetBuffer());
+            NProto::TWriteDataResponse response;
+            return MakeFuture(response);
+        };
+
+        auto request = std::make_shared<NProto::TWriteDataRequest>();
+        request->SetNodeId(1);
+        request->SetOffset(0);
+
+        auto* iovec1 = request->AddIovecs();
+        iovec1->SetBase(base + 3);
+        iovec1->SetLength(5);  // "defgh";
+
+        auto* iovec2 = request->AddIovecs();
+        iovec2->SetBase(base);
+        iovec2->SetLength(3);  // "abc"
+
+        auto* iovec3 = request->AddIovecs();
+        iovec3->SetBase(base + 8);
+        iovec3->SetLength(2);  // "ij"
+
+        b.Cache.WriteData(b.CallContext, request).GetValueSync();
+        b.Cache.FlushNodeData(1).GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, writeAttempts.load());
+    }
+
+    Y_UNIT_TEST(ShouldValidateWriteDataRequests)
+    {
+        TBootstrap b({.DisableValidationAsserts = true});
+
+        auto requestWithNoBufferAndIovecs =
+            std::make_shared<NProto::TWriteDataRequest>();
+
+        auto responseWithNoBufferAndIovecs =
+            b.Cache.WriteData(b.CallContext, requestWithNoBufferAndIovecs)
+                .GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            responseWithNoBufferAndIovecs.GetError().GetCode());
+
+        auto requestWithInvalidBufferOffset =
+            std::make_shared<NProto::TWriteDataRequest>();
+        requestWithInvalidBufferOffset->SetBuffer("abc");
+        requestWithInvalidBufferOffset->SetBufferOffset(3);
+
+        auto responseWithInvalidBufferOffset =
+            b.Cache.WriteData(b.CallContext, requestWithInvalidBufferOffset)
+                .GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            responseWithInvalidBufferOffset.GetError().GetCode());
+
+        auto requestWithBothBufferAndIovecs =
+            std::make_shared<NProto::TWriteDataRequest>();
+        requestWithBothBufferAndIovecs->SetBuffer("abc");
+        requestWithBothBufferAndIovecs->AddIovecs()->SetBase(0);
+        requestWithBothBufferAndIovecs->AddIovecs()->SetLength(2);
+
+        auto responseWithBothBufferAndIovecs =
+            b.Cache.WriteData(b.CallContext, requestWithBothBufferAndIovecs)
+                .GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            responseWithBothBufferAndIovecs.GetError().GetCode());
+
+        auto requestWithBothBufferOffsetAndIovecs =
+            std::make_shared<NProto::TWriteDataRequest>();
+        requestWithBothBufferOffsetAndIovecs->SetBufferOffset(1);
+        requestWithBothBufferOffsetAndIovecs->AddIovecs()->SetBase(0);
+        requestWithBothBufferOffsetAndIovecs->AddIovecs()->SetLength(2);
+
+        auto responseWithBothBufferOffsetAndIovecs =
+            b.Cache
+                .WriteData(b.CallContext, requestWithBothBufferOffsetAndIovecs)
+                .GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            responseWithBothBufferOffsetAndIovecs.GetError().GetCode());
+
+        auto requestWithInvalidIovecLength =
+            std::make_shared<NProto::TWriteDataRequest>();
+        auto* iovec = requestWithInvalidIovecLength->AddIovecs();
+        iovec->SetBase(0);
+        iovec->SetLength(0);
+
+        auto responseWithInvalidIovecLength =
+            b.Cache.WriteData(b.CallContext, requestWithInvalidIovecLength)
+                .GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            responseWithInvalidIovecLength.GetError().GetCode());
+    }
+
+    Y_UNIT_TEST(ShouldAutomaticallyFlushOnlyCachedRequests)
+    {
+        TBootstrap b;
+        TManualProceedHandlers writeRequests(b.Session->WriteDataHandler);
+
+        // Fill the cache until the requests become pending
+        while (true) {
+            auto writeFuture = b.WriteToCache(1, 0, "0123456789");
+            if (!writeFuture.HasValue()) {
+                break;
+            }
+        }
+
+        UNIT_ASSERT(!b.WriteToCache(2, 0, "abcdefghij").HasValue());
+
+        writeRequests.ProceedAll();
+
+        UNIT_ASSERT_VALUES_EQUAL(2, b.Stats->CachedStats.InProgressCount);
+    }
+
+    Y_UNIT_TEST(ShouldFlushPendingRequests_FlushNodeData)
+    {
+        TBootstrap b;
+        TManualProceedHandlers writeRequests(b.Session->WriteDataHandler);
+
+        // Fill the cache until the requests become pending
+        while (true) {
+            auto writeFuture = b.WriteToCache(1, 0, "0123456789");
+            if (!writeFuture.HasValue()) {
+                break;
+            }
+        }
+
+        UNIT_ASSERT(!b.WriteToCache(2, 0, "abcdefghij").HasValue());
+
+        auto flushNodeDataFuture = b.Cache.FlushNodeData(2);
+
+        writeRequests.ProceedAll();
+
+        UNIT_ASSERT(flushNodeDataFuture.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Stats->CachedStats.InProgressCount);
+    }
+
+    Y_UNIT_TEST(ShouldFlushPendingRequests_FlushAllData)
+    {
+        TBootstrap b;
+        TManualProceedHandlers writeRequests(b.Session->WriteDataHandler);
+
+        // Fill the cache until the requests become pending
+        while (true) {
+            auto writeFuture = b.WriteToCache(1, 0, "0123456789");
+            if (!writeFuture.HasValue()) {
+                break;
+            }
+        }
+
+        UNIT_ASSERT(!b.WriteToCache(2, 0, "abcdefghij").HasValue());
+
+        auto flushAllDataFuture = b.Cache.FlushAllData();
+
+        writeRequests.ProceedAll();
+
+        UNIT_ASSERT(flushAllDataFuture.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Stats->CachedStats.InProgressCount);
     }
 }
 
