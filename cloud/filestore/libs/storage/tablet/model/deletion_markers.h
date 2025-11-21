@@ -56,6 +56,8 @@ public:
     TDeletionMarkers(IAllocator* alloc);
     ~TDeletionMarkers();
 
+    bool Empty() const;
+
     void Add(TDeletionMarker deletionMarker);
     ui32 Apply(TBlock& block) const;
     ui32 Apply(TArrayRef<TBlock> blocks) const;
