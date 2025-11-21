@@ -79,4 +79,11 @@ IRequestGeneratorPtr CreateReplayRequestGeneratorFs(
     TString filesystemId,
     NProto::THeaders headers);
 
+IRequestGeneratorPtr CreateReplayRequestGeneratorGRPC(
+    NProto::TReplaySpec spec,
+    ILoggingServicePtr logging,
+    NClient::ISessionPtr session,
+    TString filesystemId,
+    NProto::THeaders headers);
+
 }   // namespace NCloud::NFileStore::NLoadTest
