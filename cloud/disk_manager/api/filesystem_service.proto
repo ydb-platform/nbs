@@ -58,6 +58,10 @@ message CreateFilesystemRequest {
     int64 size = 5;
     FilesystemKind kind = 6;
     bool is_external = 7;
+    oneof src {
+        google.protobuf.Empty src_empty = 8;
+        string src_snapshot_id = 9;
+    }
 }
 
 message CreateFilesystemResponse {
