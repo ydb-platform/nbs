@@ -16,9 +16,13 @@ class TSqliteOutput
 {
     class TTransaction;
 
+    using TReplicaChecksums =
+        google::protobuf::RepeatedPtrField<NProto::TReplicaChecksum>;
+
     sqlite3* Db = nullptr;
     sqlite3_stmt* AddDiskStmt = nullptr;
     sqlite3_stmt* AddRequestStmt = nullptr;
+    sqlite3_stmt* AddChecksumStmt = nullptr;
     TMap<TString, ui64> Volumes;
     ui64 RowsInTransaction = 0;
     ui64 TotalRowCount = 0;
@@ -42,15 +46,20 @@ private:
     void CreateTables();
     void ReadDisks();
     void AddRequestTypes();
+    void AddZeroChecksumsTypes();
     void AddBlocksSequence();
 
     ui64 GetVolumeId(const TString& diskId);
-    void AddRequest(
+    ui64 AddRequest(
         TInstant timestamp,
         ui64 volumeId,
         ui64 requestTypeId,
         TBlockRange64 range,
         TDuration duration);
+    void AddChecksums(
+        ui64 requestId,
+        TBlockRange64 blockRange,
+        const TReplicaChecksums& replicaChecksums);
 
     void AdvanceTransaction();
 };
