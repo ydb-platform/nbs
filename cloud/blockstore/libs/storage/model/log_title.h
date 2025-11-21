@@ -48,6 +48,11 @@ public:
         TString DiskId;
     };
 
+    struct TPartitionMirror
+    {
+        TString DiskId;
+    };
+
     struct TSession
     {
         TString SessionId;
@@ -80,7 +85,8 @@ private:
         TPartitionNonrepl,
         TSession,
         TClient,
-        TDiskRegistry>;
+        TDiskRegistry,
+        TPartitionMirror>;
 
     ui64 StartTime = 0;
     TData Data;

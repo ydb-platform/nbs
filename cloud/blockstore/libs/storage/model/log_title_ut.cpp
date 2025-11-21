@@ -222,6 +222,19 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
         UNIT_ASSERT_STRING_CONTAINS(logTitle.GetWithTime(), "[nrd:disk1 t:");
     }
 
+    Y_UNIT_TEST(GetForPartitionMirror)
+    {
+        TLogTitle logTitle{
+            GetCycleCount(),
+            TLogTitle::TPartitionMirror{.DiskId = "disk1"}};
+
+        UNIT_ASSERT_STRINGS_EQUAL(
+            "[md:disk1]",
+            logTitle.Get(TLogTitle::EDetails::Brief));
+
+        UNIT_ASSERT_STRING_CONTAINS(logTitle.GetWithTime(), "[md:disk1 t:");
+    }
+
     Y_UNIT_TEST(GetChildLogger)
     {
         const ui64 startTime =
