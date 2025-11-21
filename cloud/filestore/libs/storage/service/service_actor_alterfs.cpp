@@ -264,10 +264,25 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
     }
 
     const auto& fileStore = msg->PathDescription.GetFileStoreDescription();
+    NKikimrFileStore::TConfig currentConfig = fileStore.GetConfig();
 
     // A shard is described
     if (ev->Cookie != MainFileStoreCookie) {
-        FileStoreConfig.ShardConfigs[ev->Cookie].SetVersion(
+        const ui64 shardNo = ev->Cookie;
+        const ui64 blocksCount =
+            FileStoreConfig.ShardConfigs[shardNo].GetBlocksCount();
+        FileStoreConfig.ShardConfigs[shardNo] = currentConfig;
+        FileStoreConfig.ShardConfigs[shardNo].SetBlocksCount(blocksCount);
+        // We need to reconfigure the shard as only at this point we know
+        // original number of channels and it may happen that previously
+        // calculated number of channels is less than real.
+        SetupFileStorePerformanceAndChannels(
+            false /* allocateMixed0Channel */,
+            *StorageConfig,
+            FileStoreConfig.ShardConfigs[shardNo],
+            PerformanceProfile);
+
+        FileStoreConfig.ShardConfigs[shardNo].SetVersion(
             fileStore.GetConfig().GetVersion());
 
         Y_ABORT_UNLESS(ShardsToDescribe);
@@ -276,8 +291,6 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
         }
         return;
     }
-
-    NKikimrFileStore::TConfig currentConfig = fileStore.GetConfig();
 
     // Allocate legacy mixed0 channel in case it was already present
     Y_ABORT_UNLESS(currentConfig.ExplicitChannelProfilesSize() >= 4);

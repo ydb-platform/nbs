@@ -2699,6 +2699,41 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
     }
 
+    SERVICE_TEST_SIMPLE(ShouldSwitchOldFilesystemToStrictMode)
+    {
+        // This test starts the storage service with
+        // StrictFileSystemSizeEnforcementEnabled == flase, then restarts it
+        // with Strict... == true and switches a filesystem created with
+        // Strict... == false to Strct... == true.
+
+        config.SetAutomaticShardCreationEnabled(true);
+
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        const ui64 fsSize = 1000;
+        const ui64 shardsCount = 2;
+        service.CreateFileStore("test", fsSize);
+        service.ResizeFileStore("test", fsSize, false /* force */, shardsCount);
+
+        WaitForTabletStart(service);
+
+        config.SetStrictFileSystemSizeEnforcementEnabled(true);
+        env.UpdateStorageConfig(config);
+        env.CreateAndRegisterStorageService(nodeIdx);
+
+        service.ResizeFileStore(
+            "test",
+            fsSize,
+            false /* force */,
+            shardsCount,
+            true /* enableStrictSizeMode */);
+    }
+
     SERVICE_TEST_SIMPLE(ShouldAggregateFileSystemMetricsInBackground)
     {
         config.SetMultiTabletForwardingEnabled(true);

@@ -107,6 +107,8 @@ public:
         IProfileLogPtr profileLog = CreateProfileLogStub(),
         NProto::TDiagnosticsConfig diagConfig = {});
 
+    void UpdateStorageConfig(NProto::TStorageConfig storageConfig);
+
     NActors::TTestActorRuntime& GetRuntime()
     {
         return Runtime;
@@ -140,6 +142,7 @@ public:
     ui64 AllocateTxId();
     void CreateSubDomain(const TString& name);
     ui32 CreateNode(const TString& name);
+    void CreateAndRegisterStorageService(ui32 nodeIdx);
 
     ui64 BootIndexTablet(ui32 nodeIdx);
     void UpdateTabletStorageInfo(ui64 tabletId, ui32 channelCount);
