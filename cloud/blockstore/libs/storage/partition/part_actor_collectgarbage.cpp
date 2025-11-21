@@ -1,16 +1,15 @@
 #include "part_actor.h"
 
-#include <cloud/storage/core/libs/common/format.h>
-
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
+#include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/diagnostics/wilson_trace_compatibility.h>
 #include <cloud/storage/core/libs/tablet/gc_logic.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 
@@ -198,7 +197,12 @@ void TCollectGarbageActor::CollectGarbage(const TActorContext& ctx)
             SendToBSProxy(
                 ctx,
                 kv.first,
-                request.release());
+                request.release(),
+                0,
+                GetTraceIdForRequestId(
+                    RequestInfo->CallContext->LWOrbit,
+                    RequestInfo->CallContext->RequestId,
+                    false));
 
             ++RequestsInFlight;
         }
@@ -630,7 +634,8 @@ void TPartitionActor::HandleCollectGarbage(
         "CollectGarbage",
         static_cast<ui32>(PartitionConfig.GetStorageMediaKind()),
         requestInfo->CallContext->RequestId,
-        PartitionConfig.GetDiskId());
+        PartitionConfig.GetDiskId(),
+        TInstant::Now().MicroSeconds());
 
     auto replyError = [=] (
         const TActorContext& ctx,

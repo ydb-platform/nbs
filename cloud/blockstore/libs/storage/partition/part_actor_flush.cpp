@@ -213,6 +213,7 @@ void TFlushActor::WriteBlobs(const TActorContext& ctx)
                 "TEvPartitionPrivate::TEvWriteBlobRequest",
                 RequestInfo->CallContext->RequestId);
         }
+        request->CallContext->RequestId = RequestInfo->CallContext->RequestId;
 
         ForkedCallContexts.emplace_back(request->CallContext);
 
@@ -629,7 +630,8 @@ void TPartitionActor::HandleFlush(
         "Flush",
         static_cast<ui32>(PartitionConfig.GetStorageMediaKind()),
         requestInfo->CallContext->RequestId,
-        PartitionConfig.GetDiskId());
+        PartitionConfig.GetDiskId(),
+        TInstant::Now().MicroSeconds());
 
     if (State->GetFlushState().Status == EOperationStatus::Started) {
         auto response = std::make_unique<TEvPartitionPrivate::TEvFlushResponse>(

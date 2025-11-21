@@ -54,10 +54,12 @@ void TPartitionActor::HandleCleanup(
         BackgroundTaskStarted_Partition,
         requestInfo->CallContext->LWOrbit,
         msg->Mode == TEvPartitionPrivate::ECleanupMode::DirtyBlobCleanup
-            ? "DirtyBlobCleanup" : "CheckpointBlobCleanup",
+            ? "DirtyBlobCleanup"
+            : "CheckpointBlobCleanup",
         static_cast<ui32>(PartitionConfig.GetStorageMediaKind()),
         requestInfo->CallContext->RequestId,
-        PartitionConfig.GetDiskId());
+        PartitionConfig.GetDiskId(),
+        TInstant::Now().MicroSeconds());
 
     auto replyError = [=] (
         const TActorContext& ctx,
