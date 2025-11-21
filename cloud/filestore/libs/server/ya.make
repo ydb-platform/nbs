@@ -3,6 +3,7 @@ LIBRARY()
 SRCS(
     config.cpp
     probes.cpp
+    server_memory_state.cpp
     server.cpp
 )
 
