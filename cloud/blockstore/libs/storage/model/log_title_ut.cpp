@@ -232,7 +232,7 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
             "[md:disk1]",
             logTitle.Get(TLogTitle::EDetails::Brief));
 
-        UNIT_ASSERT_STRING_CONTAINS(logTitle.GetWithTime(), "[mirror:disk1 t:");
+        UNIT_ASSERT_STRING_CONTAINS(logTitle.GetWithTime(), "[md:disk1 t:");
     }
 
     Y_UNIT_TEST(GetChildLogger)
