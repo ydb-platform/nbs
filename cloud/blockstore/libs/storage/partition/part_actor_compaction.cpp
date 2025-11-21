@@ -484,6 +484,7 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
                 "TEvPartitionCommonPrivate::TEvReadBlobRequest",
                 RequestInfo->CallContext->RequestId);
         }
+        request->CallContext->RequestId = RequestInfo->CallContext->RequestId;
 
         ForkedReadCallContexts.emplace_back(request->CallContext);
 
@@ -578,6 +579,8 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
                     "TEvPartitionPrivate::TEvWriteBlobRequest",
                     RequestInfo->CallContext->RequestId);
             }
+            request->CallContext->RequestId =
+                RequestInfo->CallContext->RequestId;
 
             ForkedWriteAndPatchCallContexts.emplace_back(request->CallContext);
 

@@ -20,6 +20,8 @@ namespace NCloud {
 using namespace opentelemetry::proto::trace::v1;
 using namespace opentelemetry::proto::common::v1;
 
+using TTraceId = const std::array<ui64, 2>;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -187,22 +189,22 @@ class TSpanTree
 {
 private:
     TVector<Span> Spans;
-    const ui64 TraceId;
+    const TTraceId TraceId;
     const ui64 RootSpanId;
 
 public:
-    TSpanTree(ui64 traceId, ui64 spanId)
+    TSpanTree(TTraceId traceId, ui64 spanId)
         : TraceId(traceId)
         , RootSpanId(spanId)
     {
         Spans.emplace_back();
-        GetParentSpan().set_span_id(ToHexString8(RootSpanId));
-        GetParentSpan().set_trace_id(ToHexString16(TraceId));
+        GetParentSpan().set_span_id(&spanId, sizeof(spanId));
+        GetParentSpan().set_trace_id(TraceId.data(), sizeof(TraceId));
     }
 
     void AddSpanSubTree(TSpanTree subtree)
     {
-        subtree.GetParentSpan().set_parent_span_id(ToHexString8(RootSpanId));
+        subtree.GetParentSpan().set_parent_span_id(&RootSpanId, sizeof(RootSpanId));
         std::ranges::move(subtree.Spans, std::back_inserter(Spans));
     }
 
@@ -225,15 +227,15 @@ public:
 class TTraceConverter
 {
 private:
-    const ui64 TraceId;
+    const TTraceId TraceId;
     const TReferenceTimeCycle ReferenceTimeCycle;
     const bool HasConflicts;
 
-    ui32 NextSpanId = 0;
+    ui64 NextSpanId = 0;
 
 public:
     TTraceConverter(
-            ui64 traceId,
+            TTraceId traceId,
             TReferenceTimeCycle referenceTimeCycle,
             bool hasConflicts)
         : TraceId(traceId)
@@ -321,22 +323,17 @@ private:
         return spanTree;
     }
 
-    ui32 TakeSpanId()
+    ui64 TakeSpanId()
     {
         return NextSpanId++;
     }
 };
 
-TReferenceTimeCycle GetReferenceTimeCycle(const NLWTrace::TTrackLog& tl)
+TReferenceTimeCycle GetReferenceTimeCycle()
 {
-    ui64 maxTimeCycle = 0;
-    for (size_t itemIdx = 0; itemIdx < tl.Items.size(); ++itemIdx) {
-        maxTimeCycle = Max(maxTimeCycle, tl.Items[itemIdx].TimestampCycles);
-    }
-
     return {
         .ReferenceTimeStamp = TInstant::Now(),
-        .ReferenceTimeCycle = maxTimeCycle};
+        .ReferenceTimeCycle = GetCycleCount()};
 }
 
 struct TConflictDetecter
@@ -408,8 +405,8 @@ TTraceInfo ConvertToOpenTelemetrySpans(const NLWTrace::TTrackLog& tl)
     traceInfo.RequestSize = FindFirst<ui64>(tl, "requestSize", traceItCtx);
 
     auto converter = TTraceConverter(
-        RandomNumber<ui64>(),   // traceId
-        GetReferenceTimeCycle(tl),
+        {traceInfo.RequestId, 0},   // traceId
+        GetReferenceTimeCycle(),
         TConflictDetecter().HasConflict(tl, traceItCtx, 0));
 
     traceInfo.Spans =
