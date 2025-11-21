@@ -21,6 +21,14 @@
 #define Y_UNUSED(x) (void)x;
 #endif
 
+#if __has_feature(thread_sanitizer)
+#define TSAN_ACQUIRE(x) __tsan_acquire(x)
+#define TSAN_RELEASE(x) __tsan_release(x)
+#else
+#define TSAN_ACQUIRE(x)
+#define TSAN_RELEASE(x)
+#endif
+
 struct fuse_virtio_dev
 {
     struct vhd_fsdev_info fsdev;
@@ -104,8 +112,10 @@ static void iov_copy_to_iov(
             // to dst buffers. This is done when zero copy is enabled for read
             // requests
             if (src_iov[0].iov_base) {
-                memcpy(dst_iov[0].iov_base + dst_offset,
-                       src_iov[0].iov_base + src_offset, dst_len);
+                void* dst = dst_iov[0].iov_base + dst_offset;
+                void* src = src_iov[0].iov_base + src_offset;
+                memcpy(dst, src, dst_len);
+                TSAN_RELEASE(dst);
             }
             src_len -= dst_len;
             to_copy -= dst_len;
@@ -187,7 +197,11 @@ static size_t iov_iter_to_buf(struct iov_iter *it, void *buf, size_t len)
     while (it->idx < it->count && len) {
         struct iovec *iov = &it->iov[it->idx];
         size_t cplen = MIN(len, iov->iov_len - it->off);
-        memcpy(ptr, iov->iov_base + it->off, cplen);
+
+        void* src = iov->iov_base + it->off;
+        TSAN_ACQUIRE(src);
+        memcpy(ptr, src, cplen);
+
         ptr += cplen;
         len -= cplen;
         it->off += cplen;
