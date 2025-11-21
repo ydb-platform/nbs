@@ -16,6 +16,6 @@ namespace NCloud::NBlockStore::NStorage {
 NProto::TError CompareConfigs(
     const TVector<NProto::TFileDeviceArgs>& expectedConfig,
     const TVector<NProto::TFileDeviceArgs>& currentConfig,
-    bool strictCompare = false);
+    bool strictCompare);
 
 }   // namespace NCloud::NBlockStore::NStorage

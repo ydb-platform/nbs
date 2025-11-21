@@ -12,7 +12,7 @@ namespace {
 NProto::TError CompareConfigs(
     const NProto::TFileDeviceArgs& expected,
     const NProto::TFileDeviceArgs& current,
-    bool checkSerialNumber = false)
+    bool checkSerialNumber)
 {
     if (expected.GetPath() != current.GetPath()) {
         return MakeError(E_ARGUMENT, "Unexpected path");
@@ -117,6 +117,14 @@ NProto::TError CompareConfigs(
         return MakeError(
             E_ARGUMENT,
             TStringBuilder() << "Devices has been lost");
+    }
+
+    if (strictCompare &&
+        (currentConfig.begin() + j != currentConfig.end()))
+    {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "Devices has been added");
     }
 
     const auto* lostDevice = FindIfPtr(
