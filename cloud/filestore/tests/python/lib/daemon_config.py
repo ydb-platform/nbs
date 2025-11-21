@@ -1,3 +1,4 @@
+import logging
 import os
 
 import yatest.common as common
@@ -20,6 +21,8 @@ from cloud.filestore.config.storage_pb2 import TStorageConfig
 
 from cloud.storage.core.protos.media_pb2 import STORAGE_MEDIA_HDD
 from cloud.storage.core.tools.testing.access_service.lib import AccessService
+
+logger = logging.getLogger(__name__)
 
 LOG_WARN = 4
 LOG_NOTICE = 5
@@ -275,6 +278,7 @@ class FilestoreDaemonConfigGenerator:
             with open(path, "w") as config_file:
                 config_file.write(MessageToString(proto))
                 config_file.flush()
+                logger.info("written config file: " + path)
 
     def generate_configs(self, domains_txt, names_txt):
         self.__proto_configs = {}
