@@ -109,7 +109,7 @@ Y_UNIT_TEST_SUITE(TraceConverter)
 
                 const auto& span = spans.front();
 
-                UNIT_ASSERT_VALUES_EQUAL(span.span_id(), ToHexString8(0));
+                UNIT_ASSERT_VALUES_EQUAL(span.span_id(), TString(8, '\0'));
 
                 UNIT_ASSERT_VALUES_EQUAL(span.events().size(), 4);
 
