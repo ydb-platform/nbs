@@ -656,6 +656,10 @@ void TMountRequestActor::HandleVolumeAddClientResponse(
     if (SUCCEEDED(error.GetCode())) {
         AddClientRequestCompleted = true;
 
+        if (msg->Record.GetInMigration()) {
+            MountMode = NProto::VOLUME_MOUNT_REMOTE;
+        }
+
         if (msg->Record.GetForceTabletRestart() &&
             MountMode == NProto::VOLUME_MOUNT_LOCAL)
         {
@@ -664,7 +668,8 @@ void TMountRequestActor::HandleVolumeAddClientResponse(
             return;
         }
 
-        if (!VolumeStarted && MountMode == NProto::VOLUME_MOUNT_LOCAL) {
+        if (!VolumeStarted && MountMode == NProto::VOLUME_MOUNT_LOCAL)
+        {
             RequestVolumeStart(ctx);
             return;
         }
