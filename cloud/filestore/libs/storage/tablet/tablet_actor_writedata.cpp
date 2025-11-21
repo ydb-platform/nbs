@@ -246,20 +246,24 @@ void TIndexTabletActor::ExecuteTx_WriteData(
         return RebootTabletOnCommitOverflow(ctx, "WriteData");
     }
 
-    // XXX mark head and tail?
-
+    const bool markTailAsDeleted =
+        args.ByteRange.UnalignedTailLength() != 0 &&
+        args.Node->Attrs.GetSize() <= args.ByteRange.End();
+    const ui64 blocksCountToDelete =
+        args.ByteRange.AlignedBlockCount() + (markTailAsDeleted ? 1 : 0);
     MarkFreshBlocksDeleted(
         db,
         args.NodeId,
         args.CommitId,
         args.ByteRange.FirstAlignedBlock(),
-        args.ByteRange.AlignedBlockCount());
+        blocksCountToDelete);
 
     SplitRange(
         args.ByteRange.FirstAlignedBlock(),
-        args.ByteRange.AlignedBlockCount(),
+        blocksCountToDelete,
         BlockGroupSize,
-        [&] (ui32 blockOffset, ui32 blocksCount) {
+        [&](ui32 blockOffset, ui32 blocksCount)
+        {
             MarkMixedBlocksDeleted(
                 db,
                 args.NodeId,
@@ -305,8 +309,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
                 args.NodeId,
                 args.CommitId,
                 args.ByteRange.UnalignedTailOffset(),
-                args.Buffer->GetUnalignedTail()
-            );
+                args.Buffer->GetUnalignedTail());
         }
     }
 
