@@ -6843,6 +6843,38 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             0,
             FindProcessesWithOpenFile(Devices[0]).size());
     }
+
+    Y_UNIT_TEST_F(ShouldAttachPaths, TFixture)
+    {
+        auto storageConfig = NProto::TStorageServiceConfig();
+        storageConfig.SetAttachDetachPathsEnabled(true);
+
+        auto env = TTestEnvBuilder(*Runtime)
+                       .With(CreateDiskAgentConfig())
+                       .With(storageConfig)
+                       .Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        Runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            FindProcessesWithOpenFile(Devices[0]).size());
+
+        diskAgent.DetachPaths(TVector<TString>{{PartLabels[0]}});
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            FindProcessesWithOpenFile(Devices[0]).size());
+
+        diskAgent.AttachPaths(TVector<TString>{{PartLabels[0]}});
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            FindProcessesWithOpenFile(Devices[0]).size());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

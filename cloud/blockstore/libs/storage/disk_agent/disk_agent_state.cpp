@@ -428,6 +428,18 @@ TVector<TString> TDiskAgentState::GetDeviceIdsByPath(const TString& path)
     return result;
 }
 
+TVector<NProto::TDeviceConfig> TDiskAgentState::GetDevicesByPath(
+    const THashSet<TString>& paths)
+{
+    TVector<NProto::TDeviceConfig> result;
+    for (const auto& [uuid, device]: Devices) {
+        if (paths.contains(device.Config.GetDeviceName())) {
+            result.emplace_back(device.Config);
+        }
+    }
+    return result;
+}
+
 ui32 TDiskAgentState::GetDevicesCount() const
 {
     return Devices.size();
@@ -1241,6 +1253,118 @@ TFuture<void> TDiskAgentState::DetachPaths(const TVector<TString>& paths)
 
             storageAdaptersToDrop.clear();
         });
+}
+
+auto TDiskAgentState::AttachPaths(const TVector<TString>& pathsToAttach)
+    -> TFuture<TResultOrError<TAttachPathResult>>
+{
+    TAttachPathResult result;
+
+    THashSet<TString> allKnownPaths;
+    for (const auto& [_, deviceState]: Devices) {
+        allKnownPaths.emplace(deviceState.Config.GetDeviceName());
+    }
+
+    for (const auto& path: pathsToAttach) {
+        if (AttachedPaths.contains(path) || !allKnownPaths.contains(path)) {
+            result.AlreadyAttachedPaths.emplace_back(path);
+        } else {
+            result.PathsToAttach.emplace_back(path);
+        }
+    }
+
+    if (!result.PathsToAttach) {
+        return MakeFuture(TResultOrError<TAttachPathResult>(std::move(result)));
+    }
+
+    THashSet<TString> pathsSet(
+        result.PathsToAttach.begin(),
+        result.PathsToAttach.end());
+    TVector<NProto::TDeviceConfig> devices = GetDevicesByPath(pathsSet);
+
+    auto validationConfig =
+        CreateConfigForAttachValidation(result.PathsToAttach, devices);
+
+    auto promise = NewPromise<TResultOrError<TAttachPathResult>>();
+    auto future = promise.GetFuture();
+
+    BackgroundThreadPool->ExecuteSimple(
+        [promise = std::move(promise),
+         result = std::move(result),
+         validationConfig = validationConfig,
+         loggingService = Logging,
+         nvmeManager = NvmeManager,
+         storageProvider = StorageProvider,
+         storageConfig = StorageConfig]() mutable
+        {
+            auto future = InitializePaths(
+                loggingService->CreateLog("BLOCKSTORE_DISK_AGENT"),
+                storageConfig,
+                validationConfig,
+                storageProvider,
+                nvmeManager,
+                result.PathsToAttach);
+
+            future.Subscribe(
+                [promise = std::move(promise), result = std::move(result)](
+                    TFuture<TInitializeStorageResult> future) mutable
+                {
+                    auto initializationResult = future.ExtractValue();
+
+                    if (initializationResult.ConfigMismatchErrors) {
+                        auto error =
+                            MakeError(E_INVALID_STATE, "Config mismatch");
+                        promise.SetValue(std::move(error));
+                        return;
+                    }
+
+                    result.Configs = std::move(initializationResult.Configs);
+                    result.Stats = std::move(initializationResult.Stats);
+                    result.Devices = std::move(initializationResult.Devices);
+                    promise.SetValue(std::move(result));
+                });
+        });
+
+    return future;
+}
+
+void TDiskAgentState::PathsAttached(
+    TVector<NProto::TDeviceConfig> configs,
+    TVector<IStoragePtr> devices,
+    TVector<TStorageIoStatsPtr> stats,
+    const TVector<TString>& pathsToAttach)
+{
+    TDuration ioTimeout;
+    if (!AgentConfig->GetDeviceIOTimeoutsDisabled()) {
+        ioTimeout = AgentConfig->GetDeviceIOTimeout();
+    }
+
+    for (size_t i = 0; i < devices.size(); ++i) {
+        auto& device = devices[i];
+        auto& config = configs[i];
+        auto& stat = stats[i];
+
+        auto* d = Devices.FindPtr(config.GetDeviceUUID());
+        if (!d) {
+            continue;
+        }
+
+        d->Config = std::move(config);
+        d->Stats = std::move(stat);
+        auto storageAdapter = std::make_shared<TStorageAdapter>(
+            std::move(device),
+            d->Config.GetBlockSize(),
+            false,   // normalize
+            ioTimeout,
+            AgentConfig->GetShutdownTimeout());
+        DeviceClient->AttachDevice(
+            d->Config.GetDeviceUUID(),
+            std::move(storageAdapter));
+    }
+
+    for (const auto& path: pathsToAttach) {
+        AttachedPaths.emplace(path);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
