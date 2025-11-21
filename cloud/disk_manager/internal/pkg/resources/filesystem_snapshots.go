@@ -224,13 +224,13 @@ func (s *storageYDB) createFilesystemSnapshot(
 
 	tx, err := session.BeginRWTransaction(ctx)
 	if err != nil {
-		return &FilesystemSnapshotMeta{}, err
+		return nil, err
 	}
 	defer tx.Rollback(ctx)
 
 	createRequest, err := proto.Marshal(snapshot.CreateRequest)
 	if err != nil {
-		return &FilesystemSnapshotMeta{}, errors.NewNonRetriableErrorf(
+		return nil, errors.NewNonRetriableErrorf(
 			"failed to marshal create request for filesystem snapshot with id %v: %w",
 			snapshot.ID,
 			err,
@@ -249,26 +249,26 @@ func (s *storageYDB) createFilesystemSnapshot(
 		persistence.ValueParam("$id", persistence.UTF8Value(snapshot.ID)),
 	)
 	if err != nil {
-		return &FilesystemSnapshotMeta{}, err
+		return nil, err
 	}
 	defer res.Close()
 
 	states, err := scanFilesystemSnapshotStates(ctx, res)
 	if err != nil {
-		return &FilesystemSnapshotMeta{}, err
+		return nil, err
 	}
 
 	if len(states) != 0 {
 		err = tx.Commit(ctx)
 		if err != nil {
-			return &FilesystemSnapshotMeta{}, err
+			return nil, err
 		}
 
 		state := states[0]
 
 		if state.status >= filesystemSnapshotStatusDeleting {
 			logging.Info(ctx, "can't create already deleting/deleted filesystem snapshot with id %v", snapshot.ID)
-			return &FilesystemSnapshotMeta{}, errors.NewSilentNonRetriableErrorf(
+			return nil, errors.NewSilentNonRetriableErrorf(
 				"can't create already deleting/deleted filesystem snapshot with id %v",
 				snapshot.ID,
 			)
@@ -280,7 +280,7 @@ func (s *storageYDB) createFilesystemSnapshot(
 			return state.toFilesystemSnapshotMeta(), nil
 		}
 
-		return &FilesystemSnapshotMeta{}, errors.NewNonCancellableErrorf(
+		return nil, errors.NewNonCancellableErrorf(
 			"filesystem snapshot with different params already exists, old=%v, new=%v",
 			state,
 			snapshot,
@@ -310,12 +310,12 @@ func (s *storageYDB) createFilesystemSnapshot(
 		persistence.ValueParam("$states", persistence.ListValue(state.structValue())),
 	)
 	if err != nil {
-		return &FilesystemSnapshotMeta{}, err
+		return nil, err
 	}
 
 	err = tx.Commit(ctx)
 	if err != nil {
-		return &FilesystemSnapshotMeta{}, err
+		return nil, err
 	}
 
 	return state.toFilesystemSnapshotMeta(), nil
