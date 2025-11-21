@@ -13,3 +13,7 @@ END()
 RECURSE_FOR_TESTS(
     mocks
 )
+
+RECURSE(
+    config
+)

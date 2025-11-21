@@ -347,6 +347,85 @@ func (s *StorageMock) ListFilesystems(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func (s *StorageMock) CreateFilesystemSnapshot(
+	ctx context.Context,
+	snapshot resources.FilesystemSnapshotMeta,
+) (*resources.FilesystemSnapshotMeta, error) {
+
+	args := s.Called(ctx, snapshot)
+	return args.Get(0).(*resources.FilesystemSnapshotMeta), args.Error(1)
+}
+
+func (s *StorageMock) FilesystemSnapshotCreated(
+	ctx context.Context,
+	snapshotID string,
+	createdAt time.Time,
+	snapshotSize uint64,
+	snapshotStorageSize uint64,
+) error {
+
+	args := s.Called(
+		ctx,
+		snapshotID,
+		createdAt,
+		snapshotSize,
+		snapshotStorageSize,
+	)
+	return args.Error(0)
+}
+
+func (s *StorageMock) GetFilesystemSnapshotMeta(
+	ctx context.Context,
+	snapshotID string,
+) (*resources.FilesystemSnapshotMeta, error) {
+
+	args := s.Called(ctx, snapshotID)
+	return args.Get(0).(*resources.FilesystemSnapshotMeta), args.Error(1)
+}
+
+func (s *StorageMock) DeleteFilesystemSnapshot(
+	ctx context.Context,
+	snapshotID string,
+	taskID string,
+	deletingAt time.Time,
+) (*resources.FilesystemSnapshotMeta, error) {
+
+	args := s.Called(ctx, snapshotID, taskID, deletingAt)
+	return args.Get(0).(*resources.FilesystemSnapshotMeta), args.Error(1)
+}
+
+func (s *StorageMock) FilesystemSnapshotDeleted(
+	ctx context.Context,
+	snapshotID string,
+	deletedAt time.Time,
+) error {
+
+	args := s.Called(ctx, snapshotID, deletedAt)
+	return args.Error(0)
+}
+
+func (s *StorageMock) ClearDeletedFilesystemSnapshots(
+	ctx context.Context,
+	deletedBefore time.Time,
+	limit int,
+) error {
+
+	args := s.Called(ctx, deletedBefore, limit)
+	return args.Error(0)
+}
+
+func (s *StorageMock) ListFilesystemSnapshots(
+	ctx context.Context,
+	folderID string,
+	creatingBefore time.Time,
+) ([]string, error) {
+
+	args := s.Called(ctx, folderID, creatingBefore)
+	return args.Get(0).([]string), args.Error(1)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func (s *StorageMock) CreatePlacementGroup(
 	ctx context.Context,
 	placementGroup resources.PlacementGroupMeta,

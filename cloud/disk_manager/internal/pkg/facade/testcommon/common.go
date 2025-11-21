@@ -575,6 +575,7 @@ func newResourceStorage(ctx context.Context) (resources.Storage, error) {
 		"images",
 		"snapshot",
 		"filesystems",
+		"filesystem_snapshots",
 		"placement_groups",
 		db,
 		endedMigrationExpirationTimeout,

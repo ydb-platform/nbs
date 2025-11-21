@@ -144,6 +144,7 @@ func newResourceStorage(
 		config.GetImagesConfig().GetStorageFolder(),
 		config.GetSnapshotsConfig().GetStorageFolder(),
 		config.GetFilesystemConfig().GetStorageFolder(),
+		config.GetFilesystemSnapshotsConfig().GetStorageFolder(),
 		config.GetPlacementGroupConfig().GetStorageFolder(),
 		db,
 		endedMigrationExpirationTimeout,
