@@ -87,17 +87,19 @@ Y_UNIT_TEST_SUITE(TCompareConfigsTest)
     Y_UNIT_TEST_F(ShouldAcceptEmptyConfigs, TFixture)
     {
         {
-            const auto error = CompareConfigs({}, {});
+            const auto error = CompareConfigs({}, {}, /*strictCompare=*/false);
             UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
         }
 
         {
-            const auto error = CompareConfigs({}, {File0});
+            const auto error =
+                CompareConfigs({}, {File0}, /*strictCompare=*/false);
             UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
         }
 
         {
-            const auto error = CompareConfigs({File0}, {});
+            const auto error =
+                CompareConfigs({File0}, {}, /*strictCompare=*/false);
             UNIT_ASSERT_VALUES_EQUAL_C(E_ARGUMENT, error.GetCode(), error);
         }
     }
@@ -105,23 +107,34 @@ Y_UNIT_TEST_SUITE(TCompareConfigsTest)
     Y_UNIT_TEST_F(ShouldRejectUnsortedConfigs, TFixture)
     {
         {
-            const auto error = CompareConfigs({File1, File0}, {File0, File1});
+            const auto error = CompareConfigs(
+                {File1, File0},
+                {File0, File1},
+                /*strictCompare=*/false);
             UNIT_ASSERT_VALUES_EQUAL_C(E_ARGUMENT, error.GetCode(), error);
         }
 
         {
-            const auto error = CompareConfigs({File0, File1}, {File1, File0});
+            const auto error = CompareConfigs(
+                {File0, File1},
+                {File1, File0},
+                /*strictCompare=*/false);
             UNIT_ASSERT_VALUES_EQUAL_C(E_ARGUMENT, error.GetCode(), error);
         }
 
         {
-            const auto error =
-                CompareConfigs({File0, File1}, {File2, File0, File1});
+            const auto error = CompareConfigs(
+                {File0, File1},
+                {File2, File0, File1},
+                /*strictCompare=*/false);
             UNIT_ASSERT_VALUES_EQUAL_C(E_ARGUMENT, error.GetCode(), error);
         }
 
         {
-            const auto error = CompareConfigs({File0, File1}, {File0, File1});
+            const auto error = CompareConfigs(
+                {File0, File1},
+                {File0, File1},
+                /*strictCompare=*/false);
             UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
         }
     }
@@ -129,39 +142,46 @@ Y_UNIT_TEST_SUITE(TCompareConfigsTest)
     Y_UNIT_TEST_F(ShouldDetectLostDevices, TFixture)
     {
         {
-            const auto error = CompareConfigs({File1}, {File2});
+            const auto error =
+                CompareConfigs({File1}, {File2}, /*strictCompare=*/false);
             UNIT_ASSERT_VALUES_EQUAL_C(E_ARGUMENT, error.GetCode(), error);
         }
 
         {
-            const auto error = CompareConfigs({File1}, {File0});
+            const auto error =
+                CompareConfigs({File1}, {File0}, /*strictCompare=*/false);
             UNIT_ASSERT_VALUES_EQUAL_C(E_ARGUMENT, error.GetCode(), error);
         }
 
         {
             const auto error = CompareConfigs(
                 {File0, File1, File2},
-                {File0, File2, File3});
+                {File0, File2, File3},
+                /*strictCompare=*/false);
             UNIT_ASSERT_VALUES_EQUAL_C(E_ARGUMENT, error.GetCode(), error);
         }
 
         {
-            const auto error =
-                CompareConfigs({File0, NonExistent1}, {File0, File1});
+            const auto error = CompareConfigs(
+                {File0, NonExistent1},
+                {File0, File1},
+                /*strictCompare=*/false);
             UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
         }
 
         {
             const auto error = CompareConfigs(
                 {File0, NonExistent1, File1, NonExistent2, File2},
-                {File0, File1, File2, File3});
+                {File0, File1, File2, File3},
+                /*strictCompare=*/false);
             UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
         }
 
         {
             const auto error = CompareConfigs(
                 {File0, NonExistent1, File1, NonExistent2, File2},
-                {File0, File2, File3});
+                {File0, File2, File3},
+                /*strictCompare=*/false);
             UNIT_ASSERT_VALUES_EQUAL_C(E_ARGUMENT, error.GetCode(), error);
         }
     }
@@ -170,17 +190,20 @@ Y_UNIT_TEST_SUITE(TCompareConfigsTest)
     {
         const auto error = CompareConfigs(
             {File2, File3},
-            {File0, File1, File2, File3});
+            {File0, File1, File2, File3},
+            /*strictCompare=*/false);
 
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
     }
 
     Y_UNIT_TEST_F(ShouldDetectConfigChanges, TFixture)
     {
-        auto compare = [&] (auto file1) {
+        auto compare = [&](auto file1)
+        {
             return CompareConfigs(
                 {File0, File1, File2, File3},
-                {File0, file1, File2, File3});
+                {File0, file1, File2, File3},
+                /*strictCompare=*/false);
         };
 
         {
@@ -221,7 +244,8 @@ Y_UNIT_TEST_SUITE(TCompareConfigsTest)
 
             const auto error = CompareConfigs(
                 {File0, File1, File2, File3},
-                {File0, file1, File2, File3});
+                {File0, file1, File2, File3},
+                /*strictCompare=*/false);
             UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
             UNIT_ASSERT_VALUES_EQUAL(0, File1.GetFileSize());
         }
@@ -232,9 +256,61 @@ Y_UNIT_TEST_SUITE(TCompareConfigsTest)
 
             const auto error = CompareConfigs(
                 {File0, File1, File2, File3},
-                {File0, File1, file2, File3});
+                {File0, File1, file2, File3},
+                /*strictCompare=*/false);
             UNIT_ASSERT_VALUES_EQUAL_C(E_ARGUMENT, error.GetCode(), error);
             UNIT_ASSERT_VALUES_UNEQUAL(0, File2.GetFileSize());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldStrictCompareConfigs, TFixture)
+    {
+        {
+            auto file1 = File1;
+            file1.SetPath("foo");
+
+            const auto error = CompareConfigs(
+                {File0, file1},
+                {File0},
+                /*strictCompare=*/true);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(E_ARGUMENT, error.GetCode(), error);
+        }
+
+        {
+            auto file1 = File1;
+            file1.SetPath("foo");
+
+            const auto error = CompareConfigs(
+                {File0},
+                {File0, file1},
+                /*strictCompare=*/true);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(E_ARGUMENT, error.GetCode(), error);
+        }
+
+        {
+            const auto error = CompareConfigs(
+                {File0},
+                {File0, File1},
+                /*strictCompare=*/true);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(E_ARGUMENT, error.GetCode(), error);
+        }
+
+        {
+            auto file1 = File1;
+            file1.SetSerialNumber("some sn");
+
+            auto anotherFile1 = File1;
+            anotherFile1.SetSerialNumber("another sn");
+
+            const auto error = CompareConfigs(
+                {File0, file1},
+                {File0, anotherFile1},
+                /*strictCompare=*/true);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(E_ARGUMENT, error.GetCode(), error);
         }
     }
 }

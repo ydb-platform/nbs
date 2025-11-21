@@ -137,6 +137,8 @@ public:
 
     TVector<TString> GetDeviceIds() const;
     TVector<TString> GetDeviceIdsByPath(const TString& path);
+    TVector<NProto::TDeviceConfig> GetDevicesByPath(
+        const THashSet<TString>& paths);
 
     ui32 GetDevicesCount() const;
 
@@ -179,6 +181,25 @@ public:
 
     NThreading::TFuture<void> DetachPaths(const TVector<TString>& paths);
 
+    struct TAttachPathResult
+    {
+        TVector<NProto::TDeviceConfig> Configs;
+        TVector<IStoragePtr> Devices;
+        TVector<TStorageIoStatsPtr> Stats;
+
+        TVector<TString> PathsToAttach;
+        TVector<TString> AlreadyAttachedPaths;
+    };
+
+    NThreading::TFuture<TResultOrError<TAttachPathResult>> AttachPaths(
+        const TVector<TString>& pathsToAttach);
+
+    void PathsAttached(
+        TVector<NProto::TDeviceConfig> configs,
+        TVector<IStoragePtr> devices,
+        TVector<TStorageIoStatsPtr> stats,
+        const TVector<TString>& pathsToAttach);
+
 private:
     TStorageAdapterPtr GetDeviceStorageAdapter(
         const TString& uuid,
@@ -219,6 +240,10 @@ private:
         const THashSet<TString>& lostDevicesIds) const;
 
     void CheckIfDeviceIsDisabled(const TString& uuid, const TString& clientId);
+
+    TDiskAgentConfigPtr CreateConfigForAttachValidation(
+        const TVector<TString>& paths,
+        const TVector<NProto::TDeviceConfig>& devices);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
