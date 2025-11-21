@@ -17,6 +17,7 @@
 #include <cloud/blockstore/libs/spdk/iface/target.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/device_scanner.h>
 #include <cloud/blockstore/libs/storage/disk_common/monitoring_utils.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -33,6 +34,8 @@
 #include <util/string/join.h>
 #include <util/system/fs.h>
 #include <util/system/hostname.h>
+
+#include <regex>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -1241,6 +1244,57 @@ TFuture<void> TDiskAgentState::DetachPaths(const TVector<TString>& paths)
 
             storageAdaptersToDrop.clear();
         });
+}
+
+TDiskAgentConfigPtr TDiskAgentState::CreateConfigForAttachValidation(
+    const TVector<TString>& paths,
+    const TVector<NProto::TDeviceConfig>& devices)
+{
+    auto protoConfig = AgentConfig->GetProtoConfig();
+    protoConfig.ClearFileDevices();
+    protoConfig.ClearMemoryDevices();
+    protoConfig.ClearNvmeDevices();
+
+    THashMap<TString, bool> hasLayout;
+    for (const auto& path: paths) {
+        ui64 fileLength = 0;
+        try {
+            fileLength = GetFileLengthWithSeek(path);
+        } catch (const std::exception& e) {
+            return {};
+        }
+
+        for (const auto& pathConfig:
+             AgentConfig->GetStorageDiscoveryConfig().GetPathConfigs())
+        {
+            std::regex regex(pathConfig.GetPathRegExp().c_str());
+            if (std::regex_match(path.c_str(), regex)) {
+                const auto* poolConfig = FindPoolConfig(pathConfig, fileLength);
+                hasLayout[path] = poolConfig ? poolConfig->HasLayout() : false;
+                break;
+            }
+        }
+    }
+
+    for (const auto& device: devices) {
+        auto* fileDevice = protoConfig.AddFileDevices();
+        fileDevice->SetPath(device.GetDeviceName());
+        fileDevice->SetBlockSize(device.GetBlockSize());
+        fileDevice->SetDeviceId(device.GetDeviceUUID());
+        fileDevice->SetPoolName(device.GetPoolName());
+
+        if (hasLayout[device.GetDeviceName()]) {
+            fileDevice->SetOffset(device.GetPhysicalOffset());
+            fileDevice->SetFileSize(
+                device.GetBlocksCount() * device.GetBlockSize());
+        }
+        fileDevice->SetSerialNumber(device.GetSerialNumber());
+    }
+
+    return std::make_shared<TDiskAgentConfig>(
+        protoConfig,
+        AgentConfig->GetRack(),
+        AgentConfig->GetNetworkMbitThroughput());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

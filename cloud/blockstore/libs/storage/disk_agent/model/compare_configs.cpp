@@ -11,7 +11,8 @@ namespace {
 
 NProto::TError CompareConfigs(
     const NProto::TFileDeviceArgs& expected,
-    const NProto::TFileDeviceArgs& current)
+    const NProto::TFileDeviceArgs& current,
+    bool checkSerialNumber)
 {
     if (expected.GetPath() != current.GetPath()) {
         return MakeError(E_ARGUMENT, "Unexpected path");
@@ -33,6 +34,10 @@ NProto::TError CompareConfigs(
         return MakeError(E_ARGUMENT, "Unexpected file size");
     }
 
+    if (checkSerialNumber && expected.GetSerialNumber() != current.GetSerialNumber()) {
+        return MakeError(E_ARGUMENT, "Unexpected serial number");
+    }
+
     return {};
 }
 
@@ -42,7 +47,8 @@ NProto::TError CompareConfigs(
 
 NProto::TError CompareConfigs(
     const TVector<NProto::TFileDeviceArgs>& expectedConfig,
-    const TVector<NProto::TFileDeviceArgs>& currentConfig)
+    const TVector<NProto::TFileDeviceArgs>& currentConfig,
+    bool strictCompare)
 {
     auto byId = [] (const auto& device) -> TStringBuf {
         return device.GetDeviceId();
@@ -69,12 +75,21 @@ NProto::TError CompareConfigs(
 
         if (expected.GetDeviceId() > current.GetDeviceId()) {
             // new device
+
+            if (strictCompare) {
+                return MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder()
+                        << "Device " << expected << " has been added");
+            }
+
             ++j;
             continue;
         }
 
         if (expected.GetDeviceId() == current.GetDeviceId()) {
-            const auto error = CompareConfigs(expected, current);
+            const auto error =
+                CompareConfigs(expected, current, strictCompare);
             if (HasError(error)) {
                 return MakeError(error.GetCode(), TStringBuilder()
                     << error.GetMessage() << ". Expected config: "
@@ -87,13 +102,29 @@ NProto::TError CompareConfigs(
             continue;
         }
 
-        if (pathExists(expected)) {
+        if (pathExists(expected) || strictCompare) {
             return MakeError(
                 E_ARGUMENT,
                 TStringBuilder() << "Device " << expected << " has been lost");
         }
 
         ++i;
+    }
+
+    if (strictCompare &&
+        (expectedConfig.begin() + i != expectedConfig.end()))
+    {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "Devices has been lost");
+    }
+
+    if (strictCompare &&
+        (currentConfig.begin() + j != currentConfig.end()))
+    {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "Devices has been added");
     }
 
     const auto* lostDevice = FindIfPtr(
