@@ -395,6 +395,21 @@ TStorageAdapterPtr TDeviceClient::DetachDevice(const TString& uuid) const
     return std::exchange(deviceState->StorageAdapter, nullptr);
 }
 
+void TDeviceClient::AttachDevice(
+    const TString& uuid,
+    TStorageAdapterPtr adapter) const
+{
+    auto* deviceState = GetDeviceState(uuid);
+    Y_DEBUG_ABORT_UNLESS(deviceState);
+    if (!deviceState) {
+        return;
+    }
+
+    TWriteGuard g(deviceState->Lock);
+
+    deviceState->StorageAdapter = std::move(adapter);
+}
+
 TDeviceClient::TSessionInfo TDeviceClient::GetWriterSession(
     const TString& uuid) const
 {
