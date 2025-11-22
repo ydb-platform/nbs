@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/diagnostics/events/profile_events.ev.pb.h>
+#include <cloud/blockstore/tools/analytics/dump-event-log/profile_log_event_handler.h>
 #include <cloud/blockstore/tools/analytics/libs/event-log/dump.h>
 
 #include <contrib/libs/sqlite3/sqlite3.h>
@@ -12,12 +13,9 @@
 
 namespace NCloud::NBlockStore {
 
-class TSqliteOutput
+class TSqliteOutput : public IProfileLogEventHandler
 {
     class TTransaction;
-
-    using TReplicaChecksums =
-        google::protobuf::RepeatedPtrField<NProto::TReplicaChecksum>;
 
     sqlite3* Db = nullptr;
     sqlite3_stmt* AddDiskStmt = nullptr;
@@ -30,17 +28,20 @@ class TSqliteOutput
 
 public:
     explicit TSqliteOutput(const TString& filename);
-    ~TSqliteOutput();
+    ~TSqliteOutput() override;
 
     TSqliteOutput(const TSqliteOutput&) = delete;
     TSqliteOutput(TSqliteOutput&&) = delete;
     TSqliteOutput& operator=(const TSqliteOutput&) = delete;
     TSqliteOutput& operator=(TSqliteOutput&&) = delete;
 
-    void ProcessMessage(
-        const NProto::TProfileLogRecord& message,
-        EItemType itemType,
-        int index);
+    void ProcessRequest(
+        const TString& diskId,
+        TInstant timestamp,
+        ui32 requestType,
+        TBlockRange64 blockRange,
+        TDuration duration,
+        const TReplicaChecksums& replicaChecksums) override;
 
 private:
     void CreateTables();
