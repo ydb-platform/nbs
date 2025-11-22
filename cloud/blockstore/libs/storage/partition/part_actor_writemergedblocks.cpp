@@ -289,7 +289,7 @@ void TWriteMergedBlocksActor::NotifyCompleted(
     auto ev = std::make_unique<TEvent>(
         error,
         TCompleted::CreateMergedBlocksCompleted(
-            UnconfirmedBlobsAdded,
+            ShouldAddUnconfirmedBlobs,
             std::move(BlobsToConfirm)));
 
     ev->ExecCycles = RequestInfo->GetExecCycles();
