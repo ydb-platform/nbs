@@ -20,6 +20,12 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const (
+	copyVolumeClientId = "copy-volume-client"
+)
+
+////////////////////////////////////////////////////////////////////////////////
+
 type Session struct {
 	nbs                 *nbs_client.DiscoveryClient
 	metricsRegistry     metrics.Registry
@@ -101,9 +107,14 @@ func newSession(
 		)
 	}
 
-	clientID, err := generateClientID()
-	if err != nil {
-		return nil, err
+	var clientID string
+	if mountOpts.FillGeneration > 0 {
+		clientID = copyVolumeClientId
+	} else {
+		clientID, err = generateClientID()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	span.SetAttributes(tracing.AttributeString("client_id", clientID))

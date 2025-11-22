@@ -10,6 +10,8 @@ SET_APPEND(RECIPE_ARGS --creation-and-deletion-allowed-only-for-disks-with-id-pr
 SET_APPEND(RECIPE_ARGS --disable-disk-registry-based-disks)
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/internal/pkg/facade/testcommon/common.inc)
 
+TIMEOUT(300)
+
 GO_XTEST_SRCS(
     disk_relocation_test.go
     disk_service_cells_test.go

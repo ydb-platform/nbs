@@ -301,6 +301,13 @@ type Client interface {
 
 	Stat(ctx context.Context, diskID string) (DiskStats, error)
 
+	ModifyTags(
+		ctx context.Context,
+		diskID string,
+		tagsToAdd []string,
+		tagsToRemove []string,
+	) error
+
 	Freeze(
 		ctx context.Context,
 		saveState func() error,

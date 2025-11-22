@@ -28,6 +28,7 @@ type CreateVolumeOpts struct {
 	StoragePoolName         string
 	AgentIds                []string
 	FillGeneration          uint64
+	TagsStr                 string
 }
 
 type MountVolumeOpts struct {
@@ -91,6 +92,7 @@ func (client *safeClient) CreateVolume(
 		req.StoragePoolName = opts.StoragePoolName
 		req.AgentIds = opts.AgentIds
 		req.FillGeneration = opts.FillGeneration
+		req.TagsStr = opts.TagsStr
 	}
 
 	_, err := client.Impl.CreateVolume(ctx, req)
