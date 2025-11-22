@@ -347,7 +347,7 @@ void TPartitionActor::HandleWriteBlocksCompleted(
         ProfileLog->Write(std::move(record));
     }
 
-    if (msg->UnconfirmedBlobsAdded && !HasError(msg->GetError())) {
+    if (msg->UnconfirmedBlobsUsed && !HasError(msg->GetError())) {
         // blobs are confirmed, but AddBlobs request will be executed
         // (for this commit) later
         State->BlobsConfirmed(commitId, std::move(msg->BlobsToConfirm));
