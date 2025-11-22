@@ -929,7 +929,6 @@ void TBootstrapBase::Start()
     START_KIKIMR_COMPONENT(NotifyService);
     START_COMMON_COMPONENT(Monitoring);
     START_COMMON_COMPONENT(ProfileLog);
-    START_KIKIMR_COMPONENT(StatsFetcher);
     START_COMMON_COMPONENT(DiscoveryService);
     START_COMMON_COMPONENT(TraceProcessor);
     START_KIKIMR_COMPONENT(TraceSerializer);
@@ -1043,7 +1042,6 @@ void TBootstrapBase::Stop()
     STOP_KIKIMR_COMPONENT(TraceSerializer);
     STOP_COMMON_COMPONENT(TraceProcessor);
     STOP_COMMON_COMPONENT(DiscoveryService);
-    STOP_KIKIMR_COMPONENT(StatsFetcher);
     STOP_COMMON_COMPONENT(ProfileLog);
     STOP_COMMON_COMPONENT(Monitoring);
     STOP_KIKIMR_COMPONENT(LogbrokerService);
