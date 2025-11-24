@@ -69,14 +69,12 @@ NProto::TError CompareConfigs(
 
         if (expected.GetDeviceId() > current.GetDeviceId()) {
             // new device
-
             ++j;
             continue;
         }
 
         if (expected.GetDeviceId() == current.GetDeviceId()) {
-            const auto error =
-                CompareConfigs(expected, current);
+            const auto error = CompareConfigs(expected, current);
             if (HasError(error)) {
                 return MakeError(error.GetCode(), TStringBuilder()
                     << error.GetMessage() << ". Expected config: "

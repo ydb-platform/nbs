@@ -17,7 +17,6 @@
 #include <cloud/blockstore/libs/spdk/iface/target.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
-#include <cloud/blockstore/libs/storage/disk_agent/model/device_scanner.h>
 #include <cloud/blockstore/libs/storage/disk_common/monitoring_utils.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -34,8 +33,6 @@
 #include <util/string/join.h>
 #include <util/system/fs.h>
 #include <util/system/hostname.h>
-
-#include <regex>
 
 namespace NCloud::NBlockStore::NStorage {
 

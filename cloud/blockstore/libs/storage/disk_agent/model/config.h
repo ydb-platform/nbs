@@ -33,11 +33,6 @@ public:
         , NetworkMbitThroughput(networkMbitThroughput)
     {}
 
-    const auto& GetProtoConfig() const
-    {
-        return Config;
-    }
-
     bool GetEnabled() const;
     TString GetAgentId() const;
     ui64 GetSeqNumber() const;
