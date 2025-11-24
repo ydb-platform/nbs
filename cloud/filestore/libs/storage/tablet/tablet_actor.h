@@ -294,6 +294,11 @@ private:
             std::atomic<i64> DudCount{0};
         };
 
+        struct TListNodesMetrics: TRequestMetrics
+        {
+            std::atomic<i64> RequestBytesPrecharge{0};
+        };
+
         // private requests
         TRequestMetrics ReadBlob;
         TRequestMetrics WriteBlob;
@@ -305,7 +310,7 @@ private:
         TRequestMetrics WriteData;
         TRequestMetrics AddData;
         TRequestMetrics GenerateBlobIds;
-        TRequestMetrics ListNodes;
+        TListNodesMetrics ListNodes;
         TRequestMetrics GetNodeAttr;
         TRequestMetrics CreateHandle;
         TRequestMetrics DestroyHandle;

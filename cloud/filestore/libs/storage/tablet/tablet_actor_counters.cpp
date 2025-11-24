@@ -519,6 +519,9 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_REQUEST(AddData);
     REGISTER_REQUEST(GenerateBlobIds);
     REGISTER_REQUEST(ListNodes);
+    REGISTER_AGGREGATABLE_SUM(
+        ListNodes.RequestBytesPrecharge,
+        EMetricType::MT_DERIVATIVE);
     REGISTER_REQUEST(GetNodeAttr);
     REGISTER_REQUEST(CreateHandle);
     REGISTER_REQUEST(DestroyHandle);

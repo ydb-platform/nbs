@@ -130,6 +130,29 @@ TTxStats GetTxStats(TTestEnv& env, TIndexTabletClient& tablet)
     return stats;
 }
 
+ui64 GetListNodesRequestBytesPrecharge(
+    TTestEnv& env,
+    TIndexTabletClient& tablet)
+{
+    ui64 bytesPrecharge = 0;
+    TTestRegistryVisitor visitor;
+
+    tablet.SendRequest(tablet.CreateUpdateCounters());
+    env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+    env.GetRegistry()->Visit(TInstant::Zero(), visitor);
+
+    visitor.ValidateExpectedCountersWithPredicate({
+        {{{"filesystem", "test"},
+          {"sensor", "ListNodes.RequestBytesPrecharge"}},
+         [&bytesPrecharge](i64 value)
+         {
+             bytesPrecharge = value;
+             return true;
+         }},
+    });
+    return bytesPrecharge;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1512,6 +1535,27 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         stats = GetBlobMetaMapStats(env, tablet);
         UNIT_ASSERT_VALUES_EQUAL(0, stats.LoadedRanges);
         UNIT_ASSERT_VALUES_EQUAL(4, stats.OffloadedRanges);
+    }
+
+    Y_UNIT_TEST(ShouldNotIncreaseListNodesPrechargeSizeUponInMmeoryCacheMiss) {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetInMemoryIndexCacheEnabled(true);
+        storageConfig.SetMaxResponseBytes(567);
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        // Cache miss
+        tablet.ListNodes(RootNodeId);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            567,
+            GetListNodesRequestBytesPrecharge(env, tablet));
     }
 }
 
