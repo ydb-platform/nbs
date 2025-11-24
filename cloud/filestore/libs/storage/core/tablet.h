@@ -351,7 +351,7 @@ protected:
             CompleteTx_##name(ctx, args);                                      \
             return true;                                                       \
         }                                                                      \
-        args.Clear();                                                          \
+        args.Reset();                                                          \
         return false;                                                          \
     }                                                                          \
                                                                                \
