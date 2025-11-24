@@ -413,45 +413,67 @@ void TFileSystem::Write(
     request->SetBuffer(alignedBuffer.TakeBuffer());
 
     const auto size = buffer.size();
-
-    if (ShouldUseServerWriteBackCache(fi)) {
-        WriteBackCache.WriteData(callContext, std::move(request))
-            .Subscribe(
-                [=,
-                 ptr = weak_from_this()] (const auto& future)
-                {
-                    auto self = ptr.lock();
-                    if (!self) {
-                        return;
-                    }
-
-                    const auto& response = future.GetValue();
-                    const auto& error = response.GetError();
-
-                    if (CheckResponse(self, *callContext, req, response)) {
-                        self->ReplyWrite(*callContext, error, req, size);
-                    }
-                });
-        return;
-    }
+    const auto wbcMode = GetServerWriteBackCacheMode(fi);
 
     const auto handle = fi->fh;
     const auto reqId = callContext->RequestId;
+
+    auto callback = [=, ptr = weak_from_this()](const auto& future)
+    {
+        auto self = ptr.lock();
+        if (!self) {
+            return;
+        }
+
+        const auto& response = future.GetValue();
+        const auto& error = response.GetError();
+
+        if (wbcMode != EServerWriteBackCacheMode::Enabled) {
+            self->FSyncQueue
+                ->Dequeue(reqId, error, TNodeId{ino}, THandle{handle});
+        }
+
+        if (self->CheckResponse(self, *callContext, req, response)) {
+            self->ReplyWrite(*callContext, error, req, size);
+        }
+    };
+
+    if (wbcMode == EServerWriteBackCacheMode::Enabled) {
+        WriteBackCache.WriteData(callContext, std::move(request))
+            .Subscribe(std::move(callback));
+        return;
+    }
+
     FSyncQueue->Enqueue(reqId, TNodeId {ino}, THandle {handle});
 
-    Session->WriteData(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+    if (wbcMode == EServerWriteBackCacheMode::Disabled) {
+        Session->WriteData(callContext, std::move(request))
+            .Subscribe(std::move(callback));
+        return;
+    }
 
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino}, THandle {handle});
+    Y_ABORT_UNLESS(
+        wbcMode == EServerWriteBackCacheMode::Draining,
+        "Invalid EServerWriteBackCacheMode value = %d",
+        wbcMode);
 
-            if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyWrite(*callContext, error, req, size);
+    auto flushFuture = WriteBackCache.FlushNodeData(request->GetNodeId());
+    if (flushFuture.HasValue()) {
+        Session->WriteData(callContext, std::move(request))
+            .Subscribe(std::move(callback));
+        return;
+    }
+
+    flushFuture.Subscribe(
+        [ptr = weak_from_this(),
+         callback = std::move(callback),
+         callContext = std::move(callContext),
+         request = std::move(request)](const auto& f) mutable
+        {
+            f.GetValue();
+            if (auto self = ptr.lock()) {
+                self->Session->WriteData(callContext, std::move(request))
+                    .Subscribe(std::move(callback));
             }
         });
 }
@@ -577,43 +599,66 @@ void TFileSystem::WriteBuf(
     request->SetHandle(fi->fh);
     request->SetOffset(offset);
 
-    if (ShouldUseServerWriteBackCache(fi)) {
+    const auto wbcMode = GetServerWriteBackCacheMode(fi);
+    const auto handle = fi->fh;
+    const auto reqId = callContext->RequestId;
+
+    auto callback = [=, ptr = weak_from_this()](const auto& future)
+    {
+        auto self = ptr.lock();
+        if (!self) {
+            return;
+        }
+
+        const auto& response = future.GetValue();
+        const auto& error = response.GetError();
+
+        if (wbcMode != EServerWriteBackCacheMode::Enabled) {
+            self->FSyncQueue
+                ->Dequeue(reqId, error, TNodeId{ino}, THandle{handle});
+        }
+
+        if (self->CheckResponse(self, *callContext, req, response)) {
+            self->ReplyWrite(*callContext, error, req, size);
+        }
+    };
+
+    if (wbcMode == EServerWriteBackCacheMode::Enabled) {
         WriteBackCache.WriteData(callContext, std::move(request))
-            .Subscribe(
-                [=, ptr = weak_from_this()] (const auto& future)
-                {
-                    auto self = ptr.lock();
-                    if (!self) {
-                        return;
-                    }
-
-                    const auto& response = future.GetValue();
-                    const auto& error = response.GetError();
-
-                    if (CheckResponse(self, *callContext, req, response)) {
-                        self->ReplyWrite(*callContext, error, req, size);
-                    }
-                });
+            .Subscribe(std::move(callback));
         return;
     }
 
-    const auto handle = fi->fh;
-    const auto reqId = callContext->RequestId;
-    FSyncQueue->Enqueue(reqId, TNodeId {ino}, THandle {handle});
+    FSyncQueue->Enqueue(reqId, TNodeId{ino}, THandle{handle});
 
-    Session->WriteData(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+    if (wbcMode == EServerWriteBackCacheMode::Disabled) {
+        Session->WriteData(callContext, std::move(request))
+            .Subscribe(std::move(callback));
+        return;
+    }
 
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino}, THandle {handle});
+    Y_ABORT_UNLESS(
+        wbcMode == EServerWriteBackCacheMode::Draining,
+        "Invalid EServerWriteBackCacheMode value = %d",
+        wbcMode);
 
-            if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyWrite(*callContext, error, req, size);
+    auto flushFuture = WriteBackCache.FlushNodeData(request->GetNodeId());
+    if (flushFuture.HasValue()) {
+        Session->WriteData(callContext, std::move(request))
+            .Subscribe(std::move(callback));
+        return;
+    }
+
+    flushFuture.Subscribe(
+        [ptr = weak_from_this(),
+         callback = std::move(callback),
+         callContext = std::move(callContext),
+         request = std::move(request)](const auto& f) mutable
+        {
+            f.GetValue();
+            if (auto self = ptr.lock()) {
+                self->Session->WriteData(callContext, std::move(request))
+                    .Subscribe(std::move(callback));
             }
         });
 }
@@ -960,17 +1005,23 @@ void TFileSystem::FSyncDir(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TFileSystem::ShouldUseServerWriteBackCache(const fuse_file_info* fi) const
+EServerWriteBackCacheMode TFileSystem::GetServerWriteBackCacheMode(
+    const fuse_file_info* fi) const
 {
-    if (!WriteBackCache || !Config->GetServerWriteBackCacheEnabled()) {
-        return false;
+    if (!WriteBackCache) {
+        return EServerWriteBackCacheMode::Disabled;
     }
 
     if (fi->flags & O_DIRECT) {
-        return false;
+        return EServerWriteBackCacheMode::Disabled;
     }
 
-    return true;
+    if (Config->GetServerWriteBackCacheEnabled()) {
+        return EServerWriteBackCacheMode::Enabled;
+    }
+
+    return WriteBackCache.IsEmpty() ? EServerWriteBackCacheMode::Disabled
+                                    : EServerWriteBackCacheMode::Draining;
 }
 
 }   // namespace NCloud::NFileStore::NFuse

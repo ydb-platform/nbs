@@ -57,6 +57,20 @@ struct TReleaseRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class EServerWriteBackCacheMode
+{
+    // The request should go to the session
+    Disabled,
+
+    // The request should go to the WriteBackCache
+    Enabled,
+
+    // The request should wait until the cache is empty then go to the session
+    Draining
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TFileSystem final
     : public IFileSystem
     , public std::enable_shared_from_this<TFileSystem>
@@ -395,7 +409,8 @@ private:
         fuse_ino_t ino,
         uint64_t fh);
 
-    bool ShouldUseServerWriteBackCache(const fuse_file_info* fi) const;
+    EServerWriteBackCacheMode GetServerWriteBackCacheMode(
+        const fuse_file_info* fi) const;
 
     bool UpdateNodeCache(
         const NProto::TNodeAttr& attrs,
