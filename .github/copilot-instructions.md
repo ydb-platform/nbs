@@ -78,10 +78,10 @@ pre-commit run --all-files                    # Validate YAML, whitespace, newli
 - [ ] Naming follows conventions (T/I/E/N prefixes, camelBack)
 - [ ] No trailing whitespace (`git diff --check` passes)
 - [ ] Line length ≤80 columns
-- [ ] Tests added/updated and passing (small/medium: `./ya make -t --test-size=small,medium`)
+- [ ] Tests added/updated and passing: `./ya make -t --test-size=small,medium <target>`
 - [ ] Builds without warnings
 - [ ] No clang-tidy warnings in modified code
-- [ ] Complex logic has comments, no unexplained commented-out code
+- [ ] Complex logic has comments, no debug prints or unexplained commented-out code
 
 ## CI Workflows
 **Main PR:** `.github/workflows/pr.yaml` - Triggers on PR to `main` (skips docs/examples/md files). Requires org membership or `ok-to-test` label for external contributors.
@@ -151,7 +151,7 @@ sudo ./6-attach_disk.sh --disk-id vol0 -d /dev/nbd0
    ./ya make <target>  # Build without warnings
    ./ya make -t --test-size=small,medium --test-type=unittest,clang_tidy <target>
    ```
-4. **Self-review:** Check naming conventions, no debug/commented code, tests cover edge cases
+4. **Self-review:** Check naming conventions, no debug prints/unexplained commented code, tests cover edge cases
 5. **Verify checklist:** Format ✓, naming ✓, whitespace ✓, tests ✓, builds ✓, linting ✓
 6. **Local testing:** Use `example/` scripts for runtime verification if needed
 
