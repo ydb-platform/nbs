@@ -123,5 +123,4 @@ sudo ./6-attach_disk.sh --disk-id vol0 -d /dev/nbd0
 5. **Verify locally** using `example/` scripts for runtime changes
 6. **Trust these instructions** - only search if incomplete/incorrect
 
-**Quick Ref:** Build all: `./ya make cloud/blockstore/buildall -r` | Test: `./ya make -t cloud/blockstore/` | Format: `clang-format-18 -i file.cpp` | Sanitizer: `./ya make --sanitize=address <target>` | Docs: `/doc/REPOSITORY_STRUCTURE.md`
-
+**Quick Ref:** Build all: `./ya make cloud/blockstore/buildall -r` | Test: `./ya make -t cloud/blockstore/` | Format: `clang-format-18 -i file.cpp` | Sanitizer: `./ya make --sanitize=address <target>` | Docs: `doc/REPOSITORY_STRUCTURE.md`
