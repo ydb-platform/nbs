@@ -7452,6 +7452,56 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                 response->GetErrorReason());
         }
     }
+
+
+    TABLET_TEST_4K_ONLY(ShouldReadCorrectUnalignedTail)
+    {
+        NProto::TStorageConfig storageConfig;
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        // the numbers were adjusted to have the tail block in
+        // the same blob as other blocks from fresh bytes list
+        const ui64 requestSize = 16_KB;
+        const ui64 unalignedOffset = 100_KB - 1;
+        const ui64 fileSize = 1_MB + unalignedOffset;
+        const ui64 lastOffset = fileSize - requestSize;
+
+        auto data1 = GenerateValidateData(requestSize, 1);
+        auto data2 = GenerateValidateData(requestSize, 2);
+
+        for (ui64 offset = unalignedOffset; offset < fileSize;
+             offset += requestSize)
+        {
+            tablet.WriteData(handle, offset, requestSize, data1.c_str());
+        }
+        tablet.Flush();
+
+        tablet.WriteData(handle, lastOffset, requestSize, data2.c_str());
+        tablet.Flush();
+
+        // Current FlushBytes implementation can forward commit id for obsolete
+        // block if it is located in the same blob as the block from fresh bytes
+        // list.
+        tablet.FlushBytes();
+
+        auto response = tablet.ReadData(handle, lastOffset, requestSize);
+        const auto& buffer = response->Record.GetBuffer();
+        UNIT_ASSERT_VALUES_EQUAL(data2, buffer);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
