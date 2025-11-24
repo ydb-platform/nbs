@@ -1,7 +1,11 @@
 # Copilot Instructions for NBS Repository
 
 ## Overview
-Network Block Store (NBS) and Network File Store: YDB BlobStorage-based storage platform providing block devices (NBD/vhost-blk/gRPC) and POSIX filesystem (FUSE/virtiofs). ~2.2GB repo with C++ (40K+ files), Go (disk_manager/tasks), Python (tests). Build system: `ya` (requires `devtools-registry.s3.yandex.net` access).
+Network Block Store (NBS) and Network File Store: YDB BlobStorage-based storage platform.
+- **NBS**: Block devices via NBD/vhost-blk/gRPC
+- **NFS**: POSIX filesystem via FUSE/virtiofs
+- **Size**: ~2.2GB repo with C++ (40K+ files), Go (disk_manager/tasks), Python (tests)
+- **Build**: `ya` tool (requires `devtools-registry.s3.yandex.net` access)
 
 **Key Directories:** `cloud/blockstore/` (NBS), `cloud/filestore/` (NFS), `cloud/disk_manager/` (Go snapshot service), `cloud/storage/core/` (common libs), `contrib/` (OSS deps), `example/` (local dev scripts).
 
@@ -10,7 +14,7 @@ Network Block Store (NBS) and Network File Store: YDB BlobStorage-based storage 
 ## Build & Test
 
 ### Prerequisites
-**System:** x86_64, Ubuntu 18.04+, 80GB+ disk (SSD), 16GB+ RAM. **Network:** Access to `devtools-registry.s3.yandex.net` required.
+**System:** x86_64, Ubuntu 20.04+ (18.04 EOL but may work), 80GB+ disk (SSD), 16GB+ RAM. **Network:** Access to `devtools-registry.s3.yandex.net` required.
 ```bash
 # Install deps
 sudo apt-get install -y git python3-pip antlr3 libidn11-dev qemu-kvm libaio clang-format-18
@@ -85,7 +89,7 @@ cd example
 ./4-start_disk_agent.sh                # Optional: for non-replicated disks
 ./5-create_disk.sh -k ssd              # Create vol0 (ssd/nonreplicated/mirror2/mirror3)
 sudo ./6-attach_disk.sh --disk-id vol0 -d /dev/nbd0
-# Test: sudo dd oflag=direct if=/dev/urandom of=/dev/nbd0 count=5 bs=4096
+# Test (WARNING: destructive, only use on test disks): sudo dd oflag=direct if=/dev/urandom of=/dev/nbd0 count=5 bs=4096
 # Monitor: http://localhost:8766/blockstore/service
 ```
 
