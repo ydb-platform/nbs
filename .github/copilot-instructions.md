@@ -75,7 +75,7 @@ pre-commit run --all-files
 - `asan`/`tsan` - Add sanitizer builds
 - `recheck` - Re-trigger without new commit
 
-**Test Artifacts:** S3 at `https://github-actions-s3.website.nemax.nebius.cloud/ydb-platform/nbs/PR-check/<run_id>/...` - See `build_logs/`, `test_logs/`, `summary/ya-test.html`
+**Test Artifacts:** S3 at `https://github-actions-s3.website.nemax.nebius.cloud/ydb-platform/nbs/PR-check/<run_id>/...` (find run_id in Actions tab) - See `build_logs/`, `test_logs/`, `summary/ya-test.html`
 
 ## Local Development
 
