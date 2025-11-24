@@ -79,18 +79,18 @@ public:
 
             return retval;
         } catch (...) {
-            auto errorMessage = TStringBuilder() << "IO error for " << StatsFile
-                                                 << " with exception "
-                                                  << CurrentExceptionMessage();
+            auto errorMessage = TStringBuilder()
+                                << "IO error for " << StatsFile
+                                << " with exception "
+                                << CurrentExceptionMessage().Quote();
+            try {
+                CpuAcctWait.Close();
+            } catch (...) {
+                errorMessage << "\nFollowed by file close error";
+            }
+
             return MakeError(E_FAIL, std::move(errorMessage));
         }
-    }
-
-    TString BuildErrorMessageFromException()
-    {
-        auto msg = TStringBuilder() << "IO error for " << StatsFile;
-        msg << " with exception " << CurrentExceptionMessage();
-        return msg;
     }
 };
 

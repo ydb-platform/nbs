@@ -105,8 +105,9 @@ public:
             Last = cpuLack;
             return retval;
         } catch (...) {
-            auto errorMessage = TStringBuilder() << "Netlink socket error "
-                                                 << CurrentExceptionMessage();
+            auto errorMessage = TStringBuilder()
+                                << "Netlink socket error "
+                                << CurrentExceptionMessage().Quote();
             return MakeError(E_FAIL, errorMessage);
         }
     }
