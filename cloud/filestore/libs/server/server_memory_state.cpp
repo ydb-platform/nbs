@@ -13,13 +13,17 @@ namespace NCloud::NFileStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TServerState::TServerState(TString sharedMemoryBasePath)
-    : SharedMemoryBasePath(std::move(sharedMemoryBasePath))
+TServerState::TServerState(const TString& sharedMemoryBasePath)
+    : SharedMemoryBasePath(sharedMemoryBasePath)
 {}
 
-void TServerState::Initialize(const TString& sharedMemoryBasePath)
+TServerState::~TServerState()
 {
-    SharedMemoryBasePath = sharedMemoryBasePath;
+    TLightWriteGuard guard(StateLock);
+    for (const auto& [id, region]: MmapRegions) {
+        munmap(region.Address, region.Size);
+    }
+    MmapRegions.clear();
 }
 
 TResultOrError<TMmapRegionMetadata> TServerState::CreateMmapRegion(
@@ -33,8 +37,7 @@ TResultOrError<TMmapRegionMetadata> TServerState::CreateMmapRegion(
     TString fullPath;
 
     try {
-        fullPath =
-            TFsPath(SharedMemoryBasePath).Child(filePath).RealPath().GetPath();
+        fullPath = SharedMemoryBasePath.Child(filePath).RealPath().GetPath();
     } catch (const TIoException& e) {
         return MakeError(
             E_ARGUMENT,
@@ -84,9 +87,9 @@ TResultOrError<TMmapRegionMetadata> TServerState::CreateMmapRegion(
 
     ui64 mmapId = ClampVal(RandomNumber<ui64>(), 1ul, Max<ui64>());
 
-    TMmapRegion region(std::move(fullPath), addr, size, mmapId);
     // passing ownership of fd to the TMmapRegion struct
-    region.Fd = std::move(file);
+    TMmapRegion
+        region(std::move(fullPath), addr, size, mmapId, std::move(file));
 
     auto [it, inserted] = MmapRegions.emplace(mmapId, std::move(region));
     if (!inserted) {

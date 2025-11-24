@@ -6,6 +6,7 @@
 #include <library/cpp/deprecated/atomic/atomic.h>
 #include <library/cpp/threading/light_rw_lock/lightrwlock.h>
 
+#include <util/folder/path.h>
 #include <util/generic/string.h>
 #include <util/system/file.h>
 #include <util/system/spinlock.h>
@@ -23,46 +24,54 @@ struct TMmapRegionMetadata
 {
     TString FilePath;
     void* Address = nullptr;
-    size_t Size = 0;
+    size_t Size = 0; // in bytes
     ui64 Id = 0;
+
+    bool operator<(const TMmapRegionMetadata& other) const
+    {
+        return std::tie(FilePath, Size, Id) <
+               std::tie(other.FilePath, other.Size, other.Id);
+    }
 };
 
 struct TMmapRegion: public TMmapRegionMetadata
 {
-    TMmapRegion() = default;
+public:
+    using TMmapRegionMetadata::TMmapRegionMetadata;
 
-    TMmapRegion(TString filePath, void* address, size_t size, ui64 id)
+    TMmapRegion(
+            TString filePath,
+            void* address,
+            size_t size,
+            ui64 id,
+            TFileHandle fd)
         : TMmapRegionMetadata{
-              .FilePath = std::move(filePath),
-              .Address = address,
-              .Size = size,
-              .Id = id}
+            .FilePath = std::move(filePath),
+            .Address = address,
+            .Size = size,
+            .Id = id}
+        , Fd(std::move(fd))
     {}
-
-    TFileHandle Fd;
 
     TMmapRegionMetadata ToMetadata() const
     {
-        return TMmapRegionMetadata{
-            .FilePath = FilePath,
-            .Address = Address,
-            .Size = Size,
-            .Id = Id};
+        return *this;
     }
+
+private:
+    TFileHandle Fd;
 };
 
 class TServerState
 {
 public:
-    TServerState() = default;
+    explicit TServerState(const TString& sharedMemoryBasePath);
 
-    explicit TServerState(TString sharedMemoryBasePath);
-
-    void Initialize(const TString& sharedMemoryBasePath);
+    ~TServerState();
 
     TResultOrError<TMmapRegionMetadata> CreateMmapRegion(
         const TString& filePath,
-        size_t size);
+        size_t size /* in bytes */);
 
     NProto::TError DestroyMmapRegion(ui64 mmapId);
 
@@ -73,7 +82,7 @@ public:
 private:
     TLightRWLock StateLock;
     std::unordered_map<ui64, TMmapRegion> MmapRegions;
-    TString SharedMemoryBasePath;
+    TFsPath SharedMemoryBasePath;
 };
 
 }   // namespace NCloud::NFileStore::NServer

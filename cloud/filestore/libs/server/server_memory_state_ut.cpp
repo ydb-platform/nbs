@@ -13,6 +13,8 @@ namespace NCloud::NFileStore::NServer {
 
 namespace {
 
+////////////////////////////////////////////////////////////////////////////////
+
 struct TTestEnv
 {
     TTempDir TempDir;
@@ -75,6 +77,23 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
             mmapInfoById.GetResult().FilePath);
         UNIT_ASSERT_VALUES_EQUAL(mmapInfo.Size, mmapInfoById.GetResult().Size);
         UNIT_ASSERT_VALUES_EQUAL(mmapInfo.Id, mmapInfoById.GetResult().Id);
+
+        // validate that the process has indeed mmaped the file
+        char* data = static_cast<char*>(mmapInfo.Address);
+        const TString expectedData = "Hello, world!";
+        ::memcpy(data, expectedData.data(), expectedData.size());
+
+        // unmmap before reading from the file
+        result = state.DestroyMmapRegion(mmapInfo.Id);
+        UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+
+        // read back from the file
+        TFile file(
+            TFsPath(env.GetBasePath()).Child("test_file.dat").GetPath(),
+            OpenExisting | RdOnly);
+        TString readData(expectedData.size(), '\0');
+        file.Read((void*)(readData.data()), readData.size());
+        UNIT_ASSERT_VALUES_EQUAL(expectedData, readData);
     }
 
     Y_UNIT_TEST(ShouldFailCreateMmapRegionWithEdgeCases)
@@ -160,7 +179,21 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
         UNIT_ASSERT_C(!HasError(result2), FormatError(result2.GetError()));
 
         regions = state.ListMmapRegions();
+        // sorting to have a deterministic order
+        Sort(regions.begin(), regions.end());
+        Sort(regions.begin(), regions.end());
+
         UNIT_ASSERT_VALUES_EQUAL(2u, regions.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            result1.GetResult().FilePath,
+            regions[0].FilePath);
+        UNIT_ASSERT_VALUES_EQUAL(result1.GetResult().Size, regions[0].Size);
+        UNIT_ASSERT_VALUES_EQUAL(result1.GetResult().Id, regions[0].Id);
+        UNIT_ASSERT_VALUES_EQUAL(
+            result2.GetResult().FilePath,
+            regions[1].FilePath);
+        UNIT_ASSERT_VALUES_EQUAL(result2.GetResult().Size, regions[1].Size);
+        UNIT_ASSERT_VALUES_EQUAL(result2.GetResult().Id, regions[1].Id);
     }
 
     Y_UNIT_TEST(ShouldGetMmapRegion)
@@ -178,6 +211,9 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
 
         result = state.GetMmapRegion(mmapInfo.Id);
         UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(mmapInfo.FilePath,    result.GetResult().FilePath);
+        UNIT_ASSERT_VALUES_EQUAL(mmapInfo.Size, result.GetResult().Size);
+        UNIT_ASSERT_VALUES_EQUAL(mmapInfo.Id, result.GetResult().Id);
 
         result = state.GetMmapRegion(999999);
         UNIT_ASSERT(HasError(result));
