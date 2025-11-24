@@ -30,7 +30,7 @@ ui64 GetFileLengthWithSeek(const TString& path);
 
 NProto::TError FindDevices(
     const NProto::TStorageDiscoveryConfig& config,
-    const THashSet<TString>& pathsAllowedList,
+    const THashSet<TString>& allowedPaths,
     TDeviceCallback callback);
 
 }   // namespace NCloud::NBlockStore::NStorage

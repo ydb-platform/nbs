@@ -92,7 +92,7 @@ ui64 GetFileLengthWithSeek(const TString& path)
 
 NProto::TError FindDevices(
     const NProto::TStorageDiscoveryConfig& config,
-    const THashSet<TString>& pathsAllowedList,
+    const THashSet<TString>& allowedPaths,
     TDeviceCallback cb)
 {
     namespace NFs = std::filesystem;
@@ -110,8 +110,7 @@ NProto::TError FindDevices(
 
             for (const auto& entry: NFs::directory_iterator {pathRegExp.parent_path()}) {
                 const auto& path = entry.path();
-                if (pathsAllowedList && !pathsAllowedList.contains(path.c_str()))
-                {
+                if (allowedPaths && !allowedPaths.contains(path.c_str())) {
                     continue;
                 }
                 const auto filename = path.filename().string();

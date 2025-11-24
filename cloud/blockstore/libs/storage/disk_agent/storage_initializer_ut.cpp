@@ -488,6 +488,47 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
         UNIT_ASSERT_VALUES_EQUAL("NVMENBS04", r.Configs[3].GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL("Z", r.Configs[3].GetSerialNumber());
     }
+
+    Y_UNIT_TEST_F(ShouldInitializePaths, TFixture)
+    {
+        const TVector<std::pair<TString, TString>> pathToSerial{
+            {"NVMENBS01", "W"},
+            {"NVMENBS02", "X"},
+            {"NVMENBS03", "Y"},
+            {"NVMENBS04", "Z"},
+        };
+
+        UNIT_ASSERT(!NFs::Exists(DefaultConfig.GetCachedConfigPath()));
+
+        auto future = InitializePaths(
+            Logging->CreateLog("Test"),
+            StorageConfig,
+            std::make_shared<TDiskAgentConfig>(DefaultConfig, "rack", 1000),
+            StorageProvider,
+            std::make_shared<TTestNvmeManager>(pathToSerial),
+            {DevicesPath / "NVMENBS01", DevicesPath / "NVMENBS03"});
+
+        const auto& r = future.GetValueSync();
+
+        UNIT_ASSERT(!NFs::Exists(DefaultConfig.GetCachedConfigPath()));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            2 * DeviceCountPerPath,
+            r.Configs.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(r.Configs.size(), r.Devices.size());
+        UNIT_ASSERT_VALUES_EQUAL(r.Configs.size(), r.Stats.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, r.Errors.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, r.ConfigMismatchErrors.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, r.DevicesWithSuspendedIO.size());
+
+        THashSet<TString> allowedPaths{
+            DevicesPath / "NVMENBS01",
+            DevicesPath / "NVMENBS03"};
+        for (const auto& config : r.Configs) {
+            UNIT_ASSERT(allowedPaths.contains(config.GetDeviceName()));
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

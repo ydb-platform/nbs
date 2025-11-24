@@ -27,7 +27,6 @@
 #include <util/system/fs.h>
 #include <util/system/mutex.h>
 
-#include <algorithm>
 #include <cstring>
 #include <tuple>
 
@@ -124,7 +123,6 @@ private:
     const IStorageProviderPtr StorageProvider;
     const NNvme::INvmeManagerPtr NvmeManager;
     const THashSet<TString> PathsAllowedList;
-    const bool IsAttachOperation = !PathsAllowedList.empty();
 
     TVector<NProto::TFileDeviceArgs> FileDevices;
 
@@ -169,7 +167,7 @@ private:
     NProto::TDeviceConfig CreateConfig(const NProto::TFileDeviceArgs& device);
     NProto::TDeviceConfig CreateConfig(const NProto::TMemoryDeviceArgs& device);
 
-    NProto::TError ScanFileDevices();
+    void ScanFileDevices();
     bool ValidateGeneratedConfigs(const TVector<NProto::TFileDeviceArgs>& fileDevices);
     bool ValidateStorageDiscoveryConfig() const;
     void ValidateCurrentConfigs(
@@ -372,18 +370,11 @@ void TInitializer::SetupSerialNumbers(
     }
 }
 
-NProto::TError TInitializer::ScanFileDevices()
+void TInitializer::ScanFileDevices()
 {
-    auto makeError = [&](const TString& message)
-    {
-        return IsAttachOperation ? MakeError(E_INVALID_STATE, message)
-                                 : MakeError(S_OK);
-    };
-
-    if (!ValidateStorageDiscoveryConfig())
-    {
+    if (!ValidateStorageDiscoveryConfig()) {
         ReportDiskAgentConfigMismatchEvent("Bad storage discovery config");
-        return makeError("Bad storage discovery config");
+        return;
     }
 
     TDeviceGenerator gen { Log, AgentConfig->GetAgentId() };
@@ -394,15 +385,14 @@ NProto::TError TInitializer::ScanFileDevices()
             std::ref(gen));
         HasError(error))
     {
-        ReportDiskAgentConfigMismatchEvent(
-            TStringBuilder()
+        ReportDiskAgentConfigMismatchEvent(TStringBuilder()
             << "Can't generate config: " << FormatError(error));
-        return makeError("can't generate config");
+        return;
     }
 
     TVector<NProto::TFileDeviceArgs> files = gen.ExtractResult();
     if (files.empty()) {
-        return {};
+        return;
     }
 
     SortBy(files, GetDeviceId);
@@ -411,27 +401,22 @@ NProto::TError TInitializer::ScanFileDevices()
     if (!ValidateGeneratedConfigs(files)) {
         ReportDiskAgentConfigMismatchEvent("Bad generated config");
 
-        return makeError("Bad generated config");
+        return;
     }
 
     if (FileDevices.empty()) {
         // We have only the dynamic configuration
         FileDevices = std::move(files);
 
-        return makeError("New devices appeared");
+        return;
     }
 
     // We have both the static config and the dynamic config and they must
     // be the same
-    if (auto error = CompareConfigs(
-            FileDevices,
-            files,
-            /*strictCompare=*/IsAttachOperation);
-        HasError(error))
-    {
+    if (auto error = CompareConfigs(FileDevices, files); HasError(error)) {
         TStringStream ss;
         ss << "Generated config doesn't match the static one:"
-           << FormatError(error) << ". Static:\n";
+            << FormatError(error) << ". Static:\n";
         for (auto& d: FileDevices) {
             ss << d << "\n";
         }
@@ -441,15 +426,14 @@ NProto::TError TInitializer::ScanFileDevices()
         }
 
         ReportDiskAgentConfigMismatchEvent(ss.Str());
-
-        return makeError("Generated config doesn't match the static one");
     }
-
-    return {};
 }
 
 void TInitializer::SaveCurrentConfig()
 {
+    if (PathsAllowedList) {
+        return;
+    }
     const auto path = GetCachedConfigsPath();
     if (path.empty()) {
         return;
@@ -492,14 +476,14 @@ void TInitializer::ValidateCurrentConfigs(
     }
 
     STORAGE_INFO("Compare the current config with the cached one");
-    const auto error =
-        CompareConfigs(cachedDevices, FileDevices, /*strictCompare=*/false);
+    const auto error = CompareConfigs(cachedDevices, FileDevices);
     if (!HasError(error)) {
         STORAGE_INFO("Current config is OK. Update cached config.");
 
         LostDevicesIds = GetLostDevicesIds(cachedDevices, FileDevices);
 
         SaveCurrentConfig();
+
         return;
     }
 
@@ -546,9 +530,15 @@ NProto::TError TInitializer::ProcessConfigCache()
             config.MutableDevicesWithSuspendedIO()->begin()),
         std::make_move_iterator(config.MutableDevicesWithSuspendedIO()->end()));
 
-    TVector<NProto::TFileDeviceArgs> devices{
-        std::make_move_iterator(config.MutableFileDevices()->begin()),
-        std::make_move_iterator(config.MutableFileDevices()->end())};
+    TVector<NProto::TFileDeviceArgs> devices;
+    for (auto& fileDevice: *config.MutableFileDevices()) {
+        if (!PathsAllowedList ||
+            PathsAllowedList.contains(fileDevice.GetPath()))
+        {
+            devices.push_back(std::move(fileDevice));
+        }
+    }
+
     SortBy(devices, [] (const auto& d) {
         return d.GetDeviceId();
     });
@@ -583,23 +573,15 @@ TFuture<void> TInitializer::Initialize()
         }
     }
 
-    auto error = ScanFileDevices();
-    if (HasError(error)) {
-        return MakeFuture();
+    ScanFileDevices();
+    if (auto error = ProcessConfigCache(); HasError(error)) {
+        return MakeErrorFuture<void>(
+            std::make_exception_ptr(TServiceError(error)));
     }
 
-    if (!IsAttachOperation) {
-        if (auto error = ProcessConfigCache(); HasError(error)) {
-            return MakeErrorFuture<void>(
-                std::make_exception_ptr(TServiceError(error)));
-        }
-    }
+    const auto& memoryDevices = AgentConfig->GetMemoryDevices();
 
-    auto deviceCount = std::ssize(FileDevices);
-
-    if (!IsAttachOperation) {
-        deviceCount += AgentConfig->GetMemoryDevices().size();
-    }
+    auto deviceCount = std::ssize(FileDevices) + memoryDevices.size();
 
     Configs.resize(deviceCount);
     Devices.resize(deviceCount);
@@ -657,15 +639,6 @@ TFuture<void> TInitializer::Initialize()
         }
     }
 
-    if (IsAttachOperation) {
-        return WaitAll(futures).Apply(
-            [](const auto& future)
-            {
-                Y_UNUSED(future);   // ignore
-            });
-    }
-
-    const auto& memoryDevices = AgentConfig->GetMemoryDevices();
     for (; i != deviceCount; ++i) {
         const auto& device = memoryDevices[i - std::ssize(FileDevices)];
 
