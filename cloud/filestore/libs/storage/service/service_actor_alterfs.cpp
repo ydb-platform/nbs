@@ -273,9 +273,9 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
             FileStoreConfig.ShardConfigs[shardNo].GetBlocksCount();
         FileStoreConfig.ShardConfigs[shardNo] = currentConfig;
         FileStoreConfig.ShardConfigs[shardNo].SetBlocksCount(blocksCount);
-        // We need to reconfigure the shard as only at this point we know
-        // original number of channels and it may happen that previously
-        // calculated number of channels is less than real.
+        // We need to reconfigure the shard, as only at this point do we know
+        // the original number of channels, and the calculated number of
+        // channels may be less than the real.
         SetupFileStorePerformanceAndChannels(
             false /* allocateMixed0Channel */,
             *StorageConfig,
