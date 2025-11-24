@@ -49,21 +49,41 @@ git submodule update --init --recursive
 
 **Common options:** `--test-threads=<N>` (default CI: 64), `--run-all-tests`, `--retest`, `--junit <file>`
 
-## Code Quality & CI
+## Code Style & Quality
 
-### Format & Lint (REQUIRED before commit)
+### C++ Style (MANDATORY - clang-format-18 required)
 ```bash
-# C++ formatting (MANDATORY)
-clang-format-18 -i file.cpp file.h
-
-# Enable git hooks (checks trailing whitespace)
-git config core.hooksPath .githooks
-
-# Pre-commit checks
-pre-commit run --all-files
+# Format all modified C++ files before commit
+clang-format-18 -i $(git diff --name-only --diff-filter=AM | grep -E '\.(cpp|h)$')
+clang-format-18 --dry-run -Werror file.cpp  # Verify without modifying
 ```
 
-### CI Workflows
+**Naming Conventions** (from .clang-tidy):
+- Classes/Structs: `TCamelCase`, Interfaces: `ICamelCase`, Enums: `ECamelCase` (constants: `UPPER_CASE`)
+- Namespaces: `NCamelCase`, Functions: `CamelCase`, Variables: `camelBack`, Macros: `UPPER_CASE`
+
+**Style Rules**: 80 columns max, 4-space indent, custom braces (after class/function/struct, not namespace)
+
+### Linting & Pre-Commit (REQUIRED)
+```bash
+git config core.hooksPath .githooks           # Enable hooks (checks whitespace)
+pre-commit run --all-files                    # Validate YAML, whitespace, newlines
+./ya make --test-type=clang_tidy -t <target>  # C++ linting
+./ya make --test-type=flake8,black -t cloud/  # Python
+./ya make --test-type=gofmt -t cloud/disk_manager/  # Go
+```
+
+### Code Review Checklist (verify before PR)
+- [ ] clang-format-18 applied to all C++ files
+- [ ] Naming follows conventions (T/I/E/N prefixes, camelBack)
+- [ ] No trailing whitespace (`git diff --check` passes)
+- [ ] Line length ≤80 columns
+- [ ] Tests added/updated and passing (small/medium: `./ya make -t --test-size=small,medium`)
+- [ ] Builds without warnings
+- [ ] No clang-tidy warnings in modified code
+- [ ] Complex logic has comments, no unexplained commented-out code
+
+## CI Workflows
 **Main PR:** `.github/workflows/pr.yaml` - Triggers on PR to `main` (skips docs/examples/md files). Requires org membership or `ok-to-test` label for external contributors.
 
 **Build/Test:** `.github/workflows/build_and_test_ya.yaml` - Targets: `cloud/blockstore/apps/`, `cloud/filestore/apps/`, `cloud/disk_manager/`, `cloud/tasks/`, `cloud/storage/`. Default tests: `unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,go_test,gofmt`. Sizes: `small,medium,large`. Preset: `relwithdebinfo`.
@@ -120,11 +140,19 @@ sudo ./6-attach_disk.sh --disk-id vol0 -d /dev/nbd0
 
 ## Agent Workflow
 
-1. **Format C++ with clang-format-18** (mandatory)
-2. **Run pre-commit checks** (`git diff --check` or hooks)
-3. **Build incrementally:** `./ya make cloud/blockstore/apps/server` to catch errors early
-4. **Test changed components:** `./ya make -t --test-size=small,medium cloud/blockstore/libs/service`
-5. **Verify locally** using `example/` scripts for runtime changes
-6. **Trust these instructions** - only search if incomplete/incorrect
+**Making changes with code style/review focus:**
+
+1. **Before coding:** Review existing code style in target area, check related tests
+2. **While coding:** Follow naming (TCamelCase/ICamelCase/camelBack), keep ≤80 cols, comment complex logic
+3. **Before commit (MANDATORY):**
+   ```bash
+   clang-format-18 -i $(git diff --name-only --diff-filter=AM | grep -E '\.(cpp|h)$')
+   git diff --check  # No trailing whitespace
+   ./ya make <target>  # Build without warnings
+   ./ya make -t --test-size=small,medium --test-type=unittest,clang_tidy <target>
+   ```
+4. **Self-review:** Check naming conventions, no debug/commented code, tests cover edge cases
+5. **Verify checklist:** Format ✓, naming ✓, whitespace ✓, tests ✓, builds ✓, linting ✓
+6. **Local testing:** Use `example/` scripts for runtime verification if needed
 
 **Quick Ref:** Build all: `./ya make cloud/blockstore/buildall -r` | Test: `./ya make -t cloud/blockstore/` | Format: `clang-format-18 -i file.cpp` | Sanitizer: `./ya make --sanitize=address <target>` | Docs: `doc/REPOSITORY_STRUCTURE.md`
