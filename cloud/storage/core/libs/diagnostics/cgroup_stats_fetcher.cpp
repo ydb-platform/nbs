@@ -19,10 +19,7 @@ struct TCgroupStatsFetcher final
 {
 private:
     const TString ComponentName;
-
     const TString StatsFile;
-
-    TFile CpuAcctWait;
 
     TDuration Last;
 
@@ -38,29 +35,20 @@ public:
 
     TResultOrError<TDuration> GetCpuWait() override
     {
-        if (!CpuAcctWait.IsOpen()) {
-            try {
-                CpuAcctWait = TFile(
-                    StatsFile,
-                    EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
-            } catch (...) {
-                return MakeError(E_INVALID_STATE, "Failed to open " + StatsFile);
-            }
-        }
-
         try {
-            CpuAcctWait.Seek(0, SeekDir::sSet);
+            TFile cpuAcctWait = TFile(
+                StatsFile,
+                EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
 
             constexpr i64 bufSize = 1024;
 
-            if (CpuAcctWait.GetLength() >= bufSize - 1) {
-                CpuAcctWait.Close();
+            if (cpuAcctWait.GetLength() >= bufSize - 1) {
                 return MakeError(E_INVALID_STATE, StatsFile + " is too large");
             }
 
             char buf[bufSize];
 
-            auto cnt = CpuAcctWait.Read(buf, bufSize - 1);
+            auto cnt = cpuAcctWait.Read(buf, bufSize - 1);
             if (buf[cnt - 1] == '\n') {
                 --cnt;
             }
@@ -83,11 +71,6 @@ public:
                                 << "IO error for " << StatsFile
                                 << " with exception "
                                 << CurrentExceptionMessage().Quote();
-            try {
-                CpuAcctWait.Close();
-            } catch (...) {
-                errorMessage << "\nFollowed by file close error";
-            }
 
             return MakeError(E_FAIL, std::move(errorMessage));
         }
