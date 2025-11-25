@@ -221,9 +221,7 @@ struct TTxIndexTabletBase
     // It is possible to implement custom logic that mutates the transaction
     // state upon transaction restart
     virtual void OnRestart()
-    {
-        Clear();
-    }
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
