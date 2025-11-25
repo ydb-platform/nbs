@@ -769,7 +769,12 @@ func (s *storageYDB) FilesystemSnapshotDeleted(
 	return s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
-			return s.filesystemSnapshotDeleted(ctx, session, snapshotID, deletedAt)
+			return s.filesystemSnapshotDeleted(
+				ctx,
+				session,
+				snapshotID,
+				deletedAt,
+			)
 		},
 	)
 }
@@ -783,7 +788,12 @@ func (s *storageYDB) ClearDeletedFilesystemSnapshots(
 	return s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
-			return s.clearDeletedFilesystemSnapshots(ctx, session, deletedBefore, limit)
+			return s.clearDeletedFilesystemSnapshots(
+				ctx,
+				session,
+				deletedBefore,
+				limit,
+			)
 		},
 	)
 }
@@ -800,7 +810,12 @@ func (s *storageYDB) ListFilesystemSnapshots(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			ids, err = s.listFilesystemSnapshots(ctx, session, folderID, creatingBefore)
+			ids, err = s.listFilesystemSnapshots(
+				ctx,
+				session,
+				folderID,
+				creatingBefore,
+			)
 			return err
 		},
 	)
@@ -816,7 +831,11 @@ func createFilesystemSnapshotsYDBTables(
 	dropUnusedColumns bool,
 ) error {
 
-	logging.Info(ctx, "Creating tables for filesystem snapshots in %v", db.AbsolutePath(folder))
+	logging.Info(
+		ctx,
+		"Creating tables for filesystem snapshots in %v",
+		db.AbsolutePath(folder),
+	)
 
 	err := db.CreateOrAlterTable(
 		ctx,
@@ -859,7 +878,11 @@ func dropFilesystemSnapshotsYDBTables(
 	db *persistence.YDBClient,
 ) error {
 
-	logging.Info(ctx, "Dropping tables for filesystem snapshots in %v", db.AbsolutePath(folder))
+	logging.Info(
+		ctx,
+		"Dropping tables for filesystem snapshots in %v",
+		db.AbsolutePath(folder),
+	)
 	err := db.DropTable(ctx, folder, "filesystem_snapshots")
 	if err != nil {
 		return err
