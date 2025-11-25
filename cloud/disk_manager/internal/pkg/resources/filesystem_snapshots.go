@@ -17,7 +17,10 @@ import (
 
 type filesystemSnapshotStatus uint32
 
-func (s *filesystemSnapshotStatus) UnmarshalYDB(res persistence.RawValue) error {
+func (s *filesystemSnapshotStatus) UnmarshalYDB(
+	res persistence.RawValue,
+) error {
+
 	*s = filesystemSnapshotStatus(res.Int64())
 	return nil
 }
@@ -103,7 +106,10 @@ func (s *filesystemSnapshotState) structValue() persistence.Value {
 	)
 }
 
-func scanFilesystemSnapshotState(res persistence.Result) (state filesystemSnapshotState, err error) {
+func scanFilesystemSnapshotState(
+	res persistence.Result,
+) (state filesystemSnapshotState, err error) {
+
 	err = res.ScanNamed(
 		persistence.OptionalWithDefault("id", &state.id),
 		persistence.OptionalWithDefault("folder_id", &state.folderID),
@@ -161,7 +167,9 @@ func filesystemSnapshotStateStructTypeString() string {
 		status: Int64>`
 }
 
-func filesystemSnapshotStateTableDescription() persistence.CreateTableDescription {
+func filesystemSnapshotStateTableDescription(
+) persistence.CreateTableDescription {
+
 	return persistence.NewCreateTableDescription(
 		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("folder_id", persistence.Optional(persistence.TypeUTF8)),
@@ -210,10 +218,11 @@ func (s *storageYDB) getFilesystemSnapshotMeta(
 		return nil, err
 	}
 
-	if len(states) != 0 {
-		return states[0].toFilesystemSnapshotMeta(), nil
+	if len(states) == 0 {
+		return nil, nil
 	}
-	return nil, nil
+
+	return states[0].toFilesystemSnapshotMeta(), nil
 }
 
 func (s *storageYDB) createFilesystemSnapshot(
@@ -341,7 +350,7 @@ func (s *storageYDB) filesystemSnapshotCreated(
 		pragma TablePathPrefix = "%v";
 		declare $id as Utf8;
 
-		select *
+		select *filesystem_snapshots.go
 		from filesystem_snapshots
 		where id = $id
 	`, s.filesystemSnapshotsPath),
@@ -369,7 +378,7 @@ func (s *storageYDB) filesystemSnapshotCreated(
 		)
 	}
 
-	state := states[0]
+	state := states[0]filesystem_snapshots.go
 
 	if state.status == filesystemSnapshotStatusReady {
 		// Nothing to do.
@@ -501,7 +510,7 @@ func (s *storageYDB) filesystemSnapshotDeleted(
 
 	res, err := tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
-		pragma TablePathPrefix = "%v";
+		pragma TablePathPrefix = "%v";filesystem_snapshots.go
 		declare $id as Utf8;
 
 		select *
@@ -814,6 +823,7 @@ func createFilesystemSnapshotsYDBTables(
 	if err != nil {
 		return err
 	}
+
 	logging.Info(ctx, "Created filesystem_snapshots table")
 
 	err = db.CreateOrAlterTable(
@@ -830,6 +840,7 @@ func createFilesystemSnapshotsYDBTables(
 	if err != nil {
 		return err
 	}
+
 	logging.Info(ctx, "Created deleted table")
 
 	logging.Info(ctx, "Created tables for filesystem snapshots")

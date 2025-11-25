@@ -19,6 +19,7 @@ func requireFilesystemSnapshotsAreEqual(
 	expected FilesystemSnapshotMeta,
 	actual FilesystemSnapshotMeta,
 ) {
+
 	require.Equal(t, expected.ID, actual.ID)
 	require.Equal(t, expected.FolderID, actual.FolderID)
 	require.True(t, proto.Equal(expected.Filesystem, actual.Filesystem))
