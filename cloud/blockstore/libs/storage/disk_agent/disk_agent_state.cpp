@@ -287,6 +287,48 @@ TVector<IProfileLog::TBlockInfo> ComputeDigest(
     return ComputeDigest(generator, sglist, req.GetStartIndex());
 }
 
+NProto::TError CompareConfigs(
+    const TVector<NProto::TDeviceConfig>& expectedConfigs,
+    const TVector<NProto::TDeviceConfig>& actualConfigs)
+{
+    if (expectedConfigs.size() != actualConfigs.size()) {
+        return MakeError(E_ARGUMENT, "device count mismatch");
+    }
+
+    THashMap<TString, NProto::TDeviceConfig> expectedConfigsMap;
+    for (const auto& config: expectedConfigs) {
+        expectedConfigsMap[config.GetDeviceUUID()] = config;
+    }
+
+    for (const auto& config: actualConfigs) {
+        const auto* expectedConfig =
+            expectedConfigsMap.FindPtr(config.GetDeviceUUID());
+        if (!expectedConfig) {
+            return MakeError(
+                E_ARGUMENT,
+                Sprintf(
+                    "device[%s] not found",
+                    config.GetDeviceUUID().Quote().c_str()));
+        }
+
+        if (expectedConfig->GetBlocksCount() != config.GetBlocksCount() ||
+            expectedConfig->GetBlockSize() != config.GetBlockSize() ||
+            expectedConfig->GetPhysicalOffset() != config.GetPhysicalOffset() ||
+            expectedConfig->GetSerialNumber() != config.GetSerialNumber() ||
+            expectedConfig->GetPoolName() != config.GetPoolName() ||
+            expectedConfig->GetDeviceName() != config.GetDeviceName())
+        {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "device config mismatch expected:\n"
+                                 << *expectedConfig << "\nactual:\n"
+                                 << config << "\n");
+        }
+    }
+
+    return {};
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1282,38 +1324,52 @@ auto TDiskAgentState::AttachPaths(const TVector<TString>& pathsToAttach)
         result.PathsToAttach.end());
     TVector<NProto::TDeviceConfig> devices = GetDevicesByPath(pathsSet);
 
-    auto validationConfig =
-        CreateConfigForAttachValidation(result.PathsToAttach, devices);
-
     auto promise = NewPromise<TResultOrError<TAttachPathResult>>();
     auto future = promise.GetFuture();
 
     BackgroundThreadPool->ExecuteSimple(
         [promise = std::move(promise),
          result = std::move(result),
-         validationConfig = validationConfig,
+         agentConfig = AgentConfig,
          loggingService = Logging,
          nvmeManager = NvmeManager,
          storageProvider = StorageProvider,
-         storageConfig = StorageConfig]() mutable
+         storageConfig = StorageConfig,
+         devices = std::move(devices)]() mutable
         {
             auto future = InitializePaths(
                 loggingService->CreateLog("BLOCKSTORE_DISK_AGENT"),
                 storageConfig,
-                validationConfig,
+                agentConfig,
                 storageProvider,
                 nvmeManager,
                 result.PathsToAttach);
 
             future.Subscribe(
-                [promise = std::move(promise), result = std::move(result)](
+                [promise = std::move(promise),
+                 result = std::move(result),
+                 devices = std::move(devices)](
                     TFuture<TInitializeStorageResult> future) mutable
                 {
                     auto initializationResult = future.ExtractValue();
 
                     if (initializationResult.ConfigMismatchErrors) {
-                        auto error =
-                            MakeError(E_INVALID_STATE, "Config mismatch");
+                        auto error = MakeError(
+                            E_ARGUMENT,
+                            Sprintf(
+                                "Config mismatch: %s",
+                                initializationResult.ConfigMismatchErrors
+                                    .front()
+                                    .c_str()));
+                        promise.SetValue(std::move(error));
+                        return;
+                    }
+
+                    if (auto error = CompareConfigs(
+                            devices,
+                            initializationResult.Configs);
+                        HasError(error))
+                    {
                         promise.SetValue(std::move(error));
                         return;
                     }
