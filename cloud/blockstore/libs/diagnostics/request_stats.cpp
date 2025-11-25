@@ -105,7 +105,10 @@ public:
             requestBytes,
             requestBytes + 1,
             [&](TDisjointIntervalMap<ui64, TSizeClassCounters>::TIterator it)
-            { it->second.Value.ExecutionTimeHist->RecordValue(requestTime); });
+            {
+                it->second.Value.ExecutionTimeHist->RecordValue(
+                    requestExecutionTime);
+            });
     }
 
     void BatchCompleted(

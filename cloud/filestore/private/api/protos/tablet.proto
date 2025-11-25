@@ -918,3 +918,24 @@ message TSetHasXAttrsResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// MarkNodeRefsExhaustive request/response
+
+message TMarkNodeRefsExhaustiveRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // Node ID to mark as having exhaustive node refs in cache.
+    uint64 NodeId = 3;
+}
+
+message TMarkNodeRefsExhaustiveResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}

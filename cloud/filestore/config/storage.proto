@@ -672,4 +672,8 @@ message TStorageConfig
 
     // Enable FUSE_HANDLE_KILLPRIV_V2 on guest (FUSE client)
     optional bool GuestHandleKillPrivV2Enabled = 468;
+
+    // Multiplier for MaxBytes when calculating upper bound in ClampVal
+    // for BytesToPrecharge in ListNodes transaction
+    optional uint32 MaxBytesMultiplier = 469;
 }

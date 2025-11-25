@@ -50,5 +50,9 @@ type Client interface {
 	ResizeFilesystem(ctx context.Context, req *disk_manager.ResizeFilesystemRequest) (*disk_manager.Operation, error)
 	DescribeFilesystemModel(ctx context.Context, req *disk_manager.DescribeFilesystemModelRequest) (*disk_manager.FilesystemModel, error)
 
+	// FilesystemSnapshotService
+	CreateFilesystemSnapshot(ctx context.Context, req *disk_manager.CreateFilesystemSnapshotRequest) (*disk_manager.Operation, error)
+	DeleteFilesystemSnapshot(ctx context.Context, req *disk_manager.DeleteFilesystemSnapshotRequest) (*disk_manager.Operation, error)
+
 	Close() error
 }
