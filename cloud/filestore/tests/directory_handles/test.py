@@ -95,6 +95,9 @@ def test():
     res1 = create_file(ssh, mount_dir, file_for_script_continue)
     assert 0 == res1.returncode
 
+    # test is running under cpu starvation, so we need to wait for the test to finish
+    sleep(5)
+
     ret = ssh("sudo cat /tmp/dir_for_open_restart.log")
 
     results_path = common.output_path() + "/results.txt"
