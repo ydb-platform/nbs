@@ -246,21 +246,16 @@ void TIndexTabletActor::ExecuteTx_WriteData(
         return RebootTabletOnCommitOverflow(ctx, "WriteData");
     }
 
-    const bool markTailAsDeleted =
-        args.ByteRange.UnalignedTailLength() != 0 &&
-        args.Node->Attrs.GetSize() <= args.ByteRange.End();
-    const ui64 blocksCountToDelete =
-        args.ByteRange.AlignedBlockCount() + (markTailAsDeleted ? 1 : 0);
     MarkFreshBlocksDeleted(
         db,
         args.NodeId,
         args.CommitId,
         args.ByteRange.FirstAlignedBlock(),
-        blocksCountToDelete);
+        args.ByteRange.AlignedBlockCount());
 
     SplitRange(
         args.ByteRange.FirstAlignedBlock(),
-        blocksCountToDelete,
+        args.ByteRange.AlignedBlockCount(),
         BlockGroupSize,
         [&](ui32 blockOffset, ui32 blocksCount)
         {
@@ -297,6 +292,18 @@ void TIndexTabletActor::ExecuteTx_WriteData(
     if (args.ByteRange.UnalignedTailLength()) {
         if (args.Node->Attrs.GetSize() <= args.ByteRange.End()) {
             // it's safe to write at the end of file fresh block w 0s at the end
+            MarkFreshBlocksDeleted(
+                db,
+                args.NodeId,
+                args.CommitId,
+                args.ByteRange.LastBlock(),
+                1);
+            MarkMixedBlocksDeleted(
+                db,
+                args.NodeId,
+                args.CommitId,
+                args.ByteRange.LastBlock(),
+                1);
             WriteFreshBlock(
                 db,
                 args.NodeId,
@@ -374,16 +381,15 @@ void TIndexTabletActor::CompleteTx_WriteData(
         args.ByteRange.FirstAlignedBlock(),
         args.ByteRange.AlignedBlockCount(),
         BlockGroupSize,
-        [&] (ui32 blockOffset, ui32 blocksCount) {
-            TBlock block {
+        [&](ui32 blockOffset, ui32 blocksCount)
+        {
+            TBlock block{
                 args.NodeId,
                 IntegerCast<ui32>(
-                    args.ByteRange.FirstAlignedBlock() + blockOffset
-                ),
+                    args.ByteRange.FirstAlignedBlock() + blockOffset),
                 // correct CommitId will be assigned later in AddBlobs
                 InvalidCommitId,
-                InvalidCommitId
-            };
+                InvalidCommitId};
 
             builder.Accept(block, blocksCount, blockOffset, *args.Buffer);
         });
