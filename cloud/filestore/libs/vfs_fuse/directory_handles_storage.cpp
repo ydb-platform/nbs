@@ -184,6 +184,7 @@ void TDirectoryHandlesStorage::LoadHandles(TDirectoryHandleMap& handles)
                 << "First chunk for handle " << handleId << " is missing");
 
             RemoveHandle(handleId);
+            handles.erase(handleId);
             continue;
         }
 
@@ -196,6 +197,7 @@ void TDirectoryHandlesStorage::LoadHandles(TDirectoryHandleMap& handles)
                 << " is not equal to largest update version "
                 << updateVersionInfo.LargestUpdateVersion << " + 1");
             ResetHandle(handleId);
+            handles[handleId]->ResetContent();
             continue;
         }
     }
