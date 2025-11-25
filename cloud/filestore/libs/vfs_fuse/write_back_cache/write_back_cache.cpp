@@ -102,16 +102,25 @@ struct TBufferWriter
         : TargetBuffer(targetBuffer)
     {}
 
-    [[nodiscard]] bool Write(TStringBuf buffer)
+    void Write(TStringBuf buffer)
     {
-        if (buffer.size() > TargetBuffer.size() - WrittenByteCount) {
-            return false;
-        }
+        Y_ABORT_UNLESS(
+            buffer.size() <= TargetBuffer.size() - WrittenByteCount,
+            "Not enough space in the buffer to write %lu bytes, remaining: %lu",
+            buffer.size(),
+            TargetBuffer.size() - WrittenByteCount);
+
         buffer.copy(TargetBuffer.data() + WrittenByteCount, buffer.size());
         WrittenByteCount += buffer.size();
-        return true;
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+ui64 SaturationSub(ui64 x, ui64 y)
+{
+    return x > y ? x - y : 0;
+}
 
 }   // namespace
 
@@ -1413,14 +1422,22 @@ TFuture<void> TWriteBackCache::FlushAllData()
 TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
         std::shared_ptr<NProto::TWriteDataRequest> request)
     : PendingRequest(std::move(request))
+    , ByteCount(
+          NStorage::CalculateByteCount(*PendingRequest) -
+          PendingRequest->GetBufferOffset())
     , CachedPromise(NewPromise<NProto::TWriteDataResponse>())
-{}
+{
+    Y_ABORT_UNLESS(ByteCount > 0);
+}
 
 TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
-    ui32 checksum,
-    TStringBuf serializedRequest,
-    TWriteDataEntryDeserializationStats& deserializationStats,
-    TImpl* impl)
+        ui32 checksum,
+        TStringBuf serializedRequest,
+        TWriteDataEntryDeserializationStats& deserializationStats,
+        TImpl* impl)
+    : ByteCount(SaturationSub(
+          serializedRequest.size(),
+          sizeof(TCachedWriteDataRequest)))
 {
     deserializationStats.EntryCount++;
 
@@ -1438,11 +1455,11 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
     //    return;
     //}
 
-    if (serializedRequest.size() < sizeof(TCachedWriteDataRequest)) {
+    if (ByteCount == 0) {
         deserializationStats.EntrySizeMismatchCount++;
         ReportWriteBackCacheCorruptionError(Sprintf(
             "TWriteDataEntry deserialization error: entry size is too small, "
-            "expected: at least %lu, actual: %lu",
+            "expected: > %lu, actual: %lu",
             sizeof(TCachedWriteDataRequest),
             serializedRequest.size()));
         SetStatus(EWriteDataRequestStatus::Corrupted, impl);
@@ -1452,19 +1469,6 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
     const auto* allocationPtr =
         reinterpret_cast<const TCachedWriteDataRequest*>(
             serializedRequest.data());
-
-    if (allocationPtr->Length >
-        serializedRequest.size() - sizeof(TCachedWriteDataRequest))
-    {
-        deserializationStats.EntrySizeMismatchCount++;
-        ReportWriteBackCacheCorruptionError(Sprintf(
-            "TWriteDataEntry deserialization error: entry size is too small, "
-            "expected: at least %lu, actual: %lu",
-            allocationPtr->Length + sizeof(TCachedWriteDataRequest),
-            serializedRequest.size()));
-        SetStatus(EWriteDataRequestStatus::Corrupted, impl);
-        return;
-    }
 
     CachedRequest = allocationPtr;
     SetStatus(EWriteDataRequestStatus::Cached, impl);
@@ -1489,10 +1493,9 @@ void TWriteBackCache::TWriteDataEntry::SerializeAndMoveRequestBuffer(
     Y_ABORT_UNLESS(PendingRequest);
     Y_ABORT_UNLESS(CachedRequest == nullptr);
     Y_ABORT_UNLESS(
-        sizeof(TCachedWriteDataRequest) <= allocation.size(),
-        "Allocated buffer is too small to store WriteData request header, "
-        "expected size: at least %lu, actual: %lu",
-        sizeof(TCachedWriteDataRequest),
+        allocation.size() == sizeof(TCachedWriteDataRequest) + ByteCount,
+        "Invalid allocation size, expected: %lu, actual: %lu",
+        sizeof(TCachedWriteDataRequest) + ByteCount,
         allocation.size());
 
     auto* cachedRequest =
@@ -1501,41 +1504,25 @@ void TWriteBackCache::TWriteDataEntry::SerializeAndMoveRequestBuffer(
     cachedRequest->NodeId = PendingRequest->GetNodeId();
     cachedRequest->Handle = PendingRequest->GetHandle();
     cachedRequest->Offset = PendingRequest->GetOffset();
-    cachedRequest->Length = 0;
 
     TBufferWriter writer(allocation.subspan(sizeof(TCachedWriteDataRequest)));
 
     if (PendingRequest->GetIovecs().empty()) {
-        auto buffer = TStringBuf(PendingRequest->GetBuffer())
-                       .Skip(PendingRequest->GetBufferOffset());
-        Y_ABORT_UNLESS(
-            writer.Write(buffer),
-            "Allocated buffer is too small to store WriteData request buffer, "
-            "expected size: at least %lu, actual: %lu",
-            sizeof(TCachedWriteDataRequest) + buffer.size(),
-            allocation.size());
+        writer.Write(TStringBuf(PendingRequest->GetBuffer())
+                         .Skip(PendingRequest->GetBufferOffset()));
     } else {
         for (const auto& iovec: PendingRequest->GetIovecs()) {
-            auto buffer = TStringBuf(
+            writer.Write(TStringBuf(
                 reinterpret_cast<const char*>(iovec.GetBase()),
-                iovec.GetLength());
-            Y_ABORT_UNLESS(
-                writer.Write(buffer),
-                "Allocated buffer is too small to store WriteData request "
-                "buffer, expected size: at least %lu, actual: %lu",
-                sizeof(TCachedWriteDataRequest) + writer.WrittenByteCount +
-                    buffer.size(),
-                allocation.size());
+                iovec.GetLength()));
         }
     }
 
     Y_ABORT_UNLESS(
-        writer.WrittenByteCount <= Max<ui32>(),
-        "WriteData request buffer size (%lu) exceeds the limit (%u)",
-        writer.WrittenByteCount,
-        Max<ui32>());
-
-    cachedRequest->Length = writer.WrittenByteCount;
+        writer.WrittenByteCount == ByteCount,
+        "Expected WrittenByteCount: %lu, actual: %lu",
+        ByteCount,
+        writer.WrittenByteCount);
 
     CachedRequest = cachedRequest;
     PendingRequest.reset();

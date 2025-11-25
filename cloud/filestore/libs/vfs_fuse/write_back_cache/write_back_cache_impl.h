@@ -40,16 +40,15 @@ struct Y_PACKED TWriteBackCache::TCachedWriteDataRequest
     ui64 NodeId = 0;
     ui64 Handle = 0;
     ui64 Offset = 0;
-    ui32 Length = 0;
 
-    // Data goes right after the header, |Length| bytes
+    // Data goes right after the header, |byteCount| bytes
     // The validity is ensured by code logic
-    TStringBuf GetBuffer() const
+    TStringBuf GetBuffer(ui64 byteCount) const
     {
         return {
             reinterpret_cast<const char*>(this) +
                 sizeof(TCachedWriteDataRequest),
-            Length};
+            byteCount};
     }
 };
 
@@ -67,6 +66,10 @@ private:
 
     // WriteData request stored in CachedEntriesPersistentQueue
     const TCachedWriteDataRequest* CachedRequest = nullptr;
+
+    // ByteCount is not serialized to the persistent queue as it is calculated
+    // implicitly
+    const ui64 ByteCount = 0;
 
     NThreading::TPromise<NProto::TWriteDataResponse> CachedPromise;
     NThreading::TPromise<void> FlushPromise;
@@ -111,7 +114,7 @@ public:
         Y_ABORT_UNLESS(
             CachedRequest != nullptr,
             "The buffer can be referenced only for cached requests");
-        return CachedRequest->GetBuffer();
+        return CachedRequest->GetBuffer(ByteCount);
     }
 
     ui64 GetOffset() const
@@ -127,19 +130,12 @@ public:
 
     ui64 GetByteCount() const
     {
-        if (CachedRequest) {
-            return CachedRequest->Length;
-        }
-        if (PendingRequest) {
-            return NStorage::CalculateByteCount(*PendingRequest) -
-                   PendingRequest->GetBufferOffset();
-        }
-        Y_ABORT("The request is in the invalid state (GetByteCount)");
+        return ByteCount;
     }
 
     ui64 GetEnd() const
     {
-        return GetOffset() + GetByteCount();
+        return GetOffset() + ByteCount;
     }
 
     bool IsCached() const
