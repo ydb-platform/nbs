@@ -147,6 +147,7 @@ protected:
                 TX_TRACK(TxPrepareRestarted);
 
                 Args.Clear();
+                Args.OnRestart();
                 return false;
             }
 
@@ -351,7 +352,7 @@ protected:
             CompleteTx_##name(ctx, args);                                      \
             return true;                                                       \
         }                                                                      \
-        args.Reset();                                                          \
+        args.Clear();                                                          \
         return false;                                                          \
     }                                                                          \
                                                                                \

@@ -218,9 +218,9 @@ struct TTxIndexTabletBase
 
     virtual void Clear() = 0;
 
-    // If not overridden, works same as Clear(). However, some transactions may
-    // implement more complex logic upon Clear, for example, ListNodes.
-    virtual void Reset()
+    // It is possible to implement custom logic that mutates the transaction
+    // state upon transaction restart
+    virtual void OnRestart()
     {
         Clear();
     }
@@ -1147,17 +1147,14 @@ struct TTxIndexTablet
             ChildRefs.clear();
             ChildNodes.clear();
             Next.clear();
+        }
 
+        void OnRestart() override
+        {
             BytesToPrecharge = ClampVal(
                 2 * BytesToPrecharge,
                 MaxBytes,
                 MaxBytesMultiplier * MaxBytes);
-        }
-
-        void Reset() override
-        {
-            Clear();
-            BytesToPrecharge = MaxBytes;
         }
     };
 
