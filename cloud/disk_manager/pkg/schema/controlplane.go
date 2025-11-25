@@ -63,6 +63,7 @@ func initControlplane(
 		config.GetImagesConfig().GetStorageFolder(),
 		config.GetSnapshotsConfig().GetStorageFolder(),
 		filesystemStorageFolder,
+		config.GetFilesystemSnapshotsConfig().GetStorageFolder(),
 		config.GetPlacementGroupConfig().GetStorageFolder(),
 		db,
 		dropUnusedColumns,
