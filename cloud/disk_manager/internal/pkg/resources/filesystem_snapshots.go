@@ -275,7 +275,11 @@ func (s *storageYDB) createFilesystemSnapshot(
 		state := states[0]
 
 		if state.status >= filesystemSnapshotStatusDeleting {
-			logging.Info(ctx, "can't create already deleting/deleted filesystem snapshot with id %v", snapshot.ID)
+			logging.Info(
+				ctx,
+				"can't create already deleting/deleted filesystem snapshot with id %v",
+				snapshot.ID,
+			)
 			return nil, errors.NewSilentNonRetriableErrorf(
 				"can't create already deleting/deleted filesystem snapshot with id %v",
 				snapshot.ID,
@@ -727,7 +731,11 @@ func (s *storageYDB) GetFilesystemSnapshotMeta(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			snapshot, err = s.getFilesystemSnapshotMeta(ctx, session, snapshotID)
+			snapshot, err = s.getFilesystemSnapshotMeta(
+				ctx,
+				session,
+				snapshotID,
+			)
 			return err
 		},
 	)
