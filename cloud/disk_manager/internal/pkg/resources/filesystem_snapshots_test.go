@@ -26,8 +26,14 @@ func requireFilesystemSnapshotsAreEqual(
 	require.True(t, proto.Equal(expected.CreateRequest, actual.CreateRequest))
 	require.Equal(t, expected.CreateTaskID, actual.CreateTaskID)
 	if !expected.CreatingAt.IsZero() {
-		require.WithinDuration(t, expected.CreatingAt, actual.CreatingAt, time.Microsecond)
+		require.WithinDuration(
+			t,
+			expected.CreatingAt,
+			actual.CreatingAt,
+			time.Microsecond,
+		)
 	}
+
 	require.Equal(t, expected.DeleteTaskID, actual.DeleteTaskID)
 	require.Equal(t, expected.Size, actual.Size)
 	require.Equal(t, expected.StorageSize, actual.StorageSize)

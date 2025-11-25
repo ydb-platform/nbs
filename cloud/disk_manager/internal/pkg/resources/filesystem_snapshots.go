@@ -747,7 +747,13 @@ func (s *storageYDB) DeleteFilesystemSnapshot(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			snapshot, err = s.deleteFilesystemSnapshot(ctx, session, snapshotID, taskID, deletingAt)
+			snapshot, err = s.deleteFilesystemSnapshot(
+				ctx,
+				session,
+				snapshotID,
+				taskID,
+				deletingAt,
+			)
 			return err
 		},
 	)
@@ -854,19 +860,18 @@ func dropFilesystemSnapshotsYDBTables(
 ) error {
 
 	logging.Info(ctx, "Dropping tables for filesystem snapshots in %v", db.AbsolutePath(folder))
-
 	err := db.DropTable(ctx, folder, "filesystem_snapshots")
 	if err != nil {
 		return err
 	}
-	logging.Info(ctx, "Dropped filesystem_snapshots table")
 
+	logging.Info(ctx, "Dropped filesystem_snapshots table")
 	err = db.DropTable(ctx, folder, "deleted")
 	if err != nil {
 		return err
 	}
-	logging.Info(ctx, "Dropped deleted table")
 
+	logging.Info(ctx, "Dropped deleted table")
 	logging.Info(ctx, "Dropped tables for filesystem snapshots")
 
 	return nil
