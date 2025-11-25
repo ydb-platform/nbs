@@ -193,7 +193,7 @@ struct TWriteBackCache::TWriteDataEntryPart
     ui64 Offset = 0;
     ui64 Length = 0;
 
-    ui64 End() const
+    ui64 GetEnd() const
     {
         return Offset + Length;
     }
@@ -285,6 +285,14 @@ public:
 
     static bool IsSorted(const TVector<TWriteDataEntryPart>& parts);
     static bool IsContiguousSequence(const TVector<TWriteDataEntryPart>& parts);
+
+    static NProto::TError ValidateReadDataRequest(
+        const NProto::TReadDataRequest& request,
+        const TString& expectedFileSystemId);
+
+    static NProto::TError ValidateWriteDataRequest(
+        const NProto::TWriteDataRequest& request,
+        const TString& expectedFileSystemId);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

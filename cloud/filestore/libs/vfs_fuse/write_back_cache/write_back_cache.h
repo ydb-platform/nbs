@@ -44,8 +44,7 @@ public:
         ui32 maxWriteRequestSize,
         ui32 maxWriteRequestsCount,
         ui32 maxSumWriteRequestsSize,
-        bool zeroCopyWriteEnabled,
-        bool disableValidationAsserts);
+        bool zeroCopyWriteEnabled);
 
     ~TWriteBackCache();
 
@@ -71,7 +70,7 @@ public:
 
 private:
     // Only for testing purposes
-    friend struct TCalculateDataPartsToReadTestBootstrap;
+    friend struct TTestUtilBootstrap;
 
     struct TCachedWriteDataRequest;
     class TWriteDataEntry;

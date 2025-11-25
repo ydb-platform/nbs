@@ -113,87 +113,6 @@ struct TBufferWriter
     }
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-NProto::TError ValidateReadDataRequest(
-    const NProto::TReadDataRequest& request,
-    const TString& expectedFileSystemId)
-{
-    if (request.GetFileSystemId() != expectedFileSystemId) {
-        return MakeError(
-            E_ARGUMENT,
-            Sprintf(
-                "ReadData request has invalid FileSystemId, "
-                "expected: '%s', actual: '%s'",
-                expectedFileSystemId.c_str(),
-                request.GetFileSystemId().c_str()));
-    }
-
-    if (request.GetLength() == 0) {
-        return MakeError(E_ARGUMENT, "ReadData request has zero length");
-    }
-
-    return {};
-}
-
-NProto::TError ValidateWriteDataRequest(
-    const NProto::TWriteDataRequest& request,
-    const TString& expectedFileSystemId)
-{
-    if (request.HasHeaders()) {
-        return MakeError(
-            E_ARGUMENT,
-            "WriteData request has unexpected Headers field");
-    }
-
-    if (request.GetFileSystemId() != expectedFileSystemId) {
-        return MakeError(
-            E_ARGUMENT,
-            Sprintf(
-                "WriteData request has invalid FileSystemId, "
-                "expected: '%s', actual: '%s'",
-                expectedFileSystemId.c_str(),
-                request.GetFileSystemId().c_str()));
-    }
-
-    if (request.GetIovecs().empty()) {
-        if (request.GetBufferOffset() == request.GetBuffer().size()) {
-            return MakeError(E_ARGUMENT, "WriteData request has zero length");
-        }
-
-        if (request.GetBufferOffset() > request.GetBuffer().size()) {
-            return MakeError(
-                E_ARGUMENT,
-                Sprintf(
-                    "WriteData request BufferOffset %u > buffer size %lu",
-                    request.GetBufferOffset(),
-                    request.GetBuffer().size()));
-        }
-    } else {
-        if (request.GetBufferOffset()) {
-            return MakeError(
-                E_ARGUMENT,
-                "WriteData request BufferOffset is not compatible with Iovecs");
-        }
-
-        if (request.GetBuffer()) {
-            return MakeError(
-                E_ARGUMENT,
-                "WriteData request Buffer is not compatible with Iovecs");
-        }
-
-        for (const auto& iovec: request.GetIovecs()) {
-            if (iovec.GetLength() == 0) {
-                return MakeError(
-                    E_ARGUMENT,
-                    "WriteData request contains an Iovec with zero length");
-            }
-        }
-    }
-
-    return {};
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -301,7 +220,7 @@ public:
     {
         if (begin < end) {
             Y_DEBUG_ABORT_UNLESS(Validate(begin, end));
-            RemainingSize = std::prev(end)->End() - begin->Offset;
+            RemainingSize = std::prev(end)->GetEnd() - begin->Offset;
         }
     }
 
@@ -375,7 +294,7 @@ public:
 
         const auto* prev = begin;
         for (const auto* it = std::next(begin); it != end; it = std::next(it)) {
-            if (prev->End() != it->Offset) {
+            if (prev->GetEnd() != it->Offset) {
                 return false;
             }
             prev = it;
@@ -404,7 +323,6 @@ private:
     const TLog Log;
     const TString LogTag;
     const TString FileSystemId;
-    const bool DisableValidationAsserts = false;
 
     // All fields below should be protected by this lock
     TMutex Lock;
@@ -447,8 +365,7 @@ public:
             const TString& clientId,
             const TString& filePath,
             ui64 capacityBytes,
-            TFlushConfig flushConfig,
-            bool disableValidationAsserts)
+            TFlushConfig flushConfig)
         : Session(std::move(session))
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
@@ -458,7 +375,6 @@ public:
         , LogTag(
             Sprintf("[f:%s][c:%s]", fileSystemId.c_str(), clientId.c_str()))
         , FileSystemId(fileSystemId)
-        , DisableValidationAsserts(disableValidationAsserts)
         , CachedEntriesPersistentQueue(filePath, capacityBytes)
     {
         // File ring buffer should be able to store any valid TWriteDataRequest.
@@ -589,7 +505,7 @@ public:
             request->SetFileSystemId(callContext->FileSystemId);
         }
 
-        auto error = ValidateReadDataRequest(*request, FileSystemId);
+        auto error = TUtil::ValidateReadDataRequest(*request, FileSystemId);
         if (HasError(error)) {
             Y_DEBUG_ABORT_UNLESS(false, "%s", error.GetMessage().c_str());
             NProto::TReadDataResponse response;
@@ -654,12 +570,9 @@ public:
             request->SetFileSystemId(callContext->FileSystemId);
         }
 
-        auto error = ValidateWriteDataRequest(*request, FileSystemId);
+        auto error = TUtil::ValidateWriteDataRequest(*request, FileSystemId);
         if (HasError(error)) {
-            Y_DEBUG_ABORT_UNLESS(
-                DisableValidationAsserts,
-                "%s",
-                error.GetMessage().c_str());
+            Y_DEBUG_ABORT_UNLESS(false, "%s", error.GetMessage().c_str());
             NProto::TWriteDataResponse response;
             *response.MutableError() = error;
             return MakeFuture(std::move(response));
@@ -743,9 +656,9 @@ public:
             while (++rangeEndIndex < parts.size()) {
                 const auto& prevPart = parts[rangeEndIndex - 1];
                 Y_DEBUG_ABORT_UNLESS(
-                    prevPart.End() <= parts[rangeEndIndex].Offset);
+                    prevPart.GetEnd() <= parts[rangeEndIndex].Offset);
 
-                if (prevPart.End() != parts[rangeEndIndex].Offset) {
+                if (prevPart.GetEnd() != parts[rangeEndIndex].Offset) {
                     break;
                 }
             }
@@ -1019,14 +932,14 @@ private:
         ui64 length)
     {
         if (parts.empty() || parts.front().Offset != offset ||
-            parts.back().End() != offset + length)
+            parts.back().GetEnd() != offset + length)
         {
             return false;
         }
 
         for (size_t i = 1; i < parts.size(); i++) {
-            Y_DEBUG_ABORT_UNLESS(parts[i - 1].End() <= parts[i].Offset);
-            if (parts[i - 1].End() != parts[i].Offset) {
+            Y_DEBUG_ABORT_UNLESS(parts[i - 1].GetEnd() <= parts[i].Offset);
+            if (parts[i - 1].GetEnd() != parts[i].Offset) {
                 return false;
             }
         }
@@ -1447,8 +1360,7 @@ TWriteBackCache::TWriteBackCache(
         ui32 maxWriteRequestSize,
         ui32 maxWriteRequestsCount,
         ui32 maxSumWriteRequestsSize,
-        bool zeroCopyWriteEnabled,
-        bool disableValidationAsserts)
+        bool zeroCopyWriteEnabled)
     : Impl(
         new TImpl(
             std::move(session),
@@ -1465,8 +1377,7 @@ TWriteBackCache::TWriteBackCache(
              .MaxWriteRequestSize = maxWriteRequestSize,
              .MaxWriteRequestsCount = maxWriteRequestsCount,
              .MaxSumWriteRequestsSize = maxSumWriteRequestsSize,
-             .ZeroCopyWriteEnabled = zeroCopyWriteEnabled},
-            disableValidationAsserts))
+             .ZeroCopyWriteEnabled = zeroCopyWriteEnabled}))
 {
     Impl->ScheduleAutomaticFlushIfNeeded();
 }

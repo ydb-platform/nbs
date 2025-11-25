@@ -331,7 +331,6 @@ struct TBootstrap
     ui32 MaxWriteRequestsCount = 0;
     ui32 MaxSumWriteRequestsSize = 0;
     bool ZeroCopyWriteEnabled = false;
-    bool DisableValidationAsserts = false;
 
     TCallContextPtr CallContext;
 
@@ -362,7 +361,6 @@ struct TBootstrap
         , MaxWriteRequestsCount(args.MaxWriteRequestsCount)
         , MaxSumWriteRequestsSize(args.MaxSumWriteRequestsSize)
         , ZeroCopyWriteEnabled(args.ZeroCopyWriteEnabled)
-        , DisableValidationAsserts(args.DisableValidationAsserts)
     {
         CacheFlushRetryPeriod = TDuration::MilliSeconds(100);
 
@@ -530,8 +528,7 @@ struct TBootstrap
             MaxWriteRequestSize,
             MaxWriteRequestsCount,
             MaxSumWriteRequestsSize,
-            ZeroCopyWriteEnabled,
-            DisableValidationAsserts);
+            ZeroCopyWriteEnabled);
     }
 
     TFuture<NProto::TReadDataResponse> ReadFromCache(
@@ -2165,78 +2162,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.Cache.FlushNodeData(1).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(1, writeAttempts.load());
-    }
-
-    Y_UNIT_TEST(ShouldValidateWriteDataRequests)
-    {
-        TBootstrap b({.DisableValidationAsserts = true});
-
-        auto requestWithNoBufferAndIovecs =
-            std::make_shared<NProto::TWriteDataRequest>();
-
-        auto responseWithNoBufferAndIovecs =
-            b.Cache.WriteData(b.CallContext, requestWithNoBufferAndIovecs)
-                .GetValueSync();
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            responseWithNoBufferAndIovecs.GetError().GetCode());
-
-        auto requestWithInvalidBufferOffset =
-            std::make_shared<NProto::TWriteDataRequest>();
-        requestWithInvalidBufferOffset->SetBuffer("abc");
-        requestWithInvalidBufferOffset->SetBufferOffset(3);
-
-        auto responseWithInvalidBufferOffset =
-            b.Cache.WriteData(b.CallContext, requestWithInvalidBufferOffset)
-                .GetValueSync();
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            responseWithInvalidBufferOffset.GetError().GetCode());
-
-        auto requestWithBothBufferAndIovecs =
-            std::make_shared<NProto::TWriteDataRequest>();
-        requestWithBothBufferAndIovecs->SetBuffer("abc");
-        requestWithBothBufferAndIovecs->AddIovecs()->SetBase(0);
-        requestWithBothBufferAndIovecs->AddIovecs()->SetLength(2);
-
-        auto responseWithBothBufferAndIovecs =
-            b.Cache.WriteData(b.CallContext, requestWithBothBufferAndIovecs)
-                .GetValueSync();
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            responseWithBothBufferAndIovecs.GetError().GetCode());
-
-        auto requestWithBothBufferOffsetAndIovecs =
-            std::make_shared<NProto::TWriteDataRequest>();
-        requestWithBothBufferOffsetAndIovecs->SetBufferOffset(1);
-        requestWithBothBufferOffsetAndIovecs->AddIovecs()->SetBase(0);
-        requestWithBothBufferOffsetAndIovecs->AddIovecs()->SetLength(2);
-
-        auto responseWithBothBufferOffsetAndIovecs =
-            b.Cache
-                .WriteData(b.CallContext, requestWithBothBufferOffsetAndIovecs)
-                .GetValueSync();
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            responseWithBothBufferOffsetAndIovecs.GetError().GetCode());
-
-        auto requestWithInvalidIovecLength =
-            std::make_shared<NProto::TWriteDataRequest>();
-        auto* iovec = requestWithInvalidIovecLength->AddIovecs();
-        iovec->SetBase(0);
-        iovec->SetLength(0);
-
-        auto responseWithInvalidIovecLength =
-            b.Cache.WriteData(b.CallContext, requestWithInvalidIovecLength)
-                .GetValueSync();
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            responseWithInvalidIovecLength.GetError().GetCode());
     }
 }
 
