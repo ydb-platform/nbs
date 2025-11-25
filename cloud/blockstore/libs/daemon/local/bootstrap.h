@@ -31,7 +31,6 @@ protected:
     IStartable* GetYdbStorage() override         { return nullptr; }
     IStartable* GetLogbrokerService() override   { return nullptr; }
     IStartable* GetNotifyService() override      { return nullptr; }
-    IStartable* GetStatsFetcher() override       { return nullptr; }
     IStartable* GetIamTokenClient() override     { return nullptr; }
     IStartable* GetComputeClient() override      { return nullptr; }
     IStartable* GetKmsClient() override          { return nullptr; }
