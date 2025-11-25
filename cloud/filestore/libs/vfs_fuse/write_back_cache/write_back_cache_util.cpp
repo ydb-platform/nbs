@@ -225,7 +225,7 @@ size_t TWriteBackCache::TUtil::CalculateEntriesCountToFlush(
         ui64 bufferSize = entry->GetByteCount();
         Y_ABORT_UNLESS(bufferSize > 0);
 
-        intervalSet.Add(entry->Offset(), entry->End());
+        intervalSet.Add(entry->GetOffset(), entry->GetEnd());
 
         // Value byteCount has to be calculated using O(N) algorithm
         // because TIntervalSet does not track the sum of lengths of intervals.
@@ -285,8 +285,8 @@ auto TWriteBackCache::TUtil::CalculateDataPartsToFlush(
     for (size_t i = 0; i < entryCount; i++) {
         const auto* entry = entries[i];
 
-        auto pointBegin = entry->Offset();
-        auto pointEnd = entry->End();
+        auto pointBegin = entry->GetOffset();
+        auto pointEnd = entry->GetEnd();
 
         if (pointBegin < pointEnd) {
             points.emplace_back(entry, pointBegin, false, i);

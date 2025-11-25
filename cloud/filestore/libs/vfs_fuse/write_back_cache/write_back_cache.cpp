@@ -96,19 +96,19 @@ struct TFlushConfig
 struct TBufferWriter
 {
     const std::span<char> TargetBuffer;
-    size_t ByteCount = 0;
+    size_t WrittenByteCount = 0;
 
     explicit TBufferWriter(std::span<char> targetBuffer)
         : TargetBuffer(targetBuffer)
     {}
 
-    [[nodiscard]] bool Append(TStringBuf buffer)
+    [[nodiscard]] bool Write(TStringBuf buffer)
     {
-        if (buffer.size() > TargetBuffer.size() - ByteCount) {
+        if (buffer.size() > TargetBuffer.size() - WrittenByteCount) {
             return false;
         }
-        buffer.copy(TargetBuffer.data() + ByteCount, buffer.size());
-        ByteCount += buffer.size();
+        buffer.copy(TargetBuffer.data() + WrittenByteCount, buffer.size());
+        WrittenByteCount += buffer.size();
         return true;
     }
 };
@@ -668,8 +668,8 @@ public:
         auto entry = std::make_unique<TWriteDataEntry>(std::move(request));
 
         const auto nodeId = entry->GetNodeId();
-        const auto offset = entry->Offset();
-        const auto end = entry->End();
+        const auto offset = entry->GetOffset();
+        const auto end = entry->GetEnd();
 
         Y_ABORT_UNLESS(offset < end);
 
@@ -1598,7 +1598,7 @@ void TWriteBackCache::TWriteDataEntry::SerializeAndMoveRequestBuffer(
         auto buffer = TStringBuf(PendingRequest->GetBuffer())
                        .Skip(PendingRequest->GetBufferOffset());
         Y_ABORT_UNLESS(
-            writer.Append(buffer),
+            writer.Write(buffer),
             "Allocated buffer is too small to store WriteData request buffer, "
             "expected size: at least %lu, actual: %lu",
             sizeof(TCachedWriteDataRequest) + buffer.size(),
@@ -1609,22 +1609,22 @@ void TWriteBackCache::TWriteDataEntry::SerializeAndMoveRequestBuffer(
                 reinterpret_cast<const char*>(iovec.GetBase()),
                 iovec.GetLength());
             Y_ABORT_UNLESS(
-                writer.Append(buffer),
+                writer.Write(buffer),
                 "Allocated buffer is too small to store WriteData request "
                 "buffer, expected size: at least %lu, actual: %lu",
-                sizeof(TCachedWriteDataRequest) + writer.ByteCount +
+                sizeof(TCachedWriteDataRequest) + writer.WrittenByteCount +
                     buffer.size(),
                 allocation.size());
         }
     }
 
     Y_ABORT_UNLESS(
-        writer.ByteCount <= Max<ui32>(),
+        writer.WrittenByteCount <= Max<ui32>(),
         "WriteData request buffer size (%lu) exceeds the limit (%u)",
-        writer.ByteCount,
+        writer.WrittenByteCount,
         Max<ui32>());
 
-    cachedRequest->Length = writer.ByteCount;
+    cachedRequest->Length = writer.WrittenByteCount;
 
     CachedRequest = cachedRequest;
     PendingRequest.reset();
@@ -1755,30 +1755,30 @@ void TWriteBackCache::TWriteDataEntry::SetStatus(
 void TWriteBackCache::TWriteDataEntryIntervalMap::Add(TWriteDataEntry* entry)
 {
     TBase::VisitOverlapping(
-        entry->Offset(),
-        entry->End(),
+        entry->GetOffset(),
+        entry->GetEnd(),
         [this, entry](auto it)
         {
             auto prev = it->second;
             TBase::Remove(it);
 
-            if (prev.Begin < entry->Offset()) {
-                TBase::Add(prev.Begin, entry->Offset(), prev.Value);
+            if (prev.Begin < entry->GetOffset()) {
+                TBase::Add(prev.Begin, entry->GetOffset(), prev.Value);
             }
 
-            if (entry->End() < prev.End) {
-                TBase::Add(entry->End(), prev.End, prev.Value);
+            if (entry->GetEnd() < prev.End) {
+                TBase::Add(entry->GetEnd(), prev.End, prev.Value);
             }
         });
 
-    TBase::Add(entry->Offset(), entry->End(), entry);
+    TBase::Add(entry->GetOffset(), entry->GetEnd(), entry);
 }
 
 void TWriteBackCache::TWriteDataEntryIntervalMap::Remove(TWriteDataEntry* entry)
 {
     TBase::VisitOverlapping(
-        entry->Offset(),
-        entry->End(),
+        entry->GetOffset(),
+        entry->GetEnd(),
         [&](auto it)
         {
             if (it->second.Value == entry) {

@@ -114,7 +114,7 @@ public:
         return CachedRequest->GetBuffer();
     }
 
-    ui64 Offset() const
+    ui64 GetOffset() const
     {
         if (CachedRequest) {
             return CachedRequest->Offset;
@@ -122,7 +122,7 @@ public:
         if (PendingRequest) {
             return PendingRequest->GetOffset();
         }
-        Y_ABORT("The request is in the invalid state (Offset)");
+        Y_ABORT("The request is in the invalid state (GetOffset)");
     }
 
     ui64 GetByteCount() const
@@ -134,12 +134,12 @@ public:
             return NStorage::CalculateByteCount(*PendingRequest) -
                    PendingRequest->GetBufferOffset();
         }
-        Y_ABORT("The request is in the invalid state (GetLength)");
+        Y_ABORT("The request is in the invalid state (GetByteCount)");
     }
 
-    ui64 End() const
+    ui64 GetEnd() const
     {
-        return Offset() + GetByteCount();
+        return GetOffset() + GetByteCount();
     }
 
     bool IsCached() const
