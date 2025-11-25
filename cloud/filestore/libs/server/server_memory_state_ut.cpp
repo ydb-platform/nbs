@@ -30,8 +30,7 @@ struct TTestEnv
         fullPath.Parent().MkDirs();
 
         TFile file(fullPath.GetPath(), CreateAlways | WrOnly);
-        TVector<char> buffer(size, 'X');
-        file.Write(buffer.data(), buffer.size());
+        file.Resize(size);
         file.Close();
 
         return relativePath;
