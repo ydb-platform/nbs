@@ -167,8 +167,7 @@ func filesystemSnapshotStateStructTypeString() string {
 		status: Int64>`
 }
 
-func filesystemSnapshotStateTableDescription(
-) persistence.CreateTableDescription {
+func filesystemSnapshotStateTableDescription() persistence.CreateTableDescription {
 
 	return persistence.NewCreateTableDescription(
 		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
@@ -350,7 +349,7 @@ func (s *storageYDB) filesystemSnapshotCreated(
 		pragma TablePathPrefix = "%v";
 		declare $id as Utf8;
 
-		select *filesystem_snapshots.go
+		select *
 		from filesystem_snapshots
 		where id = $id
 	`, s.filesystemSnapshotsPath),
@@ -378,7 +377,7 @@ func (s *storageYDB) filesystemSnapshotCreated(
 		)
 	}
 
-	state := states[0]filesystem_snapshots.go
+	state := states[0]
 
 	if state.status == filesystemSnapshotStatusReady {
 		// Nothing to do.
@@ -510,7 +509,7 @@ func (s *storageYDB) filesystemSnapshotDeleted(
 
 	res, err := tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
-		pragma TablePathPrefix = "%v";filesystem_snapshots.go
+		pragma TablePathPrefix = "%v";
 		declare $id as Utf8;
 
 		select *
