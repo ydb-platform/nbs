@@ -750,18 +750,18 @@ struct TEvPartitionPrivate
         : TOperationCompleted
     {
         const bool CollectGarbageBarrierAcquired = false;
-        const bool UnconfirmedBlobsAdded = false;
+        const bool AddingUnconfirmedBlobsRequested = false;
         const bool TrimFreshLogBarrierAcquired = false;
         // needed to pass block checksums to PartState
         TVector<TBlobToConfirm> BlobsToConfirm;
 
         TWriteBlocksCompleted(
                 bool collectGarbageBarrierAcquired,
-                bool unconfirmedBlobsAdded,
+                bool addingUnconfirmedBlobsRequested,
                 bool trimFreshLogBarrierAcquired,
                 TVector<TBlobToConfirm> blobsToConfirm)
             : CollectGarbageBarrierAcquired(collectGarbageBarrierAcquired)
-            , UnconfirmedBlobsAdded(unconfirmedBlobsAdded)
+            , AddingUnconfirmedBlobsRequested(addingUnconfirmedBlobsRequested)
             , TrimFreshLogBarrierAcquired(trimFreshLogBarrierAcquired)
             , BlobsToConfirm(std::move(blobsToConfirm))
         {
@@ -778,12 +778,12 @@ struct TEvPartitionPrivate
         }
 
         static TWriteBlocksCompleted CreateMergedBlocksCompleted(
-            bool unconfirmedBlobsAdded,
+            bool addingUnconfirmedBlobsRequested,
             TVector<TBlobToConfirm>&& blobsToConfirm)
         {
             return TWriteBlocksCompleted(
                 true,
-                unconfirmedBlobsAdded,
+                addingUnconfirmedBlobsRequested,
                 false,
                 std::move(blobsToConfirm));
         }
