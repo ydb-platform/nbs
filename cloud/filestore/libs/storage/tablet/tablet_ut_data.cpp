@@ -7453,9 +7453,21 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
-
     TABLET_TEST_4K_ONLY(ShouldReadCorrectUnalignedTail)
     {
+        // Test scenario:
+        // 1. Write to the file using unaligned requests to populate the
+        // fresh blocks and fresh bytes lists. A 16 KB unaligned write that
+        // extends beyond the current file size produces one fresh-bytes record
+        // and four fresh blocks, since the current implementation pads the last
+        // block with zeros to align it.
+        // 2. Flush the fresh blocks.
+        // 3. Overwrite the data at the end of the file with another 16 KB
+        // unaligned request. This time the write does not extend the file size
+        // and results in two fresh-bytes records and three fresh blocks.
+        // 4. Flush the fresh blocks again.
+        // 5. Flush the fresh bytes.
+        // 6. Read and validate the expected data from the tail of the file.
         NProto::TStorageConfig storageConfig;
         TTestEnv env({}, storageConfig);
         env.CreateSubDomain("nfs");
@@ -7490,12 +7502,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
         tablet.Flush();
 
+        // Overwrite the tail of the file
         tablet.WriteData(handle, lastOffset, requestSize, data2.c_str());
         tablet.Flush();
 
-        // Current FlushBytes implementation can forward commit id for obsolete
-        // block if it is located in the same blob as the block from fresh bytes
-        // list.
+        // The current FlushBytes implementation contains a bug: it may
+        // unexpectedly update the commit ID of a rewritten block if that block
+        // is located in the same blob as another block from the fresh bytes
+        // list. This behavior will be fixed in issue-4695.
+        // Marking the rewritten block as deleted within WriteData also resolves
+        // the potential data-corruption issue.
         tablet.FlushBytes();
 
         auto response = tablet.ReadData(handle, lastOffset, requestSize);
