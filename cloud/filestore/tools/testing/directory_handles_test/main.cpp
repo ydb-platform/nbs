@@ -1,4 +1,5 @@
 #include <dirent.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -173,6 +174,18 @@ bool TestDirectory(TTestContext& ctx)
     return !hasErrors;
 }
 
+int CompleteProgram(const std::string& completionFilePath, int exitCode)
+{
+    int fd = open(completionFilePath.c_str(), O_CREAT | O_WRONLY, 0644);
+    if (fd == -1) {
+        std::cerr << "Error: Failed to create completion file "
+                  << completionFilePath << std::endl;
+        return 1;
+    }
+    close(fd);
+    return exitCode;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -188,9 +201,10 @@ bool TestDirectory(TTestContext& ctx)
 // interleaved)
 int main(int argc, char** argv)
 {
-    if (argc != 5) {
+    if (argc != 6) {
         std::cerr << "Usage: " << argv[0]
-                  << " <directory> <wait_file> <timeout_ms> <num_directories>"
+                  << " <directory> <wait_file> <timeout_ms> <num_directories> "
+                     "<completion_file>"
                   << std::endl;
         return 1;
     }
@@ -199,16 +213,17 @@ int main(int argc, char** argv)
     std::string waitFilePath = argv[2];
     int timeoutMs = std::atoi(argv[3]);
     int numDirectories = std::atoi(argv[4]);
+    std::string completionFilePath = argv[5];
 
     if (numDirectories < MinDirectories) {
         std::cerr << "Error: Number of directories (" << numDirectories
                   << ") must be at least " << MinDirectories << std::endl;
-        return 1;
+        return CompleteProgram(completionFilePath, 1);
     }
 
     if (timeoutMs <= 0) {
         std::cerr << "Error: Timeout must be positive" << std::endl;
-        return 1;
+        return CompleteProgram(completionFilePath, 1);
     }
 
     // Create test contexts for the same directory (parallel testing)
@@ -246,7 +261,7 @@ int main(int argc, char** argv)
             if (!ctx.Success) {
                 std::cerr << "[" << ctx.Name
                           << "] Failed to prepare directory data" << std::endl;
-                return 1;
+                return CompleteProgram(completionFilePath, 1);
             }
         }
     }
@@ -268,11 +283,11 @@ int main(int argc, char** argv)
     for (const auto& ctx: contexts) {
         if (!ctx.Success) {
             std::cout << "errors detected" << std::endl;
-            return 1;
+            return CompleteProgram(completionFilePath, 1);
         }
     }
 
     std::cout << "Ok" << std::endl;
 
-    return 0;
+    return CompleteProgram(completionFilePath, 0);
 }

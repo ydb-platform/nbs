@@ -1,5 +1,6 @@
 PY3TEST()
 
+INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/large.inc)
 SPLIT_FACTOR(1)
 
 TEST_SRCS(
@@ -36,7 +37,5 @@ INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-kikimr.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/vhost-endpoint.inc)
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/qemu.inc)
-
-INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/large.inc)
 
 END()
