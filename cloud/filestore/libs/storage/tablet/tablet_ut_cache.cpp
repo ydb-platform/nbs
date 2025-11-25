@@ -130,7 +130,7 @@ TTxStats GetTxStats(TTestEnv& env, TIndexTabletClient& tablet)
     return stats;
 }
 
-ui64 GetListNodesRequestBytesPrecharge(
+ui64 GetListNodesRequestedBytesPrecharge(
     TTestEnv& env,
     TIndexTabletClient& tablet)
 {
@@ -143,7 +143,7 @@ ui64 GetListNodesRequestBytesPrecharge(
 
     visitor.ValidateExpectedCountersWithPredicate({
         {{{"filesystem", "test"},
-          {"sensor", "ListNodes.RequestBytesPrecharge"}},
+          {"sensor", "ListNodes.RequestedBytesPrecharge"}},
          [&bytesPrecharge](i64 value)
          {
              bytesPrecharge = value;
@@ -1537,7 +1537,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         UNIT_ASSERT_VALUES_EQUAL(4, stats.OffloadedRanges);
     }
 
-    Y_UNIT_TEST(ShouldNotIncreaseListNodesPrechargeSizeUponInMmeoryCacheMiss) {
+    Y_UNIT_TEST(ShouldNotIncreaseListNodesPrechargeSizeUponInMemoryCacheMiss)
+    {
         NProto::TStorageConfig storageConfig;
         storageConfig.SetInMemoryIndexCacheEnabled(true);
         storageConfig.SetMaxResponseBytes(567);
@@ -1555,7 +1556,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
 
         UNIT_ASSERT_VALUES_EQUAL(
             567,
-            GetListNodesRequestBytesPrecharge(env, tablet));
+            GetListNodesRequestedBytesPrecharge(env, tablet));
     }
 }
 

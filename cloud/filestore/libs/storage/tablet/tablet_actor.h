@@ -296,7 +296,7 @@ private:
 
         struct TListNodesMetrics: TRequestMetrics
         {
-            std::atomic<i64> RequestBytesPrecharge{0};
+            std::atomic<i64> RequestedBytesPrecharge{0};
         };
 
         // private requests
