@@ -296,7 +296,7 @@ struct TTxIndexTablet
             : UseNoneCompactionPolicy(useNoneCompactionPolicy)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -334,7 +334,7 @@ struct TTxIndexTablet
 
         NProto::TError Error;
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             FileSystem.Clear();
             FileSystemStats.Clear();
@@ -381,7 +381,7 @@ struct TTxIndexTablet
         {
         }
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             CompactionMap.clear();
             LastRangeId = 0;
@@ -407,7 +407,7 @@ struct TTxIndexTablet
             , FileSystem(std::move(fileSystem))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -429,7 +429,7 @@ struct TTxIndexTablet
             , Request(std::move(request))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -451,7 +451,7 @@ struct TTxIndexTablet
             , Request(std::move(request))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -476,7 +476,7 @@ struct TTxIndexTablet
             , Request(std::move(request))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             Error.Clear();
             SessionId.clear();
@@ -507,7 +507,7 @@ struct TTxIndexTablet
             , Request(std::move(request))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             Nodes.clear();
@@ -538,7 +538,7 @@ struct TTxIndexTablet
             , Request(std::move(request))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             Nodes.clear();
@@ -567,7 +567,7 @@ struct TTxIndexTablet
             , NodeId(nodeId)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
@@ -610,7 +610,7 @@ struct TTxIndexTablet
             , CollectBarrier(collectBarrier)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
@@ -648,7 +648,7 @@ struct TTxIndexTablet
             , Path(request.GetPath())
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
@@ -700,7 +700,7 @@ struct TTxIndexTablet
         {
         }
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
@@ -744,7 +744,7 @@ struct TTxIndexTablet
             , Name(Request.GetName())
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
@@ -791,7 +791,7 @@ struct TTxIndexTablet
             , Response(std::move(response))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
@@ -847,7 +847,7 @@ struct TTxIndexTablet
             , Request(std::move(request))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
@@ -902,7 +902,7 @@ struct TTxIndexTablet
             , NewParentShardId(std::move(newParentShardId))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
@@ -950,7 +950,7 @@ struct TTxIndexTablet
             , Request(std::move(request))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
@@ -995,7 +995,7 @@ struct TTxIndexTablet
             , OpLogEntryId(opLogEntryId)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
@@ -1027,7 +1027,7 @@ struct TTxIndexTablet
             , NodeId(request.GetNodeId())
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
@@ -1058,7 +1058,7 @@ struct TTxIndexTablet
             , NodeId(request.GetNodeId())
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
@@ -1104,7 +1104,7 @@ struct TTxIndexTablet
             , BytesToPrecharge(MaxBytes)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
@@ -1144,7 +1144,7 @@ struct TTxIndexTablet
             , NodeId(request.GetNodeId())
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
@@ -1182,7 +1182,7 @@ struct TTxIndexTablet
             , Name(request.GetName())
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
@@ -1220,7 +1220,7 @@ struct TTxIndexTablet
             , Response(std::move(response))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
@@ -1258,7 +1258,7 @@ struct TTxIndexTablet
             , Value(request.GetValue())
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             Version = 0;
@@ -1295,7 +1295,7 @@ struct TTxIndexTablet
             , Name(request.GetName())
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
@@ -1329,7 +1329,7 @@ struct TTxIndexTablet
             , NodeId(request.GetNodeId())
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
@@ -1365,7 +1365,7 @@ struct TTxIndexTablet
             , Name(request.GetName())
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
@@ -1393,7 +1393,7 @@ struct TTxIndexTablet
             , Request(std::move(request))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             IsToBeChanged = false;
         }
@@ -1447,7 +1447,7 @@ struct TTxIndexTablet
         {
         }
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             ReadCommitId = InvalidCommitId;
@@ -1487,7 +1487,7 @@ struct TTxIndexTablet
             , Request(request)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             Node.Clear();
@@ -1511,7 +1511,7 @@ struct TTxIndexTablet
             , Request(request)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -1536,7 +1536,7 @@ struct TTxIndexTablet
             , Request(request)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             IncompatibleLockOrigin.reset();
         }
@@ -1561,7 +1561,7 @@ struct TTxIndexTablet
             , Request(request)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             Incompatible.reset();
         }
@@ -1617,7 +1617,7 @@ struct TTxIndexTablet
             Y_DEBUG_ABORT_UNLESS(AlignedByteRange.IsAligned());
         }
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
@@ -1671,7 +1671,7 @@ struct TTxIndexTablet
             , ExplicitNodeId(request.GetNodeId())
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
@@ -1723,7 +1723,7 @@ struct TTxIndexTablet
             , ExplicitNodeId(request.GetNodeId())
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             NodeId = InvalidNodeId;
             Node.Clear();
@@ -1755,7 +1755,7 @@ struct TTxIndexTablet
             , WriteBatch(std::move(writeBatch))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
@@ -1794,7 +1794,7 @@ struct TTxIndexTablet
             , Flags(request.GetFlags())
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             CommitId = InvalidCommitId;
@@ -1844,7 +1844,7 @@ struct TTxIndexTablet
             , UnalignedDataParts(std::move(unalignedDataParts))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             TProfileAware::Clear();
@@ -1883,7 +1883,7 @@ struct TTxIndexTablet
             , Bytes(std::move(bytes))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TProfileAware::Clear();
 
@@ -1908,7 +1908,7 @@ struct TTxIndexTablet
             , ChunkId(chunkId)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TProfileAware::Clear();
             TrimmedBytes = 0;
@@ -1941,7 +1941,7 @@ struct TTxIndexTablet
             , FilterNodes(filterNodes)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TProfileAware::Clear();
 
@@ -1972,7 +1972,7 @@ struct TTxIndexTablet
             , CollectBarrier(collectBarrier)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TProfileAware::Clear();
 
@@ -1997,7 +1997,7 @@ struct TTxIndexTablet
             , StartIndex(startIndex)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
         }
     };
@@ -2018,7 +2018,7 @@ struct TTxIndexTablet
             , Ranges(std::move(ranges))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
         }
     };
@@ -2049,7 +2049,7 @@ struct TTxIndexTablet
             , GarbageBlobs(std::move(garbageBlobs))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TProfileAware::Clear();
         }
@@ -2079,7 +2079,7 @@ struct TTxIndexTablet
             , Range(range)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             TProfileAware::Clear();
@@ -2103,7 +2103,7 @@ struct TTxIndexTablet
             , NodeId(nodeId)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -2131,7 +2131,7 @@ struct TTxIndexTablet
             , Range(range)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TProfileAware::Clear();
             Error.Clear();
@@ -2157,7 +2157,7 @@ struct TTxIndexTablet
             , Nodes(std::move(nodes))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             CommitId = InvalidCommitId;
             AliveNodes.clear();
@@ -2182,7 +2182,7 @@ struct TTxIndexTablet
             , RangeId(rangeId)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             Blobs.clear();
         }
@@ -2211,7 +2211,7 @@ struct TTxIndexTablet
                 mergeWithStorageConfigFromTabletDB)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             StorageConfigFromDB.Clear();
             ResultStorageConfig.Clear();
@@ -2233,7 +2233,7 @@ struct TTxIndexTablet
             : EntryId(entryId)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
         }
     };
@@ -2263,7 +2263,7 @@ struct TTxIndexTablet
             , EntryId(entryId)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
         }
     };
@@ -2287,7 +2287,7 @@ struct TTxIndexTablet
             , Request(std::move(request))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             Node.Clear();
@@ -2309,7 +2309,7 @@ struct TTxIndexTablet
             , Request(std::move(request))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             Node.Clear();
@@ -2330,7 +2330,7 @@ struct TTxIndexTablet
             , Request(std::move(request))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             Node.Clear();
@@ -2369,7 +2369,7 @@ struct TTxIndexTablet
             , SchedulePeriod(schedulePeriod)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
 
@@ -2402,7 +2402,7 @@ struct TTxIndexTablet
             , SchedulePeriod(schedulePeriod)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             NextNodeId = 0;
@@ -2436,7 +2436,7 @@ struct TTxIndexTablet
             , Refs(Limit)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             TIndexStateNodeUpdates::Clear();
             Refs.clear();

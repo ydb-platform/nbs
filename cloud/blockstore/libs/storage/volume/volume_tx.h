@@ -62,7 +62,7 @@ struct TTxVolume
     {
         const TRequestInfoPtr RequestInfo;
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -98,7 +98,7 @@ struct TTxVolume
             : OldestLogEntry(oldestLogEntry)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             Meta.Clear();
             MetaHistory.clear();
@@ -141,7 +141,7 @@ struct TTxVolume
             , MetaHistoryItem(std::move(metaHistoryItem))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -213,7 +213,7 @@ struct TTxVolume
             , MuteIOErrors(muteIOErrors)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -233,7 +233,7 @@ struct TTxVolume
             , MigrationIndex(migrationIndex)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -267,7 +267,7 @@ struct TTxVolume
             , Info(std::move(info))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             WriterLastActivityTimestamp = {};
             WriterChanged = false;
@@ -303,7 +303,7 @@ struct TTxVolume
             , IsMonRequest(isMonRequest)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             Error.Clear();
         }
@@ -326,7 +326,7 @@ struct TTxVolume
             , ClientId(std::move(clientId))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             ClientInfo.Clear();
         }
@@ -359,7 +359,7 @@ struct TTxVolume
             , MonRequest(monRequest)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             History.Clear();
         }
@@ -386,7 +386,7 @@ struct TTxVolume
             , ItemsToRemove(itemsToRemove)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             OutdatedHistory.clear();
         }
@@ -406,7 +406,7 @@ struct TTxVolume
             : RequestInfo(std::move(requestInfo))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             MetaHistory.clear();
         }
@@ -428,7 +428,7 @@ struct TTxVolume
             , PartStats(std::move(partStats))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -442,7 +442,7 @@ struct TTxVolume
             : PartStats(std::move(partStats))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -464,7 +464,7 @@ struct TTxVolume
             , RequestId(requestId)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -498,7 +498,7 @@ struct TTxVolume
             , ErrorMessage(std::move(errorMessage))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -526,7 +526,7 @@ struct TTxVolume
             , ProcessedBlockCount(processedBlockCount)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -548,7 +548,7 @@ struct TTxVolume
             , Ranges(std::move(ranges))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -570,7 +570,7 @@ struct TTxVolume
             , StateInfo(stateInfo)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -590,7 +590,7 @@ struct TTxVolume
             , ResyncIndex(resyncIndex)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -616,7 +616,7 @@ struct TTxVolume
             , AlertResyncChecksumMismatch(alertResyncChecksumMismatch)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             ResyncWasNeeded = false;
         }
@@ -636,7 +636,7 @@ struct TTxVolume
             , ClientId(std::move(clientId))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -657,7 +657,7 @@ struct TTxVolume
             , PartitionTabletId(std::move(PartitionTabletId))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -679,7 +679,7 @@ struct TTxVolume
             , VolumeParams(std::move(volumeParams))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -701,7 +701,7 @@ struct TTxVolume
             , Keys(std::move(keys))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -730,7 +730,7 @@ struct TTxVolume
                 mergeWithStorageConfigFromVolumeDB)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             StorageConfigFromDB.Clear();
             ResultStorageConfig.Clear();
@@ -756,7 +756,7 @@ struct TTxVolume
             , TimedOudDeviceUUID(std::move(timedOudDeviceUUID))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             Error.Clear();
             Agent.Clear();
@@ -780,7 +780,7 @@ struct TTxVolume
             , AgentId(std::move(agentId))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             RemovedLaggingAgent.Clear();
             ShouldStartResync = false;
@@ -803,7 +803,7 @@ struct TTxVolume
             , FollowerInfo(std::move(followerInfo))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -823,7 +823,7 @@ struct TTxVolume
             , Link(std::move(link))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -843,7 +843,7 @@ struct TTxVolume
             , Leader(std::move(leader))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -863,7 +863,7 @@ struct TTxVolume
             , Link(std::move(link))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }

@@ -146,7 +146,7 @@ protected:
             if (!TTx::PrepareTx(*Self, ctx, tx, Args)) {
                 TX_TRACK(TxPrepareRestarted);
 
-                Args.Clear();
+                Args.OnPrepareNotReady();
                 return false;
             }
 
@@ -351,7 +351,7 @@ protected:
             CompleteTx_##name(ctx, args);                                      \
             return true;                                                       \
         }                                                                      \
-        args.Clear();                                                          \
+        args.OnPrepareNotReady();                                              \
         return false;                                                          \
     }                                                                          \
                                                                                \

@@ -181,7 +181,7 @@ protected:
                 Step);
 
             if (!TTx::Prepare(*Self, ctx, tx, Args)) {
-                Args.Clear();
+                Args.OnPrepareNotReady();
                 TX_TRACK(TxPrepareRestarted);
                 return false;
             }

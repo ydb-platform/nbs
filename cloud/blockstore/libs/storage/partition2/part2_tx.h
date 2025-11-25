@@ -60,7 +60,7 @@ struct TTxPartition
     {
         const TRequestInfoPtr RequestInfo;
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -85,7 +85,7 @@ struct TTxPartition
         TVector<TPartialBlobId> GarbageBlobs;
         TVector<TPartialBlobId> ZoneBlobIds;
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             Meta.Clear();
             FreshBlockUpdates.clear();
@@ -118,7 +118,7 @@ struct TTxPartition
             , WriteRange(writeRange)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             CommitId = 0;
         }
@@ -138,7 +138,7 @@ struct TTxPartition
         {
         }
 
-        void Clear()
+        void OnPrepareNotReady()
         {
         }
     };
@@ -188,7 +188,7 @@ struct TTxPartition
             , Blocks(ReadRange.Size())
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             CommitId = 0;
             BlocksToRead = 0;
@@ -232,7 +232,7 @@ struct TTxPartition
             , BlocksSkippedByCompaction(blocksSkippedByCompaction)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -271,7 +271,7 @@ struct TTxPartition
             , GarbageInfo(std::move(garbageInfo))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             CommitId = 0;
             Blobs.clear();
@@ -309,7 +309,7 @@ struct TTxPartition
             , Mode(mode)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             ExistingBlobIds.clear();
             BlockLists.clear();
@@ -335,7 +335,7 @@ struct TTxPartition
             , BlockRange(blockRange)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             ConvertedToMixedIndex.clear();
             ConvertedToRangeMap.clear();
@@ -358,7 +358,7 @@ struct TTxPartition
             , CollectCommitId(collectCommitId)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             KnownBlobIds.clear();
         }
@@ -383,7 +383,7 @@ struct TTxPartition
             , BlobIds(std::move(blobIds))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             KnownBlobIds.clear();
         }
@@ -412,7 +412,7 @@ struct TTxPartition
             , GarbageBlobs(std::move(garbageBlobs))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -436,7 +436,7 @@ struct TTxPartition
             , Meta(std::move(meta))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -463,7 +463,7 @@ struct TTxPartition
             , CheckpointId(std::move(checkpointId))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             BlobIds.clear();
         }
@@ -487,7 +487,7 @@ struct TTxPartition
             , BlockRange(blockRange)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             Blocks.clear();
         }
@@ -511,7 +511,7 @@ struct TTxPartition
             , BlobId(blobId)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             Blocks.clear();
         }
@@ -553,7 +553,7 @@ struct TTxPartition
             , ChangedBlocks(GetArraySize(ReadRange.Size()))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             std::fill(ChangedBlocks.begin(), ChangedBlocks.end(), 0);
         }
@@ -642,7 +642,7 @@ struct TTxPartition
             , Marks(DescribeRange.Size())
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             std::fill(Marks.begin(), Marks.end(), TBlockMark());
         }

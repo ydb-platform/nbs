@@ -85,7 +85,7 @@ struct TTxPartition
             : BlocksCount(blocksCount)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -118,7 +118,7 @@ struct TTxPartition
             , LogicalUsedBlocks(blocksCount)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             Meta.Clear();
 
@@ -188,7 +188,7 @@ struct TTxPartition
             , Requests(std::move(requests))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -214,7 +214,7 @@ struct TTxPartition
             , WriteRange(writeRange)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -259,7 +259,7 @@ struct TTxPartition
             , BlockMarkCommitIds(ReadRange.Size(), 0)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             ReadHandler->Clear();
             ChecksumsEnabled = false;
@@ -341,7 +341,7 @@ struct TTxPartition
             , MergedBlobCompactionInfos(std::move(mergedBlobCompactionInfos))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -377,7 +377,7 @@ struct TTxPartition
             , BlockMarks(blockRange.Size())
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             std::fill(BlockMarks.begin(), BlockMarks.end(), TBlockMark());
             AffectedBlobs.clear();
@@ -455,7 +455,7 @@ struct TTxPartition
             }
         }
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             for (auto& range: RangeCompactions) {
                 range.Clear();
@@ -488,7 +488,7 @@ struct TTxPartition
             , BlockInfos(BlockRange.Size())
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             std::fill(BlockInfos.begin(), BlockInfos.end(), TBlockInfo());
             FilledBlockCount = 0;
@@ -528,7 +528,7 @@ struct TTxPartition
             , RebuildState(rebuildState)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             ReadCount = 0;
             MixedBlockCount = 0;
@@ -566,7 +566,7 @@ struct TTxPartition
             , FinalBlobId(finalBlobId)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             BlobsToReadInCurrentBatch.clear();
             VisitCount = 0;
@@ -596,7 +596,7 @@ struct TTxPartition
             , CleanupQueue(std::move(cleanupQueue))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             BlobsMeta.clear();
         }
@@ -618,7 +618,7 @@ struct TTxPartition
             , CollectCommitId(collectCommitId)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             KnownBlobIds.clear();
         }
@@ -643,7 +643,7 @@ struct TTxPartition
             , BlobIds(std::move(blobIds))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             KnownBlobIds.clear();
         }
@@ -672,7 +672,7 @@ struct TTxPartition
             , GarbageBlobs(std::move(garbageBlobs))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -701,7 +701,7 @@ struct TTxPartition
             , WithoutData(withoutData)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -739,7 +739,7 @@ struct TTxPartition
             , DeleteOnlyData(deleteOnlyData)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -775,7 +775,7 @@ struct TTxPartition
             , BlockFilter(std::move(blockFilter))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             BlockMarks.clear();
         }
@@ -823,7 +823,7 @@ struct TTxPartition
             , BlobId(blobId)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             BlockMarks.clear();
         }
@@ -871,7 +871,7 @@ struct TTxPartition
             , BlockRange(blockRange)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             BlockMarks_Index.clear();
             BlockMarks_Blobs.clear();
@@ -928,7 +928,7 @@ struct TTxPartition
             , ChangedBlocks(GetArraySize(ReadRange.Size()))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             std::fill(ChangedBlocks.begin(), ChangedBlocks.end(), 0);
         }
@@ -1013,7 +1013,7 @@ struct TTxPartition
             , Marks(DescribeRange.Size())
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             std::fill(Marks.begin(), Marks.end(), TBlockMark());
         }
@@ -1067,7 +1067,7 @@ struct TTxPartition
         {
         }
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // nothing to do
         }
@@ -1086,7 +1086,7 @@ struct TTxPartition
             : RequestInfo(std::move(requestInfo))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             UsedBlocks.Clear();
         }
@@ -1107,7 +1107,7 @@ struct TTxPartition
             : UpdateFromIdx(updateFromIdx)
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             UpdatedToIdx = 0;
         }
@@ -1132,7 +1132,7 @@ struct TTxPartition
             , Blobs(std::move(blobs))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // Nothing to do.
         }
@@ -1155,7 +1155,7 @@ struct TTxPartition
             , UnrecoverableBlobs(std::move(unrecoverableBlobs))
         {}
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             // Nothing to do.
         }
@@ -1170,7 +1170,7 @@ struct TTxPartition
         TBlockRange32 Range;
         TVector<TCompactionCounter> Counters;
 
-        void Clear()
+        void OnPrepareNotReady()
         {
             Counters.clear();
         }
