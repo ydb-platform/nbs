@@ -989,14 +989,19 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
     {
         NProto::TReadDataResponse res;
         constexpr auto Size = 42;
+        constexpr auto BufferOffset = 8;
         TString data{Size, ' '};
         res.SetBuffer(data);
+        res.SetBufferOffset(BufferOffset);
 
         NProto::TProfileLogRequestInfo profileLogRequest;
         FinalizeProfileLogRequestInfo(profileLogRequest, res);
         UNIT_ASSERT_VALUES_EQUAL(
             Size,
             profileLogRequest.GetRanges(0).GetActualBytes());
+        UNIT_ASSERT_VALUES_EQUAL(
+            BufferOffset,
+            profileLogRequest.GetRanges(0).GetBufferOffset());
     }
 
     Y_UNIT_TEST(ShouldGetCorrectFuseRequestName)
