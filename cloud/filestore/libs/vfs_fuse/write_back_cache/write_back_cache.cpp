@@ -95,8 +95,7 @@ struct TFlushConfig
 
 struct TBufferWriter
 {
-    const std::span<char> TargetBuffer;
-    size_t WrittenByteCount = 0;
+    std::span<char> TargetBuffer;
 
     explicit TBufferWriter(std::span<char> targetBuffer)
         : TargetBuffer(targetBuffer)
@@ -105,13 +104,13 @@ struct TBufferWriter
     void Write(TStringBuf buffer)
     {
         Y_ABORT_UNLESS(
-            buffer.size() <= TargetBuffer.size() - WrittenByteCount,
+            buffer.size() <= TargetBuffer.size(),
             "Not enough space in the buffer to write %lu bytes, remaining: %lu",
             buffer.size(),
-            TargetBuffer.size() - WrittenByteCount);
+            TargetBuffer.size());
 
-        buffer.copy(TargetBuffer.data() + WrittenByteCount, buffer.size());
-        WrittenByteCount += buffer.size();
+        buffer.copy(TargetBuffer.data(), buffer.size());
+        TargetBuffer = TargetBuffer.subspan(buffer.size());
     }
 };
 
@@ -1519,10 +1518,8 @@ void TWriteBackCache::TWriteDataEntry::SerializeAndMoveRequestBuffer(
     }
 
     Y_ABORT_UNLESS(
-        writer.WrittenByteCount == ByteCount,
-        "Expected WrittenByteCount: %lu, actual: %lu",
-        ByteCount,
-        writer.WrittenByteCount);
+        writer.TargetBuffer.empty(),
+        "Buffer is expected to be written completely");
 
     CachedRequest = cachedRequest;
     PendingRequest.reset();

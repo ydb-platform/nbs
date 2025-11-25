@@ -308,7 +308,6 @@ struct TBootstrapArgs
     ui32 MaxSumWriteRequestsSize = DefaultMaxSumWriteRequestsSize;
     bool UseTestTimerAndScheduler = true;
     bool ZeroCopyWriteEnabled = false;
-    bool DisableValidationAsserts = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
