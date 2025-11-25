@@ -47,6 +47,6 @@ NThreading::TFuture<TInitializeStorageResult> InitializePaths(
     TDiskAgentConfigPtr agentConfig,
     IStorageProviderPtr storageProvider,
     NNvme::INvmeManagerPtr nvmeManager,
-    TVector<TString> pathsFilter);
+    TVector<TString> allowedPaths);
 
 }   // namespace NCloud::NBlockStore::NStorage
