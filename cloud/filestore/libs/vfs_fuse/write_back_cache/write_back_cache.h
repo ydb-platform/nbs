@@ -83,7 +83,7 @@ private:
     struct TNodeState;
     struct TFlushState;
     class TUtil;
-    struct TPendingOperations;
+    struct TQueuedOperations;
     class TContiguousWriteDataEntryPartsReader;
     class TWriteDataEntryIntervalMap;
 };

@@ -219,9 +219,9 @@ struct TWriteBackCache::TNodeState
 // Accumulate operations to execute after completing the main operation.
 // 1. Set promises exposed to the user code outside lock sections.
 // 2. Avoid recursion chains in future completion callbacks.
-struct TWriteBackCache::TPendingOperations
+struct TWriteBackCache::TQueuedOperations
 {
-    // Used to prevent recursive calls of ExecutePendingOperations
+    // Used to prevent recursive calls of ProcessQueuedOperations
     bool Executing = false;
 
     // The flag is set when an element is popped from
@@ -415,7 +415,7 @@ private:
     TDeque<TFlushRequest> FlushAllRequests;
 
     // Operations to execute after completing the main operation
-    TPendingOperations PendingOperations;
+    TQueuedOperations QueuedOperations;
 
     // Stats processing - entries filtered by status
     TIntrusiveList<TWriteDataEntry> PendingStatusEntries;
@@ -532,8 +532,8 @@ public:
     void RequestAutomaticFlush()
     {
         auto guard = Guard(Lock);
-        FlushAllCachedData();
-        ExecutePendingOperations(guard);
+        RequestFlushAllCachedData();
+        ProcessQueuedOperations(guard);
         ScheduleAutomaticFlushIfNeeded();
     }
 
@@ -597,7 +597,7 @@ public:
                 auto* nodeState = self->GetNodeState(nodeId);
                 nodeState->RangeLock.UnlockRead(offset, end);
                 self->DeleteNodeStateIfNeeded(nodeState);
-                self->ExecutePendingOperations(guard);
+                self->ProcessQueuedOperations(guard);
             }
         };
 
@@ -619,7 +619,7 @@ public:
             // TImpl is alive
             Y_DEBUG_ABORT_UNLESS(self);
             if (self) {
-                self->PendingOperations.ReadData.push_back(
+                self->QueuedOperations.ReadData.push_back(
                     std::move(pendingRequest));
             }
         };
@@ -629,7 +629,7 @@ public:
         auto* nodeState = GetOrCreateNodeState(nodeId);
         nodeState->RangeLock.LockRead(offset, end, std::move(locker));
 
-        ExecutePendingOperations(guard);
+        ProcessQueuedOperations(guard);
 
         return result;
     }
@@ -674,7 +674,7 @@ public:
                 auto* nodeState = self->GetNodeState(nodeId);
                 nodeState->RangeLock.UnlockWrite(offset, end);
                 self->DeleteNodeStateIfNeeded(nodeState);
-                self->ExecutePendingOperations(guard);
+                self->ProcessQueuedOperations(guard);
             }
         };
 
@@ -693,7 +693,7 @@ public:
             Y_ABORT_UNLESS(self);
             if (self) {
                 if (self->PendingEntries.empty()) {
-                    self->PendingOperations.ShouldProcessPendingEntries = true;
+                    self->QueuedOperations.ShouldProcessPendingEntries = true;
                 }
                 self->PendingEntries.push_back(
                     std::unique_ptr<TWriteDataEntry>(entry));
@@ -709,7 +709,7 @@ public:
         auto* nodeState = GetOrCreateNodeState(nodeId);
         nodeState->RangeLock.LockWrite(offset, end, std::move(locker));
 
-        ExecutePendingOperations(guard);
+        ProcessQueuedOperations(guard);
 
         return future;
     }
@@ -796,8 +796,8 @@ public:
         auto future = nodeState->FlushRequests.emplace_back(maxRequestId)
                           .Promise.GetFuture();
 
-        if (RequestFlush(nodeState)) {
-            ExecutePendingOperations(guard);
+        if (EnqueueFlushIfNeeded(nodeState)) {
+            ProcessQueuedOperations(guard);
         }
 
         return future;
@@ -823,14 +823,15 @@ public:
         auto future =
             FlushAllRequests.emplace_back(maxRequestId).Promise.GetFuture();
 
-        bool pendingOperationsUpdated = false;
+        bool queuedOperationsUpdated = false;
         for (auto nodeId: NodesWithNewEntries) {
-            pendingOperationsUpdated |= RequestFlush(GetNodeState(nodeId));
+            queuedOperationsUpdated |=
+                EnqueueFlushIfNeeded(GetNodeState(nodeId));
         }
         NodesWithNewEntries.clear();
 
-        if (pendingOperationsUpdated) {
-            ExecutePendingOperations(guard);
+        if (queuedOperationsUpdated) {
+            ProcessQueuedOperations(guard);
         }
 
         return future;
@@ -848,7 +849,7 @@ private:
     // |PendingOperations.Flush| so that ExecutePendingOperations will start it.
     // Returns true when the node was enqueued for flushing, false otherwise.
     // should be protected by |Lock|
-    bool RequestFlush(TNodeState* nodeState)
+    bool EnqueueFlushIfNeeded(TNodeState* nodeState)
     {
         if (nodeState->FlushState.Executing) {
             return false;
@@ -859,7 +860,7 @@ private:
 
         if (nodeState->ShouldFlush(maxFlushAllRequestId)) {
             nodeState->FlushState.Executing = true;
-            PendingOperations.Flush.push_back(nodeState);
+            QueuedOperations.Flush.push_back(nodeState);
             return true;
         }
 
@@ -867,12 +868,12 @@ private:
     }
 
     // should be protected by |Lock|
-    void FlushAllCachedData()
+    void RequestFlushAllCachedData()
     {
         for (auto nodeId: NodesWithNewCachedEntries) {
             auto* nodeState = GetNodeState(nodeId);
             nodeState->AutomaticFlushRequestId = nodeState->MaxCachedRequestId;
-            RequestFlush(nodeState);
+            EnqueueFlushIfNeeded(nodeState);
         }
 
         NodesWithNewCachedEntries.clear();
@@ -925,25 +926,25 @@ private:
     }
 
     // NOLINTNEXTLINE(misc-no-recursion)
-    void ExecutePendingOperations(TGuard<TMutex>& guard)
+    void ProcessQueuedOperations(TGuard<TMutex>& guard)
     {
         Y_DEBUG_ABORT_UNLESS(guard.WasAcquired());
 
         // Prevent recursive calls
-        if (PendingOperations.Executing) {
+        if (QueuedOperations.Executing) {
             return;
         }
 
-        PendingOperations.Executing = true;
+        QueuedOperations.Executing = true;
 
         while (true) {
-            if (PendingOperations.ShouldProcessPendingEntries) {
-                PendingOperations.ShouldProcessPendingEntries = false;
+            if (QueuedOperations.ShouldProcessPendingEntries) {
+                QueuedOperations.ShouldProcessPendingEntries = false;
                 ProcessPendingEntries();
             }
 
-            if (PendingOperations.Empty()) {
-                PendingOperations.Executing = false;
+            if (QueuedOperations.Empty()) {
+                QueuedOperations.Executing = false;
                 return;
             }
 
@@ -952,10 +953,10 @@ private:
             TVector<TPromise<NProto::TWriteDataResponse>> writeDataCompleted;
             TVector<TPromise<void>> flushCompleted;
 
-            swap(readData, PendingOperations.ReadData);
-            swap(flush, PendingOperations.Flush);
-            swap(writeDataCompleted, PendingOperations.WriteDataCompleted);
-            swap(flushCompleted, PendingOperations.FlushCompleted);
+            swap(readData, QueuedOperations.ReadData);
+            swap(flush, QueuedOperations.Flush);
+            swap(writeDataCompleted, QueuedOperations.WriteDataCompleted);
+            swap(flushCompleted, QueuedOperations.FlushCompleted);
 
             // Unguard works as an inverse lock - it releases lock held
             // by a lock guard and acquires it back at the end of the section
@@ -992,7 +993,7 @@ private:
                 &allocationPtr);
 
             if (!allocated) {
-                FlushAllCachedData();
+                RequestFlushAllCachedData();
                 break;
             }
 
@@ -1000,7 +1001,7 @@ private:
 
             entry->SerializeAndMoveRequestBuffer(
                 {allocationPtr, serializedSize},
-                PendingOperations,
+                QueuedOperations,
                 this);
 
             CachedEntriesPersistentQueue.CommitAllocation(allocationPtr);
@@ -1010,7 +1011,7 @@ private:
 
             // The entry transitioned from Pending to Cached status may be
             // requested for flushing. Recheck Flush condition for the node.
-            RequestFlush(nodeState);
+            EnqueueFlushIfNeeded(nodeState);
 
             PendingEntries.pop_front();
         }
@@ -1351,7 +1352,7 @@ private:
     }
 
     template <class TTag>
-    void CompleteFlushRequests(
+    void EnqueueFlushCompletions(
         TDeque<TFlushRequest>& flushRequests,
         TIntrusiveList<TWriteDataEntry, TTag>& entries)
     {
@@ -1360,7 +1361,7 @@ private:
         }
         if (entries.Empty()) {
             for (auto& flushRequest: flushRequests) {
-                PendingOperations.FlushCompleted.push_back(
+                QueuedOperations.FlushCompleted.push_back(
                     std::move(flushRequest.Promise));
             }
             flushRequests.clear();
@@ -1369,7 +1370,7 @@ private:
             while (!flushRequests.empty() &&
                    flushRequests.front().RequestId < minRequestId)
             {
-                PendingOperations.FlushCompleted.push_back(
+                QueuedOperations.FlushCompleted.push_back(
                     std::move(flushRequests.front().Promise));
                 flushRequests.pop_front();
             }
@@ -1395,8 +1396,11 @@ private:
             AllEntries.Remove(entry);
         }
 
-        CompleteFlushRequests(nodeState->FlushRequests, nodeState->AllEntries);
-        CompleteFlushRequests(FlushAllRequests, AllEntries);
+        EnqueueFlushCompletions(
+            nodeState->FlushRequests,
+            nodeState->AllEntries);
+
+        EnqueueFlushCompletions(FlushAllRequests, AllEntries);
 
         EmptyFlag = AllEntries.Empty();
 
@@ -1407,17 +1411,18 @@ private:
 
             CachedEntries.pop_front();
             CachedEntriesPersistentQueue.PopFront();
-            PendingOperations.ShouldProcessPendingEntries = true;
+
+            QueuedOperations.ShouldProcessPendingEntries = true;
         }
 
         UpdatePersistentQueueStats();
 
         nodeState->FlushState.Executing = false;
-        if (!RequestFlush(nodeState)) {
+        if (!EnqueueFlushIfNeeded(nodeState)) {
             DeleteNodeStateIfNeeded(nodeState);
         }
 
-        ExecutePendingOperations(guard);
+        ProcessQueuedOperations(guard);
     }
 
     void ScheduleRetryFlush(TNodeState* nodeState)
@@ -1635,7 +1640,7 @@ void TWriteBackCache::TWriteDataEntry::SetPending(TImpl* impl)
 
 void TWriteBackCache::TWriteDataEntry::SerializeAndMoveRequestBuffer(
     std::span<char> allocation,
-    TPendingOperations& pendingOperations,
+    TQueuedOperations& pendingOperations,
     TImpl* impl)
 {
     Y_ABORT_UNLESS(PendingRequest);

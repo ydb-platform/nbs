@@ -173,7 +173,7 @@ public:
 
     void SerializeAndMoveRequestBuffer(
         std::span<char> allocation,
-        TPendingOperations& pendingOperations,
+        TQueuedOperations& pendingOperations,
         TImpl* impl);
 
     void StartFlush(TImpl* impl);
