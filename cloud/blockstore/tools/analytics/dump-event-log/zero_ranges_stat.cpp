@@ -12,10 +12,7 @@ namespace {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-constexpr size_t NonreplicatedDeviceBlockSize = 4_KB;
-constexpr size_t BlocksInNonreplicatedDevice = 24379392;
-constexpr size_t NonreplicatedDeviceSize =
-    BlocksInNonreplicatedDevice * NonreplicatedDeviceBlockSize;
+constexpr size_t NonreplicatedDeviceSize = 24379392 * 4_KB;   // 93 GiB
 constexpr size_t RangeSize = 4_MB;
 constexpr size_t RangesPerDevice = NonreplicatedDeviceSize / RangeSize;
 

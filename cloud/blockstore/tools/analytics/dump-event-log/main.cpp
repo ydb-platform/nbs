@@ -54,8 +54,13 @@ struct TEventProcessor: TProtobufEventProcessor
     std::optional<TBlockRange64> FilterRange;
     TVector<std::unique_ptr<IProfileLogEventHandler>> EventHandlers;
 
-    void DoInit()
+    void InitIfNeeded()
     {
+        if (Initialized) {
+            return;
+        }
+        Initialized = true;
+
         if (FilterByDiskIdFile) {
             FilterByDiskIdSet = LoadDiskIds(FilterByDiskIdFile);
         }
@@ -90,10 +95,7 @@ struct TEventProcessor: TProtobufEventProcessor
             return;
         }
 
-        if (!Initialized) {
-            DoInit();
-            Initialized = true;
-        }
+        InitIfNeeded();
 
         if (EventLog) {
             EventLog->LogEvent(*message);
