@@ -34,18 +34,16 @@ struct TMmapRegionMetadata
     }
 };
 
-struct TMmapRegion: public TMmapRegionMetadata
+struct TMmapRegion
 {
 public:
-    using TMmapRegionMetadata::TMmapRegionMetadata;
-
     TMmapRegion(
             TString filePath,
             void* address,
             size_t size,
             ui64 id,
             TFileHandle fd)
-        : TMmapRegionMetadata{
+        : Metadata{
             .FilePath = std::move(filePath),
             .Address = address,
             .Size = size,
@@ -55,10 +53,11 @@ public:
 
     TMmapRegionMetadata ToMetadata() const
     {
-        return *this;
+        return Metadata;
     }
 
 private:
+    TMmapRegionMetadata Metadata;
     TFileHandle Fd;
 };
 

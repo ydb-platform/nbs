@@ -21,7 +21,8 @@ TServerState::~TServerState()
 {
     TLightWriteGuard guard(StateLock);
     for (const auto& [id, region]: MmapRegions) {
-        munmap(region.Address, region.Size);
+        auto metadata = region.ToMetadata();
+        munmap(metadata.Address, metadata.Size);
     }
     MmapRegions.clear();
 }
@@ -109,7 +110,8 @@ NProto::TError TServerState::DestroyMmapRegion(ui64 mmapId)
             E_NOT_FOUND,
             Sprintf("Mmap region not found: %lu", mmapId));
     }
-    if (munmap(it->second.Address, it->second.Size) != 0) {
+    auto metadata = it->second.ToMetadata();
+    if (munmap(metadata.Address, metadata.Size) != 0) {
         return MakeError(
             E_IO,
             Sprintf(

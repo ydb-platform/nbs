@@ -210,7 +210,9 @@ Y_UNIT_TEST_SUITE(TServerStateTest)
 
         result = state.GetMmapRegion(mmapInfo.Id);
         UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
-        UNIT_ASSERT_VALUES_EQUAL(mmapInfo.FilePath,    result.GetResult().FilePath);
+        UNIT_ASSERT_VALUES_EQUAL(
+            mmapInfo.FilePath,
+            result.GetResult().FilePath);
         UNIT_ASSERT_VALUES_EQUAL(mmapInfo.Size, result.GetResult().Size);
         UNIT_ASSERT_VALUES_EQUAL(mmapInfo.Id, result.GetResult().Id);
 
