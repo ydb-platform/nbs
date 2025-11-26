@@ -134,7 +134,7 @@ IOutputStream& operator<<(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCalculateDataPartsToReadTestBootstrap
+struct TTestUtilBootstrap
 {
     using TWriteDataEntry = TWriteBackCache::TWriteDataEntry;
     using TWriteDataEntryPart = TWriteBackCache::TWriteDataEntryPart;
@@ -143,14 +143,14 @@ struct TCalculateDataPartsToReadTestBootstrap
     ILoggingServicePtr Logging;
     TLog Log;
 
-    TCalculateDataPartsToReadTestBootstrap()
+    TTestUtilBootstrap()
     {
         Logging = CreateLoggingService("console", TLogSettings{});
         Logging->Start();
         Log = Logging->CreateLog("WRITE_BACK_CACHE");
     }
 
-    ~TCalculateDataPartsToReadTestBootstrap() = default;
+    ~TTestUtilBootstrap() = default;
 
     TVector<TWriteDataEntryPart> CalculateDataPartsToRead(
         const TDeque<TWriteDataEntry*>& entries,
@@ -208,7 +208,7 @@ struct TCalculateDataPartsToReadTestBootstrap
         for (ui64 offset = startingFromOffset; offset != endOffset; offset++) {
             TWriteDataEntry* lastEntry = nullptr;
             for (auto* entry: entries) {
-                if (entry->Offset() <= offset && offset < entry->End()) {
+                if (entry->GetOffset() <= offset && offset < entry->GetEnd()) {
                     lastEntry = entry;
                 }
             }
@@ -216,7 +216,7 @@ struct TCalculateDataPartsToReadTestBootstrap
             if (lastEntry != nullptr) {
                 parts.emplace_back(
                     lastEntry,
-                    offset - lastEntry->Offset(),
+                    offset - lastEntry->GetOffset(),
                     offset,
                     1);
             }
@@ -255,19 +255,19 @@ struct TCalculateDataPartsToReadTestBootstrap
         ui32 maxWriteRequestsCount,
         ui32 maxSumWriteRequestsSize)
     {
-        auto begin = entries.front()->Offset();
-        auto end = entries.front()->End();
+        auto begin = entries.front()->GetOffset();
+        auto end = entries.front()->GetEnd();
 
         for (const auto* entry: entries) {
-            begin = Min(begin, entry->Offset());
-            end = Max(end, entry->End());
+            begin = Min(begin, entry->GetOffset());
+            end = Max(end, entry->GetEnd());
         }
 
         TVector<bool> data(end - begin, false);
 
         for (size_t count = 0; count < entries.size(); count++) {
             const auto* entry = entries[count];
-            for (auto i = entry->Offset(); i < entry->End(); i++) {
+            for (auto i = entry->GetOffset(); i < entry->GetEnd(); i++) {
                 data[i - begin] = true;
             }
 
@@ -282,6 +282,24 @@ struct TCalculateDataPartsToReadTestBootstrap
         }
 
         return entries.size();
+    }
+
+    NProto::TError ValidateReadDataRequest(
+        const NProto::TReadDataRequest& request,
+        const TString& expectedFileSystemId)
+    {
+        return TWriteBackCache::TUtil::ValidateReadDataRequest(
+            request,
+            expectedFileSystemId);
+    }
+
+    NProto::TError ValidateWriteDataRequest(
+        const NProto::TWriteDataRequest& request,
+        const TString& expectedFileSystemId)
+    {
+        return TWriteBackCache::TUtil::ValidateWriteDataRequest(
+            request,
+            expectedFileSystemId);
     }
 
 private:
@@ -319,9 +337,9 @@ private:
     }
 };
 
-using TWriteDataEntry = TCalculateDataPartsToReadTestBootstrap::TWriteDataEntry;
+using TWriteDataEntry = TTestUtilBootstrap::TWriteDataEntry;
 using TWriteDataEntryPart =
-    TCalculateDataPartsToReadTestBootstrap::TWriteDataEntryPart;
+    TTestUtilBootstrap::TWriteDataEntryPart;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -357,7 +375,7 @@ IOutputStream& operator<<(
 {
     out << "{"
         << "NodeId: " << e.GetNodeId() << ", "
-        << "Offset: " << e.Offset() << ", "
+        << "Offset: " << e.GetOffset() << ", "
         << "Length: " << e.GetBuffer().Size()
         << "}";
     return out;
@@ -421,7 +439,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             entryPtrs.push_back(entry.get());
         }
 
-        TCalculateDataPartsToReadTestBootstrap b;
+        TTestUtilBootstrap b;
         const auto parts = b.CalculateDataPartsToRead(
             entryPtrs,
             0,
@@ -474,7 +492,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             entryPtrs.push_back(entry.get());
         }
 
-        TCalculateDataPartsToReadTestBootstrap b;
+        TTestUtilBootstrap b;
 
         auto expectedParts = b.CalculateDataPartsToReadReferenceImpl(
             entryPtrs,
@@ -505,7 +523,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             });
         }
 
-        TCalculateDataPartsToReadTestBootstrap b;
+        TTestUtilBootstrap b;
         const auto actualParts = b.InvertDataParts(
             parts,
             startingFromOffset,
@@ -544,7 +562,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             UNIT_ASSERT_GT(part.Length, 0);
         }
 
-        TCalculateDataPartsToReadTestBootstrap b;
+        TTestUtilBootstrap b;
         UNIT_ASSERT(b.IsSorted(parts));
     }
 
@@ -580,7 +598,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
             entryPtrs.push_back(entry.get());
         }
 
-        TCalculateDataPartsToReadTestBootstrap b;
+        TTestUtilBootstrap b;
 
         auto parts = b.CalculateDataPartsToReadReferenceImpl(
             entryPtrs,
@@ -800,7 +818,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
 
     Y_UNIT_TEST(ShouldCalculateEntriesCountToFlush)
     {
-        TCalculateDataPartsToReadTestBootstrap b;
+        TTestUtilBootstrap b;
 
         TTestCaseWriteDataEntries singleEntry{{1, 0, 3}};
 
@@ -853,7 +871,7 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
         ui32 maxWriteRequestsCount,
         ui32 maxSumWriteRequestsSize)
     {
-        TCalculateDataPartsToReadTestBootstrap b;
+        TTestUtilBootstrap b;
 
         auto actual = b.CalculateEntriesCountToFlush(
             entries,
@@ -928,6 +946,89 @@ Y_UNIT_TEST_SUITE(TCalculateDataPartsToReadTest)
                     }
                 }
             }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldValidateWriteDataRequests)
+    {
+        TTestUtilBootstrap b;
+
+        const TString FileSystemId = "fs_id";
+
+        {
+            // No buffer and iovecs
+            auto rq = std::make_shared<NProto::TWriteDataRequest>();
+            rq->SetFileSystemId(FileSystemId);
+
+            auto e = b.ValidateWriteDataRequest(*rq, FileSystemId);
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, e.GetCode());
+        }
+
+        {
+            // Invalid buffer offset
+            auto rq = std::make_shared<NProto::TWriteDataRequest>();
+            rq->SetFileSystemId(FileSystemId);
+            rq->SetBuffer("abc");
+            rq->SetBufferOffset(3);
+
+            auto e = b.ValidateWriteDataRequest(*rq, FileSystemId);
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, e.GetCode());
+        }
+
+        {
+            // Both buffer and iovecs
+            auto rq = std::make_shared<NProto::TWriteDataRequest>();
+            rq->SetFileSystemId(FileSystemId);
+            rq->SetBuffer("abc");
+            rq->AddIovecs()->SetBase(0);
+            rq->AddIovecs()->SetLength(2);
+
+            auto e = b.ValidateWriteDataRequest(*rq, FileSystemId);
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, e.GetCode());
+        }
+
+        {
+            // Invalid iovec length
+            auto rq = std::make_shared<NProto::TWriteDataRequest>();
+            rq->SetFileSystemId(FileSystemId);
+            auto* iovec = rq->AddIovecs();
+            iovec->SetBase(0);
+            iovec->SetLength(0);
+
+            auto e = b.ValidateWriteDataRequest(*rq, FileSystemId);
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, e.GetCode());
+        }
+
+        {
+            // Invalid FileSystemId
+            auto rq = std::make_shared<NProto::TWriteDataRequest>();
+            rq->SetFileSystemId("fs_id_bad");
+            rq->SetBuffer("123");
+
+            auto e = b.ValidateWriteDataRequest(*rq, FileSystemId);
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, e.GetCode());
+        }
+
+        {
+            // Normal request with buffer
+            auto rq = std::make_shared<NProto::TWriteDataRequest>();
+            rq->SetFileSystemId(FileSystemId);
+            rq->SetBuffer("123");
+
+            auto e = b.ValidateWriteDataRequest(*rq, FileSystemId);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, e.GetCode());
+        }
+
+        {
+            // Normal request with iovecs
+            auto rq = std::make_shared<NProto::TWriteDataRequest>();
+            rq->SetFileSystemId(FileSystemId);
+            auto* iovec = rq->AddIovecs();
+            iovec->SetBase(0);
+            iovec->SetLength(1);
+
+            auto e = b.ValidateWriteDataRequest(*rq, FileSystemId);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, e.GetCode());
         }
     }
 }

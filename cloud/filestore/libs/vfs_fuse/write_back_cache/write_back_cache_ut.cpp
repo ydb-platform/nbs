@@ -31,6 +31,7 @@ using namespace std::chrono_literals;
 using namespace NThreading;
 
 using EWriteDataRequestStatus = TWriteBackCache::EWriteDataRequestStatus;
+using TIovecs = TVector<TStringBuf>;
 
 namespace {
 
@@ -52,6 +53,11 @@ void SleepForRandomDurationMs(ui32 maxDurationMs)
     if (durationMs != 0) {
         std::this_thread::sleep_for(durationMs*1ms);
     }
+}
+
+TStringBuf ToStringBuf(const NProto::TIovec& iovec)
+{
+    return {reinterpret_cast<const char*>(iovec.GetBase()), iovec.GetLength()};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -490,9 +496,7 @@ struct TBootstrap
                 "BufferOffset should be zero if a request contains Iovecs");
             TString buf;
             for (const auto& iovec: request.GetIovecs()) {
-                buf.append(
-                    reinterpret_cast<const char*>(iovec.GetBase()),
-                    iovec.GetLength());
+                buf.append(ToStringBuf(iovec));
             }
             request.SetBuffer(std::move(buf));
             request.ClearIovecs();
@@ -620,13 +624,25 @@ struct TBootstrap
         ui64 nodeId,
         ui64 handle,
         ui64 offset,
-        TString buffer)
+        TString buffer,
+        const TIovecs& iovecs)
     {
         auto request = std::make_shared<NProto::TWriteDataRequest>();
         request->SetNodeId(nodeId);
         request->SetHandle(handle);
         request->SetOffset(offset);
-        request->SetBuffer(buffer);
+
+        if (iovecs.empty()) {
+            request->SetBuffer(buffer);
+        } else {
+            request->MutableIovecs()->Reserve(static_cast<int>(iovecs.size()));
+            for (const auto& iovec: iovecs) {
+                auto* dstIovec = request->AddIovecs();
+                dstIovec->SetBase(reinterpret_cast<ui64>(iovec.data()));
+                dstIovec->SetLength(iovec.size());
+                buffer.append(iovec);
+            }
+        }
 
         auto future = Cache.WriteData(CallContext, std::move(request));
 
@@ -660,17 +676,32 @@ struct TBootstrap
         TString buffer)
     {
         auto handle = nodeId + NodeToHandleOffset;
-        return WriteToCache(nodeId, handle, offset, std::move(buffer));
+        return WriteToCache(nodeId, handle, offset, std::move(buffer), {});
+    }
+
+    TFuture<NProto::TWriteDataResponse> WriteToCache(
+        ui64 nodeId,
+        ui64 offset,
+        const TIovecs& iovecs)
+    {
+        auto handle = nodeId + NodeToHandleOffset;
+        return WriteToCache(nodeId, handle, offset, {}, iovecs);
     }
 
     void WriteToCacheSync(ui64 nodeId, ui64 handle, ui64 offset, TString buffer)
     {
-        WriteToCache(nodeId, handle, offset, std::move(buffer)).GetValueSync();
+        WriteToCache(nodeId, handle, offset, std::move(buffer), {})
+            .GetValueSync();
     }
 
     void WriteToCacheSync(ui64 nodeId, ui64 offset, TString buffer)
     {
         WriteToCache(nodeId, offset, std::move(buffer)).GetValueSync();
+    }
+
+    void WriteToCacheSync(ui64 nodeId, ui64 offset, TIovecs iovecs)
+    {
+        WriteToCache(nodeId, offset, std::move(iovecs)).GetValueSync();
     }
 
     void FlushCache(ui64 nodeId)
@@ -1359,10 +1390,20 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
             ui32 nodeId = RandomNumber(3u);
 
-            b.WriteToCacheSync(
-                nodeId,
-                offset + RandomNumber(11u),
-                TString(data));
+            if (args.ZeroCopyWriteEnabled && RandomNumber(2u) == 0) {
+                TIovecs iovecs;
+                while (!data.empty()) {
+                    const ui64 chunkSize = RandomNumber(data.size()) + 1;
+                    iovecs.emplace_back(data.data(), chunkSize);
+                    data.remove_prefix(chunkSize);
+                }
+                b.WriteToCacheSync(nodeId, offset + RandomNumber(11u), iovecs);
+            } else {
+                b.WriteToCacheSync(
+                    nodeId,
+                    offset + RandomNumber(11u),
+                    TString(data));
+            }
 
             stats.Write(nodeId);
 
@@ -1610,7 +1651,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         TBootstrap b;
 
-        std::atomic_int writeAttempts = 0;
+        std::atomic<int> writeAttempts = 0;
 
         auto prevWriteDataHandler = std::move(b.Session->WriteDataHandler);
         b.Session->WriteDataHandler = [&](auto context, auto request) {
@@ -1792,7 +1833,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         stats.MaxItems = 10;
 
         constexpr int WriteAttemptsThreshold = 3;
-        std::atomic_int writeAttempts = 0;
+        std::atomic<int> writeAttempts = 0;
 
         auto prevWriteDataHandler = std::move(b.Session->WriteDataHandler);
         b.Session->WriteDataHandler = [&](auto context, auto request) {
@@ -2080,6 +2121,46 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         UNIT_ASSERT_VALUES_EQUAL("(0, 11)", logger.RangesToString(1));
         UNIT_ASSERT_VALUES_EQUAL("[5, 6]", logger.IovecsLengthsToString(1));
+    }
+
+    Y_UNIT_TEST(ShouldAcceptWriteDataRequestsWithIovecs)
+    {
+        TBootstrap b;
+
+        const TString data = "abcdefghij";
+        const ui64 base = reinterpret_cast<ui64>(data.data());
+
+        std::atomic<int> writeAttempts = 0;
+
+        b.Session->WriteDataHandler = [&] (auto, auto request) {
+            writeAttempts++;
+            UNIT_ASSERT_VALUES_EQUAL(1, request->GetNodeId());
+            UNIT_ASSERT_VALUES_EQUAL(0, request->GetOffset());
+            UNIT_ASSERT_VALUES_EQUAL("defghabcij", request->GetBuffer());
+            NProto::TWriteDataResponse response;
+            return MakeFuture(response);
+        };
+
+        auto request = std::make_shared<NProto::TWriteDataRequest>();
+        request->SetNodeId(1);
+        request->SetOffset(0);
+
+        auto* iovec1 = request->AddIovecs();
+        iovec1->SetBase(base + 3);
+        iovec1->SetLength(5);  // "defgh";
+
+        auto* iovec2 = request->AddIovecs();
+        iovec2->SetBase(base);
+        iovec2->SetLength(3);  // "abc"
+
+        auto* iovec3 = request->AddIovecs();
+        iovec3->SetBase(base + 8);
+        iovec3->SetLength(2);  // "ij"
+
+        b.Cache.WriteData(b.CallContext, request).GetValueSync();
+        b.Cache.FlushNodeData(1).GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, writeAttempts.load());
     }
 }
 

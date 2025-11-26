@@ -3,6 +3,7 @@
 #include "write_back_cache.h"
 
 #include <cloud/filestore/libs/service/filestore.h>
+#include <cloud/filestore/libs/storage/core/helpers.h>
 
 #include <cloud/storage/core/libs/common/disjoint_interval_map.h>
 
@@ -39,16 +40,15 @@ struct Y_PACKED TWriteBackCache::TCachedWriteDataRequest
     ui64 NodeId = 0;
     ui64 Handle = 0;
     ui64 Offset = 0;
-    ui32 Length = 0;
 
-    // Data goes right after the header, |Length| bytes
+    // Data goes right after the header, |byteCount| bytes
     // The validity is ensured by code logic
-    TStringBuf GetBuffer() const
+    TStringBuf GetBuffer(ui64 byteCount) const
     {
         return {
             reinterpret_cast<const char*>(this) +
                 sizeof(TCachedWriteDataRequest),
-            Length};
+            byteCount};
     }
 };
 
@@ -66,6 +66,10 @@ private:
 
     // WriteData request stored in CachedEntriesPersistentQueue
     const TCachedWriteDataRequest* CachedRequest = nullptr;
+
+    // ByteCount is not serialized to the persistent queue as it is calculated
+    // implicitly
+    const ui64 ByteCount = 0;
 
     NThreading::TPromise<NProto::TWriteDataResponse> CachedPromise;
     NThreading::TPromise<void> FlushPromise;
@@ -107,17 +111,13 @@ public:
 
     TStringBuf GetBuffer() const
     {
-        if (CachedRequest) {
-            return CachedRequest->GetBuffer();
-        }
-        if (PendingRequest) {
-            return TStringBuf(PendingRequest->GetBuffer())
-                .Skip(PendingRequest->GetBufferOffset());
-        }
-        Y_ABORT("The request is in the invalid state (GetBuffer)");
+        Y_ABORT_UNLESS(
+            CachedRequest != nullptr,
+            "The buffer can be referenced only for cached requests");
+        return CachedRequest->GetBuffer(ByteCount);
     }
 
-    ui64 Offset() const
+    ui64 GetOffset() const
     {
         if (CachedRequest) {
             return CachedRequest->Offset;
@@ -125,20 +125,17 @@ public:
         if (PendingRequest) {
             return PendingRequest->GetOffset();
         }
-        Y_ABORT("The request is in the invalid state (Offset)");
+        Y_ABORT("The request is in the invalid state (GetOffset)");
     }
 
-    ui64 End() const
+    ui64 GetByteCount() const
     {
-        if (CachedRequest) {
-            return CachedRequest->Offset + CachedRequest->Length;
-        }
-        if (PendingRequest) {
-            return PendingRequest->GetOffset() +
-                   PendingRequest->GetBuffer().size() -
-                   PendingRequest->GetBufferOffset();
-        }
-        Y_ABORT("The request is in the invalid state (End)");
+        return ByteCount;
+    }
+
+    ui64 GetEnd() const
+    {
+        return GetOffset() + ByteCount;
     }
 
     bool IsCached() const
@@ -192,7 +189,7 @@ struct TWriteBackCache::TWriteDataEntryPart
     ui64 Offset = 0;
     ui64 Length = 0;
 
-    ui64 End() const
+    ui64 GetEnd() const
     {
         return Offset + Length;
     }
@@ -284,6 +281,14 @@ public:
 
     static bool IsSorted(const TVector<TWriteDataEntryPart>& parts);
     static bool IsContiguousSequence(const TVector<TWriteDataEntryPart>& parts);
+
+    static NProto::TError ValidateReadDataRequest(
+        const NProto::TReadDataRequest& request,
+        const TString& expectedFileSystemId);
+
+    static NProto::TError ValidateWriteDataRequest(
+        const NProto::TWriteDataRequest& request,
+        const TString& expectedFileSystemId);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
