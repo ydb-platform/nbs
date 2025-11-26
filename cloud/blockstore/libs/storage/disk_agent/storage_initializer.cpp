@@ -114,7 +114,7 @@ TVector<TString> GetLostDevicesIds(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TInitializer: std::enable_shared_from_this<TInitializer>
+class TInitializer: public std::enable_shared_from_this<TInitializer>
 {
 private:
     const TLog Log;
