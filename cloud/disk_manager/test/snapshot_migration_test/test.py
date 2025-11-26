@@ -159,11 +159,14 @@ class _MigrationTestSetup:
         self.initial_dpl_disk_manager.stop_daemon()
         if self.secondary_dpl_disk_manager is not None:
             self.secondary_dpl_disk_manager.stop_daemon()
-        MetadataServiceLauncher.stop()
-        NbsLauncher.stop()
-        YDBLauncher.stop()
-        if self.src_s3 is not None or self.dst_s3 is not None:
-            S3Launcher.stop()
+        self.metadata_service.stop_service()
+        self.nbs.stop_service()
+        self.ydb.stop_service()
+        self.secondary_ydb.stop_service()
+        if self.src_s3 is not None:
+            self.src_s3.stop_service()
+        if self.dst_s3 is not None:
+            self.dst_s3.stop_service()
 
     def admin(self, *args: str):
         return subprocess.check_output(
