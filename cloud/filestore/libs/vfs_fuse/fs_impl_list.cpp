@@ -297,11 +297,11 @@ void TFileSystem::ReadDir(
                          << " limit: " << size << " actual size "
                          << handleChunk.DirectoryContent.GetSize());
 
-                reply(*self, handleChunk.DirectoryContent);
-
                 if (DirectoryHandlesStorage) {
                     DirectoryHandlesStorage->UpdateHandle(fh, handleChunk);
                 }
+
+                reply(*self, handleChunk.DirectoryContent);
             });
 }
 
