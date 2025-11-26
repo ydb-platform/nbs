@@ -89,6 +89,85 @@ std::unique_ptr<TDiskRegistryState> CreateTestState(
         .Build();
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+struct TFixture: public NUnitTest::TBaseFixture
+{
+    static constexpr ui32 RacksCount = 3;
+    static constexpr ui32 AgentsPerRack = 2;
+    static constexpr ui32 DevicesPerAgent = 15;
+    static constexpr ui32 DeviceBlockSize = 4_KB;
+    static constexpr ui64 DeviceBlocksCount = 93_GB / DeviceBlockSize;
+
+    TTestExecutor Executor;
+    TVector<NProto::TAgentConfig> AgentConfigs;
+    std::unique_ptr<TDiskRegistryState> State;
+
+    void SetUp(NUnitTest::TTestContext& /*testContext*/) override
+    {
+        Executor.WriteTx([&] (TDiskRegistryDatabase db) {
+            db.InitSchema();
+        });
+
+        AgentConfigs = CreateAgentConfigs();
+
+        State = TDiskRegistryStateBuilder()
+            .With(CreateStorageConfig())
+            .WithAgents(AgentConfigs)
+            .WithConfig(AgentConfigs)
+            .Build();
+    }
+
+    static TStorageConfigPtr CreateStorageConfig()
+    {
+        NProto::TStorageServiceConfig config =
+            CreateDefaultStorageConfigProto();
+
+        config.SetAllocationUnitNonReplicatedSSD(
+            DeviceBlocksCount * DeviceBlockSize / 1_GB);
+        config.SetNonreplAllocationPolicy(
+            NProto::NONREPL_ALLOC_POLICY_USER_ANTI_AFFINITY);
+
+        return std::make_shared<TStorageConfig>(
+            std::move(config),
+            NFeatures::TFeaturesConfigPtr());
+    }
+
+    static TVector<NProto::TAgentConfig> CreateAgentConfigs()
+    {
+        TVector<NProto::TAgentConfig> configs;
+        configs.reserve(RacksCount * AgentsPerRack);
+
+        for (ui32 i = 0; i != RacksCount; ++i) {
+            const TString rack = TStringBuilder() << "rack" << (i + 1);
+
+            for (ui32 j = 0; j != AgentsPerRack; ++j) {
+                NProto::TAgentConfig& config = configs.emplace_back();
+
+                config.SetAgentId(
+                    TStringBuilder() << "agent-" << (i + 1) << "." << (j + 1));
+                config.SetNodeId(1 + j + i * AgentsPerRack);
+
+                for (ui32 k = 0; k != DevicesPerAgent; ++k) {
+                    NProto::TDeviceConfig* device = config.AddDevices();
+                    device->SetRack(rack);
+                    device->SetNodeId(config.GetNodeId());
+                    device->SetAgentId(config.GetAgentId());
+                    device->SetDeviceName(
+                        TStringBuilder()
+                        << "/dev/disk/by-partlabel/NBSNVME0" << (k + 1));
+                    device->SetDeviceUUID(
+                        TStringBuilder()
+                        << "uuid-" << config.GetNodeId() << "." << (k + 1));
+                    device->SetBlockSize(DeviceBlockSize);
+                    device->SetBlocksCount(DeviceBlocksCount);
+                }
+            }
+        }
+        return configs;
+    }
+};
+
 }   //namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -383,12 +462,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
 
             UNIT_ASSERT_VALUES_EQUAL(0, affectedDisks.size());
         });
-
-        {
-            for (const auto& m: state.BuildMigrationList()) {
-                Cerr << "migration: " << m.DiskId << " " << m.SourceDeviceId << Endl;
-            }
-        }
 
         UNIT_ASSERT(state.IsMigrationListEmpty());
         UNIT_ASSERT_VALUES_EQUAL(0, configCounter->Val());
@@ -1833,6 +1906,109 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
 
         UNIT_ASSERT_VALUES_EQUAL(maxMigrationsInProgress, migrationsInProgress);
         UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
+    }
+
+    Y_UNIT_TEST_F(ShouldPrefereSameRackDuringDiskMigration, TFixture)
+    {
+        Executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TVector<TString> affectedDisks;
+                UNIT_ASSERT_SUCCESS(State->UpdateAgentState(
+                    db,
+                    AgentConfigs[0].GetAgentId(),
+                    NProto::AGENT_STATE_WARNING,
+                    Now(),
+                    "test",
+                    affectedDisks));
+            });
+
+        TVector<NProto::TDeviceConfig> devices;
+        Executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TDiskRegistryState::TAllocateDiskResult r;
+                UNIT_ASSERT_SUCCESS(State->AllocateDisk(
+                    Now(),
+                    db,
+                    {
+                        .DiskId = "vol0",
+                        .BlockSize = DeviceBlockSize,
+                        .BlocksCount = DeviceBlocksCount * DevicesPerAgent,
+                    },
+                    &r));
+                UNIT_ASSERT_VALUES_EQUAL(DevicesPerAgent, r.Devices.size());
+                const auto& agentId = r.Devices[0].GetAgentId();
+                for (const auto& d: r.Devices) {
+                    UNIT_ASSERT_VALUES_EQUAL(agentId, d.GetAgentId());
+                }
+                devices = std::move(r.Devices);
+            });
+
+        Executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TVector<TString> affectedDisks;
+                UNIT_ASSERT_SUCCESS(State->UpdateAgentState(
+                    db,
+                    devices[0].GetAgentId(),
+                    NProto::AGENT_STATE_WARNING,
+                    Now(),
+                    "test",
+                    affectedDisks));
+                UNIT_ASSERT_VALUES_EQUAL(1, affectedDisks.size());
+            });
+
+        TString targetAgentId;
+        Executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto migrations = State->BuildMigrationList();
+                UNIT_ASSERT_VALUES_EQUAL(DevicesPerAgent, migrations.size());
+
+                auto [d, error] = State->StartDeviceMigration(
+                    Now(),
+                    db,
+                    migrations[0].DiskId,
+                    migrations[0].SourceDeviceId);
+                UNIT_ASSERT_SUCCESS(error);
+                UNIT_ASSERT_VALUES_UNEQUAL(
+                    AgentConfigs[0].GetAgentId(),
+                    d.GetAgentId());
+                targetAgentId = d.GetAgentId();
+            });
+
+        Executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TVector<TString> affectedDisks;
+                UNIT_ASSERT_SUCCESS(State->UpdateAgentState(
+                    db,
+                    AgentConfigs[0].GetAgentId(),
+                    NProto::AGENT_STATE_ONLINE,
+                    Now(),
+                    "test",
+                    affectedDisks));
+            });
+
+        Executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto migrations = State->BuildMigrationList();
+                UNIT_ASSERT_VALUES_EQUAL(
+                    DevicesPerAgent - 1,
+                    migrations.size());
+
+                for (const auto& m: migrations) {
+                    auto [d, error] = State->StartDeviceMigration(
+                        Now(),
+                        db,
+                        m.DiskId,
+                        m.SourceDeviceId);
+                    UNIT_ASSERT_SUCCESS(error);
+                    UNIT_ASSERT_VALUES_EQUAL(targetAgentId, d.GetAgentId());
+                }
+            });
     }
 }
 

@@ -739,6 +739,8 @@ public:
     [[nodiscard]] bool GetComputeDigestForEveryBlockOnCompaction() const;
 
     [[nodiscard]] bool GetAttachDetachPathsEnabled() const;
+
+    [[nodiscard]] NProto::ENonreplAllocationPolicy GetNonreplAllocationPolicy() const;
 };
 
 ui64 GetAllocationUnit(

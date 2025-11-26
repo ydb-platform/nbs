@@ -643,6 +643,10 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(HiveLocalServiceNetworkResourceLimit, ui64,        0                  )\
     xxx(DynamicNodeRegistrationTimeout,       TDuration,   Seconds(5)         )\
     xxx(AttachDetachPathsEnabled,             bool,        false              )\
+                                                                               \
+    xxx(NonreplAllocationPolicy,                                               \
+        NProto::ENonreplAllocationPolicy,                                      \
+        NProto::NONREPL_ALLOC_POLICY_NOT_SPECIFIED                            )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
@@ -763,6 +767,13 @@ IOutputStream& operator <<(
 IOutputStream& operator<<(IOutputStream& out, NProto::EResyncPolicy pt)
 {
     return out << NProto::EResyncPolicy_Name(pt);
+}
+
+IOutputStream& operator<<(
+    IOutputStream& out,
+    NProto::ENonreplAllocationPolicy pt)
+{
+    return out << NProto::ENonreplAllocationPolicy_Name(pt);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
