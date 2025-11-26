@@ -760,6 +760,23 @@ void TPartitionState::BlobsConfirmed(
     UnconfirmedBlobCount -= blobCount;
 }
 
+void TPartitionState::BlobsStalled(ui64 commitId, TVector<TBlobToConfirm> blobs)
+{
+    auto it = UnconfirmedBlobs.find(commitId);
+    Y_DEBUG_ABORT_UNLESS(it != UnconfirmedBlobs.end());
+
+    auto& dstBlobs = it->second;
+    const auto blobCount = dstBlobs.size();
+    Y_DEBUG_ABORT_UNLESS(blobs.empty() || blobCount == blobs.size());
+
+    StalledUnconfirmedBlobs[commitId] = std::move(dstBlobs);
+    StalledUnconfirmedBlobCount += blobCount;
+
+    UnconfirmedBlobs.erase(it);
+    Y_DEBUG_ABORT_UNLESS(UnconfirmedBlobCount >= blobCount);
+    UnconfirmedBlobCount -= blobCount;
+}
+
 void TPartitionState::ConfirmBlobs(
     TPartitionDatabase& db,
     const TVector<TPartialBlobId>& unrecoverableBlobs)

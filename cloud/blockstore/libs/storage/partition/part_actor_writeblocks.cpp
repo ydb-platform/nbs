@@ -347,13 +347,18 @@ void TPartitionActor::HandleWriteBlocksCompleted(
         ProfileLog->Write(std::move(record));
     }
 
-    if (msg->AddingUnconfirmedBlobsRequested && !HasError(msg->GetError())) {
-        // blobs are confirmed, but AddBlobs request will be executed
-        // (for this commit) later
-        State->BlobsConfirmed(commitId, std::move(msg->BlobsToConfirm));
+    if (msg->AddingUnconfirmedBlobsRequested) {
+        if (!HasError(msg->GetError())) {
+            // blobs are confirmed, but AddBlobs request will be executed
+            // (for this commit) later
+            State->BlobsConfirmed(commitId, std::move(msg->BlobsToConfirm));
+        } else {
+            // blobs are stalled, so they need to be deleted
+            State->BlobsStalled(commitId, std::move(msg->BlobsToConfirm));
+        }
         Y_DEBUG_ABORT_UNLESS(msg->CollectGarbageBarrierAcquired);
         // commit & garbage queue barriers will be released when confirmed
-        // blobs are added
+        // blobs are added or when stalled blobs are deleted
     } else {
         LOG_TRACE(
             ctx,
@@ -387,6 +392,7 @@ void TPartitionActor::HandleWriteBlocksCompleted(
     ProcessCommitQueue(ctx);
     EnqueueFlushIfNeeded(ctx);
     EnqueueAddConfirmedBlobsIfNeeded(ctx);
+    EnqueueDeleteStalledUnconfirmedBlobsIfNeeded(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
