@@ -16,6 +16,8 @@ message TProfileLogBlockRange {
 
     // Response bytes
     optional uint64 ActualBytes = 5;
+    // Response buffer offset
+    optional uint32 BufferOffset = 6;
 };
 
 message TProfileLogNodeInfo {
