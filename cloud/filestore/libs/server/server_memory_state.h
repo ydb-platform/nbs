@@ -84,4 +84,6 @@ private:
     TFsPath SharedMemoryBasePath;
 };
 
+using TServerStatePtr = std::shared_ptr<TServerState>;
+
 }   // namespace NCloud::NFileStore::NServer

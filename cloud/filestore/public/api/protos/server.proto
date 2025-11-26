@@ -19,7 +19,7 @@ message TListMmapRegionsRequest
 message TMmapRegionInfo
 {
     // Mmap region ID
-    optional string Id = 1;
+    optional uint64 Id = 1;
 
     // File path
     optional string FilePath = 2;
@@ -58,7 +58,7 @@ message TMmapResponse
     optional NCloud.NProto.TError Error = 1;
 
     // Mmap region ID
-    optional string Id = 2;
+    optional uint64 Id = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -70,7 +70,7 @@ message TMunmapRequest
     optional THeaders Headers = 1;
 
     // Mmap region ID to unmap
-    optional string Id = 2;
+    optional uint64 Id = 2;
 }
 
 message TMunmapResponse
