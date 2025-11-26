@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"testing"
 	"time"
 
@@ -67,6 +68,16 @@ func newStorage(
 	storage := NewStorage(config, db)
 
 	return storage
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Uses time.Equal() to compare time.Time fields correctly, since == may fail
+// due to different internal representations.
+func clusterCapacitiesAreEqual(a ClusterCapacity, b ClusterCapacity) bool {
+	return a.CellID == b.CellID && a.ZoneID == b.ZoneID && a.Kind == b.Kind &&
+		a.FreeBytes == b.FreeBytes && a.TotalBytes == b.TotalBytes &&
+		a.CreatedAt.Equal(b.CreatedAt)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -142,7 +153,7 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 	err = storage.UpdateClusterCapacities(
 		ctx,
 		[]ClusterCapacity{capacity1, cellCapacity1, cellCapacitySsd1},
-		zeroTime, // deleteBefore
+		zeroTime, // deleteOlderThan
 	)
 	require.NoError(t, err)
 
@@ -152,10 +163,12 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 		types.DiskKind_DISK_KIND_HDD,
 	)
 	require.NoError(t, err)
-	require.ElementsMatch(t, []ClusterCapacity{
-		capacity1,
-		cellCapacity1,
-	}, capacities)
+	sort.Slice(capacities, func(i, j int) bool {
+		return capacities[i].CellID < capacities[j].CellID
+	})
+	require.Len(t, capacities, 2)
+	require.True(t, clusterCapacitiesAreEqual(capacities[0], capacity1))
+	require.True(t, clusterCapacitiesAreEqual(capacities[1], cellCapacity1))
 
 	capacities, err = storage.GetRecentClusterCapacities(
 		ctx,
@@ -163,12 +176,13 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 		types.DiskKind_DISK_KIND_SSD,
 	)
 	require.NoError(t, err)
-	require.ElementsMatch(t, []ClusterCapacity{cellCapacitySsd1}, capacities)
+	require.Len(t, capacities, 1)
+	require.True(t, clusterCapacitiesAreEqual(cellCapacitySsd1, capacities[0]))
 
 	err = storage.UpdateClusterCapacities(
 		ctx,
 		[]ClusterCapacity{capacity2},
-		zeroTime, // deleteBefore
+		zeroTime, // deleteOlderThan
 	)
 	require.NoError(t, err)
 
@@ -178,15 +192,17 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 		types.DiskKind_DISK_KIND_HDD,
 	)
 	require.NoError(t, err)
-	require.ElementsMatch(t, []ClusterCapacity{
-		capacity2,
-		cellCapacity1,
-	}, capacities)
+	sort.Slice(capacities, func(i, j int) bool {
+		return capacities[i].CellID < capacities[j].CellID
+	})
+	require.Len(t, capacities, 2)
+	require.True(t, clusterCapacitiesAreEqual(capacities[0], capacity2))
+	require.True(t, clusterCapacitiesAreEqual(capacities[1], cellCapacity1))
 
 	err = storage.UpdateClusterCapacities(
 		ctx,
 		[]ClusterCapacity{cellCapacity2, cellCapacitySsd2},
-		zeroTime, // deleteBefore
+		zeroTime, // deleteOlderThan
 	)
 	require.NoError(t, err)
 
@@ -196,10 +212,12 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 		types.DiskKind_DISK_KIND_HDD,
 	)
 	require.NoError(t, err)
-	require.ElementsMatch(t, []ClusterCapacity{
-		capacity2,
-		cellCapacity2,
-	}, capacities)
+	sort.Slice(capacities, func(i, j int) bool {
+		return capacities[i].CellID < capacities[j].CellID
+	})
+	require.Len(t, capacities, 2)
+	require.True(t, clusterCapacitiesAreEqual(capacities[0], capacity2))
+	require.True(t, clusterCapacitiesAreEqual(capacities[1], cellCapacity2))
 
 	capacities, err = storage.GetRecentClusterCapacities(
 		ctx,
@@ -207,7 +225,8 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 		types.DiskKind_DISK_KIND_SSD,
 	)
 	require.NoError(t, err)
-	require.ElementsMatch(t, []ClusterCapacity{cellCapacitySsd2}, capacities)
+	require.Len(t, capacities, 1)
+	require.True(t, clusterCapacitiesAreEqual(cellCapacitySsd1, capacities[0]))
 }
 
 func TestUpdateClusterCapacitiesDeletesRecordsBeforeTimestamp(t *testing.T) {
@@ -248,7 +267,8 @@ func TestUpdateClusterCapacitiesDeletesRecordsBeforeTimestamp(t *testing.T) {
 		types.DiskKind_DISK_KIND_HDD,
 	)
 	require.NoError(t, err)
-	require.ElementsMatch(t, capacities, []ClusterCapacity{capacity1})
+	require.Len(t, capacities, 1)
+	require.True(t, clusterCapacitiesAreEqual(capacity1, capacities[0]))
 
 	err = storage.UpdateClusterCapacities(ctx, []ClusterCapacity{capacity2}, deleteOlderThan)
 	require.NoError(t, err)
@@ -259,9 +279,14 @@ func TestUpdateClusterCapacitiesDeletesRecordsBeforeTimestamp(t *testing.T) {
 		types.DiskKind_DISK_KIND_HDD,
 	)
 	require.NoError(t, err)
-	require.ElementsMatch(t, capacities, []ClusterCapacity{capacity1, capacity2})
+	sort.Slice(capacities, func(i, j int) bool {
+		return capacities[i].CellID < capacities[j].CellID
+	})
+	require.Len(t, capacities, 2)
+	require.True(t, clusterCapacitiesAreEqual(capacities[0], capacity1))
+	require.True(t, clusterCapacitiesAreEqual(capacities[1], capacity2))
 
-	deleteOlderThan = time.Now()
+	deleteOlderThan = createdAt.Add(time.Hour)
 	createdAt = deleteOlderThan.Add(time.Hour)
 	capacity3 := ClusterCapacity{
 		ZoneID:     "zone-a",
@@ -281,5 +306,6 @@ func TestUpdateClusterCapacitiesDeletesRecordsBeforeTimestamp(t *testing.T) {
 		types.DiskKind_DISK_KIND_HDD,
 	)
 	require.NoError(t, err)
-	require.ElementsMatch(t, capacities, []ClusterCapacity{capacity3})
+	require.Len(t, capacities, 1)
+	require.True(t, clusterCapacitiesAreEqual(capacity3, capacities[0]))
 }
