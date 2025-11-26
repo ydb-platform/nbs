@@ -19,42 +19,17 @@ type ClusterCapacity struct {
 	Kind       types.DiskKind
 	TotalBytes uint64
 	FreeBytes  uint64
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-type clusterCapacityState struct {
-	ZoneID     string
-	CellID     string
-	Kind       string
-	TotalBytes uint64
-	FreeBytes  uint64
 	CreatedAt  time.Time
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (c *clusterCapacityState) toClusterCapacity() (ClusterCapacity, error) {
-	kind, err := common.DiskKindFromString(c.Kind)
-	if err != nil {
-		return ClusterCapacity{}, err
-	}
-
-	return ClusterCapacity{
-		ZoneID:     c.ZoneID,
-		CellID:     c.CellID,
-		Kind:       kind,
-		TotalBytes: c.TotalBytes,
-		FreeBytes:  c.FreeBytes,
-	}, nil
-}
-
 // Returns ydb entity of the node object.
-func (c *clusterCapacityState) structValue() persistence.Value {
+func (c *ClusterCapacity) structValue() persistence.Value {
 	return persistence.StructValue(
 		persistence.StructFieldValue("zone_id", persistence.UTF8Value(c.ZoneID)),
 		persistence.StructFieldValue("cell_id", persistence.UTF8Value(c.CellID)),
-		persistence.StructFieldValue("kind", persistence.UTF8Value(c.Kind)),
+		persistence.StructFieldValue("kind", persistence.UTF8Value(common.DiskKindToString(c.Kind))),
 		persistence.StructFieldValue("total_bytes", persistence.Uint64Value(c.TotalBytes)),
 		persistence.StructFieldValue("free_bytes", persistence.Uint64Value(c.FreeBytes)),
 		persistence.StructFieldValue("created_at", persistence.TimestampValue(c.CreatedAt)),
@@ -63,7 +38,7 @@ func (c *clusterCapacityState) structValue() persistence.Value {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func clusterCapacityStateStructTypeString() string {
+func clusterCapacityStructTypeString() string {
 	return `Struct<
 		zone_id: Utf8,
 		cell_id: Utf8,
@@ -73,7 +48,7 @@ func clusterCapacityStateStructTypeString() string {
 		created_at: Timestamp>`
 }
 
-func clusterCapacityStateTableDescription() persistence.CreateTableDescription {
+func clusterCapacityTableDescription() persistence.CreateTableDescription {
 	return persistence.NewCreateTableDescription(
 		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("cell_id", persistence.Optional(persistence.TypeUTF8)),
@@ -89,17 +64,27 @@ func clusterCapacityStateTableDescription() persistence.CreateTableDescription {
 
 func scanClusterCapacity(
 	res persistence.Result,
-) (capacity clusterCapacityState, err error) {
+) (capacity ClusterCapacity, err error) {
 
+	var kind string
 	err = res.ScanNamed(
 		persistence.OptionalWithDefault("zone_id", &capacity.ZoneID),
 		persistence.OptionalWithDefault("cell_id", &capacity.CellID),
-		persistence.OptionalWithDefault("kind", &capacity.Kind),
+		persistence.OptionalWithDefault("kind", kind),
 		persistence.OptionalWithDefault("total_bytes", &capacity.TotalBytes),
 		persistence.OptionalWithDefault("free_bytes", &capacity.FreeBytes),
+		persistence.OptionalWithDefault("created_at", &capacity.CreatedAt),
 	)
+	if err != nil {
+		return ClusterCapacity{}, err
+	}
 
-	return capacity, err
+	capacity.Kind, err = common.DiskKindFromString(kind)
+	if err != nil {
+		return ClusterCapacity{}, err
+	}
+
+	return capacity, nil
 }
 
 func scanClusterCapacities(
@@ -111,12 +96,7 @@ func scanClusterCapacities(
 
 	for res.NextResultSet(ctx) {
 		for res.NextRow() {
-			capacityState, err := scanClusterCapacity(res)
-			if err != nil {
-				return nil, err
-			}
-
-			capacity, err := capacityState.toClusterCapacity()
+			capacity, err := scanClusterCapacity(res)
 			if err != nil {
 				return nil, err
 			}
@@ -163,7 +143,7 @@ func CreateYDBTables(
 		ctx,
 		config.GetStorageFolder(),
 		"cluster_capacity",
-		clusterCapacityStateTableDescription(),
+		clusterCapacityTableDescription(),
 		dropUnusedColumns,
 	)
 	if err != nil {
