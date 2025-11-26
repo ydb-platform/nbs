@@ -70,7 +70,7 @@ func scanClusterCapacity(
 	err = res.ScanNamed(
 		persistence.OptionalWithDefault("zone_id", &capacity.ZoneID),
 		persistence.OptionalWithDefault("cell_id", &capacity.CellID),
-		persistence.OptionalWithDefault("kind", kind),
+		persistence.OptionalWithDefault("kind", &kind),
 		persistence.OptionalWithDefault("total_bytes", &capacity.TotalBytes),
 		persistence.OptionalWithDefault("free_bytes", &capacity.FreeBytes),
 		persistence.OptionalWithDefault("created_at", &capacity.CreatedAt),
