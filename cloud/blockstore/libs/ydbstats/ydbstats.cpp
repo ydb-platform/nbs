@@ -825,9 +825,17 @@ TFuture<NProto::TError> TYdbStatsUploader::AlterTable(
 
 bool TYdbStatsUploader::IsRotationRequired(TInstant ts) const
 {
-    auto configValue = Config->GetStatsTableRotationAfterDays();
-    auto currentDay = TInstant::Now().Days();
-    return currentDay - ts.Days() >= configValue;
+    auto configRotationAfterDays = Config->GetStatsTableRotationAfterDays();
+    auto configRotationHour = Config->GetStatsTableRotationHour();
+
+    auto now = TInstant::Now();
+    auto daysPassed = now.Days() - ts.Days();
+    auto currentHour = now.Hours() % 24;
+
+    if (daysPassed == configRotationAfterDays) {
+        return currentHour >= configRotationHour;
+    }
+    return daysPassed > configRotationAfterDays;
 }
 
 TString TYdbStatsUploader::FormatHistoryTableName(TInstant ts) const

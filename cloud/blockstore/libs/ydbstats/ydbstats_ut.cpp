@@ -33,6 +33,7 @@ TYdbStatsConfigPtr CreateTestConfig()
     config.SetHistoryTablePrefix("test");
     config.SetHistoryTableLifetimeDays(3);
     config.SetStatsTableRotationAfterDays(1);
+    config.SetStatsTableRotationHour(12);
     config.SetBlobLoadMetricsTableName("metrics");
     config.SetGroupsTableName("groups");
     config.SetPartitionsTableName("partitions");
@@ -48,6 +49,7 @@ TYdbStatsConfigPtr CreateTestConfig(TDuration statsTtl, TDuration archiveTtl)
     config.SetHistoryTablePrefix("test");
     config.SetHistoryTableLifetimeDays(3);
     config.SetStatsTableRotationAfterDays(1);
+    config.SetStatsTableRotationHour(12);
     config.SetBlobLoadMetricsTableName("metrics");
     config.SetGroupsTableName("groups");
     config.SetPartitionsTableName("partitions");
@@ -65,6 +67,7 @@ TYdbStatsConfigPtr CreateAllTablesTestConfig()
     config.SetArchiveStatsTableName("archive-test");
     config.SetHistoryTableLifetimeDays(3);
     config.SetStatsTableRotationAfterDays(1);
+    config.SetStatsTableRotationHour(12);
     config.SetBlobLoadMetricsTableName("metrics");
     config.SetGroupsTableName("groups");
     config.SetPartitionsTableName("partitions");
@@ -620,6 +623,35 @@ Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
         UNIT_ASSERT(
             response.GetCode() == S_OK &&
             ydbTestStorage->CreateTableCalls == 1);
+    }
+
+    Y_UNIT_TEST(ShouldRotateHistoryTableAtProperHour)
+    {
+        auto config = CreateTestConfig();
+        auto schemes = CreateTestSchemes();
+        auto ydbTestStorage = YdbCreateTestStorage(config);
+        auto uploader = CreateYdbVolumesStatsUploader(
+            config,
+            CreateLoggingService("console"),
+            ydbTestStorage,
+            schemes);
+        uploader->Start();
+
+        TVector<TTableStat> directory;
+        directory.push_back(std::make_pair(TString("test"), TInstant::Now() - TDuration::Days(1)));
+        ydbTestStorage->AddTables(
+            schemes,
+            directory,
+            true);
+
+        auto now = TInstant::Now();
+        auto hours = now.Hours() % 24;
+        bool shouldRotate = (hours >= config->GetStatsTableRotationHour());
+
+        auto response = uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
+        UNIT_ASSERT(
+            response.GetCode() == S_OK &&
+            ydbTestStorage->CreateTableCalls == shouldRotate ? 1 : 0);
     }
 
     Y_UNIT_TEST(ShouldAlterTables)

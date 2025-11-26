@@ -33,6 +33,7 @@ public:
     TString GetServerAddress() const;
     ui32 GetHistoryTableLifetimeDays() const;
     ui32 GetStatsTableRotationAfterDays() const;
+    ui32 GetStatsTableRotationHour() const;
     bool GetUseSsl() const;
     TDuration GetStatsTableTtl() const;
     TDuration GetArchiveStatsTableTtl() const;

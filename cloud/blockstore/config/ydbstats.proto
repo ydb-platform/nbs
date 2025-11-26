@@ -52,4 +52,7 @@ message TYdbStatsConfig
 
     // Refresh time before IAM token expiration (in milliseconds).
     optional uint32 IamTokenRefreshTimeBeforeExpiration = 15;
+
+    // Rotate history table at a given time instead of midnight UTC.
+    optional uint32 StatsTableRotationHour = 16;
 }

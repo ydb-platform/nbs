@@ -23,6 +23,7 @@ TDuration Seconds(ui32 value)
     xxx(ServerAddress,                    TString,          ""                )\
     xxx(HistoryTableLifetimeDays,         ui32,             3                 )\
     xxx(StatsTableRotationAfterDays,      ui32,             1                 )\
+    xxx(StatsTableRotationHour,           ui32,             0                 )\
     xxx(ArchiveStatsTableName,            TString,          ""                )\
     xxx(BlobLoadMetricsTableName,         TString,          ""                )\
     xxx(GroupsTableName,                  TString,          ""                )\
