@@ -183,8 +183,6 @@ private:
 
     NProto::TError ProcessConfigCache();
 
-    TFuture<void> InitializeImpl();
-
     TInitializeStorageResult GetResult();
 };
 
@@ -434,9 +432,6 @@ void TInitializer::ScanFileDevices()
 
 void TInitializer::SaveCurrentConfig()
 {
-    if (AllowedPaths) {
-        return;
-    }
     const auto path = GetCachedConfigsPath();
     if (path.empty()) {
         return;
@@ -472,7 +467,7 @@ TString TInitializer::GetCachedConfigsPath() const
 void TInitializer::ValidateCurrentConfigs(
     const TVector<NProto::TFileDeviceArgs>& cachedDevices)
 {
-    if (cachedDevices.empty()) {
+    if (cachedDevices.empty() && !AllowedPaths) {
         STORAGE_INFO("There is no cached config");
         SaveCurrentConfig();
         return;
@@ -485,7 +480,9 @@ void TInitializer::ValidateCurrentConfigs(
 
         LostDevicesIds = GetLostDevicesIds(cachedDevices, FileDevices);
 
-        SaveCurrentConfig();
+        if (!AllowedPaths) {
+            SaveCurrentConfig();
+        }
 
         return;
     }
@@ -567,7 +564,7 @@ NProto::TError TInitializer::ProcessConfigCache()
     return {};
 }
 
-TFuture<void> TInitializer::InitializeImpl()
+TFuture<TInitializeStorageResult> TInitializer::Initialize()
 {
     // Setup serial numbers for the static config
     for (auto& file: FileDevices) {
@@ -578,7 +575,7 @@ TFuture<void> TInitializer::InitializeImpl()
 
     ScanFileDevices();
     if (auto error = ProcessConfigCache(); HasError(error)) {
-        return MakeErrorFuture<void>(
+        return MakeErrorFuture<TInitializeStorageResult>(
             std::make_exception_ptr(TServiceError(error)));
     }
 
@@ -665,14 +662,7 @@ TFuture<void> TInitializer::InitializeImpl()
         }
     }
 
-    return WaitAll(futures).Apply([] (const auto& future) {
-        Y_UNUSED(future);   // ignore
-    });
-}
-
-TFuture<TInitializeStorageResult> TInitializer::Initialize()
-{
-    return InitializeImpl().Apply([self = shared_from_this()](const auto&)
+    return WaitAll(futures).Apply([self = shared_from_this()](const auto&)
                                   { return self->GetResult(); });
 }
 
