@@ -175,6 +175,20 @@ class _MigrationTestSetup:
             ],
         ).decode()
 
+    def wait_admin_task(self, *args, timeout_sec=360):
+        stdout = self.admin(*args)
+        task_id = stdout.replace("Task: ", "").replace("\n", "").replace("Operation: ", "")
+        started_at = time.monotonic()
+        while True:
+            if time.monotonic() - started_at > timeout_sec:
+                raise TimeoutError("Timed out snapshot migration")
+            output = self.admin("tasks", "get", "--id", task_id)
+            status = json.loads(output)["status"]
+            if status == "finished":
+                break
+
+            time.sleep(1)
+
     def blockstore_client(self, *args: str):
         return subprocess.check_output(
             [
@@ -241,23 +255,25 @@ class _MigrationTestSetup:
             "--folder-id", "folder",
         )
 
+    def create_image_from_snapshot(
+        self,
+        src_snapshot_id: str,
+        image_id: str,
+    ):
+        self.wait_admin_task(
+            "images",
+            "create",
+            "--id", image_id,
+            "--src-snapshot-id", src_snapshot_id,
+            "--folder-id", "folder",
+        )
+
     def migrate_snapshot(self, snapshot_id: str, timeout_sec=360):
-        stdout = self.admin(
+        self.wait_admin_task(
             "snapshots",
             "schedule_migrate_snapshot_task",
             "--id", snapshot_id,
         )
-        task_id = stdout.replace("Task: ", "").replace("\n", "")
-        started_at = time.monotonic()
-        while True:
-            if time.monotonic() - started_at > timeout_sec:
-                raise TimeoutError("Timed out snapshot migration")
-            output = self.admin("tasks", "get", "--id", task_id)
-            status = json.loads(output)["status"]
-            if status == "finished":
-                break
-
-            time.sleep(1)
 
     def start_database_migration(self):
         stdout = self.admin(
@@ -301,6 +317,18 @@ class _MigrationTestSetup:
             "--size", str(size),
             "--src-snapshot-id", snapshot_id,
             "--id", disk_id,
+        )
+
+    def create_disk_from_image(self, image_id: str, disk_id: str, size: int):
+        self.wait_admin_task(
+            "disks",
+            "create",
+            "--folder-id", "folder",
+            "--cloud-id", "cloud",
+            "--zone-id", "zone-a",
+            "--size", str(size),
+            "--src-image-id", image_id,
+            "--id", disk_id
         )
 
     def switch_dataplane_to_new_db(self):
@@ -355,6 +383,7 @@ def test_disk_manager_single_snapshot_migration(use_s3_as_src, use_s3_as_dst):
         new_checksum = setup.checksum_disk(new_disk)
         assert new_checksum == checksum
 
+
 @pytest.mark.parametrize(
     ["use_s3_as_src", "use_s3_as_dst"],
     [
@@ -368,6 +397,7 @@ def test_disk_manager_several_migration_do_not_overlap(use_s3_as_src, use_s3_as_
     with _MigrationTestSetup(
         use_s3_as_src=use_s3_as_src,
         use_s3_as_dst=use_s3_as_dst,
+        migrating_snapshots_inflight_limit=1,
     ) as setup:
         # Test that checks that several migration do not corrupt each other
         # There is a problem with snapshot migration where incorrect base snapshot
@@ -376,32 +406,39 @@ def test_disk_manager_several_migration_do_not_overlap(use_s3_as_src, use_s3_as_
         disk_size = 16 * 1024 * 1024
         first_disk_id = "disk1"
         first_snapshot_id = "snapshot1"
+        first_image = "image1"
         setup.create_new_disk(first_disk_id, disk_size)
         block_size = setup.get_disk(first_disk_id).block_size
         setup.fill_disk(first_disk_id, start_index=disk_size // block_size // 2)
         setup.create_snapshot(src_disk_id=first_disk_id, snapshot_id=first_snapshot_id)
-
-        setup.migrate_snapshot(first_snapshot_id)
+        setup.create_image_from_snapshot(
+            src_snapshot_id=first_snapshot_id,
+            image_id=first_image,
+        )
+        setup.migrate_snapshot(first_image)
         second_disk_id = "disk2"
         second_snapshot_id = "snapshot2"
+        second_image_id = "image2"
         setup.create_new_disk(second_disk_id, disk_size)
         setup.fill_disk(second_disk_id)
         second_disk_full_checksum = setup.checksum_disk(second_disk_id)
         setup.create_snapshot(src_disk_id=second_disk_id, snapshot_id=second_snapshot_id)
-        setup.migrate_snapshot(second_snapshot_id)
+        setup.create_image_from_snapshot(
+            src_snapshot_id=second_snapshot_id,
+            image_id=second_image_id,
+        )
+        setup.migrate_snapshot(second_image_id)
 
         setup.switch_dataplane_to_new_db()
         second_disk_restored_id = "restored_disk2"
-        setup.create_disk_from_snapshot(
-            snapshot_id=second_snapshot_id,
+        setup.create_disk_from_image(
+            image_id=second_image_id,
             disk_id=second_disk_restored_id,
             size=disk_size,
         )
         restored_checksum = setup.checksum_disk(second_disk_restored_id)
         assert restored_checksum == second_disk_full_checksum
-        with open("/home/sergei-vorobev/test_finished.txt", "w") as f:
-            f.write(f"original: {second_disk_full_checksum}, restored: {restored_checksum}\n")
-        time.sleep(3600)
+
 
 @dataclasses.dataclass
 class _SingleSnapshotMigrationConfig:
