@@ -105,19 +105,9 @@ func (s *storageYDB) updateClusterCapacities(ctx context.Context,
 	}
 
 	var values []persistence.Value
-	createdAt := time.Now()
 
 	for _, capacity := range capacities {
-		capacityState := &clusterCapacityState{
-			ZoneID:     capacity.ZoneID,
-			CellID:     capacity.CellID,
-			Kind:       common.DiskKindToString(capacity.Kind),
-			TotalBytes: capacity.TotalBytes,
-			FreeBytes:  capacity.FreeBytes,
-			CreatedAt:  createdAt,
-		}
-
-		values = append(values, capacityState.structValue())
+		values = append(values, capacity.structValue())
 	}
 
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
@@ -128,7 +118,7 @@ func (s *storageYDB) updateClusterCapacities(ctx context.Context,
 		upsert into cluster_capacity
 		select *
 		from AS_TABLE($capacities)
-	`, s.tablesPath, clusterCapacityStateStructTypeString()),
+	`, s.tablesPath, clusterCapacityStructTypeString()),
 		persistence.ValueParam("$capacities", persistence.ListValue(values...)),
 	)
 	if err != nil {
