@@ -82,6 +82,8 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 	storage := newStorage(t, ctx, db)
 
 	zeroTime := time.Time{}
+	firstTime := time.Now()
+	secondTime := firstTime.Add(time.Hour)
 
 	capacity1 := ClusterCapacity{
 		ZoneID:     "zone-a",
@@ -89,6 +91,7 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 		Kind:       types.DiskKind_DISK_KIND_HDD,
 		TotalBytes: 1024,
 		FreeBytes:  1024,
+		CreatedAt:  firstTime,
 	}
 
 	cellCapacity1 := ClusterCapacity{
@@ -97,6 +100,7 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 		Kind:       types.DiskKind_DISK_KIND_HDD,
 		TotalBytes: 1024,
 		FreeBytes:  1024,
+		CreatedAt:  firstTime,
 	}
 
 	cellCapacitySsd1 := ClusterCapacity{
@@ -105,6 +109,7 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 		Kind:       types.DiskKind_DISK_KIND_SSD,
 		TotalBytes: 1024,
 		FreeBytes:  1024,
+		CreatedAt:  firstTime,
 	}
 
 	capacity2 := ClusterCapacity{
@@ -113,6 +118,7 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 		Kind:       types.DiskKind_DISK_KIND_HDD,
 		TotalBytes: 2048,
 		FreeBytes:  2048,
+		CreatedAt:  secondTime,
 	}
 
 	cellCapacity2 := ClusterCapacity{
@@ -121,6 +127,7 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 		Kind:       types.DiskKind_DISK_KIND_HDD,
 		TotalBytes: 2048,
 		FreeBytes:  2048,
+		CreatedAt:  secondTime,
 	}
 
 	cellCapacitySsd2 := ClusterCapacity{
@@ -129,6 +136,7 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 		Kind:       types.DiskKind_DISK_KIND_SSD,
 		TotalBytes: 2048,
 		FreeBytes:  2048,
+		CreatedAt:  secondTime,
 	}
 
 	err = storage.UpdateClusterCapacities(
@@ -212,13 +220,15 @@ func TestUpdateClusterCapacitiesDeletesRecordsBeforeTimestamp(t *testing.T) {
 
 	storage := newStorage(t, ctx, db)
 
-	deleteBefore := time.Now()
+	deleteOlderThan := time.Now()
+	createdAt := deleteOlderThan.Add(time.Hour)
 	capacity1 := ClusterCapacity{
 		ZoneID:     "zone-a",
 		CellID:     "zone-a",
 		Kind:       types.DiskKind_DISK_KIND_HDD,
 		TotalBytes: 1024,
 		FreeBytes:  1024,
+		CreatedAt:  createdAt,
 	}
 	capacity2 := ClusterCapacity{
 		ZoneID:     "zone-a",
@@ -226,9 +236,10 @@ func TestUpdateClusterCapacitiesDeletesRecordsBeforeTimestamp(t *testing.T) {
 		Kind:       types.DiskKind_DISK_KIND_HDD,
 		TotalBytes: 1024,
 		FreeBytes:  1024,
+		CreatedAt:  createdAt,
 	}
 
-	err = storage.UpdateClusterCapacities(ctx, []ClusterCapacity{capacity1}, deleteBefore)
+	err = storage.UpdateClusterCapacities(ctx, []ClusterCapacity{capacity1}, deleteOlderThan)
 	require.NoError(t, err)
 
 	capacities, err := storage.GetRecentClusterCapacities(
@@ -239,7 +250,7 @@ func TestUpdateClusterCapacitiesDeletesRecordsBeforeTimestamp(t *testing.T) {
 	require.NoError(t, err)
 	require.ElementsMatch(t, capacities, []ClusterCapacity{capacity1})
 
-	err = storage.UpdateClusterCapacities(ctx, []ClusterCapacity{capacity2}, deleteBefore)
+	err = storage.UpdateClusterCapacities(ctx, []ClusterCapacity{capacity2}, deleteOlderThan)
 	require.NoError(t, err)
 
 	capacities, err = storage.GetRecentClusterCapacities(
@@ -250,16 +261,18 @@ func TestUpdateClusterCapacitiesDeletesRecordsBeforeTimestamp(t *testing.T) {
 	require.NoError(t, err)
 	require.ElementsMatch(t, capacities, []ClusterCapacity{capacity1, capacity2})
 
-	deleteBefore = time.Now()
+	deleteOlderThan = time.Now()
+	createdAt = deleteOlderThan.Add(time.Hour)
 	capacity3 := ClusterCapacity{
 		ZoneID:     "zone-a",
 		CellID:     "zone-a",
 		Kind:       types.DiskKind_DISK_KIND_HDD,
 		TotalBytes: 2048,
 		FreeBytes:  2048,
+		CreatedAt:  createdAt,
 	}
 
-	err = storage.UpdateClusterCapacities(ctx, []ClusterCapacity{capacity3}, deleteBefore)
+	err = storage.UpdateClusterCapacities(ctx, []ClusterCapacity{capacity3}, deleteOlderThan)
 	require.NoError(t, err)
 
 	capacities, err = storage.GetRecentClusterCapacities(
