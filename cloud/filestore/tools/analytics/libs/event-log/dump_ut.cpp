@@ -221,6 +221,19 @@ Y_UNIT_TEST_SUITE(TDumpTest)
             "1970-01-01T00:00:00.000050Z\tfs\tCompaction\t0.000060s\tS_FALSE\t{no_info}\n",
             testStream.Str());
     }
+
+    Y_UNIT_TEST(ShouldDumpDiscardedRequestsCount)
+    {
+        NProto::TProfileLogRecord record;
+        record.SetDiscardedRequestCount(77);
+
+        TStringStream testStream;
+
+        DumpDiscardedRequestCount(record, &testStream);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "Discarded 77 requests\n",
+            testStream.Str());
+    }
 }
 
 }   // namespace NCloud::NFileStore

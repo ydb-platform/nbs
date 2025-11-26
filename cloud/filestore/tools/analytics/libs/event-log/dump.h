@@ -37,6 +37,10 @@ void DumpRequest(
     int i,
     IOutputStream* out);
 
+void DumpDiscardedRequestCount(
+    const NProto::TProfileLogRecord& record,
+    IOutputStream* out);
+
 TString RequestName(const ui32 requestType);
 TVector<TRequestTypeInfo> GetRequestTypes();
 

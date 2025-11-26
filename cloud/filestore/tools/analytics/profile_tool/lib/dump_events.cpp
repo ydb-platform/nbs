@@ -27,10 +27,14 @@ class TEventProcessor
 {
 private:
     const IRequestFilterPtr Filter;
+    const bool ShowDiscardedRequestCount;
 
 public:
-    explicit TEventProcessor(IRequestFilterPtr filter)
+    explicit TEventProcessor(
+            IRequestFilterPtr filter,
+            bool showDiscardedRequestCount)
         : Filter(std::move(filter))
+        , ShowDiscardedRequestCount(showDiscardedRequestCount)
     {}
 
     void DoProcessEvent(const TEvent* ev, IOutputStream* out) override
@@ -38,6 +42,10 @@ public:
         auto* message =
             dynamic_cast<const NProto::TProfileLogRecord*>(ev->GetProto());
         if (message) {
+            if (ShowDiscardedRequestCount) {
+                DumpDiscardedRequestCount(*message, out);
+            }
+
             const auto filtered_message = Filter->GetFilteredRecord(*message);
             const auto order = GetItemOrder(filtered_message);
 
@@ -63,6 +71,7 @@ private:
     TVector<ui32> FilterRequestTypes;
     bool FilterSystemRequests = false;
     bool FilterExternalRequests = false;
+    bool ShowDiscardedRequestCount = false;
 
 public:
     TDumpEventsCommand()
@@ -107,6 +116,12 @@ public:
                 "show external requests events")
             .NoArgument()
             .SetFlag(&FilterExternalRequests);
+
+        Opts.AddLongOption(
+                "discarded-requests",
+                "show discarded requests count")
+            .NoArgument()
+            .SetFlag(&ShowDiscardedRequestCount);
     }
 
     bool Init(NLastGetopt::TOptsParseResultException& parseResult) override
@@ -185,7 +200,7 @@ public:
 
     int Execute() override
     {
-        TEventProcessor processor(Filter);
+        TEventProcessor processor(Filter, ShowDiscardedRequestCount);
         const char* path[] = {"", PathToProfileLog.c_str()};
         return IterateEventLog(
             NEvClass::Factory(),
