@@ -79,14 +79,12 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 		mock.Anything, // ctx.
 		matchClusterCapacities(
 			t,
-			[]cells_storage.ClusterCapacity{
-				{
-					ZoneID:     "zone-a",
-					CellID:     "zone-a-cell1",
-					Kind:       types.DiskKind_DISK_KIND_SSD,
-					FreeBytes:  1024,
-					TotalBytes: 2048,
-				},
+			cells_storage.ClusterCapacity{
+				ZoneID:     "zone-a",
+				CellID:     "zone-a-cell1",
+				Kind:       types.DiskKind_DISK_KIND_SSD,
+				FreeBytes:  1024,
+				TotalBytes: 2048,
 			},
 		),
 		deleteOlderThanExpectation,
@@ -95,14 +93,12 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 		mock.Anything, // ctx.
 		matchClusterCapacities(
 			t,
-			[]cells_storage.ClusterCapacity{
-				{
-					ZoneID:     "zone-a",
-					CellID:     "zone-a",
-					Kind:       types.DiskKind_DISK_KIND_SSD,
-					FreeBytes:  1024,
-					TotalBytes: 2048,
-				},
+			cells_storage.ClusterCapacity{
+				ZoneID:     "zone-a",
+				CellID:     "zone-a",
+				Kind:       types.DiskKind_DISK_KIND_SSD,
+				FreeBytes:  1024,
+				TotalBytes: 2048,
 			},
 		),
 		deleteOlderThanExpectation,
@@ -111,14 +107,12 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 		mock.Anything, // ctx.
 		matchClusterCapacities(
 			t,
-			[]cells_storage.ClusterCapacity{
-				{
-					ZoneID:     "zone-b",
-					CellID:     "zone-b",
-					Kind:       types.DiskKind_DISK_KIND_SSD,
-					FreeBytes:  1024,
-					TotalBytes: 2048,
-				},
+			cells_storage.ClusterCapacity{
+				ZoneID:     "zone-b",
+				CellID:     "zone-b",
+				Kind:       types.DiskKind_DISK_KIND_SSD,
+				FreeBytes:  1024,
+				TotalBytes: 2048,
 			},
 		),
 		deleteOlderThanExpectation,
@@ -195,14 +189,12 @@ func TestCollectClusterCapacityFailureNbsReturnsError(t *testing.T) {
 		mock.Anything, // ctx.
 		matchClusterCapacities(
 			t,
-			[]cells_storage.ClusterCapacity{
-				{
-					ZoneID:     "zone-a",
-					CellID:     "zone-a",
-					Kind:       types.DiskKind_DISK_KIND_SSD,
-					FreeBytes:  1024,
-					TotalBytes: 2048,
-				},
+			cells_storage.ClusterCapacity{
+				ZoneID:     "zone-a",
+				CellID:     "zone-a",
+				Kind:       types.DiskKind_DISK_KIND_SSD,
+				FreeBytes:  1024,
+				TotalBytes: 2048,
 			},
 		),
 		mock.Anything, // deleteOlderThan.
@@ -267,14 +259,12 @@ func TestCollectClusterCapacityFailureStorageReturnsError(t *testing.T) {
 		mock.Anything, // ctx.
 		matchClusterCapacities(
 			t,
-			[]cells_storage.ClusterCapacity{
-				{
-					ZoneID:     "zone-a",
-					CellID:     "zone-a",
-					Kind:       types.DiskKind_DISK_KIND_SSD,
-					FreeBytes:  1024,
-					TotalBytes: 2048,
-				},
+			cells_storage.ClusterCapacity{
+				ZoneID:     "zone-a",
+				CellID:     "zone-a",
+				Kind:       types.DiskKind_DISK_KIND_SSD,
+				FreeBytes:  1024,
+				TotalBytes: 2048,
 			},
 		),
 		mock.Anything, // deleteOlderThan.
@@ -283,14 +273,12 @@ func TestCollectClusterCapacityFailureStorageReturnsError(t *testing.T) {
 		mock.Anything,
 		matchClusterCapacities(
 			t,
-			[]cells_storage.ClusterCapacity{
-				{
-					ZoneID:     "zone-a",
-					CellID:     "zone-a-cell1",
-					Kind:       types.DiskKind_DISK_KIND_SSD,
-					FreeBytes:  1024,
-					TotalBytes: 2048,
-				},
+			cells_storage.ClusterCapacity{
+				ZoneID:     "zone-a",
+				CellID:     "zone-a-cell1",
+				Kind:       types.DiskKind_DISK_KIND_SSD,
+				FreeBytes:  1024,
+				TotalBytes: 2048,
 			},
 		),
 		mock.Anything, // deleteOlderThan.
@@ -354,14 +342,12 @@ func TestCollectClusterCapacityOneCellHasAlreadyBeenProcessed(t *testing.T) {
 		mock.Anything, // ctx.
 		matchClusterCapacities(
 			t,
-			[]cells_storage.ClusterCapacity{
-				{
-					ZoneID:     "zone-a",
-					CellID:     "zone-a",
-					Kind:       types.DiskKind_DISK_KIND_SSD,
-					FreeBytes:  1024,
-					TotalBytes: 2048,
-				},
+			cells_storage.ClusterCapacity{
+				ZoneID:     "zone-a",
+				CellID:     "zone-a",
+				Kind:       types.DiskKind_DISK_KIND_SSD,
+				FreeBytes:  1024,
+				TotalBytes: 2048,
 			},
 		),
 		mock.Anything, // deleteOlderThan.
