@@ -2808,6 +2808,317 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         TestShouldSupportZeroCopyWriteByWriteBackCache(false);
         TestShouldSupportZeroCopyWriteByWriteBackCache(true);
     }
+
+    Y_UNIT_TEST(ShouldUpdateFileSizeWhenUsingWriteBackCache)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        // Set these variables to different before each test in order to
+        // prevent using node cache
+        TString nodeName = "";
+        ui64 nodeId = 0;
+
+        std::atomic<ui64> size = 0;
+
+        std::atomic<int> writeDataCalled = 0;
+        std::atomic<int> createHandleCalled = 0;
+        std::atomic<int> getNodeAttrCalled = 0;
+        std::atomic<int> listNodesCalled = 0;
+        std::atomic<int> resolvePathCalled = 0;
+
+        // Emulate std::atomic<ui64>::fetch_max - atomically calculate max
+        auto fetchMax = [&](ui64 arg)
+        {
+            ui64 cur = size.load();
+            while (cur < arg && !size.compare_exchange_strong(cur, arg)) {
+            }
+        };
+
+        // Filestore service requests that return node attributes:
+        // - CreateHandle
+        // - GetNodeAttr
+        // - ListNodes
+        // - ResolvePath
+        // Also, the amount of bytes returned by ReadData is affected by
+        // node size - this should also apply to cached requests
+
+        auto setAttr = [&](NProto::TNodeAttr* nodeAttr)
+        {
+            nodeAttr->SetId(nodeId);
+            nodeAttr->SetType(NProto::E_REGULAR_NODE);
+            nodeAttr->SetSize(size);
+        };
+
+        bootstrap.Service->CreateHandleHandler = [&](auto, auto)
+        {
+            createHandleCalled++;
+            NProto::TCreateHandleResponse result;
+            result.SetHandle(nodeId + 100);
+            setAttr(result.MutableNodeAttr());
+            return MakeFuture(result);
+        };
+
+        bootstrap.Service->GetNodeAttrHandler = [&](auto, auto)
+        {
+            getNodeAttrCalled++;
+            NProto::TGetNodeAttrResponse result;
+            setAttr(result.MutableNode());
+            return MakeFuture(result);
+        };
+
+        bootstrap.Service->ListNodesHandler = [&](auto, auto)
+        {
+            listNodesCalled++;
+            NProto::TListNodesResponse result;
+            result.AddNames()->assign(nodeName);
+            setAttr(result.AddNodes());
+            return MakeFuture(result);
+        };
+
+        bootstrap.Service->ReadDataHandler = [&](auto, const auto& rq)
+        {
+            ui64 end = Min(size.load(), rq->GetOffset() + rq->GetLength());
+            ui64 byteCount = end > rq->GetOffset() ? end - rq->GetOffset() : 0;
+
+            NProto::TReadDataResponse result;
+            result.MutableBuffer()->assign(TString(byteCount, 'a'));
+            return MakeFuture(std::move(result));
+        };
+
+        bootstrap.Service->ResolvePathHandler = [&](auto, auto)
+        {
+            resolvePathCalled++;
+            NProto::TResolvePathResponse result;
+            result.AddNodeIds(nodeId);
+            setAttr(result.MutableAttr());
+            return MakeFuture(result);
+        };
+
+        // The above service requests can be called by following Fuse requests:
+        // - CREATE -> CreateHandle (expected size = 0)
+        // - OPEN -> CreateHandle (the attributes are not used)
+        // - GETATTR -> GetNodeAttr
+        // - LOOKUP -> GetNodeAttr
+        // - READDIR -> ListNodes (the attributes are not used)
+        // Session request ResolvePath seems to be never called
+
+        // Note: underlying code may cache node attributes so it is worth
+        // calling Create, Open and ReadDir despite the fact that they to do
+        // return attributes to the client.
+
+        auto getSizeFromGetAttr = [&]()
+        {
+            auto rq = std::make_shared<TGetAttrRequest>(nodeId);
+            UNIT_ASSERT(bootstrap.Fuse->SendRequest(rq).Wait(WaitTimeout));
+            return rq->Out->Body.attr.size;
+        };
+
+        auto getSizeFromCreateHandle = [&]()
+        {
+            auto rq = std::make_shared<TCreateHandleRequest>(nodeName, nodeId);
+            UNIT_ASSERT(bootstrap.Fuse->SendRequest(rq).Wait(WaitTimeout));
+            return rq->Out->Body.Entry.attr.size;
+        };
+
+        auto getSizeFromOpenHandle = [&]()
+        {
+            auto rq = std::make_shared<TOpenHandleRequest>(nodeId);
+            UNIT_ASSERT(bootstrap.Fuse->SendRequest(rq).Wait(WaitTimeout));
+            // The handler for FUSE_OPEN internally calls Session->CreateHandle
+            // that returns node attributes that may be cached and returned by
+            // subsequent FUSE_GETATTR call
+            return getSizeFromGetAttr();
+        };
+
+        auto getSizeFromLookup = [&]()
+        {
+            auto rq = std::make_shared<TLookupRequest>(nodeName, nodeId);
+            UNIT_ASSERT(bootstrap.Fuse->SendRequest(rq).Wait(WaitTimeout));
+            return rq->Out->Body.attr.size;
+        };
+
+        auto getSizeFromDirectoryRead = [&]()
+        {
+            auto rq1 = std::make_shared<TOpenDirRequest>(nodeId + 1);
+            UNIT_ASSERT(bootstrap.Fuse->SendRequest(rq1).Wait(WaitTimeout));
+            auto fh = rq1->Out->Body.fh;
+
+            auto rq2 = std::make_shared<TReadDirRequest>(nodeId + 1, fh);
+            UNIT_ASSERT(bootstrap.Fuse->SendRequest(rq2).Wait(WaitTimeout));
+
+            auto rq3 = std::make_shared<TReleaseDirRequest>(nodeId + 1, fh);
+            UNIT_ASSERT(bootstrap.Fuse->SendRequest(rq3).Wait(WaitTimeout));
+
+            // The handler for FUSE_READDIR internally calls Session->ListNodes
+            // that returns node attributes that may be cached and returned by
+            // subsequent FUSE_GETATTR call
+            return getSizeFromGetAttr();
+        };
+
+        // Service operations that may modify node size
+        // - AllocateData
+        // - SetNodeAttr
+        // - TruncateData - unused
+        // - WriteData
+
+        bootstrap.Service->AllocateDataHandler = [&](auto, const auto& rq)
+        {
+            fetchMax(rq->GetOffset() + rq->GetLength());
+            return MakeFuture(NProto::TAllocateDataResponse());
+        };
+
+        bootstrap.Service->SetNodeAttrHandler = [&](auto, const auto& rq)
+        {
+            // Assume that F_SET_ATTR_SIZE is set
+            size = rq->GetUpdate().GetSize();
+            return MakeFuture(NProto::TSetNodeAttrResponse());
+        };
+
+        bootstrap.Service->WriteDataHandler = [&](auto, const auto& rq)
+        {
+            writeDataCalled++;
+            fetchMax(
+                rq->GetOffset() + rq->GetBuffer().size() -
+                rq->GetBufferOffset());
+            return MakeFuture(NProto::TWriteDataResponse());
+        };
+
+        // We check node size using all possible requests
+
+        bootstrap.Start();
+        Y_DEFER
+        {
+            bootstrap.Stop();
+        };
+
+        auto read = [&](ui64 offset, ui64 size, bool direct)
+        {
+            auto rq = std::make_shared<TReadRequest>(
+                nodeId,
+                nodeId + 100,
+                offset,
+                size);
+            rq->In->Body.flags |= O_WRONLY;
+            if (direct) {
+                rq->In->Body.flags |= O_DIRECT;
+            }
+            auto resp = bootstrap.Fuse->SendRequest<TReadRequest>(rq);
+            return resp.GetValue(WaitTimeout);
+        };
+
+        auto write = [&](ui64 offset, ui64 size, bool direct)
+        {
+            auto rq = std::make_shared<TWriteRequest>(
+                nodeId,
+                nodeId + 100,
+                offset,
+                CreateBuffer(size, 'a'));
+            rq->In->Body.flags |= O_WRONLY;
+            if (direct) {
+                rq->In->Body.flags |= O_DIRECT;
+            }
+            auto resp = bootstrap.Fuse->SendRequest<TWriteRequest>(rq);
+            return resp.GetValue(WaitTimeout) == size;
+        };
+
+        // TODO(nasonov): all reads return wrong size
+        Y_UNUSED(read);
+
+        // Direct write tests
+        size = 11;
+        nodeId = 111;
+        UNIT_ASSERT(write(4, 9, true));
+        UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(13, getSizeFromCreateHandle());
+
+        size = 12;
+        nodeId = 112;
+        UNIT_ASSERT(write(5, 9, true));
+        UNIT_ASSERT_VALUES_EQUAL(2, writeDataCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(14, getSizeFromOpenHandle());
+
+        size = 13;
+        nodeId = 113;
+        UNIT_ASSERT(write(6, 9, true));
+        UNIT_ASSERT_VALUES_EQUAL(3, writeDataCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(15, getSizeFromGetAttr());
+
+        size = 14;
+        nodeId = 114;
+        UNIT_ASSERT(write(7, 9, true));
+        UNIT_ASSERT_VALUES_EQUAL(4, writeDataCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(16, getSizeFromLookup());
+
+        size = 15;
+        nodeId = 115;
+        UNIT_ASSERT(write(8, 9, true));
+        UNIT_ASSERT_VALUES_EQUAL(5, writeDataCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(17, getSizeFromDirectoryRead());
+
+        size = 16;
+        nodeId = 116;
+        UNIT_ASSERT(write(9, 9, true));
+        UNIT_ASSERT_VALUES_EQUAL(6, writeDataCalled.load());
+        // FAIL: UNIT_ASSERT_VALUES_EQUAL(18, read(0, 100, false)());
+
+        size = 17;
+        nodeId = 117;
+        UNIT_ASSERT(write(10, 9, true));
+        UNIT_ASSERT_VALUES_EQUAL(7, writeDataCalled.load());
+        // FAIL: UNIT_ASSERT_VALUES_EQUAL(19, read(0, 100, true)());
+
+
+        // Cached write tests
+        size = 21;
+        nodeId = 211;
+        UNIT_ASSERT(write(14, 9, false));
+        UNIT_ASSERT_VALUES_EQUAL(7, writeDataCalled.load());
+        // FAIL: UNIT_ASSERT_VALUES_EQUAL(23, getSizeFromCreateHandle());
+
+        size = 22;
+        nodeId = 212;
+        UNIT_ASSERT(write(15, 9, false));
+        UNIT_ASSERT_VALUES_EQUAL(7, writeDataCalled.load());
+        // FAIL: UNIT_ASSERT_VALUES_EQUAL(24, getSizeFromOpenHandle());
+
+        size = 23;
+        nodeId = 213;
+        UNIT_ASSERT(write(16, 9, false));
+        UNIT_ASSERT_VALUES_EQUAL(7, writeDataCalled.load());
+        // FAIL: UNIT_ASSERT_VALUES_EQUAL(25, getSizeFromGetAttr());
+
+        size = 24;
+        nodeId = 214;
+        UNIT_ASSERT(write(17, 9, false));
+        UNIT_ASSERT_VALUES_EQUAL(7, writeDataCalled.load());
+        // FAIL: UNIT_ASSERT_VALUES_EQUAL(26, getSizeFromLookup());
+
+        size = 25;
+        nodeId = 215;
+        UNIT_ASSERT(write(18, 9, false));
+        UNIT_ASSERT_VALUES_EQUAL(7, writeDataCalled.load());
+        // FAIL: UNIT_ASSERT_VALUES_EQUAL(27, getSizeFromDirectoryRead());
+
+        size = 26;
+        nodeId = 216;
+        UNIT_ASSERT(write(19, 9, false));
+        UNIT_ASSERT_VALUES_EQUAL(7, writeDataCalled.load());
+        // FAIL: UNIT_ASSERT_VALUES_EQUAL(28, read(0, 100, false)());
+
+        size = 27;
+        nodeId = 217;
+        UNIT_ASSERT(write(20, 9, false));
+        UNIT_ASSERT_VALUES_EQUAL(7, writeDataCalled.load());
+        // FAIL: UNIT_ASSERT_VALUES_EQUAL(29, read(0, 100, true)());
+        // Direct read should trigger flush
+        // FAIL: UNIT_ASSERT_VALUES_EQUAL(8, writeDataCalled.load());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse
