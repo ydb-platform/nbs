@@ -234,7 +234,7 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Len(t, capacities, 1)
-	requireClusterCapacitiesAreEqual(t, cellCapacitySsd1, capacities[0])
+	requireClusterCapacitiesAreEqual(t, cellCapacitySsd2, capacities[0])
 }
 
 func TestUpdateClusterCapacitiesDeletesRecordsBeforeTimestamp(t *testing.T) {
