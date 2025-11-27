@@ -19,23 +19,20 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func matchClusterCapacities(t *testing.T, want []cells_storage.ClusterCapacity) interface{} {
+func matchClusterCapacities(t *testing.T, expected cells_storage.ClusterCapacity) interface{} {
 	return mock.MatchedBy(func(actual []cells_storage.ClusterCapacity) bool {
-		if len(want) != len(actual) {
+		if len(actual) != 1 {
 			return false
 		}
 
-		for i := range want {
-			expected := want[i]
-			got := actual[i]
-
-			if expected.FreeBytes != got.FreeBytes ||
-				expected.TotalBytes != got.TotalBytes ||
-				expected.CellID != got.CellID || expected.Kind != got.Kind ||
-				expected.ZoneID != got.ZoneID {
-				return false
-			}
+		got := actual[0]
+		if expected.FreeBytes != got.FreeBytes ||
+			expected.TotalBytes != got.TotalBytes ||
+			expected.CellID != got.CellID || expected.Kind != got.Kind ||
+			expected.ZoneID != got.ZoneID {
+			return false
 		}
+
 		return true
 	})
 }
