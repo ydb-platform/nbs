@@ -2,6 +2,7 @@
 
 #include "config.h"
 #include "probes.h"
+#include "server_memory_state.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/incomplete_requests.h>
@@ -238,6 +239,8 @@ struct TFileStoreContext: TAppContext
 {
     NProto::TFileStoreService::AsyncService Service;
     IFileStoreServicePtr ServiceImpl;
+
+    TServerStatePtr State;
 };
 
 struct TEndpointManagerContext : TAppContext
@@ -1185,24 +1188,10 @@ protected:
         }
         CallContext->RequestId = RequestId;
     }
-
-    void ProcessAndSendResponse()
-    {
-        TResponseType response;
-        auto* error = response.MutableError();
-        error->SetCode(E_NOT_IMPLEMENTED);
-        error->SetMessage("shared memory transport not implemented yet");
-
-        Writer.Finish(response, grpc::Status::OK, AcquireCompletionTag());
-    }
-
-    void CompleteRequest()
-    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 // Custom sync handlers for the shared memory transport
-// TODO(4649): implement actual logic
 
 class TListMmapRegionsCustomHandler final
     : public TCustomHandlerBase<
@@ -1210,11 +1199,13 @@ class TListMmapRegionsCustomHandler final
           NProto::TListMmapRegionsResponse,
           TListMmapRegionsCustomHandler>
 {
-public:
-    using TCustomHandlerBase<
+    using TBase = TCustomHandlerBase<
         NProto::TListMmapRegionsRequest,
         NProto::TListMmapRegionsResponse,
-        TListMmapRegionsCustomHandler>::TCustomHandlerBase;
+        TListMmapRegionsCustomHandler>;
+
+public:
+    using TBase::TBase;
 
     void PrepareRequestImpl()
     {
@@ -1226,6 +1217,31 @@ public:
             this->ExecCtx.CompletionQueue.get(),
             this);
     }
+
+    void ProcessAndSendResponse()
+    {
+        Regions = this->AppCtx.State->ListMmapRegions();
+
+        NProto::TListMmapRegionsResponse response;
+        for (const auto& region: Regions) {
+            auto* regionInfo = response.AddRegions();
+            regionInfo->SetId(region.Id);
+            regionInfo->SetFilePath(region.FilePath);
+            regionInfo->SetSize(region.Size);
+        }
+        this->Writer.Finish(response, grpc::Status::OK, AcquireCompletionTag());
+    }
+
+    void CompleteRequest()
+    {
+        auto& Log = this->AppCtx.Log;
+        STORAGE_INFO(
+            "ListMmapRegions #" << this->RequestId
+                                << " completed, regions: " << Regions.size());
+    }
+
+private:
+    std::vector<TMmapRegionMetadata> Regions;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1236,11 +1252,16 @@ class TMmapCustomHandler final
           NProto::TMmapResponse,
           TMmapCustomHandler>
 {
-public:
-    using TCustomHandlerBase<
+    using TBase = TCustomHandlerBase<
         NProto::TMmapRequest,
         NProto::TMmapResponse,
-        TMmapCustomHandler>::TCustomHandlerBase;
+        TMmapCustomHandler>;
+
+public:
+    TMmapCustomHandler(TExecutorContext& execCtx, TFileStoreContext& appCtx)
+        : TBase(execCtx, appCtx)
+        , Result(TMmapRegionMetadata())
+    {}
 
     void PrepareRequestImpl()
     {
@@ -1252,6 +1273,39 @@ public:
             this->ExecCtx.CompletionQueue.get(),
             this);
     }
+
+    void ProcessAndSendResponse()
+    {
+        Result = this->AppCtx.State->CreateMmapRegion(
+            this->Request->GetFilePath(),
+            this->Request->GetSize());
+        NProto::TMmapResponse response;
+
+        if (NCloud::HasError(Result)) {
+            *response.MutableError() = Result.GetError();
+        } else {
+            response.SetId(Result.GetResult().Id);
+        }
+
+        this->Writer.Finish(response, grpc::Status::OK, AcquireCompletionTag());
+    }
+
+    void CompleteRequest()
+    {
+        auto& Log = this->AppCtx.Log;
+        if (!NCloud::HasError(Result)) {
+            STORAGE_INFO(
+                "Mmap #" << this->RequestId
+                         << " completed, region id: " << Result.GetResult().Id);
+        } else {
+            STORAGE_INFO(
+                "Mmap #" << this->RequestId
+                         << " failed: " << FormatError(Result.GetError()));
+        }
+    }
+
+private:
+    NCloud::TResultOrError<TMmapRegionMetadata> Result;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1262,11 +1316,13 @@ class TMunmapCustomHandler final
           NProto::TMunmapResponse,
           TMunmapCustomHandler>
 {
-public:
-    using TCustomHandlerBase<
+    using TBase = TCustomHandlerBase<
         NProto::TMunmapRequest,
         NProto::TMunmapResponse,
-        TMunmapCustomHandler>::TCustomHandlerBase;
+        TMunmapCustomHandler>;
+
+public:
+    using TBase::TBase;
 
     void PrepareRequestImpl()
     {
@@ -1278,6 +1334,33 @@ public:
             this->ExecCtx.CompletionQueue.get(),
             this);
     }
+
+    void ProcessAndSendResponse()
+    {
+        Error = this->AppCtx.State->DestroyMmapRegion(this->Request->GetId());
+
+        NProto::TMunmapResponse response;
+        if (NCloud::HasError(Error)) {
+            *response.MutableError() = Error;
+        }
+
+        this->Writer.Finish(response, grpc::Status::OK, AcquireCompletionTag());
+    }
+
+    void CompleteRequest()
+    {
+        auto& Log = this->AppCtx.Log;
+        if (!NCloud::HasError(Error)) {
+            STORAGE_INFO("Munmap #" << this->RequestId << " completed");
+        } else {
+            STORAGE_INFO(
+                "Munmap #" << this->RequestId
+                           << " failed: " << FormatError(Error));
+        }
+    }
+
+private:
+    NCloud::NProto::TError Error;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1301,10 +1384,11 @@ void StartRequests(TExecutorContext& execCtx, TFileStoreContext& appCtx)
     TFileStoreStreamHandler<TGetSessionEventsStreamMethod>::Start(execCtx, appCtx);
 
     // Custom handlers for the shared memory transport
-    // TODO(4649): after implementation Start only upon a feature flag
-    TListMmapRegionsCustomHandler::Start(execCtx, appCtx);
-    TMmapCustomHandler::Start(execCtx, appCtx);
-    TMunmapCustomHandler::Start(execCtx, appCtx);
+    if (appCtx.State) {
+        TListMmapRegionsCustomHandler::Start(execCtx, appCtx);
+        TMmapCustomHandler::Start(execCtx, appCtx);
+        TMunmapCustomHandler::Start(execCtx, appCtx);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1353,11 +1437,24 @@ public:
         : Config(std::move(config))
         , Logging(std::move(logging))
     {
+        InitializeAppContext(AppCtx, service);
         AppCtx.ServiceImpl = std::move(service);
         AppCtx.Stats = std::move(requestStats);
         AppCtx.ProfileLog = std::move(profileLog);
     }
 
+private:
+    void InitializeAppContext(auto& ctx, auto& /*service*/)
+    {
+        if constexpr (requires { ctx.State; }) { // Implemented only for TFileStoreContext
+            if (Config->GetSharedMemoryTransportEnabled()) {
+                ctx.State = std::make_shared<TServerState>(
+                    Config->GetSharedMemoryBasePath());
+            }
+        }
+    }
+
+public:
     ~TServer() override
     {
         Stop();
