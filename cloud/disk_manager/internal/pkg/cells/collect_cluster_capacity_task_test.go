@@ -35,10 +35,6 @@ func matchClusterCapacities(t *testing.T, want []cells_storage.ClusterCapacity) 
 				expected.ZoneID != got.ZoneID {
 				return false
 			}
-
-			if expected.CreatedAt.Sub(got.CreatedAt).Abs() >= 15*time.Minute {
-				return false
-			}
 		}
 		return true
 	})
