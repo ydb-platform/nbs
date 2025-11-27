@@ -179,6 +179,14 @@ struct TRecentVolumeStatsInfo
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// If the disk has been copied, statistics can be sent both on behalf of the
+// source disk (logicalDiskId) and on behalf of the copied disk
+// (logicalDiskId-copy). The client should not know anything about the real
+// names of the disks - it only knows the logical name. For this reason, we save
+// statistics under the name of the logical disk and publish it under the same
+// name. At the same time, we keep track of the names of the real disks
+// associated with the logical disk.
+
 class TStatsServiceState
 {
 public:

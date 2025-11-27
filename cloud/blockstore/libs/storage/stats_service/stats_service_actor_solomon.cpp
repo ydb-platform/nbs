@@ -335,6 +335,8 @@ void TStatsServiceActor::HandleUnregisterVolume(
             volume->VolumeInfo.GetDiskId().Quote().c_str(),
             JoinSeq(",", volume->RealDiskIds).Quote().c_str());
 
+        // Remove registration from the disk when both the main and the copied
+        // disk are unregistered.
         volume->RealDiskIds.erase(msg->DiskId);
         if (volume->RealDiskIds.empty()) {
             UnregisterIsLocalMountCounter(AppData(ctx)->Counters, *volume);
