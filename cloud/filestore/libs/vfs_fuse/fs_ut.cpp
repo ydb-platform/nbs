@@ -3189,6 +3189,385 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         UNIT_ASSERT(!path.Exists());
     }
+
+    Y_UNIT_TEST(ShouldUpdateFileSizeWhenUsingWriteBackCache)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        // Set these variables to different before each test case in order to
+        // prevent caching node attributes
+        ui64 nodeId = 0;
+
+        auto getNodeName = [&]() {
+            return Sprintf("file_%lu", nodeId);
+        };
+
+        std::atomic<ui64> size = 0;
+
+        std::atomic<int> writeDataCalled = 0;
+        std::atomic<int> createHandleCalled = 0;
+        std::atomic<int> getNodeAttrCalled = 0;
+        std::atomic<int> listNodesCalled = 0;
+        std::atomic<int> resolvePathCalled = 0;
+
+        // Emulate std::atomic<ui64>::fetch_max - atomically calculate max
+        auto fetchMax = [&](ui64 arg)
+        {
+            ui64 cur = size.load();
+            while (cur < arg && !size.compare_exchange_strong(cur, arg)) {
+            }
+        };
+
+        // The following filestore service requests return node attributes:
+        // - CreateHandle
+        // - GetNodeAttr
+        // - ListNodes
+        // - ResolvePath
+
+        auto setAttr = [&](NProto::TNodeAttr* nodeAttr)
+        {
+            nodeAttr->SetId(nodeId);
+            nodeAttr->SetType(NProto::E_REGULAR_NODE);
+            nodeAttr->SetSize(size);
+        };
+
+        auto proceedServiceOperations = NewPromise();
+
+        auto delayedFuture = [&](auto result)
+        {
+            auto promise = NewPromise<decltype(result)>();
+            proceedServiceOperations.GetFuture().Subscribe(
+                [promise, result = std::move(result)](const auto&) mutable
+                { promise.SetValue(result); });
+            return promise.GetFuture();
+        };
+
+        bootstrap.Service->CreateHandleHandler = [&](auto, auto)
+        {
+            createHandleCalled++;
+            NProto::TCreateHandleResponse result;
+            result.SetHandle(nodeId + 100);
+            setAttr(result.MutableNodeAttr());
+            return delayedFuture(result);
+        };
+
+        bootstrap.Service->GetNodeAttrHandler = [&](auto, auto)
+        {
+            getNodeAttrCalled++;
+            NProto::TGetNodeAttrResponse result;
+            setAttr(result.MutableNode());
+            return delayedFuture(result);
+        };
+
+        bootstrap.Service->ListNodesHandler = [&](auto, auto)
+        {
+            listNodesCalled++;
+            NProto::TListNodesResponse result;
+            result.AddNames()->assign(getNodeName());
+            setAttr(result.AddNodes());
+            return delayedFuture(result);
+        };
+
+        bootstrap.Service->ResolvePathHandler = [&](auto, auto)
+        {
+            resolvePathCalled++;
+            NProto::TResolvePathResponse result;
+            result.AddNodeIds(nodeId);
+            setAttr(result.MutableAttr());
+            return delayedFuture(result);
+        };
+
+        // We should also check the amount of bytes returned by ReadData
+        // that is affected by the node size
+
+        bootstrap.Service->ReadDataHandler = [&](auto, const auto& rq)
+        {
+            ui64 end = Min(size.load(), rq->GetOffset() + rq->GetLength());
+            ui64 byteCount = end > rq->GetOffset() ? end - rq->GetOffset() : 0;
+
+            NProto::TReadDataResponse result;
+            result.MutableBuffer()->assign(TString(byteCount, 'a'));
+            return delayedFuture(result);
+        };
+
+        // The following Fuse requests call the mentioned above filestore
+        // service requests:
+        // - FUSE_CREATE -> CreateHandle (creates new node, expected size = 0)
+        // - FUSE_OPEN -> CreateHandle (the returned attributes are not used)
+        // - FUSE_GETATTR -> GetNodeAttr
+        // - FUSE_LOOKUP -> GetNodeAttr
+        // - FUSE_READDIR -> ListNodes (the returned attributes are not used)
+        // - FUSE_READDIRPLUS -> ListNodes
+        // Filestore service request ResolvePath seems to be never called
+
+        // Note: TFileSystem implementation may implicitly cache node attributes
+        // returned by the filestore service. We want to ensure that the
+        // correct values are cached so it worth to call FUSE_CREATE, FUSE_OPEN
+        // and FUSE_READDIR despite the fact that they don't directly return
+        // attributes in their responses
+
+        auto getSizeFromGetAttr = [&]()
+        {
+            auto rq = std::make_shared<TGetAttrRequest>(nodeId);
+            return bootstrap.Fuse->SendRequest(rq).Apply(
+                [rq](const auto&) { return rq->Out->Body.attr.size; });
+        };
+
+        auto getSizeFromOpenHandle = [&]()
+        {
+            auto rq = std::make_shared<TOpenHandleRequest>(nodeId);
+            // The handler for FUSE_OPEN internally calls Session->CreateHandle
+            // that returns node attributes that may be cached and returned by
+            // the subsequent FUSE_GETATTR call
+            return bootstrap.Fuse->SendRequest(rq).Apply(
+                [&](const auto&) { return getSizeFromGetAttr(); });
+        };
+
+        auto getSizeFromLookup = [&]()
+        {
+            auto rq = std::make_shared<TLookupRequest>(getNodeName(), nodeId);
+            return bootstrap.Fuse->SendRequest(rq).Apply(
+                [rq](const auto&) { return rq->Out->Body.attr.size; });
+        };
+
+        auto getSizeFromDirectoryRead = [&]()
+        {
+            auto rq1 = std::make_shared<TOpenDirRequest>(nodeId + 1);
+            return bootstrap.Fuse->SendRequest(rq1).Apply(
+                [&, rq1](const auto&)
+                {
+                    auto fh = rq1->Out->Body.fh;
+                    auto rq2 =
+                        std::make_shared<TReadDirRequest>(nodeId + 1, fh);
+
+                    return bootstrap.Fuse->SendRequest(rq2)
+                        .Apply(
+                            [rq2](const auto&)
+                            {
+                                auto buf = TStringBuf(
+                                    reinterpret_cast<const char*>(
+                                        rq2->Out->Data()),
+                                    rq2->Out->Header.len -
+                                        sizeof(rq2->Out->Header));
+
+                                // Skip "." and ".." entries
+                                UNIT_ASSERT_LE(
+                                    sizeof(fuse_direntplus) + 320,
+                                    buf.size());
+                                buf = buf.Skip(320);
+
+                                const auto* de =
+                                    reinterpret_cast<const fuse_direntplus*>(
+                                        buf.data());
+
+                                return de->entry_out.attr.size;
+                            })
+                        .Subscribe(
+                            [&, fh](const auto&)
+                            {
+                                auto rq3 = std::make_shared<TReleaseDirRequest>(
+                                    nodeId + 1,
+                                    fh);
+                                bootstrap.Fuse->SendRequest(rq3);
+                            });
+                });
+        };
+
+        auto getSizeFromDirectRead = [&]()
+        {
+            auto rq = std::make_shared<TReadRequest>(
+                nodeId,
+                nodeId + 100,
+                0,
+                1000);
+            rq->In->Body.flags |= O_DIRECT;
+            return bootstrap.Fuse->SendRequest<TReadRequest>(rq);
+        };
+
+        auto getSizeFromCachedRead = [&]()
+        {
+            auto rq = std::make_shared<TReadRequest>(
+                nodeId,
+                nodeId + 100,
+                0,
+                1000);
+            return bootstrap.Fuse->SendRequest<TReadRequest>(rq);
+        };
+
+        // The following filestore service operations affect node size:
+        // - AllocateData
+        // - SetNodeAttr (also returns new attributes)
+        // - TruncateData - seems to be unused
+        // - WriteData
+
+        bootstrap.Service->AllocateDataHandler = [&](auto, const auto& rq)
+        {
+            fetchMax(rq->GetOffset() + rq->GetLength());
+            return MakeFuture(NProto::TAllocateDataResponse());
+        };
+
+        bootstrap.Service->SetNodeAttrHandler = [&](auto, const auto& rq)
+        {
+            // Assume that F_SET_ATTR_SIZE is set
+            size = rq->GetUpdate().GetSize();
+            NProto::TSetNodeAttrResponse result;
+            result.MutableNode()->SetId(nodeId);
+            result.MutableNode()->SetSize(size);
+            return MakeFuture(std::move(result));
+        };
+
+        bootstrap.Service->WriteDataHandler = [&](auto, const auto& rq)
+        {
+            writeDataCalled++;
+            fetchMax(
+                rq->GetOffset() + rq->GetBuffer().size() -
+                rq->GetBufferOffset());
+            return MakeFuture(NProto::TWriteDataResponse());
+        };
+
+        // We verify reported node size using various request combinations
+
+        bootstrap.Start();
+        Y_DEFER
+        {
+            bootstrap.Stop();
+        };
+
+        auto write = [&](ui64 offset, ui64 size, bool direct)
+        {
+            auto rq = std::make_shared<TWriteRequest>(
+                nodeId,
+                nodeId + 100,
+                offset,
+                CreateBuffer(size, 'a'));
+            rq->In->Body.flags |= O_WRONLY;
+            if (direct) {
+                rq->In->Body.flags |= O_DIRECT;
+            }
+            auto resp = bootstrap.Fuse->SendRequest<TWriteRequest>(rq);
+            return resp.GetValue(WaitTimeout) == size;
+        };
+
+        auto flush = [&]()
+        {
+            auto rq = std::make_shared<TFlushRequest>(
+                nodeId,
+                nodeId + 100);
+            auto resp = bootstrap.Fuse->SendRequest<TFlushRequest>(rq);
+            resp.Wait(WaitTimeout);
+        };
+
+        auto setSize = [&](ui64 size)
+        {
+            auto rq = std::make_shared<TSetAttrRequest>(nodeId, nodeId + 100);
+            rq->In->Body.valid = FUSE_SET_ATTR_SIZE;
+            rq->In->Body.size = size;
+            UNIT_ASSERT(bootstrap.Fuse->SendRequest(rq).Wait(WaitTimeout));
+            return rq->Out->Body.attr.size;
+        };
+
+        Y_UNUSED(setSize);
+
+        auto iter = 1;
+
+        auto nextIter = [&]()
+        {
+            ++iter;
+            size = iter * 10;
+            nodeId = iter * 5;
+            return size.load();
+        };
+
+        // Scenario 1:
+        // - Request and wait for WriteData with O_DIRECT flag
+        // - Get node size
+        auto testScenario1 = [&](const TString& testName, auto getSizeFunc)
+        {
+            auto size = nextIter();
+            auto counter = writeDataCalled.load();
+            proceedServiceOperations.TrySetValue();
+            UNIT_ASSERT_C(write(size - 5, 9, true), "Scenario 1 " + testName);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                counter + 1,
+                writeDataCalled.load(),
+                "Scenario 1 " + testName);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                size + 4,
+                getSizeFunc().GetValue(WaitTimeout),
+                "Scenario 1 " + testName);
+        };
+
+        // Scenario 2:
+        // - Request and wait for WriteData without O_DIRECT flag
+        // - Get node size
+        auto testScenario2 = [&](const TString& testName, auto getSizeFunc)
+        {
+            auto size = nextIter();
+            auto counter = writeDataCalled.load();
+            proceedServiceOperations.TrySetValue();
+            UNIT_ASSERT_C(write(size - 5, 9, false), "Scenario 2 " + testName);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                counter,
+                writeDataCalled.load(),
+                "Scenario 2 " + testName);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                size + 4,
+                getSizeFunc().GetValue(WaitTimeout),
+                "Scenario 2 " + testName);
+        };
+
+        // Scenario 3:
+        // - Request and wait for WriteData without O_DIRECT flag
+        // - Initiate a request that returns node size
+        // - Request and wait for Flush
+        // - Proceed the request that returns node size
+        auto testScenario3 = [&](const TString& testName, auto getSizeFunc)
+        {
+            auto size = nextIter();
+            auto counter = writeDataCalled.load();
+            proceedServiceOperations = NewPromise();
+            UNIT_ASSERT_C(write(size - 5, 9, false), "Scenario 3 " + testName);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                counter,
+                writeDataCalled.load(),
+                "Scenario 3 " + testName);
+
+            auto sizeFuture = getSizeFunc();
+            UNIT_ASSERT_C(!sizeFuture.HasValue(), "Scenario 3 " + testName);
+
+            flush();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                counter + 1,
+                writeDataCalled.load(),
+                "Scenario 3 " + testName);
+
+            proceedServiceOperations.SetValue();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                size + 4,
+                sizeFuture.GetValue(WaitTimeout),
+                "Scenario 3 " + testName);
+        };
+
+        auto test = [&](const TString& testName, auto getSizeFunc)
+        {
+            testScenario1(testName, getSizeFunc);
+            testScenario2(testName, getSizeFunc);
+            testScenario3(testName, getSizeFunc);
+        };
+
+        test("OpenHandle", getSizeFromOpenHandle);
+        test("GetAttr", getSizeFromGetAttr);
+        test("Lookup", getSizeFromLookup);
+        test("DirectoryRead", getSizeFromDirectoryRead);
+        test("CachedRead", getSizeFromCachedRead);
+        test("DirectRead", getSizeFromDirectRead);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse
