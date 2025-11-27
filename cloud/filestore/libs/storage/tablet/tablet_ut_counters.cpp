@@ -963,7 +963,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         checkHandlesCounters(0, 0);
     }
 
-    Y_UNIT_TEST(ShouldNotPersistUsedDirectHandlesCountAfterRestart)
+    Y_UNIT_TEST(ShouldPersistUsedDirectHandlesCountAfterRestart)
     {
         TTestEnv env;
         auto registry = env.GetRegistry();
