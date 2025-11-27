@@ -962,6 +962,63 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         advanceTime();
         checkHandlesCounters(0, 0);
     }
+
+    Y_UNIT_TEST(ShouldNotPersistUsedDirectHandlesCountAfterRestart)
+    {
+        TTestEnv env;
+        auto registry = env.GetRegistry();
+
+        env.CreateSubDomain("nfs");
+        ui32 nodeIdx = env.CreateNode("nfs");
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        const auto nodeId =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+
+        auto checkHandlesCounters =
+            [&](i64 expectedDirectHandles, i64 expectedUsedHandles)
+        {
+            TTestRegistryVisitor visitor;
+            tablet.SendRequest(tablet.CreateUpdateCounters());
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "UsedDirectHandlesCount"}, {"filesystem", "test"}},
+                 expectedDirectHandles},
+                {{{"sensor", "UsedHandlesCount"}, {"filesystem", "test"}},
+                 expectedUsedHandles},
+            });
+        };
+
+        checkHandlesCounters(0, 0);
+
+        const auto handle1 = CreateHandle(
+            tablet,
+            nodeId,
+            {},
+            TCreateHandleArgs::RDWR | TCreateHandleArgs::DIRECT);
+
+        const auto handle2 = CreateHandle(
+            tablet,
+            nodeId,
+            {},
+            TCreateHandleArgs::RDWR | TCreateHandleArgs::DIRECT);
+        checkHandlesCounters(2, 2);
+
+        tablet.RebootTablet();
+        tablet.RecoverSession();
+
+        checkHandlesCounters(2, 2);
+
+        tablet.DestroyHandle(handle1);
+        checkHandlesCounters(1, 1);
+
+        tablet.DestroyHandle(handle2);
+        checkHandlesCounters(0, 0);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

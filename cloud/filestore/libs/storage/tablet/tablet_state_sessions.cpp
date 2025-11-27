@@ -603,6 +603,10 @@ TSessionHandle* TIndexTabletState::CreateHandle(
 
 void TIndexTabletState::RemoveHandle(TSessionHandle* handle)
 {
+    if (HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_DIRECT)) {
+        --Impl->UsedDirectHandlesCount;
+    }
+
     std::unique_ptr<TSessionHandle> holder(handle);
 
     handle->Unlink();
@@ -706,10 +710,6 @@ void TIndexTabletState::DestroyHandle(
         handle->GetHandle());
 
     DecrementUsedHandlesCount(db);
-
-    if (HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_DIRECT)) {
-        --Impl->UsedDirectHandlesCount;
-    }
 
     ReleaseLocks(db, handle->GetHandle());
 
