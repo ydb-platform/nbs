@@ -29,7 +29,8 @@ func matchClusterCapacities(t *testing.T, expected cells_storage.ClusterCapacity
 		if expected.FreeBytes != got.FreeBytes ||
 			expected.TotalBytes != got.TotalBytes ||
 			expected.CellID != got.CellID || expected.Kind != got.Kind ||
-			expected.ZoneID != got.ZoneID {
+			expected.ZoneID != got.ZoneID ||
+			time.Now().Sub(got.CreatedAt).Abs() >= time.Minute {
 			return false
 		}
 
