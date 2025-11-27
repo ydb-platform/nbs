@@ -91,7 +91,7 @@ TTestEnv::TTestEnv(
 {
     storageConfig.SetSchemeShardDir(Config.DomainName);
 
-    StorageConfig = CreateTestStorageConfig(std::move(storageConfig));
+    UpdateStorageConfig(std::move(storageConfig));
 
     DiagConfig = std::make_shared<TDiagnosticsConfig>(std::move(diagConfig));
 
@@ -119,6 +119,11 @@ TTestEnv::TTestEnv(
     Registry = NMetrics::CreateMetricsRegistry(
         {NMetrics::CreateLabel("counters", "filestore")},
         Runtime.GetAppData().Counters);
+}
+
+void TTestEnv::UpdateStorageConfig(NProto::TStorageConfig storageConfig)
+{
+    StorageConfig = CreateTestStorageConfig(std::move(storageConfig));
 }
 
 ui64 TTestEnv::GetHive()
@@ -190,6 +195,29 @@ void TTestEnv::CreateSubDomain(const TString& name)
     }
 }
 
+void TTestEnv::CreateAndRegisterStorageService(ui32 nodeIdx)
+{
+    auto& appData = Runtime.GetAppData(nodeIdx);
+
+    auto indexService = CreateStorageService(
+        StorageConfig,
+        StatsRegistry,
+        ProfileLog,
+        TraceSerializer,
+        CreateStatsFetcherStub());
+    auto indexServiceId = Runtime.Register(
+        indexService.release(),
+        nodeIdx,
+        appData.UserPoolId,
+        TMailboxType::Simple,
+        0);
+    Runtime.EnableScheduleForActor(indexServiceId);
+    Runtime.RegisterService(
+        MakeStorageServiceId(),
+        indexServiceId,
+        nodeIdx);
+}
+
 ui32 TTestEnv::CreateNode(const TString& name)
 {
     ui32 nodeIdx = NextDynamicNode++;
@@ -221,23 +249,7 @@ ui32 TTestEnv::CreateNode(const TString& name)
         tenantPoolId,
         nodeIdx);
 
-    auto indexService = CreateStorageService(
-        StorageConfig,
-        StatsRegistry,
-        ProfileLog,
-        TraceSerializer,
-        CreateStatsFetcherStub());
-    auto indexServiceId = Runtime.Register(
-        indexService.release(),
-        nodeIdx,
-        appData.UserPoolId,
-        TMailboxType::Simple,
-        0);
-    Runtime.EnableScheduleForActor(indexServiceId);
-    Runtime.RegisterService(
-        MakeStorageServiceId(),
-        indexServiceId,
-        nodeIdx);
+    CreateAndRegisterStorageService(nodeIdx);
 
     auto tabletProxy = CreateIndexTabletProxy(StorageConfig);
     auto tabletProxyId = Runtime.Register(

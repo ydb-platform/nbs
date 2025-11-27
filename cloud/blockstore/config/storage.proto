@@ -84,6 +84,16 @@ enum EResyncPolicy
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+enum ENonreplAllocationPolicy
+{
+    NONREPL_ALLOC_POLICY_NOT_SPECIFIED = 0;
+
+    // Try to allocate disk devices of the same user on different hosts if possible.
+    NONREPL_ALLOC_POLICY_USER_ANTI_AFFINITY = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 //
 //  !!!IMPORTANT!!!
 //  Even though StorageServiceConfig is usually stored in textual format, it may
@@ -1363,4 +1373,10 @@ message TStorageServiceConfig
     //   N = track every Nth operation
     // Higher values reduce monitoring overhead but provide less granular statistics.
     optional uint32 DeviceOperationTrackingFrequency = 467;
+
+    // Enable to attach or detach hardware devices in runtime in Disk Agent.
+    optional bool AttachDetachPathsEnabled = 468;
+
+    // Policy for allocating nonreplicated disks.
+    optional ENonreplAllocationPolicy NonreplAllocationPolicy = 469;
 }

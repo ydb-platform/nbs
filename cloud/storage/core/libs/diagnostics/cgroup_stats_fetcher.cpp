@@ -2,10 +2,10 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
-#include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/yexception.h>
 #include <util/string/builder.h>
+#include <util/string/cast.h>
 #include <util/system/file.h>
 
 namespace NCloud::NStorage {
@@ -19,75 +19,36 @@ struct TCgroupStatsFetcher final
 {
 private:
     const TString ComponentName;
-
-    const ILoggingServicePtr Logging;
     const TString StatsFile;
-
-    TLog Log;
-
-    TFile CpuAcctWait;
 
     TDuration Last;
 
 public:
     TCgroupStatsFetcher(
             TString componentName,
-            ILoggingServicePtr logging,
             TString statsFile)
         : ComponentName(std::move(componentName))
-        , Logging(std::move(logging))
         , StatsFile(std::move(statsFile))
-    {
-    }
-
-    void Start() override
-    {
-        Log = Logging->CreateLog(ComponentName);
-
-        try {
-            CpuAcctWait = TFile(
-                StatsFile,
-                EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
-        } catch (...) {
-            STORAGE_ERROR(BuildErrorMessageFromException());
-            return;
-        }
-
-        if (!CpuAcctWait.IsOpen()) {
-            STORAGE_ERROR("Failed to open " << StatsFile);
-            return;
-        }
-
-        if (auto [cpuWait, error] = GetCpuWait(); HasError(error)) {
-            STORAGE_ERROR("Failed to get CpuWait stats: " << error);
-        } else {
-            Last = cpuWait;
-        }
-    }
-
-    void Stop() override
+        , Last(TDuration::Zero())
     {
     }
 
     TResultOrError<TDuration> GetCpuWait() override
     {
-        if (!CpuAcctWait.IsOpen()) {
-            return MakeError(E_INVALID_STATE, "Failed to open " + StatsFile);
-        }
-
         try {
-            CpuAcctWait.Seek(0, SeekDir::sSet);
+            TFile cpuAcctWait = TFile(
+                StatsFile,
+                EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
 
             constexpr i64 bufSize = 1024;
 
-            if (CpuAcctWait.GetLength() >= bufSize - 1) {
-                CpuAcctWait.Close();
+            if (cpuAcctWait.GetLength() >= bufSize - 1) {
                 return MakeError(E_INVALID_STATE, StatsFile + " is too large");
             }
 
             char buf[bufSize];
 
-            auto cnt = CpuAcctWait.Read(buf, bufSize - 1);
+            auto cnt = cpuAcctWait.Read(buf, bufSize - 1);
             if (buf[cnt - 1] == '\n') {
                 --cnt;
             }
@@ -106,17 +67,13 @@ public:
 
             return retval;
         } catch (...) {
-            auto errorMessage = BuildErrorMessageFromException();
-            CpuAcctWait.Close();
+            auto errorMessage = TStringBuilder()
+                                << "IO error for " << StatsFile
+                                << " with exception "
+                                << CurrentExceptionMessage().Quote();
+
             return MakeError(E_FAIL, std::move(errorMessage));
         }
-    }
-
-    TString BuildErrorMessageFromException()
-    {
-        auto msg = TStringBuilder() << "IO error for " << StatsFile;
-        msg << " with exception " << CurrentExceptionMessage();
-        return msg;
     }
 };
 
@@ -126,12 +83,10 @@ public:
 
 IStatsFetcherPtr CreateCgroupStatsFetcher(
     TString componentName,
-    ILoggingServicePtr logging,
     TString statsFile)
 {
     return std::make_shared<TCgroupStatsFetcher>(
         std::move(componentName),
-        std::move(logging),
         std::move(statsFile));
 }
 

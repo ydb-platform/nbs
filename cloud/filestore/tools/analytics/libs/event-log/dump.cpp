@@ -106,4 +106,14 @@ void DumpRequest(
         << "\t" << printerIt->second->DumpInfo(r) << "\n";
 }
 
+void DumpDiscardedRequestCount(
+    const NProto::TProfileLogRecord& record,
+    IOutputStream* out)
+{
+    auto count = record.GetDiscardedRequestCount();
+    if (count) {
+        (*out) << "Discarded " << count << " requests\n";
+    }
+}
+
 }   // namespace NCloud::NFileStore

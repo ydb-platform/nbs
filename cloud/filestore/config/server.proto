@@ -56,6 +56,12 @@ message TServerConfig
 
     // List of actions served by the server without authorization.
     repeated string ActionsNoAuth = 19;
+
+    // Enable shared memory transport for gRPC. Some data-intensive operations
+    // like read/write can use shared memory to pass data to the server instead
+    // of gRPC messages.
+    optional bool SharedMemoryTransportEnabled = 21;
+    optional string SharedMemoryBasePath = 22;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -170,17 +170,9 @@ NProto::TRenameNodeResponse TLocalFileSystem::RenameNode(
     }
 
     std::optional<NLowLevel::TFileStatEx> stat = std::nullopt;
-    {
-        auto newparentList = newparent->List(true);
-        auto it = std::find_if(
-            newparentList.begin(),
-            newparentList.end(),
-            [&](const auto& elm) {
-                return elm.first == request.GetNewName();
-            });
-        if (it != newparentList.end()) {
-            stat = std::move(it->second);
-        }
+    try {
+        stat = std::move(newparent->Stat(request.GetNewName()));
+    } catch (...) {
     }
 
     const int flags = RenameFlagsToSystem(request.GetFlags());

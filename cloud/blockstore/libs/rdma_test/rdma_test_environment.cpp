@@ -54,28 +54,24 @@ TRdmaTestEnvironment::TRdmaTestEnvironment(size_t deviceSize, ui32 poolSize)
     : MultiAgentWriteHandler(std::make_shared<TTestMultiAgentWriteHandler>())
     , Storage(std::make_shared<TMemoryTestStorage>(deviceSize))
 {
-    THashMap<TString, TStorageAdapterPtr> devices;
-    devices[Device_1] = std::make_shared<TStorageAdapter>(
-        Storage,
-        4_KB,                // storageBlockSize
-        true,                // normalize,
-        TDuration::Zero(),   // maxRequestDuration
-        TDuration::Zero()    // shutdownTimeout
-    );
-
-    TVector<TString> uuids;
-    for (const auto& [key, value]: devices) {
-        uuids.push_back(key);
-    }
+    TVector<std::pair<TString, TStorageAdapterPtr>> uuidToStorageAdapter{
+        {Device_1,
+         std::make_shared<TStorageAdapter>(
+             Storage,
+             4_KB,                // storageBlockSize
+             true,                // normalize,
+             TDuration::Zero(),   // maxRequestDuration
+             TDuration::Zero()    // shutdownTimeout
+             )}};
 
     DeviceClient = std::make_shared<TDeviceClient>(
         TDuration::MilliSeconds(100),
-        uuids,
+        std::move(uuidToStorageAdapter),
         Logging->CreateLog("BLOCKSTORE_DISK_AGENT"),
         false);   // kickOutOldClientsEnabled
 
     DeviceClient->AcquireDevices(
-        uuids,
+        {Device_1},
         ClientId,
         TInstant::Now(),
         NProto::VOLUME_ACCESS_READ_WRITE,
@@ -105,7 +101,7 @@ TRdmaTestEnvironment::TRdmaTestEnvironment(size_t deviceSize, ui32 poolSize)
         Server,
         DeviceClient,
         MultiAgentWriteHandler,
-        std::move(devices));
+        {Device_1});
 
     RdmaTarget->Start();
 }

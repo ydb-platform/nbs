@@ -656,13 +656,17 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "rdma_client");
 
-        auto completionErrors = counters->GetCounter("CompletionErrors");
         auto active = counters->GetCounter("ActiveRecv");
-        auto errors = counters->GetCounter("RecvErrors");
-        auto completionErrorsOld = completionErrors->Val();
-        auto errorsOld = errors->Val();
+        auto errors = counters->GetCounter("Errors");
+        ibv_qp_state state = IBV_QPS_RESET;
 
         ibv_recv_wr* wr = context->RecvEvents.back();
+        ibv_recv_wr* wr2 = context->RecvEvents.front();
+
+        // init header to pass the version check
+        auto* msg2 = reinterpret_cast<TResponseMessage*>(wr2->sg_list[0].addr);
+        InitMessageHeader(msg2, RDMA_PROTO_VERSION);
+
         auto completion = TVector<ibv_wc>();
 
         with_lock(context->CompletionLock) {
@@ -672,15 +676,25 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
                 Y_UNUSED(wr);
                 throw TServiceError(ENODEV) << "ibv_post_recv error";
             };
+            context->ModifyQP = [&](auto* qp, auto* attr, int mask) {
+                Y_UNUSED(qp);
+                Y_UNUSED(mask);
+                state = attr->qp_state;
+            };
             // good id, good opcode, error status
             completion.push_back({
                 .wr_id = wr->wr_id,
                 .status = IBV_WC_RETRY_EXC_ERR,
                 .opcode = IBV_WC_RECV,
             });
-            // good id, good opcode, success status, bad message
+            // good id and opcode, success status, bad message
             completion.push_back({
                 .wr_id = wr->wr_id,
+                .opcode = IBV_WC_RECV,
+            });
+            // good id and opcode, success status, good message, unknown request
+            completion.push_back({
+                .wr_id = wr2->wr_id,
                 .opcode = IBV_WC_RECV,
             });
             // bad id, good opcode
@@ -716,9 +730,10 @@ Y_UNIT_TEST_SUITE(TRdmaClientTest)
             }
         };
 
-        wait(completionErrors, completionErrorsOld + 2);
-        wait(errors, errorsOld + 3);
-        wait(active, 8);
+        wait(errors, 6);
+        wait(active, 6);
+
+        UNIT_ASSERT_EQUAL(state, IBV_QPS_ERR);
     }
 };
 

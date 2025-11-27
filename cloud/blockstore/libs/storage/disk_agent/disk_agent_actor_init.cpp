@@ -49,7 +49,8 @@ void TDiskAgentActor::InitAgent(const TActorContext& ctx)
         OldRequestCounters,
         CreateMultiAgentWriteHandler(
             TActivationContext::ActorSystem(),
-            ctx.SelfID));
+            ctx.SelfID),
+        BackgroundThreadPool);
 
     auto* actorSystem = TActivationContext::ActorSystem();
     auto replyTo = ctx.SelfID;

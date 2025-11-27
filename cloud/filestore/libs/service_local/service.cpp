@@ -353,6 +353,14 @@ private:
 
         auto response = Execute<T>(request, logRequest);
 
+        // skip profile log writing for ping methods
+        if constexpr (
+            std::is_same_v<T, TPingMethod> ||
+            std::is_same_v<T, TPingSessionMethod>)
+        {
+            return response;
+        }
+
         ProfileLogFinalize<T>(
             std::move(logRequest),
             response,

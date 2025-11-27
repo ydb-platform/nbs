@@ -73,11 +73,13 @@ struct TEventProcessor
 {
     TVector<TString> FlatMessages;
     TVector<ui32> MessageCountByRecord;
+    ui64 DiscardedMessageCount = 0;
 
     void Clear()
     {
         FlatMessages.clear();
         MessageCountByRecord.clear();
+        DiscardedMessageCount = 0;
     }
 
     void DoProcessEvent(const TEvent* ev, IOutputStream* out) override
@@ -87,6 +89,8 @@ struct TEventProcessor
         auto message =
             dynamic_cast<const NProto::TProfileLogRecord*>(ev->GetProto());
         if (message) {
+            DiscardedMessageCount += message->GetDiscardedRequestCount();
+
             for (const auto& r: message->GetRequests()) {
                 FlatMessages.push_back(
                     TStringBuilder() << message->GetFileSystemId()
@@ -430,10 +434,11 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
     {
         ui64 maxFlushRecords = 10;
         ui64 maxFrameFlushRecords = 2;
+        ui64 extraDiscardedRecords = 7;
 
         TEnvWithLimits env{maxFlushRecords, maxFrameFlushRecords};
 
-        for (ui64 i = 0; i < maxFlushRecords + 10; i++) {
+        for (ui64 i = 0; i < maxFlushRecords + extraDiscardedRecords; i++) {
             env.ProfileLog->Write(
                 {"fs1",
                  TRequestInfoBuilder()
@@ -457,6 +462,10 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
         UNIT_ASSERT_VALUES_EQUAL(
             maxFlushRecords / maxFrameFlushRecords,
             env.EventProcessor.MessageCountByRecord.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            extraDiscardedRecords,
+            env.EventProcessor.DiscardedMessageCount);
 
         // check each record contains maxFrameFlushRecords records
         for (ui64 i = 0; i < maxFlushRecords / maxFrameFlushRecords; ++i) {

@@ -655,6 +655,7 @@ void FinalizeProfileLogRequestInfo(
     }
     auto* rangeInfo = profileLogRequest.MutableRanges(0);
     rangeInfo->SetActualBytes(response.GetBuffer().size());
+    rangeInfo->SetBufferOffset(response.GetBufferOffset());
 }
 
 template <>

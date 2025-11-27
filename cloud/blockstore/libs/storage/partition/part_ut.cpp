@@ -158,6 +158,75 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TEventExecutionOrderController
+{
+public:
+    TEventExecutionOrderController(
+        TTestActorRuntimeBase& runtime,
+        const TVector<std::pair<ui32, ui32>>& eventOrders,
+        TTestActorRuntimeBase::TEventFilter baseFilter = nullptr)
+    {
+        for (const auto& [prerequisiteEvent, dependentEvent]: eventOrders) {
+            EventDependencies[dependentEvent] = prerequisiteEvent;
+        }
+
+        runtime.SetEventFilter(
+            [this, baseFilter, &runtime](
+                TTestActorRuntimeBase& rt,
+                TAutoPtr<IEventHandle>& ev) -> bool
+            {
+                Y_ABORT_UNLESS(ev);
+
+                TActorId recipient = ev->GetRecipientRewrite();
+                ui32 eventType = ev->GetTypeRewrite();
+
+                bool baseFilterResult = baseFilter ? baseFilter(rt, ev) : false;
+
+                auto prerequisiteEventIt = EventDependencies.find(eventType);
+                if (prerequisiteEventIt != EventDependencies.end()) {
+                    ui32 prerequisiteEvent = prerequisiteEventIt->second;
+                    auto& processedEventsByRecipient =
+                        ProcessedEvents[recipient];
+                    if (!processedEventsByRecipient.contains(
+                            prerequisiteEvent)) {
+                        DelayedEvents[recipient][prerequisiteEvent] =
+                            std::move(ev);
+                        return true;
+                    }
+                }
+
+                auto& delayedEventsByRecipient = DelayedEvents[recipient];
+                auto delayedEventIt = delayedEventsByRecipient.find(eventType);
+                if (delayedEventIt != delayedEventsByRecipient.end()) {
+                    ProcessedEvents[recipient].insert(eventType);
+                    TAutoPtr<IEventHandle> delayedEvent =
+                        std::move(delayedEventIt->second);
+                    delayedEventsByRecipient.erase(delayedEventIt);
+
+                    // Remove the recipient from the map if there are no more
+                    // delayed events
+                    if (delayedEventsByRecipient.empty()) {
+                        DelayedEvents.erase(recipient);
+                    }
+
+                    runtime.Schedule(
+                        delayedEvent,
+                        TDuration::MilliSeconds(100));
+                }
+
+                return baseFilterResult;
+            });
+    }
+
+private:
+    THashMap<ui32, ui32> EventDependencies;
+    THashMap<TActorId, THashSet<ui32>> ProcessedEvents;
+    // Map of delayed events by recipient and event type
+    THashMap<TActorId, THashMap<ui32, TAutoPtr<IEventHandle>>> DelayedEvents;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 void InitTestActorRuntime(
     TTestActorRuntime& runtime,
     const NProto::TStorageServiceConfig& config,
@@ -13010,9 +13079,61 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldCorrectlyHandleWriteBlocksErrorsWithUnconfirmedBlobs)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);
+        config.SetAddingUnconfirmedBlobsEnabled(true);
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            4096,
+            {},
+            {.MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID});
+
+        TTestActorRuntimeBase::TEventFilter rejectWriteBlobFilter =
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+        {
+            switch (ev->GetTypeRewrite()) {
+                case TEvPartitionPrivate::EvWriteBlobResponse: {
+                    auto* msg =
+                        ev->Get<TEvPartitionPrivate::TEvWriteBlobResponse>();
+                    auto& e = const_cast<NProto::TError&>(msg->Error);
+                    e.SetCode(E_REJECTED);
+                    return false;
+                }
+            };
+            return false;
+        };
+
+        // Set up event order controller to ensure that
+        // AddUnconfirmedBlobsResponse is processed before WriteBlobResponse
+        TEventExecutionOrderController orderController(
+            *runtime,
+            TVector<std::pair<ui32, ui32>>{
+                {TEvPartitionPrivate::EvAddUnconfirmedBlobsResponse,
+                 TEvPartitionPrivate::EvWriteBlobResponse}},
+            rejectWriteBlobFilter);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.SendWriteBlocksRequest(TBlockRange32::WithLength(10, 1), 1);
+
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        {
+            auto response = partition.StatPartition();
+            const auto& stats = response->Record.GetStats();
+            // Without proper error handling it crashes in BlobsConfirmed due to
+            // checksum verification, so execution never reaches this point. If
+            // we disable verification, we hit the `1 != 0` check — meaning we
+            // end up confirming an E_REJECTED blob without a checksum.
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetUnconfirmedBlobCount());
+        }
+    }
+
     Y_UNIT_TEST(ShouldSendCorrectBarriersInfoAfterReboot)
     {
-        return; // TODO: fix this test. See issue #4414
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(1);
         config.SetAddingUnconfirmedBlobsEnabled(true);
