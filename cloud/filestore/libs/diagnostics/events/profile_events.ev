@@ -100,4 +100,5 @@ message TProfileLogRecord {
 
     optional string FileSystemId = 1;
     repeated TProfileLogRequestInfo Requests = 2;
+    optional uint64 DiscardedRequestCount = 3;
 };
