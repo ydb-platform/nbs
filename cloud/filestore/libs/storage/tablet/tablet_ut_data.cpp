@@ -7453,7 +7453,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
-    TABLET_TEST_4K_ONLY(ShouldReadCorrectUnalignedTail)
+    TABLET_TEST(ShouldReadCorrectUnalignedTail)
     {
         // Test scenario:
         // 1. Write to the file using unaligned requests to populate the
@@ -7485,17 +7485,24 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         ui64 handle = CreateHandle(tablet, id);
 
+        const ui64 requestSize = 4 * tabletConfig.BlockSize;
+        const ui64 unalignedOffset = 25 * tabletConfig.BlockSize - 1;
+        const ui64 fileSize = 256 * tabletConfig.BlockSize + unalignedOffset;
+        const ui64 lastOffset = fileSize - requestSize;
+        const ui64 lastBlockIndex = lastOffset / tabletConfig.BlockSize;
+
         // the numbers were adjusted to have the tail block in
         // the same blob as other blocks from fresh bytes list
-        const ui64 requestSize = 16_KB;
-        const ui64 unalignedOffset = 100_KB - 1;
-        const ui64 fileSize = 1_MB + unalignedOffset;
-        const ui64 lastOffset = fileSize - requestSize;
+        auto rangeIdHasher = CreateRangeIdHasher(1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            rangeIdHasher->Calc(nodeIdx, lastBlockIndex),
+            rangeIdHasher->Calc(nodeIdx, lastBlockIndex - 4));
 
         auto data1 = GenerateValidateData(requestSize, 1);
         auto data2 = GenerateValidateData(requestSize, 2);
 
-        for (ui64 offset = unalignedOffset; offset < fileSize;
+        for (ui64 offset = 248 * tabletConfig.BlockSize + unalignedOffset;
+             offset < fileSize;
              offset += requestSize)
         {
             tablet.WriteData(handle, offset, requestSize, data1.c_str());
