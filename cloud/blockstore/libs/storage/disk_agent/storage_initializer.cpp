@@ -662,8 +662,12 @@ TFuture<TInitializeStorageResult> TInitializer::Initialize()
         }
     }
 
-    return WaitAll(futures).Apply([self = shared_from_this()](const auto&)
-                                  { return self->GetResult(); });
+    return WaitAll(futures).Apply(
+        [self = shared_from_this()](const auto& future)
+        {
+            Y_UNUSED(future);   // ignore exception
+            return self->GetResult();
+        });
 }
 
 NProto::TDeviceConfig TInitializer::CreateConfig(
