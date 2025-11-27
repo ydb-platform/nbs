@@ -11,6 +11,8 @@
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actorid.h>
 
+#include <library/cpp/containers/sorted_vector/sorted_vector.h>
+
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
 #include <util/generic/ptr.h>
@@ -130,6 +132,13 @@ public:
 
 struct TVolumeStatsInfo
 {
+    // A list of real disk identifiers that use this logical disk identifier.
+    // For logical diskId "SomeDiskId" it can contain one or two names:
+    // "SomeDiskId" and|or "SomeDiskId-copy". VolumeStatsInfo can be deleted
+    // when it is no longer referenced by real disks, i.e. RealDiskIds is empty.
+    NSorted::TSimpleSet<TString> RealDiskIds;
+
+    // VolumeInfo contains logical disk identifier.
     NProto::TVolume VolumeInfo;
     ui64 VolumeTabletId = 0;
 
