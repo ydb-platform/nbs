@@ -9,7 +9,7 @@ on:
         type: choice
         options:
           - orchestrator-light.yaml
-          # - orchestrator-heavy.yaml
+          - orchestrator-heavy.yaml
       provision_mode:
         description: 'Provision mode (if set to initial it will use ubuntu-latest image)'
         type: choice
