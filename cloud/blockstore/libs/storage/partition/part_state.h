@@ -1331,6 +1331,10 @@ private:
     // not yet been added to the index
     TCommitIdToBlobsToConfirm ConfirmedBlobs;
     ui32 ConfirmedBlobCount = 0;
+    // contains entries from UnconfirmedBlobs that failed to write and need to
+    // be deleted
+    TCommitIdToBlobsToConfirm ObsoleteUnconfirmedBlobs;
+    ui32 ObsoleteUnconfirmedBlobCount = 0;
 
 public:
     const TCommitIdToBlobsToConfirm& GetUnconfirmedBlobs() const
@@ -1353,6 +1357,22 @@ public:
         return ConfirmedBlobCount;
     }
 
+    const TCommitIdToBlobsToConfirm& GetObsoleteUnconfirmedBlobs() const
+    {
+        return ObsoleteUnconfirmedBlobs;
+    }
+
+    ui32 GetObsoleteUnconfirmedBlobCount() const
+    {
+        return ObsoleteUnconfirmedBlobCount;
+    }
+
+    void ClearObsoleteUnconfirmedBlobs()
+    {
+        ObsoleteUnconfirmedBlobs.clear();
+        ObsoleteUnconfirmedBlobCount = 0;
+    }
+
     bool OverlapsUnconfirmedBlobs(
         ui64 lowCommitId,
         ui64 highCommitId,
@@ -1373,6 +1393,8 @@ public:
     void ConfirmedBlobsAdded(TPartitionDatabase& db, ui64 commitId);
 
     void BlobsConfirmed(ui64 commitId, TVector<TBlobToConfirm> blobs);
+
+    void BlobsObsoleted(ui64 commitId, TVector<TBlobToConfirm> blobs);
 
    //
    // WriteBlob
@@ -1398,6 +1420,19 @@ public:
     TOperationState& GetAddConfirmedBlobsState()
     {
         return AddConfirmedBlobsState;
+    }
+
+    //
+    // ObsoleteUnconfirmedBlobs
+    //
+
+private:
+    TOperationState ObsoleteUnconfirmedBlobsState;
+
+public:
+    TOperationState& GetObsoleteUnconfirmedBlobsState()
+    {
+        return ObsoleteUnconfirmedBlobsState;
     }
 
     //
