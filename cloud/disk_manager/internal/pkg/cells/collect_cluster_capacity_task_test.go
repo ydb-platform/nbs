@@ -21,17 +21,24 @@ import (
 
 func matchClusterCapacities(t *testing.T, want []cells_storage.ClusterCapacity) interface{} {
 	return mock.MatchedBy(func(actual []cells_storage.ClusterCapacity) bool {
-		require.Equal(t, len(want), len(actual))
+		if len(want) != len(actual) {
+			return false
+		}
+
 		for i := range want {
-			expectd := want[i]
+			expected := want[i]
 			got := actual[i]
 
-			require.Equal(t, expectd.ZoneID, got.ZoneID)
-			require.Equal(t, expectd.CellID, got.CellID)
-			require.Equal(t, expectd.Kind, got.Kind)
-			require.Equal(t, expectd.FreeBytes, got.FreeBytes)
-			require.Equal(t, expectd.TotalBytes, got.TotalBytes)
-			require.WithinDuration(t, time.Now(), got.CreatedAt, 15*time.Minute)
+			if expected.FreeBytes != got.FreeBytes ||
+				expected.TotalBytes != got.TotalBytes ||
+				expected.CellID != got.CellID || expected.Kind != got.Kind ||
+				expected.ZoneID != got.ZoneID {
+				return false
+			}
+
+			if expected.CreatedAt.Sub(got.CreatedAt).Abs() >= 15*time.Minute {
+				return false
+			}
 		}
 		return true
 	})

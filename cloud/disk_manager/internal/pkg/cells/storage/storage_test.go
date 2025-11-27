@@ -74,10 +74,20 @@ func newStorage(
 
 // Uses time.Equal() to compare time.Time fields correctly, since == may fail
 // due to different internal representations.
-func clusterCapacitiesAreEqual(a ClusterCapacity, b ClusterCapacity) bool {
-	return a.CellID == b.CellID && a.ZoneID == b.ZoneID && a.Kind == b.Kind &&
-		a.FreeBytes == b.FreeBytes && a.TotalBytes == b.TotalBytes &&
-		a.CreatedAt.Equal(b.CreatedAt)
+func requireClusterCapacitiesEqual(
+	t *testing.T,
+	expected ClusterCapacity,
+	actual ClusterCapacity,
+) {
+
+	require.Equal(t, expected.CellID, actual.CellID)
+	require.Equal(t, expected.ZoneID, actual.ZoneID)
+	require.Equal(t, expected.Kind, actual.Kind)
+	require.Equal(t, expected.FreeBytes, actual.FreeBytes)
+	require.Equal(t, expected.TotalBytes, actual.TotalBytes)
+
+	fmt.Printf("exp: %v, act: %v\n", expected.CreatedAt, actual.CreatedAt)
+	require.True(t, expected.CreatedAt.Equal(actual.CreatedAt))
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -167,8 +177,8 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 		return capacities[i].CellID < capacities[j].CellID
 	})
 	require.Len(t, capacities, 2)
-	require.True(t, clusterCapacitiesAreEqual(capacities[0], capacity1))
-	require.True(t, clusterCapacitiesAreEqual(capacities[1], cellCapacity1))
+	requireClusterCapacitiesEqual(t, capacities[0], capacity1)
+	requireClusterCapacitiesEqual(t, capacities[1], cellCapacity1)
 
 	capacities, err = storage.GetRecentClusterCapacities(
 		ctx,
@@ -177,7 +187,7 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Len(t, capacities, 1)
-	require.True(t, clusterCapacitiesAreEqual(cellCapacitySsd1, capacities[0]))
+	requireClusterCapacitiesEqual(t, cellCapacitySsd1, capacities[0])
 
 	err = storage.UpdateClusterCapacities(
 		ctx,
@@ -196,8 +206,8 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 		return capacities[i].CellID < capacities[j].CellID
 	})
 	require.Len(t, capacities, 2)
-	require.True(t, clusterCapacitiesAreEqual(capacities[0], capacity2))
-	require.True(t, clusterCapacitiesAreEqual(capacities[1], cellCapacity1))
+	requireClusterCapacitiesEqual(t, capacities[0], capacity2)
+	requireClusterCapacitiesEqual(t, capacities[1], cellCapacity1)
 
 	err = storage.UpdateClusterCapacities(
 		ctx,
@@ -216,8 +226,8 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 		return capacities[i].CellID < capacities[j].CellID
 	})
 	require.Len(t, capacities, 2)
-	require.True(t, clusterCapacitiesAreEqual(capacities[0], capacity2))
-	require.True(t, clusterCapacitiesAreEqual(capacities[1], cellCapacity2))
+	requireClusterCapacitiesEqual(t, capacities[0], capacity2)
+	requireClusterCapacitiesEqual(t, capacities[1], cellCapacity2)
 
 	capacities, err = storage.GetRecentClusterCapacities(
 		ctx,
@@ -226,7 +236,7 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Len(t, capacities, 1)
-	require.True(t, clusterCapacitiesAreEqual(cellCapacitySsd1, capacities[0]))
+	requireClusterCapacitiesEqual(t, cellCapacitySsd1, capacities[0])
 }
 
 func TestUpdateClusterCapacitiesDeletesRecordsBeforeTimestamp(t *testing.T) {
@@ -268,7 +278,7 @@ func TestUpdateClusterCapacitiesDeletesRecordsBeforeTimestamp(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Len(t, capacities, 1)
-	require.True(t, clusterCapacitiesAreEqual(capacity1, capacities[0]))
+	requireClusterCapacitiesEqual(t, capacity1, capacities[0])
 
 	err = storage.UpdateClusterCapacities(ctx, []ClusterCapacity{capacity2}, deleteOlderThan)
 	require.NoError(t, err)
@@ -283,8 +293,8 @@ func TestUpdateClusterCapacitiesDeletesRecordsBeforeTimestamp(t *testing.T) {
 		return capacities[i].CellID < capacities[j].CellID
 	})
 	require.Len(t, capacities, 2)
-	require.True(t, clusterCapacitiesAreEqual(capacities[0], capacity1))
-	require.True(t, clusterCapacitiesAreEqual(capacities[1], capacity2))
+	requireClusterCapacitiesEqual(t, capacities[0], capacity1)
+	requireClusterCapacitiesEqual(t, capacities[1], capacity2)
 
 	deleteOlderThan = createdAt.Add(time.Hour)
 	createdAt = deleteOlderThan.Add(time.Hour)
@@ -307,5 +317,5 @@ func TestUpdateClusterCapacitiesDeletesRecordsBeforeTimestamp(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Len(t, capacities, 1)
-	require.True(t, clusterCapacitiesAreEqual(capacity3, capacities[0]))
+	requireClusterCapacitiesEqual(t, capacity3, capacities[0])
 }
