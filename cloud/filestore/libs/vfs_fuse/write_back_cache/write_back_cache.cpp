@@ -825,6 +825,21 @@ public:
         return EmptyFlag.load();
     }
 
+    ui64 AdjustNodeSize(ui64 nodeId, ui64 size) const
+    {
+        with_lock (Lock) {
+            auto* nodeState = GetNodeStateOrNull(nodeId);
+            if (nodeState == nullptr) {
+                return size;
+            }
+            if (nodeState->CachedEntryIntervalMap.empty()) {
+                return size;
+            }
+            auto last = nodeState->CachedEntryIntervalMap.rbegin();
+            return Max(size, last->second.End);
+        }
+    }
+
 private:
     // Check and enqueue Flush operation for the given node if needed.
     // If the node should be flushed and there is no flush currently executing
@@ -874,7 +889,7 @@ private:
         nodeState->AllEntries.PushBack(entry);
     }
 
-    TNodeState* GetNodeStateOrNull(ui64 nodeId)
+    TNodeState* GetNodeStateOrNull(ui64 nodeId) const
     {
         auto it = NodeStates.find(nodeId);
         return it != NodeStates.end() ? it->second.get() : nullptr;
@@ -1555,6 +1570,11 @@ TFuture<void> TWriteBackCache::FlushAllData()
 bool TWriteBackCache::IsEmpty() const
 {
     return Impl->IsEmpty();
+}
+
+ui64 TWriteBackCache::AdjustNodeSize(ui64 nodeId, ui64 size) const
+{
+    return Impl->AdjustNodeSize(nodeId, size);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

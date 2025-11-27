@@ -78,21 +78,44 @@ void TFileSystem::SetAttr(
     const auto reqId = callContext->RequestId;
     FSyncQueue->Enqueue(reqId, TNodeId {ino});
 
-    Session->SetNodeAttr(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+    auto callback = [=, ptr = weak_from_this()](const auto& future)
+    {
+        auto self = ptr.lock();
+        if (!self) {
+            return;
+        }
 
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino});
+        const auto& response = future.GetValue();
+        const auto& error = response.GetError();
+        self->FSyncQueue->Dequeue(reqId, error, TNodeId{ino});
 
-            if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyAttr(*callContext, error, req, response.GetNode());
-            }
-        });
+        if (self->CheckResponse(self, *callContext, req, response)) {
+            self->ReplyAttr(*callContext, error, req, response.GetNode());
+        }
+    };
+
+    // Changing attributes interferes with WriteBackCache
+    auto flushFuture = WriteBackCache
+                           ? WriteBackCache.FlushNodeData(request->GetNodeId())
+                           : NThreading::MakeFuture();
+
+    if (flushFuture.HasValue()) {
+        Session->SetNodeAttr(callContext, std::move(request))
+            .Subscribe(std::move(callback));
+    } else {
+        flushFuture.Subscribe(
+            [ptr = weak_from_this(),
+             callContext = std::move(callContext),
+             callback = std::move(callback),
+             request = std::move(request)](const auto& future) mutable
+            {
+                future.GetValue();
+                if (auto self = ptr.lock()) {
+                    self->Session->SetNodeAttr(callContext, std::move(request))
+                        .Subscribe(std::move(callback));
+                }
+            });
+    }
 }
 
 void TFileSystem::GetAttr(

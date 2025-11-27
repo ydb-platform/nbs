@@ -67,6 +67,8 @@ public:
 
     bool IsEmpty() const;
 
+    ui64 AdjustNodeSize(ui64 nodeId, ui64 size) const;
+
     enum class EWriteDataRequestStatus;
     struct TPersistentQueueStats;
 

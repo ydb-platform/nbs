@@ -140,9 +140,15 @@ bool TFileSystem::UpdateNodeCache(
         return false;
     }
 
+    const ui64 adjustedSize =
+        WriteBackCache
+            ? WriteBackCache.AdjustNodeSize(attrs.GetId(), attrs.GetSize())
+            : attrs.GetSize();
+
     with_lock (NodeCacheLock) {
         auto* node = NodeCache.TryAddNode(attrs);
         Y_ABORT_UNLESS(node);
+        node->Attrs.SetSize(adjustedSize);
 
         entry.ino = attrs.GetId();
         entry.generation = NodeCache.Generation();
