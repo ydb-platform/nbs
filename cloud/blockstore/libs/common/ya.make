@@ -6,6 +6,7 @@ SRCS(
     block_checksum.cpp
     block_range.cpp
     caching_allocator.cpp
+    cgroups_helpers.cpp
     device_path.cpp
     iovector.cpp
     request_checksum_helpers.cpp

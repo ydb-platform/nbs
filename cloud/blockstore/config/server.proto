@@ -267,6 +267,10 @@ message TServerConfig
     // Optimal IO size for vhost devices. Zero value is the default one.
     // For linux, sets the value of /sys/block/<device>/queue/optimal_io_size.
     optional uint32 VhostOptimalIoSize = 127;
+
+    // Path to SUID executable, which needed to add the PID of
+    // the external vhost server to the client's cgroups.
+    optional string ExternalCgroupsPidWriterBinaryPath = 128;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
