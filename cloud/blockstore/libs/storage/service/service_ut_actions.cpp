@@ -1906,7 +1906,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             char(1));
 
         {
-            NPrivateProto::TCheckRangeRequest request;
+            NProto::TCheckRangeRequest request;
             request.SetDiskId(DefaultDiskId);
             request.SetStartIndex(0);
             request.SetBlocksCount(blockCount);
@@ -1916,7 +1916,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             google::protobuf::util::MessageToJsonString(request, &buf);
 
             const auto response = service.ExecuteAction("CheckRange", buf);
-            NPrivateProto::TCheckRangeResponse checkRangeResponse;
+            NProto::TCheckRangeResponse checkRangeResponse;
 
             UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
                             response->Record.GetOutput(),

@@ -570,13 +570,17 @@ TSessionHandle* TIndexTabletState::CreateHandle(
 {
     auto handle = std::make_unique<TSessionHandle>(session, proto);
 
+    if (HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_DIRECT)) {
+        ++Impl->HandlesStats.UsedDirectHandlesCount;
+    }
+
     // TIndexTabletState::CreateHandle is called from
     // TIndexTabletState::LoadSessions. Therefore, we can count the number of
     // 'bad' handles that use the seventh byte, and then wait until all such
     // 'bad' handles are gone. After that, we can safely use the freed seventh
     // byte to store long shard numbers.
     if (IsSeventhByteUsed(handle->GetHandle())) {
-        Impl->HandlesStats.SevenBytesHandlesCount++;
+        ++Impl->HandlesStats.SevenBytesHandlesCount;
     }
 
     session->Handles.PushBack(handle.get());
@@ -608,11 +612,15 @@ TSessionHandle* TIndexTabletState::CreateHandle(
 
 void TIndexTabletState::RemoveHandle(TSessionHandle* handle)
 {
-    std::unique_ptr<TSessionHandle> holder(handle);
+    if (HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_DIRECT)) {
+        --Impl->HandlesStats.UsedDirectHandlesCount;
+    }
 
     if (IsSeventhByteUsed(handle->GetHandle())) {
-        Impl->HandlesStats.SevenBytesHandlesCount--;
+        --Impl->HandlesStats.SevenBytesHandlesCount;
     }
+
+    std::unique_ptr<TSessionHandle> holder(handle);
 
     handle->Unlink();
     Impl->HandleById.erase(handle->GetHandle());
@@ -703,10 +711,6 @@ TSessionHandle* TIndexTabletState::CreateHandle(
     db.WriteSessionHandle(proto);
     IncrementUsedHandlesCount(db);
 
-    if (HasFlag(proto.GetFlags(), NProto::TCreateHandleRequest::E_DIRECT)) {
-        ++Impl->HandlesStats.UsedDirectHandlesCount;
-    }
-
     return CreateHandle(session, proto);
 }
 
@@ -719,12 +723,6 @@ void TIndexTabletState::DestroyHandle(
         handle->GetHandle());
 
     DecrementUsedHandlesCount(db);
-
-    if (HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_DIRECT)) {
-        --Impl->HandlesStats.UsedDirectHandlesCount;
-    }
-
-
 
     ReleaseLocks(db, handle->GetHandle());
 

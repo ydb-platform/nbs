@@ -694,7 +694,7 @@ class Client(object):
 
     def munmap(
         self,
-        mmap_id: str,
+        mmap_id: int,
         idempotence_id: Optional[str] = None,
         timestamp: Optional[int] = None,
         trace_id: Optional[str] = None,

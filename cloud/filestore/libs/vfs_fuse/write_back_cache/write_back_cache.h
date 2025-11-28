@@ -70,7 +70,7 @@ public:
 
 private:
     // Only for testing purposes
-    friend struct TCalculateDataPartsToReadTestBootstrap;
+    friend struct TTestUtilBootstrap;
 
     struct TCachedWriteDataRequest;
     class TWriteDataEntry;

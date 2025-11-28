@@ -93,61 +93,32 @@ struct TFlushConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError ValidateReadDataRequest(
-    const NProto::TReadDataRequest& request,
-    const TString& expectedFileSystemId)
+struct TBufferWriter
 {
-    if (request.GetFileSystemId() != expectedFileSystemId) {
-        return MakeError(
-            E_ARGUMENT,
-            Sprintf(
-                "ReadData request has invalid FileSystemId, "
-                "expected: '%s', actual: '%s'",
-                expectedFileSystemId.c_str(),
-                request.GetFileSystemId().c_str()));
+    std::span<char> TargetBuffer;
+
+    explicit TBufferWriter(std::span<char> targetBuffer)
+        : TargetBuffer(targetBuffer)
+    {}
+
+    void Write(TStringBuf buffer)
+    {
+        Y_ABORT_UNLESS(
+            buffer.size() <= TargetBuffer.size(),
+            "Not enough space in the buffer to write %lu bytes, remaining: %lu",
+            buffer.size(),
+            TargetBuffer.size());
+
+        buffer.copy(TargetBuffer.data(), buffer.size());
+        TargetBuffer = TargetBuffer.subspan(buffer.size());
     }
+};
 
-    if (request.GetLength() == 0) {
-        return MakeError(E_ARGUMENT, "ReadData request has zero length");
-    }
+////////////////////////////////////////////////////////////////////////////////
 
-    return {};
-}
-
-NProto::TError ValidateWriteDataRequest(
-    const NProto::TWriteDataRequest& request,
-    const TString& expectedFileSystemId)
+ui64 SaturationSub(ui64 x, ui64 y)
 {
-    if (request.HasHeaders()) {
-        return MakeError(
-            E_ARGUMENT,
-            "WriteData request has unexpected Headers field");
-    }
-
-    if (request.GetFileSystemId() != expectedFileSystemId) {
-        return MakeError(
-            E_ARGUMENT,
-            Sprintf(
-                "WriteData request has invalid FileSystemId, "
-                "expected: '%s', actual: '%s'",
-                expectedFileSystemId.c_str(),
-                request.GetFileSystemId().c_str()));
-    }
-
-    if (request.GetBufferOffset() == request.GetBuffer().size()) {
-        return MakeError(E_ARGUMENT, "WriteData request has zero length");
-    }
-
-    if (request.GetBufferOffset() > request.GetBuffer().size()) {
-        return MakeError(
-            E_ARGUMENT,
-            Sprintf(
-                "WriteData request BufferOffset %u > buffer size %lu",
-                request.GetBufferOffset(),
-                request.GetBuffer().size()));
-    }
-
-    return {};
+    return x > y ? x - y : 0;
 }
 
 }   // namespace
@@ -257,7 +228,7 @@ public:
     {
         if (begin < end) {
             Y_DEBUG_ABORT_UNLESS(Validate(begin, end));
-            RemainingSize = std::prev(end)->End() - begin->Offset;
+            RemainingSize = std::prev(end)->GetEnd() - begin->Offset;
         }
     }
 
@@ -331,7 +302,7 @@ public:
 
         const auto* prev = begin;
         for (const auto* it = std::next(begin); it != end; it = std::next(it)) {
-            if (prev->End() != it->Offset) {
+            if (prev->GetEnd() != it->Offset) {
                 return false;
             }
             prev = it;
@@ -542,7 +513,7 @@ public:
             request->SetFileSystemId(callContext->FileSystemId);
         }
 
-        auto error = ValidateReadDataRequest(*request, FileSystemId);
+        auto error = TUtil::ValidateReadDataRequest(*request, FileSystemId);
         if (HasError(error)) {
             Y_DEBUG_ABORT_UNLESS(false, "%s", error.GetMessage().c_str());
             NProto::TReadDataResponse response;
@@ -607,7 +578,7 @@ public:
             request->SetFileSystemId(callContext->FileSystemId);
         }
 
-        auto error = ValidateWriteDataRequest(*request, FileSystemId);
+        auto error = TUtil::ValidateWriteDataRequest(*request, FileSystemId);
         if (HasError(error)) {
             Y_DEBUG_ABORT_UNLESS(false, "%s", error.GetMessage().c_str());
             NProto::TWriteDataResponse response;
@@ -616,17 +587,20 @@ public:
         }
 
         auto entry = std::make_unique<TWriteDataEntry>(std::move(request));
-        auto serializedSize = entry->GetSerializedSize();
+
+        const auto nodeId = entry->GetNodeId();
+        const auto offset = entry->GetOffset();
+        const auto end = entry->GetEnd();
+
+        Y_ABORT_UNLESS(offset < end);
+
+        const auto serializedSize = entry->GetSerializedSize();
 
         Y_ABORT_UNLESS(
             serializedSize <= CachedEntriesPersistentQueue.MaxAllocationSize(),
             "Serialized request size %lu is expected to be <= %lu",
             serializedSize,
             CachedEntriesPersistentQueue.MaxAllocationSize());
-
-        auto nodeId = entry->GetNodeId();
-        auto offset = entry->Offset();
-        auto end = entry->End();
 
         auto unlocker =
             [ptr = weak_from_this(), nodeId, offset, end](const auto&)
@@ -690,9 +664,9 @@ public:
             while (++rangeEndIndex < parts.size()) {
                 const auto& prevPart = parts[rangeEndIndex - 1];
                 Y_DEBUG_ABORT_UNLESS(
-                    prevPart.End() <= parts[rangeEndIndex].Offset);
+                    prevPart.GetEnd() <= parts[rangeEndIndex].Offset);
 
-                if (prevPart.End() != parts[rangeEndIndex].Offset) {
+                if (prevPart.GetEnd() != parts[rangeEndIndex].Offset) {
                     break;
                 }
             }
@@ -966,14 +940,14 @@ private:
         ui64 length)
     {
         if (parts.empty() || parts.front().Offset != offset ||
-            parts.back().End() != offset + length)
+            parts.back().GetEnd() != offset + length)
         {
             return false;
         }
 
         for (size_t i = 1; i < parts.size(); i++) {
-            Y_DEBUG_ABORT_UNLESS(parts[i - 1].End() <= parts[i].Offset);
-            if (parts[i - 1].End() != parts[i].Offset) {
+            Y_DEBUG_ABORT_UNLESS(parts[i - 1].GetEnd() <= parts[i].Offset);
+            if (parts[i - 1].GetEnd() != parts[i].Offset) {
                 return false;
             }
         }
@@ -1447,14 +1421,22 @@ TFuture<void> TWriteBackCache::FlushAllData()
 TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
         std::shared_ptr<NProto::TWriteDataRequest> request)
     : PendingRequest(std::move(request))
+    , ByteCount(
+          NStorage::CalculateByteCount(*PendingRequest) -
+          PendingRequest->GetBufferOffset())
     , CachedPromise(NewPromise<NProto::TWriteDataResponse>())
-{}
+{
+    Y_ABORT_UNLESS(ByteCount > 0);
+}
 
 TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
-    ui32 checksum,
-    TStringBuf serializedRequest,
-    TWriteDataEntryDeserializationStats& deserializationStats,
-    TImpl* impl)
+        ui32 checksum,
+        TStringBuf serializedRequest,
+        TWriteDataEntryDeserializationStats& deserializationStats,
+        TImpl* impl)
+    : ByteCount(SaturationSub(
+          serializedRequest.size(),
+          sizeof(TCachedWriteDataRequest)))
 {
     deserializationStats.EntryCount++;
 
@@ -1472,11 +1454,11 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
     //    return;
     //}
 
-    if (serializedRequest.size() < sizeof(TCachedWriteDataRequest)) {
+    if (ByteCount == 0) {
         deserializationStats.EntrySizeMismatchCount++;
         ReportWriteBackCacheCorruptionError(Sprintf(
             "TWriteDataEntry deserialization error: entry size is too small, "
-            "expected: at least %lu, actual: %lu",
+            "expected: > %lu, actual: %lu",
             sizeof(TCachedWriteDataRequest),
             serializedRequest.size()));
         SetStatus(EWriteDataRequestStatus::Corrupted, impl);
@@ -1487,26 +1469,13 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
         reinterpret_cast<const TCachedWriteDataRequest*>(
             serializedRequest.data());
 
-    if (allocationPtr->Length >
-        serializedRequest.size() - sizeof(TCachedWriteDataRequest))
-    {
-        deserializationStats.EntrySizeMismatchCount++;
-        ReportWriteBackCacheCorruptionError(Sprintf(
-            "TWriteDataEntry deserialization error: entry size is too small, "
-            "expected: at least %lu, actual: %lu",
-            allocationPtr->Length + sizeof(TCachedWriteDataRequest),
-            serializedRequest.size()));
-        SetStatus(EWriteDataRequestStatus::Corrupted, impl);
-        return;
-    }
-
     CachedRequest = allocationPtr;
     SetStatus(EWriteDataRequestStatus::Cached, impl);
 }
 
 size_t TWriteBackCache::TWriteDataEntry::GetSerializedSize() const
 {
-    return sizeof(TCachedWriteDataRequest) + GetBuffer().size();
+    return sizeof(TCachedWriteDataRequest) + GetByteCount();
 }
 
 void TWriteBackCache::TWriteDataEntry::SetPending(TImpl* impl)
@@ -1523,13 +1492,10 @@ void TWriteBackCache::TWriteDataEntry::SerializeAndMoveRequestBuffer(
     Y_ABORT_UNLESS(PendingRequest);
     Y_ABORT_UNLESS(CachedRequest == nullptr);
     Y_ABORT_UNLESS(
-        sizeof(TCachedWriteDataRequest) <= allocation.size(),
-        "Allocated buffer is too small to store WriteData request header, "
-        "expected size: at least %lu, actual: %lu",
-        sizeof(TCachedWriteDataRequest),
+        allocation.size() == sizeof(TCachedWriteDataRequest) + ByteCount,
+        "Invalid allocation size, expected: %lu, actual: %lu",
+        sizeof(TCachedWriteDataRequest) + ByteCount,
         allocation.size());
-
-    auto buffer = GetBuffer();
 
     auto* cachedRequest =
         reinterpret_cast<TCachedWriteDataRequest*>(allocation.data());
@@ -1537,18 +1503,23 @@ void TWriteBackCache::TWriteDataEntry::SerializeAndMoveRequestBuffer(
     cachedRequest->NodeId = PendingRequest->GetNodeId();
     cachedRequest->Handle = PendingRequest->GetHandle();
     cachedRequest->Offset = PendingRequest->GetOffset();
-    cachedRequest->Length = buffer.size();
 
-    allocation = allocation.subspan(sizeof(TCachedWriteDataRequest));
+    TBufferWriter writer(allocation.subspan(sizeof(TCachedWriteDataRequest)));
+
+    if (PendingRequest->GetIovecs().empty()) {
+        writer.Write(TStringBuf(PendingRequest->GetBuffer())
+                         .Skip(PendingRequest->GetBufferOffset()));
+    } else {
+        for (const auto& iovec: PendingRequest->GetIovecs()) {
+            writer.Write(TStringBuf(
+                reinterpret_cast<const char*>(iovec.GetBase()),
+                iovec.GetLength()));
+        }
+    }
 
     Y_ABORT_UNLESS(
-        buffer.size() <= allocation.size(),
-        "Allocated buffer is too small to store WriteData request buffer, "
-        "expected size: at least %lu, actual: %lu",
-        sizeof(TCachedWriteDataRequest) + buffer.size(),
-        sizeof(TCachedWriteDataRequest) + allocation.size());
-
-    buffer.copy(allocation.data(), buffer.size());
+        writer.TargetBuffer.empty(),
+        "Buffer is expected to be written completely");
 
     CachedRequest = cachedRequest;
     PendingRequest.reset();
@@ -1679,30 +1650,30 @@ void TWriteBackCache::TWriteDataEntry::SetStatus(
 void TWriteBackCache::TWriteDataEntryIntervalMap::Add(TWriteDataEntry* entry)
 {
     TBase::VisitOverlapping(
-        entry->Offset(),
-        entry->End(),
+        entry->GetOffset(),
+        entry->GetEnd(),
         [this, entry](auto it)
         {
             auto prev = it->second;
             TBase::Remove(it);
 
-            if (prev.Begin < entry->Offset()) {
-                TBase::Add(prev.Begin, entry->Offset(), prev.Value);
+            if (prev.Begin < entry->GetOffset()) {
+                TBase::Add(prev.Begin, entry->GetOffset(), prev.Value);
             }
 
-            if (entry->End() < prev.End) {
-                TBase::Add(entry->End(), prev.End, prev.Value);
+            if (entry->GetEnd() < prev.End) {
+                TBase::Add(entry->GetEnd(), prev.End, prev.Value);
             }
         });
 
-    TBase::Add(entry->Offset(), entry->End(), entry);
+    TBase::Add(entry->GetOffset(), entry->GetEnd(), entry);
 }
 
 void TWriteBackCache::TWriteDataEntryIntervalMap::Remove(TWriteDataEntry* entry)
 {
     TBase::VisitOverlapping(
-        entry->Offset(),
-        entry->End(),
+        entry->GetOffset(),
+        entry->GetEnd(),
         [&](auto it)
         {
             if (it->second.Value == entry) {

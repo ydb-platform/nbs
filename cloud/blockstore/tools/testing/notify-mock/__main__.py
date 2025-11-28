@@ -58,6 +58,7 @@ def create_api(file):
 
             self.send_response(202)
             self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", "0")
             self.end_headers()
             self.wfile.write('{}'.encode('utf-8'))
 

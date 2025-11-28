@@ -1,0 +1,4 @@
+ServerConfig{
+    SharedMemoryTransportEnabled: true
+    SharedMemoryBasePath: "/tmp"
+}
