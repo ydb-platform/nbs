@@ -42,7 +42,8 @@ void TPartitionActor::EnqueueUpdateIndexStructuresIfNeeded(
         "UpdateIndexStructures",
         static_cast<ui32>(PartitionConfig.GetStorageMediaKind()),
         request->CallContext->RequestId,
-        PartitionConfig.GetDiskId());
+        PartitionConfig.GetDiskId(),
+        TInstant::Now().MicroSeconds());
 
     NCloud::Send(
         ctx,

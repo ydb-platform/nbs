@@ -484,6 +484,7 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
                 "TEvPartitionCommonPrivate::TEvReadBlobRequest",
                 RequestInfo->CallContext->RequestId);
         }
+        request->CallContext->RequestId = RequestInfo->CallContext->RequestId;
 
         ForkedReadCallContexts.emplace_back(request->CallContext);
 
@@ -578,6 +579,8 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
                     "TEvPartitionPrivate::TEvWriteBlobRequest",
                     RequestInfo->CallContext->RequestId);
             }
+            request->CallContext->RequestId =
+                RequestInfo->CallContext->RequestId;
 
             ForkedWriteAndPatchCallContexts.emplace_back(request->CallContext);
 
@@ -1320,7 +1323,8 @@ void TPartitionActor::HandleCompaction(
         "Compaction",
         static_cast<ui32>(PartitionConfig.GetStorageMediaKind()),
         requestInfo->CallContext->RequestId,
-        PartitionConfig.GetDiskId());
+        PartitionConfig.GetDiskId(),
+        TInstant::Now().MicroSeconds());
 
     auto replyError = [=] (
         const TActorContext& ctx,

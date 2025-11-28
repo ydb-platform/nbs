@@ -324,7 +324,8 @@ void TServerStats::RequestStarted(
         callContext.RequestId,
         req.DiskId,
         req.StartIndex,
-        req.RequestBytes);
+        req.RequestBytes,
+        TInstant::Now().MicroSeconds());
 
     req.RequestTimestamp = TInstant::Now();
     auto started = RequestStats->RequestStarted(

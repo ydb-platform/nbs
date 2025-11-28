@@ -1,4 +1,5 @@
 #include "part_actor.h"
+#include "cloud/storage/core/libs/diagnostics/wilson_trace_compatibility.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
@@ -185,6 +186,11 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
             ? NKikimrBlobStorage::AsyncBlob
             : NKikimrBlobStorage::UserData);
 
+    auto traceId = GetTraceIdForRequestId(
+        RequestInfo->CallContext->LWOrbit,
+        RequestInfo->CallContext->RequestId,
+        true);
+
     request->Orbit = std::move(RequestInfo->CallContext->LWOrbit);
 
     RequestSent = ctx.Now();
@@ -192,7 +198,9 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
     SendToBSProxy(
         ctx,
         Request->Proxy,
-        request.release());
+        request.release(),
+        RequestInfo->Cookie,
+        std::move(traceId));
 }
 
 void TWriteBlobActor::NotifyCompleted(
