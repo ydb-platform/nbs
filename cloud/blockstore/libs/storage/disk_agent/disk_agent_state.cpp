@@ -287,6 +287,48 @@ TVector<IProfileLog::TBlockInfo> ComputeDigest(
     return ComputeDigest(generator, sglist, req.GetStartIndex());
 }
 
+NProto::TError CompareConfigs(
+    const TVector<NProto::TDeviceConfig>& expectedConfigs,
+    const TVector<NProto::TDeviceConfig>& actualConfigs)
+{
+    if (expectedConfigs.size() != actualConfigs.size()) {
+        return MakeError(E_ARGUMENT, "device count mismatch");
+    }
+
+    THashMap<TString, NProto::TDeviceConfig> expectedConfigsMap;
+    for (const auto& config: expectedConfigs) {
+        expectedConfigsMap[config.GetDeviceUUID()] = config;
+    }
+
+    for (const auto& config: actualConfigs) {
+        const auto* expectedConfig =
+            expectedConfigsMap.FindPtr(config.GetDeviceUUID());
+        if (!expectedConfig) {
+            return MakeError(
+                E_ARGUMENT,
+                Sprintf(
+                    "device[%s] not found",
+                    config.GetDeviceUUID().Quote().c_str()));
+        }
+
+        if (expectedConfig->GetBlocksCount() != config.GetBlocksCount() ||
+            expectedConfig->GetBlockSize() != config.GetBlockSize() ||
+            expectedConfig->GetPhysicalOffset() != config.GetPhysicalOffset() ||
+            expectedConfig->GetSerialNumber() != config.GetSerialNumber() ||
+            expectedConfig->GetPoolName() != config.GetPoolName() ||
+            expectedConfig->GetDeviceName() != config.GetDeviceName())
+        {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "device config mismatch expected:\n"
+                                 << *expectedConfig << "\nactual:\n"
+                                 << config << "\n");
+        }
+    }
+
+    return {};
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -423,6 +465,18 @@ TVector<TString> TDiskAgentState::GetDeviceIdsByPath(const TString& path)
     for (const auto& [uuid, device]: Devices) {
         if (device.Config.GetDeviceName() == path) {
             result.emplace_back(uuid);
+        }
+    }
+    return result;
+}
+
+TVector<NProto::TDeviceConfig> TDiskAgentState::GetDevicesByPath(
+    const THashSet<TString>& paths)
+{
+    TVector<NProto::TDeviceConfig> result;
+    for (const auto& [uuid, device]: Devices) {
+        if (paths.contains(device.Config.GetDeviceName())) {
+            result.emplace_back(device.Config);
         }
     }
     return result;
@@ -1241,6 +1295,132 @@ TFuture<void> TDiskAgentState::DetachPaths(const TVector<TString>& paths)
 
             storageAdaptersToDrop.clear();
         });
+}
+
+auto TDiskAgentState::AttachPaths(const TVector<TString>& pathsToAttach)
+    -> TFuture<TResultOrError<TAttachPathResult>>
+{
+    TAttachPathResult result;
+
+    THashSet<TString> allKnownPaths;
+    for (const auto& [_, deviceState]: Devices) {
+        allKnownPaths.emplace(deviceState.Config.GetDeviceName());
+    }
+
+    for (const auto& path: pathsToAttach) {
+        if (AttachedPaths.contains(path) || !allKnownPaths.contains(path)) {
+            result.AlreadyAttachedPaths.emplace_back(path);
+        } else {
+            result.PathsToAttach.emplace_back(path);
+        }
+    }
+
+    if (!result.PathsToAttach) {
+        return MakeFuture(TResultOrError<TAttachPathResult>(std::move(result)));
+    }
+
+    THashSet<TString> pathsSet(
+        result.PathsToAttach.begin(),
+        result.PathsToAttach.end());
+    TVector<NProto::TDeviceConfig> devices = GetDevicesByPath(pathsSet);
+
+    auto promise = NewPromise<TResultOrError<TAttachPathResult>>();
+    auto future = promise.GetFuture();
+
+    BackgroundThreadPool->ExecuteSimple(
+        [promise = std::move(promise),
+         result = std::move(result),
+         agentConfig = AgentConfig,
+         loggingService = Logging,
+         nvmeManager = NvmeManager,
+         storageProvider = StorageProvider,
+         storageConfig = StorageConfig,
+         devices = std::move(devices)]() mutable
+        {
+            auto future = InitializePaths(
+                loggingService->CreateLog("BLOCKSTORE_DISK_AGENT"),
+                storageConfig,
+                agentConfig,
+                storageProvider,
+                nvmeManager,
+                result.PathsToAttach);
+
+            future.Subscribe(
+                [promise = std::move(promise),
+                 result = std::move(result),
+                 devices = std::move(devices)](
+                    TFuture<TInitializeStorageResult> future) mutable
+                {
+                    auto initializationResult = future.ExtractValue();
+
+                    if (initializationResult.ConfigMismatchErrors) {
+                        auto error = MakeError(
+                            E_ARGUMENT,
+                            Sprintf(
+                                "Config mismatch: %s",
+                                initializationResult.ConfigMismatchErrors
+                                    .front()
+                                    .c_str()));
+                        promise.SetValue(std::move(error));
+                        return;
+                    }
+
+                    if (auto error = CompareConfigs(
+                            devices,
+                            initializationResult.Configs);
+                        HasError(error))
+                    {
+                        promise.SetValue(std::move(error));
+                        return;
+                    }
+
+                    result.Configs = std::move(initializationResult.Configs);
+                    result.Stats = std::move(initializationResult.Stats);
+                    result.Devices = std::move(initializationResult.Devices);
+                    promise.SetValue(std::move(result));
+                });
+        });
+
+    return future;
+}
+
+void TDiskAgentState::PathsAttached(
+    TVector<NProto::TDeviceConfig> configs,
+    TVector<IStoragePtr> devices,
+    TVector<TStorageIoStatsPtr> stats,
+    const TVector<TString>& pathsToAttach)
+{
+    TDuration ioTimeout;
+    if (!AgentConfig->GetDeviceIOTimeoutsDisabled()) {
+        ioTimeout = AgentConfig->GetDeviceIOTimeout();
+    }
+
+    for (size_t i = 0; i < devices.size(); ++i) {
+        auto& device = devices[i];
+        auto& config = configs[i];
+        auto& stat = stats[i];
+
+        auto* d = Devices.FindPtr(config.GetDeviceUUID());
+        if (!d) {
+            continue;
+        }
+
+        d->Config = std::move(config);
+        d->Stats = std::move(stat);
+        auto storageAdapter = std::make_shared<TStorageAdapter>(
+            std::move(device),
+            d->Config.GetBlockSize(),
+            false,   // normalize
+            ioTimeout,
+            AgentConfig->GetShutdownTimeout());
+        DeviceClient->AttachDevice(
+            d->Config.GetDeviceUUID(),
+            std::move(storageAdapter));
+    }
+
+    for (const auto& path: pathsToAttach) {
+        AttachedPaths.emplace(path);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

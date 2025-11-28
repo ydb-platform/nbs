@@ -122,6 +122,7 @@ private:
     const TDiskAgentConfigPtr AgentConfig;
     const IStorageProviderPtr StorageProvider;
     const NNvme::INvmeManagerPtr NvmeManager;
+    const THashSet<TString> PathsAllowedList;
 
     TVector<NProto::TFileDeviceArgs> FileDevices;
 
@@ -144,7 +145,8 @@ public:
         TStorageConfigPtr storageConfig,
         TDiskAgentConfigPtr agentConfig,
         IStorageProviderPtr storageProvider,
-        NNvme::INvmeManagerPtr nvmeManager);
+        NNvme::INvmeManagerPtr nvmeManager,
+        TVector<TString> pathsFilter);
 
     TFuture<void> Initialize();
     TInitializeStorageResult GetResult();
@@ -190,12 +192,16 @@ TInitializer::TInitializer(
         TStorageConfigPtr storageConfig,
         TDiskAgentConfigPtr agentConfig,
         IStorageProviderPtr storageProvider,
-        NNvme::INvmeManagerPtr nvmeManager)
-    : Log {std::move(log)}
+        NNvme::INvmeManagerPtr nvmeManager,
+        TVector<TString> pathsAllowedList)
+    : Log{std::move(log)}
     , StorageConfig(std::move(storageConfig))
     , AgentConfig(std::move(agentConfig))
     , StorageProvider(std::move(storageProvider))
     , NvmeManager(std::move(nvmeManager))
+    , PathsAllowedList(
+          std::make_move_iterator(pathsAllowedList.begin()),
+          std::make_move_iterator(pathsAllowedList.end()))
 {
     for (const auto& m: AgentConfig->GetPathToSerialNumberMapping()) {
         PathToSerial.emplace(m.GetPath(), m.GetSerialNumber());
@@ -206,6 +212,13 @@ TInitializer::TInitializer(
     FileDevices.assign(
         std::make_move_iterator(fileDevices.begin()),
         std::make_move_iterator(fileDevices.end()));
+
+    if (PathsAllowedList) {
+        std::erase_if(
+            FileDevices,
+            [&](const NProto::TFileDeviceArgs& fileArg)
+            { return !PathsAllowedList.contains(fileArg.GetPath()); });
+    }
 
     SortBy(FileDevices, GetDeviceId);
 }
@@ -368,7 +381,9 @@ void TInitializer::ScanFileDevices()
 
     if (auto error = FindDevices(
             AgentConfig->GetStorageDiscoveryConfig(),
-            std::ref(gen)); HasError(error))
+            PathsAllowedList,
+            std::ref(gen));
+        HasError(error))
     {
         ReportDiskAgentConfigMismatchEvent(TStringBuilder()
             << "Can't generate config: " << FormatError(error));
@@ -416,6 +431,9 @@ void TInitializer::ScanFileDevices()
 
 void TInitializer::SaveCurrentConfig()
 {
+    if (PathsAllowedList) {
+        return;
+    }
     const auto path = GetCachedConfigsPath();
     if (path.empty()) {
         return;
@@ -465,6 +483,7 @@ void TInitializer::ValidateCurrentConfigs(
         LostDevicesIds = GetLostDevicesIds(cachedDevices, FileDevices);
 
         SaveCurrentConfig();
+
         return;
     }
 
@@ -511,9 +530,15 @@ NProto::TError TInitializer::ProcessConfigCache()
             config.MutableDevicesWithSuspendedIO()->begin()),
         std::make_move_iterator(config.MutableDevicesWithSuspendedIO()->end()));
 
-    TVector<NProto::TFileDeviceArgs> devices{
-        std::make_move_iterator(config.MutableFileDevices()->begin()),
-        std::make_move_iterator(config.MutableFileDevices()->end())};
+    TVector<NProto::TFileDeviceArgs> devices;
+    for (auto& fileDevice: *config.MutableFileDevices()) {
+        if (!PathsAllowedList ||
+            PathsAllowedList.contains(fileDevice.GetPath()))
+        {
+            devices.push_back(std::move(fileDevice));
+        }
+    }
+
     SortBy(devices, [] (const auto& d) {
         return d.GetDeviceId();
     });
@@ -708,6 +733,32 @@ void TInitializer::ReportDiskAgentConfigMismatchEvent(const TString& error) {
     ConfigMismatchErrors.push_back(error);
 }
 
+TFuture<TInitializeStorageResult> InitializeStorageImpl(
+    TLog log,
+    TStorageConfigPtr storageConfig,
+    TDiskAgentConfigPtr agentConfig,
+    IStorageProviderPtr storageProvider,
+    NNvme::INvmeManagerPtr nvmeManager,
+    TVector<TString> pathsFilter)
+{
+    Y_UNUSED(pathsFilter);
+    auto initializer = std::make_shared<TInitializer>(
+        std::move(log),
+        std::move(storageConfig),
+        std::move(agentConfig),
+        std::move(storageProvider),
+        std::move(nvmeManager),
+        std::move(pathsFilter));
+
+    return initializer->Initialize().Apply(
+        [=](const auto& future)
+        {
+            future.GetValue();
+
+            return initializer->GetResult();
+        });
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -719,18 +770,30 @@ TFuture<TInitializeStorageResult> InitializeStorage(
     IStorageProviderPtr storageProvider,
     NNvme::INvmeManagerPtr nvmeManager)
 {
-    auto initializer = std::make_shared<TInitializer>(
+    return InitializeStorageImpl(
         std::move(log),
         std::move(storageConfig),
         std::move(agentConfig),
         std::move(storageProvider),
-        std::move(nvmeManager));
+        std::move(nvmeManager),
+        {});
+}
 
-    return initializer->Initialize().Apply([=] (const auto& future) {
-        future.GetValue();
-
-        return initializer->GetResult();
-    });
+NThreading::TFuture<TInitializeStorageResult> InitializePaths(
+    TLog log,
+    TStorageConfigPtr storageConfig,
+    TDiskAgentConfigPtr agentConfig,
+    IStorageProviderPtr storageProvider,
+    NNvme::INvmeManagerPtr nvmeManager,
+    TVector<TString> pathsFilter)
+{
+    return InitializeStorageImpl(
+        std::move(log),
+        std::move(storageConfig),
+        std::move(agentConfig),
+        std::move(storageProvider),
+        std::move(nvmeManager),
+        std::move(pathsFilter));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

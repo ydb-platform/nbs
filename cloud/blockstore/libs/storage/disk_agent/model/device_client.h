@@ -90,6 +90,8 @@ public:
 
     TStorageAdapterPtr DetachDevice(const TString& uuid) const;
 
+    void AttachDevice(const TString& uuid, TStorageAdapterPtr adapter) const;
+
     TSessionInfo GetWriterSession(const TString& uuid) const;
     TVector<TSessionInfo> GetReaderSessions(const TString& uuid) const;
 
