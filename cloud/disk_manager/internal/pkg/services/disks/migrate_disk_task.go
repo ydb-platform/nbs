@@ -472,16 +472,37 @@ func (t *migrateDiskTask) finishMigration(
 		logging.Info(ctx, "Overlay disk rebased for RebaseInfo %+v", rebaseInfo)
 	}
 
-	client, err := t.nbsFactory.GetClient(ctx, t.request.Disk.ZoneId)
+	srcZoneClient, err := t.nbsFactory.GetClient(ctx, t.request.Disk.ZoneId)
 	if err != nil {
 		return err
 	}
 
-	err = client.Delete(ctx, t.request.Disk.DiskId)
+	err = srcZoneClient.Delete(ctx, t.request.Disk.DiskId)
 	if err != nil {
 		return err
 	}
 	t.logInfo(ctx, execCtx, "deleted src disk")
+
+	dstZoneClient, err := t.nbsFactory.GetClient(ctx, t.request.DstZoneId)
+	if err != nil {
+		return err
+	}
+
+	err = dstZoneClient.ModifyTags(
+		ctx,
+		func() error {
+			return execCtx.SaveState(ctx)
+		},
+		t.request.Disk.DiskId,
+		[]string{},
+		[]string{
+			"source-disk-id=" + t.request.Disk.ZoneId + "_" + t.request.Disk.DiskId,
+		},
+	)
+	if err != nil {
+		return err
+	}
+	t.logInfo(ctx, execCtx, "source-disk-id tag removed from dst disk")
 
 	taskID, err := t.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(

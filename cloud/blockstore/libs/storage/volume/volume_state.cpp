@@ -334,6 +334,7 @@ void TVolumeState::Reset()
     UseFastPath = false;
     AcceptInvalidDiskAllocationResponse = false;
     UseIntermediateWriteBuffer = false;
+    SourceDiskId = "";
 
     if (IsDiskRegistryMediaKind() && Meta.GetDevices().size()) {
         CreatePartitionStatInfo(GetDiskId(), 0);
