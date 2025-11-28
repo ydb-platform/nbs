@@ -346,6 +346,7 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(UsedSessionsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedHandlesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedDirectHandlesCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(SevenBytesHandlesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedLocksCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(StatefulSessionsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(StatelessSessionsCount, EMetricType::MT_ABSOLUTE);
@@ -586,6 +587,7 @@ void TIndexTabletActor::TMetrics::Update(
     Store(UsedSessionsCount, stats.GetUsedSessionsCount());
     Store(UsedHandlesCount, stats.GetUsedHandlesCount());
     Store(UsedDirectHandlesCount, handlesStats.UsedDirectHandlesCount);
+    Store(SevenBytesHandlesCount, handlesStats.SevenBytesHandlesCount);
     Store(UsedLocksCount, stats.GetUsedLocksCount());
 
     Store(FreshBytesCount, stats.GetFreshBytesCount());
