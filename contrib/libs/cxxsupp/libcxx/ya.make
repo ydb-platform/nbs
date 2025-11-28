@@ -5,18 +5,18 @@ LIBRARY()
 LICENSE(
     Apache-2.0 AND
     Apache-2.0 WITH LLVM-exception AND
-    BSD-2-Clause AND
     BSL-1.0 AND
     MIT AND
     NCSA AND
+    Public-Domain AND
     Unicode
 )
 
 LICENSE_TEXTS(.yandex_meta/licenses.list.txt)
 
-VERSION(2022-07-22)
+VERSION(2023-10-05)
 
-ORIGINAL_SOURCE(https://github.com/llvm/llvm-project/archive/1d057a6d43060eaf6c679e0593a43f99ecd70987.tar.gz)
+ORIGINAL_SOURCE(https://github.com/llvm/llvm-project/archive/dc129d6f715cf83a2072fc8de8b4e4c70bca6935.tar.gz)
 
 ADDINCL(
     GLOBAL contrib/libs/cxxsupp/libcxx/include
@@ -88,6 +88,16 @@ ELSEIF (OS_WINDOWS)
             contrib/libs/cxxsupp/builtins
         )
     ENDIF()
+ELSEIF (OS_EMSCRIPTEN)
+    DEFAULT(CXX_RT "libcxxabi")
+    LDFLAGS(-Wl,-Bdynamic)
+    CXXFLAGS(
+        -Wno-unknown-pragmas
+        -nostdinc++
+    )
+    PEERDIR(
+        contrib/restricted/emscripten/include
+    )
 ELSE()
     DEFAULT(CXX_RT "glibcxx_static")
     CXXFLAGS(
@@ -158,6 +168,16 @@ ELSEIF (CXX_RT == "glibcxx_dynamic")
     )
     ENABLE(NEED_GLIBCXX_CXX17_SHIMS)
     ENABLE(NEED_CXX_RT_ADDINCL)
+ELSEIF (CXX_RT == "libcxxabi")
+    PEERDIR(
+        contrib/libs/cxxsupp/libcxxabi
+    )
+    ADDINCL(
+        GLOBAL contrib/libs/cxxsupp/libcxxabi/include
+    )
+    CFLAGS(
+        GLOBAL -DLIBCXX_BUILDING_LIBCXXABI
+    )
 ELSEIF (CXX_RT == "default")
     # Do nothing
 ELSE()
@@ -198,8 +218,8 @@ ENDIF()
 
 SRCS(
     src/algorithm.cpp
+    src/algorithm_old.cpp
     src/any.cpp
-    src/assert.cpp
     src/atomic.cpp
     src/barrier.cpp
     src/bind.cpp
@@ -207,10 +227,14 @@ SRCS(
     src/chrono.cpp
     src/condition_variable.cpp
     src/condition_variable_destructor.cpp
-    src/debug.cpp
+    src/error_category.cpp
     src/exception.cpp
+    src/filesystem/directory_entry.cpp
     src/filesystem/directory_iterator.cpp
+    src/filesystem/filesystem_clock.cpp
+    src/filesystem/filesystem_error.cpp
     src/filesystem/operations.cpp
+    src/filesystem/path.cpp
     src/functional.cpp
     src/future.cpp
     src/hash.cpp
@@ -220,9 +244,11 @@ SRCS(
     src/legacy_pointer_safety.cpp
     src/locale.cpp
     src/memory.cpp
+    src/memory_resource.cpp
     src/mutex.cpp
     src/mutex_destructor.cpp
     src/optional.cpp
+    src/print.cpp
     src/random.cpp
     src/random_shuffle.cpp
     src/regex.cpp
@@ -236,23 +262,24 @@ SRCS(
     src/system_error.cpp
     src/thread.cpp
     src/typeinfo.cpp
-    src/utility.cpp
     src/valarray.cpp
     src/variant.cpp
     src/vector.cpp
+    src/verbose_abort.cpp
 )
-
-IF (NOT GCC)
-    # compiling src/format.cpp requires -std=c++20,
-    # yet our GCC version it too auld for this.
-    SRCS(
-        src/format.cpp
-    )
-ENDIF()
 
 IF (NOT OS_WINDOWS)
     SRCS(
         src/new.cpp
+        src/new_handler.cpp
+        src/new_helpers.cpp
+    )
+ENDIF()
+
+IF (OS_LINUX)
+    SRCS(
+        src/tz.cpp
+        src/tzdb_list.cpp
     )
 ENDIF()
 

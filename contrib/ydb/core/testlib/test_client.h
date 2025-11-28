@@ -21,14 +21,17 @@
 #include <contrib/ydb/core/testlib/basics/runtime.h>
 #include <contrib/ydb/core/testlib/basics/appdata.h>
 #include <contrib/ydb/core/protos/kesus.pb.h>
+#include <contrib/ydb/core/protos/table_service_config.pb.h>
 #include <contrib/ydb/core/kesus/tablet/events.h>
 #include <contrib/ydb/core/kqp/federated_query/kqp_federated_query_helpers.h>
 #include <contrib/ydb/core/security/ticket_parser.h>
+#include <contrib/ydb/core/security/ticket_parser_settings.h>
 #include <contrib/ydb/core/base/grpc_service_factory.h>
 #include <contrib/ydb/core/persqueue/actor_persqueue_client_iface.h>
 #include <contrib/ydb/core/fq/libs/shared_resources/interface/shared_resources.h>
 #include <contrib/ydb/core/http_proxy/auth_factory.h>
 #include <contrib/ydb/library/accessor/accessor.h>
+#include <contrib/ydb/library/yql/providers/s3/actors_factory/yql_s3_actors_factory.h>
 
 #include <contrib/ydb/library/grpc/server/grpc_server.h>
 
@@ -53,13 +56,13 @@ namespace Tests {
 
     constexpr const char* TestDomainName = "dc-1";
     const ui32 TestDomain = 1;
-    const ui64 DummyTablet1 = 0x840100;
-    const ui64 DummyTablet2 = 0x840101;
-    const ui64 Coordinator = 0x800001;
-    const ui64 Mediator = 0x810001;
-    const ui64 TxAllocator = 0x820001;
-    const ui64 SchemeRoot = 0x850100;
-    const ui64 Hive = 0xA001;
+    const ui64 DummyTablet1 = MakeTabletID(false, 0x840100);
+    const ui64 DummyTablet2 = MakeTabletID(false, 0x840101);
+    const ui64 Coordinator = MakeTabletID(false, 0x800001);
+    const ui64 Mediator = MakeTabletID(false, 0x810001);
+    const ui64 TxAllocator = MakeTabletID(false, 0x820001);
+    const ui64 SchemeRoot = MakeTabletID(false, 0x850100);
+    const ui64 Hive = MakeTabletID(false, 0xA001);
 
     struct TServerSetup {
         TString IpAddress;
@@ -78,10 +81,17 @@ namespace Tests {
     bool IsServerRedirected();
     TServerSetup GetServerSetup();
 
-    ui64 ChangeDomain(ui64 tabletId, ui32 domainUid);
-    ui64 ChangeStateStorage(ui64 tabletId, ui32 ssUid);
-    NMiniKQL::IFunctionRegistry* DefaultFrFactory(const NScheme::TTypeRegistry& typeRegistry);
+    inline ui64 ChangeDomain(ui64 tabletId, ui32 id) {
+        const ui64 mask = static_cast<ui64>(0xfff) << 44;
+        return (tabletId & ~mask) | static_cast<ui64>(id & 0xfff) << 44;
+    }
 
+    inline ui64 ChangeStateStorage(ui64 tabletId, ui32 id) {
+        const ui64 mask = static_cast<ui64>(0xff) << 56;
+        return (tabletId & ~mask) | static_cast<ui64>(id & 0xff) << 56;
+    }
+
+    NMiniKQL::IFunctionRegistry* DefaultFrFactory(const NScheme::TTypeRegistry& typeRegistry);
 
     struct TServerSettings: public TThrRefBase, public TTestFeatureFlagsHolder<TServerSettings> {
         static constexpr ui64 BOX_ID = 999;
@@ -97,6 +107,8 @@ namespace Tests {
         ui16 Port;
         ui16 GrpcPort = 0;
         int GrpcMaxMessageSize = 0;  // 0 - default (4_MB), -1 - no limit
+        ui16 MonitoringPortOffset = 0;
+        bool MonitoringTypeAsync = false;
         NKikimrProto::TAuthConfig AuthConfig;
         NKikimrPQ::TPQConfig PQConfig;
         NKikimrPQ::TPQClusterDiscoveryConfig PQClusterDiscoveryConfig;
@@ -140,13 +152,20 @@ namespace Tests {
         TString AwsRegion;
         NKqp::IKqpFederatedQuerySetupFactory::TPtr FederatedQuerySetupFactory = std::make_shared<NKqp::TKqpFederatedQuerySetupFactoryNoop>();
         NYql::ISecuredServiceAccountCredentialsFactory::TPtr CredentialsFactory;
+        NMiniKQL::TComputationNodeFactory ComputationFactory;
+        NYql::IYtGateway::TPtr YtGateway;
         bool InitializeFederatedQuerySetupFactory = false;
+        TString ServerCertFilePath;
+        bool Verbose = true;
+        bool UseSectorMap = false;
 
-        std::function<IActor*(const NKikimrProto::TAuthConfig&)> CreateTicketParser = NKikimr::CreateTicketParser;
+        std::function<IActor*(const TTicketParserSettings&)> CreateTicketParser = NKikimr::CreateTicketParser;
         std::shared_ptr<TGrpcServiceFactory> GrpcServiceFactory;
+        std::shared_ptr<NYql::NDq::IS3ActorsFactory> S3ActorsFactory = NYql::NDq::CreateDefaultS3ActorsFactory();
 
         TServerSettings& SetGrpcPort(ui16 value) { GrpcPort = value; return *this; }
         TServerSettings& SetGrpcMaxMessageSize(int value) { GrpcMaxMessageSize = value; return *this; }
+        TServerSettings& SetMonitoringPortOffset(ui16 value, bool monitoringTypeAsync = false) { MonitoringPortOffset = value; MonitoringTypeAsync = monitoringTypeAsync; return *this; }
         TServerSettings& SetSupportsRedirect(bool value) { SupportsRedirect = value; return *this; }
         TServerSettings& SetTracePath(const TString& value) { TracePath = value; return *this; }
         TServerSettings& SetDomain(ui32 value) { Domain = value; return *this; }
@@ -185,7 +204,11 @@ namespace Tests {
         TServerSettings& SetAwsRegion(const TString& value) { AwsRegion = value; return *this; }
         TServerSettings& SetFederatedQuerySetupFactory(NKqp::IKqpFederatedQuerySetupFactory::TPtr value) { FederatedQuerySetupFactory = value; return *this; }
         TServerSettings& SetCredentialsFactory(NYql::ISecuredServiceAccountCredentialsFactory::TPtr credentialsFactory) { CredentialsFactory = std::move(credentialsFactory); return *this; }
+        TServerSettings& SetComputationFactory(NMiniKQL::TComputationNodeFactory computationFactory) { ComputationFactory = std::move(computationFactory); return *this; }
+        TServerSettings& SetYtGateway(NYql::IYtGateway::TPtr ytGateway) { YtGateway = std::move(ytGateway); return *this; }
         TServerSettings& SetInitializeFederatedQuerySetupFactory(bool value) { InitializeFederatedQuerySetupFactory = value; return *this; }
+        TServerSettings& SetVerbose(bool value) { Verbose = value; return *this; }
+        TServerSettings& SetUseSectorMap(bool value) { UseSectorMap = value; return *this; }
         TServerSettings& SetPersQueueGetReadSessionsInfoWorkerFactory(
             std::shared_ptr<NKikimr::NMsgBusProxy::IPersQueueGetReadSessionsInfoWorkerFactory> factory
         ) {
@@ -235,7 +258,6 @@ namespace Tests {
         TServerSettings& operator=(const TServerSettings& settings) = default;
     private:
         YDB_FLAG_ACCESSOR(EnableMetadataProvider, true);
-        YDB_FLAG_ACCESSOR(EnableBackgroundTasks, false);
         YDB_FLAG_ACCESSOR(EnableExternalIndex, false);
     };
 
@@ -283,7 +305,7 @@ namespace Tests {
             }
         }
         void StartDummyTablets();
-        TVector<ui64> StartPQTablets(ui32 pqTabletsN);
+        TVector<ui64> StartPQTablets(ui32 pqTabletsN, bool wait = true);
         TTestActorRuntime* GetRuntime() const;
         const TServerSettings& GetSettings() const;
         const NScheme::TTypeRegistry* GetTypeRegistry();
@@ -299,6 +321,7 @@ namespace Tests {
         }
         void SetupDynamicLocalService(ui32 nodeIdx, const TString &tenantName);
         void DestroyDynamicLocalService(ui32 nodeIdx);
+        void WaitFinalization();
 
     protected:
         const TServerSettings::TConstPtr Settings;
@@ -358,12 +381,72 @@ namespace Tests {
                 request->Record.SetSecurityToken(SecurityToken);
         }
 
+        void PrepareRequest(TAutoPtr<NMsgBusProxy::TBusSchemeOperationStatus>& request) {
+            if (!SecurityToken.empty())
+                request->Record.SetSecurityToken(SecurityToken);
+        }
+
         void PrepareRequest(TAutoPtr<NMsgBusProxy::TBusSchemeInitRoot>& request) {
             if (!SecurityToken.empty())
                 request->Record.SetSecurityToken(SecurityToken);
         }
 
         void PrepareRequest(TAutoPtr<NMsgBusProxy::TBusSchemeDescribe>& request) {
+            if (!SecurityToken.empty())
+                request->Record.SetSecurityToken(SecurityToken);
+        }
+
+        void PrepareRequest(TAutoPtr<NMsgBusProxy::TBusCmsRequest>& request) {
+            if (!SecurityToken.empty())
+                request->Record.SetSecurityToken(SecurityToken);
+        }
+
+        void PrepareRequest(TAutoPtr<NMsgBusProxy::TBusConsoleRequest>& request) {
+            if (!SecurityToken.empty())
+                request->Record.SetSecurityToken(SecurityToken);
+        }
+
+        void PrepareRequest(TAutoPtr<NMsgBusProxy::TBusResolveNode>& request) {
+            if (!SecurityToken.empty())
+                request->Record.SetSecurityToken(SecurityToken);
+        }
+
+        void PrepareRequest(TAutoPtr<NMsgBusProxy::TBusFillNode>& request) {
+            if (!SecurityToken.empty())
+                request->Record.SetSecurityToken(SecurityToken);
+        }
+
+        void PrepareRequest(TAutoPtr<NMsgBusProxy::TBusDrainNode>& request) {
+            if (!SecurityToken.empty())
+                request->Record.SetSecurityToken(SecurityToken);
+        }
+
+        void PrepareRequest(TAutoPtr<NMsgBusProxy::TBusBlobStorageConfigRequest>& request) {
+            if (!SecurityToken.empty())
+                request->Record.SetSecurityToken(SecurityToken);
+        }
+
+        void PrepareRequest(TAutoPtr<NMsgBusProxy::TBusChooseProxy>& request) {
+            if (!SecurityToken.empty())
+                request->Record.SetSecurityToken(SecurityToken);
+        }
+
+        void PrepareRequest(TAutoPtr<NMsgBusProxy::TBusHiveCreateTablet>& request) {
+            if (!SecurityToken.empty())
+                request->Record.SetSecurityToken(SecurityToken);
+        }
+
+        void PrepareRequest(TAutoPtr<NMsgBusProxy::TBusTestShardControlRequest>& request) {
+            if (!SecurityToken.empty())
+                request->Record.SetSecurityToken(SecurityToken);
+        }
+
+        void PrepareRequest(TAutoPtr<NMsgBusProxy::TBusInterconnectDebug>& request) {
+            if (!SecurityToken.empty())
+                request->Record.SetSecurityToken(SecurityToken);
+        }
+
+        void PrepareRequest(TAutoPtr<NMsgBusProxy::TBusTabletStateRequest>& request) {
             if (!SecurityToken.empty())
                 request->Record.SetSecurityToken(SecurityToken);
         }
@@ -545,7 +628,7 @@ namespace Tests {
         // Waits for scheme operation to complete
         NBus::EMessageStatus WaitCompletion(ui64 txId, ui64 schemeshard, ui64 pathId,
                                             TAutoPtr<NBus::TBusMessage>& reply,
-                                            TDuration timeout = TDuration::Seconds(1000));
+                                            TDuration timeout = TDuration::Seconds(1000), const TString& securityToken = {});
         NBus::EMessageStatus SendAndWaitCompletion(TAutoPtr<NMsgBusProxy::TBusSchemeOperation> request,
                                                    TAutoPtr<NBus::TBusMessage>& reply,
                                                    TDuration timeout = TDuration::Seconds(1000));
@@ -610,6 +693,8 @@ namespace Tests {
         ui32 Size() const;
         ui32 Availabe() const;
         ui32 Capacity() const;
+
+        void CreateTenant(Ydb::Cms::CreateDatabaseRequest request, ui32 nodes = 1, TDuration timeout = TDuration::Seconds(30));
 
     private:
         TVector<ui32>& Nodes(const TString &name);

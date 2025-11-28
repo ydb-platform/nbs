@@ -22,9 +22,12 @@ PEERDIR(
     contrib/ydb/public/lib/scheme_types
     contrib/ydb/library/yql/public/issue
     contrib/ydb/public/sdk/cpp/client/ydb_driver
+    contrib/ydb/public/sdk/cpp/client/ydb_table
 )
 
 SRCS(
+    auditlog_helpers.cpp
+    auditlog_helpers.h
     export_reboots_common.cpp
     failing_mtpq.cpp
     helpers.cpp

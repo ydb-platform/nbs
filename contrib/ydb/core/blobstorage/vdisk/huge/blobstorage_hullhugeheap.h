@@ -5,6 +5,7 @@
 
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_log.h>
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_hugeblobctx.h>
+#include <contrib/ydb/core/control/immediate_control_board_wrapper.h>
 #include <contrib/ydb/core/util/bits.h>
 #include <util/generic/set.h>
 #include <util/ysaveload.h>
@@ -94,23 +95,25 @@ namespace NKikimr {
             using TChunkID = ui32;
             using TFreeSpace = TMap<TChunkID, TMask>;
 
-            static constexpr ui32 MaxNumberOfSlots = 10240; // it's not a good idea to have more slots than this
+        public:
+            static constexpr ui32 MaxNumberOfSlots = 32768; // it's not a good idea to have more slots than this
             const TString VDiskLogPrefix;
-            const ui32 SlotsInChunk;
-            const TMask ConstMask; // mask of 'all slots are free'
+            ui32 SlotsInChunk;
+            TMask ConstMask; // mask of 'all slots are free'
+            TControlWrapper ChunksSoftLocking;
             TFreeSpace FreeSpace;
             TFreeSpace LockedChunks;
             ui32 AllocatedSlots = 0;
             ui32 FreeSlotsInFreeSpace = 0;
 
-        public:
             static TMask BuildConstMask(const TString &prefix, ui32 slotsInChunk);
 
         public:
-            TChain(const TString &vdiskLogPrefix, const ui32 slotsInChunk)
+            TChain(const TString &vdiskLogPrefix, const ui32 slotsInChunk, TControlWrapper chunksSoftLocking)
                 : VDiskLogPrefix(vdiskLogPrefix)
                 , SlotsInChunk(slotsInChunk)
                 , ConstMask(BuildConstMask(vdiskLogPrefix, slotsInChunk))
+                , ChunksSoftLocking(chunksSoftLocking)
             {}
 
             // returns true if allocated, false -- if no free slots
@@ -151,7 +154,8 @@ namespace NKikimr {
                 ui32 valBlocks,
                 ui32 shiftBlocks,
                 ui32 chunkSize,
-                ui32 appendBlockSize);
+                ui32 appendBlockSize,
+                TControlWrapper chunksSoftLocking);
             TChainDelegator(TChainDelegator &&) = default;
             TChainDelegator &operator =(TChainDelegator &&) = default;
             TChainDelegator(const TChainDelegator &) = delete;
@@ -180,11 +184,11 @@ namespace NKikimr {
                 ui32 chunkSize,
                 ui32 appendBlockSize,
                 ui32 minHugeBlobInBytes,
+                ui32 oldMinHugeBlobSizeInBytes,
                 ui32 milestoneBlobInBytes,
                 ui32 maxBlobInBytes,
                 ui32 overhead,
-                bool oldMapCompatible);
-            ui32 GetMinREALHugeBlobInBytes() const;
+                TControlWrapper chunksSoftLocking);
             // return a pointer to corresponding chain delegator by object byte size
             TChainDelegator *GetChain(ui32 size);
             const TChainDelegator *GetChain(ui32 size) const;
@@ -206,18 +210,16 @@ namespace NKikimr {
             // Builds a map of BlobSize -> THugeSlotsMap::TSlotInfo for THugeBlobCtx
             std::shared_ptr<THugeSlotsMap> BuildHugeSlotsMap() const;
 
-        private:
-            struct TBuiltChainDelegators {
-                TAllChainDelegators ChainDelegators;
-                ui32 MinREALHugeBlobInBlocks = 0;
-                ui32 MilestoneREALHugeBlobInBlocks = 0;
-            };
+            TAllChainDelegators ChainDelegators;
 
-            TBuiltChainDelegators BuildChains(ui32 minHugeBlobInBytes) const;
+        private:
+
+            TAllChainDelegators BuildChains(ui32 minHugeBlobInBytes) const;
             void BuildSearchTable();
-            void BuildLayout(bool oldMapCompatible);
+            void BuildLayout();
             inline ui32 SizeToBlocks(ui32 size) const;
             inline ui32 GetEndBlocks() const;
+            bool IsOldMinHugeBlobSizeCompatible() const;
 
             enum class EStartMode {
                 Empty = 1,
@@ -229,13 +231,12 @@ namespace NKikimr {
             const ui32 ChunkSize;
             const ui32 AppendBlockSize;
             const ui32 MinHugeBlobInBytes;
+            const ui32 OldMinHugeBlobSizeInBytes;
             const ui32 MilestoneBlobInBytes;
             const ui32 MaxBlobInBytes;
             const ui32 Overhead;
-            const bool OldMapCompatible;
+            TControlWrapper ChunksSoftLocking;
             EStartMode StartMode = EStartMode::Empty;
-            ui32 MinREALHugeBlobInBlocks = 0;
-            TAllChainDelegators ChainDelegators;
             TSearchTable SearchTable;
         };
 
@@ -252,6 +253,7 @@ namespace NKikimr {
             const TString VDiskLogPrefix;
             const ui32 FreeChunksReservation;
             TFreeChunks FreeChunks;
+        public:
             TAllChains Chains;
 
         public:
@@ -260,6 +262,7 @@ namespace NKikimr {
                 ui32 appendBlockSize,
                 // min size of the huge blob
                 ui32 minHugeBlobInBytes,
+                ui32 oldMinHugeBlobSizeInBytes,
                 // fixed point to calculate layout (for backward compatibility)
                 ui32 mileStoneBlobInBytes,
                 // max size of the blob
@@ -267,11 +270,8 @@ namespace NKikimr {
                 // difference between buckets is 1/overhead
                 ui32 overhead,
                 ui32 freeChunksReservation,
-                bool oldMapCompatible);
+                TControlWrapper chunksSoftLocking);
 
-            ui32 GetMinREALHugeBlobInBytes() const {
-                return Chains.GetMinREALHugeBlobInBytes();
-            }
 
             ui32 SlotNumberOfThisSize(ui32 size) const {
                 const TChainDelegator *chainD = Chains.GetChain(size);

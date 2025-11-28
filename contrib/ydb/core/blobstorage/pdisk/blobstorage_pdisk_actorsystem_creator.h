@@ -13,6 +13,9 @@
 #include <contrib/ydb/core/control/immediate_control_board_impl.h>
 #include <contrib/ydb/core/grpc_services/grpc_helper.h>
 #include <contrib/ydb/core/protos/config.pb.h>
+#include <contrib/ydb/core/protos/netclassifier.pb.h>
+#include <contrib/ydb/core/protos/shared_cache.pb.h>
+#include <contrib/ydb/core/protos/datashard_config.pb.h>
 #include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/core/base/nameservice.h>
 #include <contrib/ydb/core/base/channel_profiles.h>

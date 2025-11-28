@@ -73,21 +73,27 @@ public:
         return BackingSize() - IndexesRawSize;
     }
 
-    ui64 GetPageSize(NPage::TPageId id, NPage::TGroupId groupId) const override
+    ui64 GetPageSize(NPage::TPageId pageId, NPage::TGroupId groupId) const override
     {
         Y_ABORT_UNLESS(groupId.Index < PageCollections.size());
-        return PageCollections[groupId.Index]->PageCollection->Page(id).Size;
+        return PageCollections[groupId.Index]->GetPageSize(pageId);
     }
 
-    NPage::EPage GetPageType(NPage::TPageId id, NPage::TGroupId groupId) const override
+    ui64 GetPageSize(ELargeObj lob, ui64 ref) const override
+    {
+        auto* cache = Locate(lob, ref);
+
+        return cache->PageCollection->Page(ref).Size;
+    }
+
+    NPage::EPage GetPageType(NPage::TPageId pageId, NPage::TGroupId groupId) const override
     {
         Y_ABORT_UNLESS(groupId.Index < PageCollections.size());
-        return EPage(PageCollections[groupId.Index]->PageCollection->Page(id).Type);
+        return PageCollections[groupId.Index]->GetPageType(pageId);
     }
 
-    ui8 GetPageChannel(NPage::TPageId id, NPage::TGroupId groupId) const override
+    ui8 GetGroupChannel(NPage::TGroupId groupId) const override
     {
-        Y_UNUSED(id);
         Y_ABORT_UNLESS(groupId.Index < PageCollections.size());
         return PageCollections[groupId.Index]->Id.Channel();
     }
@@ -189,7 +195,7 @@ public:
     }
 
     void SaveAllBlobIdsTo(TVector<TLogoBlobID>& vec) const override {
-        for (auto blobId : DataId.Blobs()) {
+        for (const auto& blobId : DataId.Blobs()) {
             vec.emplace_back(blobId);
         }
     }

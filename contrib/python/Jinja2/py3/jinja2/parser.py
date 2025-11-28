@@ -1,4 +1,5 @@
 """Parse tokens from the lexer into nodes for the compiler."""
+
 import typing
 import typing as t
 
@@ -10,6 +11,7 @@ from .lexer import describe_token_expr
 
 if t.TYPE_CHECKING:
     import typing_extensions as te
+
     from .environment import Environment
 
 _ImportInclude = t.TypeVar("_ImportInclude", nodes.Import, nodes.Include)
@@ -311,12 +313,14 @@ class Parser:
         # enforce that required blocks only contain whitespace or comments
         # by asserting that the body, if not empty, is just TemplateData nodes
         # with whitespace data
-        if node.required and not all(
-            isinstance(child, nodes.TemplateData) and child.data.isspace()
-            for body in node.body
-            for child in body.nodes  # type: ignore
-        ):
-            self.fail("Required blocks can only contain comments or whitespace")
+        if node.required:
+            for body_node in node.body:
+                if not isinstance(body_node, nodes.Output) or any(
+                    not isinstance(output_node, nodes.TemplateData)
+                    or not output_node.data.isspace()
+                    for output_node in body_node.nodes
+                ):
+                    self.fail("Required blocks can only contain comments or whitespace")
 
         self.stream.skip_if("name:" + node.name)
         return node
@@ -455,8 +459,7 @@ class Parser:
     @typing.overload
     def parse_assign_target(
         self, with_tuple: bool = ..., name_only: "te.Literal[True]" = ...
-    ) -> nodes.Name:
-        ...
+    ) -> nodes.Name: ...
 
     @typing.overload
     def parse_assign_target(
@@ -465,8 +468,7 @@ class Parser:
         name_only: bool = False,
         extra_end_rules: t.Optional[t.Tuple[str, ...]] = None,
         with_namespace: bool = False,
-    ) -> t.Union[nodes.NSRef, nodes.Name, nodes.Tuple]:
-        ...
+    ) -> t.Union[nodes.NSRef, nodes.Name, nodes.Tuple]: ...
 
     def parse_assign_target(
         self,
@@ -857,9 +859,16 @@ class Parser:
         else:
             args.append(None)
 
-        return nodes.Slice(lineno=lineno, *args)
+        return nodes.Slice(lineno=lineno, *args)  # noqa: B026
 
-    def parse_call_args(self) -> t.Tuple:
+    def parse_call_args(
+        self,
+    ) -> t.Tuple[
+        t.List[nodes.Expr],
+        t.List[nodes.Keyword],
+        t.Optional[nodes.Expr],
+        t.Optional[nodes.Expr],
+    ]:
         token = self.stream.expect("lparen")
         args = []
         kwargs = []
@@ -950,7 +959,7 @@ class Parser:
             next(self.stream)
             name += "." + self.stream.expect("name").value
         dyn_args = dyn_kwargs = None
-        kwargs = []
+        kwargs: t.List[nodes.Keyword] = []
         if self.stream.current.type == "lparen":
             args, kwargs, dyn_args, dyn_kwargs = self.parse_call_args()
         elif self.stream.current.type in {

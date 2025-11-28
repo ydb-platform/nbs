@@ -14,6 +14,7 @@ ELSE()
 ENDIF()
 
 PEERDIR(
+    contrib/libs/aws-sdk-cpp/aws-cpp-sdk-core
     contrib/libs/double-conversion
     library/cpp/string_utils/quote
     contrib/ydb/core/kqp/ut/common
@@ -21,7 +22,7 @@ PEERDIR(
     contrib/ydb/core/wrappers/ut_helpers
     contrib/ydb/core/ydb_convert
     contrib/ydb/library/yql/sql/pg
-    contrib/ydb/library/yql/parser/pg_wrapper    
+    contrib/ydb/library/yql/parser/pg_wrapper
 )
 
 SRCS(

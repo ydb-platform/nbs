@@ -3,10 +3,14 @@
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/mon/mon.h>
 #include <contrib/ydb/core/base/memobserver.h>
+#include <contrib/ydb/core/control/immediate_control_board_impl.h>
+#include <contrib/ydb/core/protos/shared_cache.pb.h>
 
 #include <contrib/ydb/library/actors/testlib/test_runtime.h>
 #include <library/cpp/testing/unittest/tests_data.h>
 #include <library/cpp/threading/future/future.h>
+
+#include <contrib/ydb/core/protos/key.pb.h>
 
 namespace NKikimr {
     struct TAppData;
@@ -46,6 +50,7 @@ namespace NActors {
             TAutoPtr<NKikimr::TAppData> App0;
             TAutoPtr<NActors::IDestructable> Opaque;
             TKeyConfigGenerator KeyConfigGenerator;
+            std::vector<TIntrusivePtr<NKikimr::TControlBoard>> Icb;
         };
 
         TTestActorRuntime(THeSingleSystemEnv d);
@@ -63,22 +68,43 @@ namespace NActors {
         void SimulateSleep(TDuration duration);
 
         template<class TResult>
-        inline TResult WaitFuture(NThreading::TFuture<TResult> f) {
+        inline TResult WaitFuture(NThreading::TFuture<TResult> f, TDuration simTimeout = TDuration::Max()) {
             if (!f.HasValue() && !f.HasException()) {
                 TDispatchOptions options;
                 options.CustomFinalCondition = [&]() {
                     return f.HasValue() || f.HasException();
                 };
-                options.FinalEvents.emplace_back([&](IEventHandle&) {
-                    return f.HasValue() || f.HasException();
-                });
+                // Quirk: non-empty FinalEvents enables full simulation
+                options.FinalEvents.emplace_back([](IEventHandle&) { return false; });
 
-                this->DispatchEvents(options);
+                this->DispatchEvents(options, simTimeout);
 
                 Y_ABORT_UNLESS(f.HasValue() || f.HasException());
             }
 
-            return f.ExtractValue();
+            if constexpr (!std::is_same_v<TResult, void>) {
+                return f.ExtractValue();
+            } else {
+                return f.GetValue();
+            }
+        }
+
+        template<class TCondition>
+        inline void WaitFor(const TString& description, const TCondition& condition, TDuration simTimeout = TDuration::Max()) {
+            if (!condition()) {
+                TDispatchOptions options;
+                options.CustomFinalCondition = [&]() {
+                    return condition();
+                };
+                // Quirk: non-empty FinalEvents enables full simulation
+                options.FinalEvents.emplace_back([](IEventHandle&) { return false; });
+
+                Cerr << "... waiting for " << description << Endl;
+                this->DispatchEvents(options, simTimeout);
+
+                Y_ABORT_UNLESS(condition(), "Timeout while waiting for %s", description.c_str());
+                Cerr << "... waiting for " << description << " (done)" << Endl;
+            }
         }
 
         TIntrusivePtr<NKikimr::TMemObserver> GetMemObserver(ui32 nodeIndex = 0) {
@@ -95,6 +121,7 @@ namespace NActors {
         void ClosePipe(TActorId clientId, const TActorId& sender, ui32 nodeIndex);
         void DisconnectNodes(ui32 fromNodeIndex, ui32 toNodeIndex, bool async = true);
         NKikimr::TAppData& GetAppData(ui32 nodeIndex = 0);
+        ui32 GetFirstNodeId();
 
         TPortManager& GetPortManager() {
             return *this;

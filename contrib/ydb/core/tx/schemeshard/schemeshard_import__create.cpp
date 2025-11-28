@@ -1,8 +1,10 @@
 #include "schemeshard_xxport__tx_base.h"
+#include "schemeshard_xxport__helpers.h"
 #include "schemeshard_import_flow_proposals.h"
 #include "schemeshard_import_scheme_getter.h"
 #include "schemeshard_import_helpers.h"
 #include "schemeshard_import.h"
+#include "schemeshard_audit_log.h"
 #include "schemeshard_impl.h"
 
 #include <contrib/ydb/public/api/protos/ydb_import.pb.h>
@@ -52,7 +54,7 @@ struct TSchemeShard::TImport::TTxCreate: public TSchemeShard::TXxport::TTxBase {
             );
         }
 
-        const TString& uid = GetUid(request.GetRequest().GetOperationParams().labels());
+        const TString& uid = GetUid(request.GetRequest().GetOperationParams());
         if (uid) {
             if (auto it = Self->ImportsByUid.find(uid); it != Self->ImportsByUid.end()) {
                 if (IsSameDomain(it->second, request.GetDatabaseName())) {
@@ -101,7 +103,7 @@ struct TSchemeShard::TImport::TTxCreate: public TSchemeShard::TXxport::TTxBase {
                     settings.set_scheme(Ydb::Import::ImportFromS3Settings::HTTPS);
                 }
 
-                importInfo = new TImportInfo(id, uid, TImportInfo::EKind::S3, settings, domainPath.Base()->PathId);
+                importInfo = new TImportInfo(id, uid, TImportInfo::EKind::S3, settings, domainPath.Base()->PathId, request.GetPeerName());
 
                 if (request.HasUserSID()) {
                     importInfo->UserSID = request.GetUserSID();
@@ -115,15 +117,18 @@ struct TSchemeShard::TImport::TTxCreate: public TSchemeShard::TXxport::TTxBase {
             break;
 
         default:
-            Y_DEBUG_ABORT_UNLESS(false, "Unknown import kind");
+            Y_DEBUG_ABORT("Unknown import kind");
         }
 
         Y_ABORT_UNLESS(importInfo != nullptr);
+
+        importInfo->SanitizedToken = request.GetSanitizedToken();
 
         NIceDb::TNiceDb db(txc.DB);
         Self->PersistCreateImport(db, importInfo);
 
         importInfo->State = TImportInfo::EState::Waiting;
+        importInfo->StartTime = TAppData::TimeProvider->Now();
         Self->PersistImportState(db, importInfo);
 
         Self->Imports[id] = importInfo;
@@ -147,15 +152,6 @@ struct TSchemeShard::TImport::TTxCreate: public TSchemeShard::TXxport::TTxBase {
     }
 
 private:
-    static TString GetUid(const google::protobuf::Map<TString, TString>& labels) {
-        auto it = labels.find("uid");
-        if (it == labels.end()) {
-            return TString();
-        }
-
-        return it->second;
-    }
-
     bool Reply(
         THolder<TEvImport::TEvCreateImportResponse> response,
         const Ydb::StatusIds::StatusCode status = Ydb::StatusIds::SUCCESS,
@@ -171,6 +167,8 @@ private:
         if (errorMessage) {
             AddIssue(entry, errorMessage);
         }
+
+        AuditLogImportStart(Request->Get()->Record, response->Record, Self);
 
         Send(Request->Sender, std::move(response), 0, Request->Cookie);
 
@@ -194,7 +192,8 @@ private:
                 TPath::TChecker checks = path.Check();
                 checks
                     .IsAtLocalSchemeShard()
-                    .HasResolvedPrefix();
+                    .HasResolvedPrefix()
+                    .FailOnRestrictedCreateInTempZone();
 
                 if (path.IsResolved()) {
                     checks
@@ -510,6 +509,10 @@ private:
             default:
                 break;
             }
+        }
+
+        if (importInfo->State == EState::Cancelled) {
+            importInfo->EndTime = TAppData::TimeProvider->Now();
         }
     }
 
@@ -850,7 +853,10 @@ private:
         }
 
         if (item.State == EState::CreateTable) {
-            item.DstPathId = Self->MakeLocalId(TLocalPathId(record.GetPathId()));
+            auto createPath = TPath::Resolve(item.DstPathName, Self);
+            Y_ABORT_UNLESS(createPath);
+
+            item.DstPathId = createPath.Base()->PathId;
             Self->PersistImportItemDstPathId(db, importInfo, itemIdx);
         }
 
@@ -1001,12 +1007,17 @@ private:
 
         if (AllOf(importInfo->Items, &TImportInfo::TItem::IsDone)) {
             importInfo->State = EState::Done;
+            importInfo->EndTime = TAppData::TimeProvider->Now();
         }
 
         Self->PersistImportItemState(db, importInfo, itemIdx);
         Self->PersistImportState(db, importInfo);
 
         SendNotificationsIfFinished(importInfo);
+
+        if (importInfo->IsFinished()) {
+            AuditLogImportEnd(*importInfo.Get(), Self);
+        }
     }
 
 }; // TTxProgress

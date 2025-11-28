@@ -8,10 +8,10 @@
 #include <contrib/ydb/core/sys_view/service/sysview_service.h>
 
 #include <contrib/ydb/library/actors/core/log.h>
-
 #include <util/generic/size_literals.h>
 
 #include <contrib/ydb/library/yql/core/issue/protos/issue_id.pb.h>
+#include <contrib/ydb/public/api/protos/ydb_issue_message.pb.h>
 
 namespace NKikimr {
 namespace NKqp {
@@ -325,27 +325,27 @@ void TKqpCountersBase::ReportQueryWithFullScan() {
 }
 
 void TKqpCountersBase::ReportQueryAffectedShards(ui64 shardsCount) {
-    QueryAffectedShardsCount->Collect(shardsCount > Max<i64>() ? Max<i64>() : static_cast<i64>(shardsCount));
+    QueryAffectedShardsCount->Collect(shardsCount);
 }
 
 void TKqpCountersBase::ReportQueryReadSets(ui64 readSetsCount) {
-    QueryReadSetsCount->Collect(readSetsCount > Max<i64>() ? Max<i64>() : static_cast<i64>(readSetsCount));
+    QueryReadSetsCount->Collect(readSetsCount);
 }
 
 void TKqpCountersBase::ReportQueryReadBytes(ui64 bytesCount) {
-    QueryReadBytes->Collect(bytesCount > Max<i64>() ? Max<i64>() : static_cast<i64>(bytesCount));
+    QueryReadBytes->Collect(bytesCount);
 }
 
 void TKqpCountersBase::ReportQueryReadRows(ui64 rowsCount) {
-    QueryReadRows->Collect(rowsCount > Max<i64>() ? Max<i64>() : static_cast<i64>(rowsCount));
+    QueryReadRows->Collect(rowsCount);
 }
 
 void TKqpCountersBase::ReportQueryMaxShardReplySize(ui64 replySize) {
-    QueryMaxShardReplySize->Collect(replySize > Max<i64>() ? Max<i64>() : static_cast<i64>(replySize));
+    QueryMaxShardReplySize->Collect(replySize);
 }
 
 void TKqpCountersBase::ReportQueryMaxShardProgramSize(ui64 programSize) {
-    QueryMaxShardProgramSize->Collect(programSize > Max<i64>() ? Max<i64>() : static_cast<i64>(programSize));
+    QueryMaxShardProgramSize->Collect(programSize);
 }
 
 void TKqpCountersBase::ReportResponseStatus(ui64 responseSize, Ydb::StatusIds::StatusCode ydbStatus) {
@@ -725,13 +725,14 @@ void TKqpCounters::UpdateTxCounters(const TKqpTransactionInfo& txInfo,
 }
 
 TKqpCounters::TKqpCounters(const ::NMonitoring::TDynamicCounterPtr& counters, const TActorContext* ctx)
-    : NYql::NDq::TSpillingCounters(counters)
+    : NYql::NDq::TSpillingCounters(GetServiceCounters(counters, "kqp"))
     , AllocCounters(counters, "kqp")
 {
     Counters = counters;
     KqpGroup = GetServiceCounters(counters, "kqp");
     YdbGroup = GetServiceCounters(counters, "ydb");
     QueryReplayGroup = KqpGroup->GetSubgroup("subsystem", "unified_agent_query_replay");
+    WorkloadManagerGroup = KqpGroup->GetSubgroup("subsystem", "workload_manager");
 
     Init();
 
@@ -774,7 +775,10 @@ TKqpCounters::TKqpCounters(const ::NMonitoring::TDynamicCounterPtr& counters, co
     RmExternalMemory = KqpGroup->GetCounter("RM/ExternalMemory", false);
     RmNotEnoughMemory = KqpGroup->GetCounter("RM/NotEnoughMemory", true);
     RmNotEnoughComputeActors = KqpGroup->GetCounter("RM/NotEnoughComputeActors", true);
+    RmOnStartAllocs = KqpGroup->GetCounter("Rm/OnStartAllocs", true);
     RmExtraMemAllocs = KqpGroup->GetCounter("RM/ExtraMemAllocs", true);
+    RmExtraMemFree = KqpGroup->GetCounter("RM/ExtraMemFree", true);
+    RmOnCompleteFree = KqpGroup->GetCounter("RM/OnCompleteFree", true);
     RmInternalError = KqpGroup->GetCounter("RM/InternalError", true);
     RmSnapshotLatency = KqpGroup->GetHistogram(
         "RM/SnapshotLatency", NMonitoring::ExponentialHistogram(20, 2, 1));
@@ -810,6 +814,18 @@ TKqpCounters::TKqpCounters(const ::NMonitoring::TDynamicCounterPtr& counters, co
     DataShardIteratorMessages = KqpGroup->GetCounter("IteratorReads/DatashardMessages", true);
     IteratorDeliveryProblems = KqpGroup->GetCounter("IteratorReads/DeliveryProblems", true);
 
+    /* sink writes */
+    WriteActorsShardResolve = KqpGroup->GetCounter("SinkWrites/WriteActorShardResolve", true);
+    WriteActorsCount = KqpGroup->GetCounter("SinkWrites/WriteActorsCount", false);
+    WriteActorImmediateWrites = KqpGroup->GetCounter("SinkWrites/WriteActorImmediateWrites", true);
+    WriteActorImmediateWritesRetries = KqpGroup->GetCounter("SinkWrites/WriteActorImmediateWritesRetries", true);
+    WriteActorWritesSizeHistogram =
+        KqpGroup->GetHistogram("SinkWrites/WriteActorWritesSize", NMonitoring::ExponentialHistogram(28, 2, 1));
+    WriteActorWritesOperationsHistogram =
+        KqpGroup->GetHistogram("SinkWrites/WriteActorWritesOperations", NMonitoring::ExponentialHistogram(20, 2, 1));
+    WriteActorWritesLatencyHistogram =
+        KqpGroup->GetHistogram("SinkWrites/WriteActorWritesLatencyMs", NMonitoring::ExponentialHistogram(20, 2, 1));
+
     /* sequencers */
 
     SequencerActorsCount = KqpGroup->GetCounter("Sequencer/ActorCount", false);
@@ -822,6 +838,18 @@ TKqpCounters::TKqpCounters(const ::NMonitoring::TDynamicCounterPtr& counters, co
         "PhyTx/DataTxTotalTimeMs", NMonitoring::ExponentialHistogram(20, 2, 1));
     ScanTxTotalTimeHistogram = KqpGroup->GetHistogram(
         "PhyTx/ScanTxTotalTimeMs", NMonitoring::ExponentialHistogram(20, 2, 1));
+
+    FullScansExecuted = KqpGroup->GetCounter("FullScans", true);
+
+    SchedulerThrottled = KqpGroup->GetCounter("NodeScheduler/ThrottledUs", true);
+    SchedulerCapacity = KqpGroup->GetCounter("NodeScheduler/Capacity");
+    ComputeActorExecutions = KqpGroup->GetHistogram("NodeScheduler/BatchUs", NMonitoring::ExponentialHistogram(20, 2, 1));
+    ComputeActorDelays = KqpGroup->GetHistogram("NodeScheduler/Delays", NMonitoring::ExponentialHistogram(20, 2, 1));
+    ThrottledActorsSpuriousActivations = KqpGroup->GetCounter("NodeScheduler/SpuriousActivations", true);
+    SchedulerDelays = KqpGroup->GetHistogram("NodeScheduler/Delay", NMonitoring::ExponentialHistogram(20, 2, 1));
+
+    TotalSingleNodeReqCount = KqpGroup->GetCounter("TotalSingleNodeReqCount", true);
+    NonLocalSingleNodeReqCount = KqpGroup->GetCounter("NonLocalSingleNodeReqCount", true);
 }
 
 ::NMonitoring::TDynamicCounterPtr TKqpCounters::GetKqpCounters() const {
@@ -830,6 +858,10 @@ TKqpCounters::TKqpCounters(const ::NMonitoring::TDynamicCounterPtr& counters, co
 
 ::NMonitoring::TDynamicCounterPtr TKqpCounters::GetQueryReplayCounters() const {
     return QueryReplayGroup;
+}
+
+::NMonitoring::TDynamicCounterPtr TKqpCounters::GetWorkloadManagerCounters() const {
+    return WorkloadManagerGroup;
 }
 
 

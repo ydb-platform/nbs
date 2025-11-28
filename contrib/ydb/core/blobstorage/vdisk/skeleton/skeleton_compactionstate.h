@@ -1,8 +1,10 @@
 #pragma once
 
 #include "defs.h"
+#include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_context.h>
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_private_events.h>
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_dbtype.h>
+#include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_mongroups.h>
 
 namespace NKikimr {
 
@@ -13,6 +15,7 @@ namespace NKikimr {
             bool CompactBlocks = false;
             bool CompactBarriers = false;
             TEvCompactVDisk::EMode Mode;
+            bool Force = true;
             TActorId ClientId;
             ui64 ClientCookie = 0;
             std::unique_ptr<TEvCompactVDiskResult> Reply;
@@ -24,7 +27,7 @@ namespace NKikimr {
         // setup input compaction request
         void Setup(const TActorContext &ctx, std::optional<ui64> lsn, TCompactionReq cState);
         // when hull db reports compaction finish we change state by calling this function
-        void Compacted(const TActorContext &ctx, i64 reqId, EHullDbType dbType);
+        void Compacted(const TActorContext &ctx, i64 reqId, EHullDbType dbType, const TIntrusivePtr<TVDiskContext>& vCtx);
         // when data is flushed to recovery log run compaction
         void Logged(const TActorContext &ctx, ui64 lsn) {
             if (Triggered && lsn >= LsnToCommit) {

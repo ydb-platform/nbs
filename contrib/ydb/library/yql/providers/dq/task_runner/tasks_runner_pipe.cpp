@@ -11,6 +11,7 @@
 #include <contrib/ydb/library/yql/utils/backtrace/backtrace.h>
 #include <contrib/ydb/library/yql/utils/yql_panic.h>
 #include <contrib/ydb/library/yql/utils/rope_over_buffer.h>
+#include <contrib/ydb/library/yql/utils/failure_injector/failure_injector.h>
 
 #include <contrib/ydb/library/yql/providers/dq/common/yql_dq_settings.h>
 
@@ -91,6 +92,29 @@ void LoadRopeFromPipe(IInputStream& input, TRope& rope) {
     } while (size != 0);
 }
 
+class TFilesHolder {
+public:
+    using TPtr = std::unique_ptr<TFilesHolder>;
+
+    TFilesHolder(const IFileCache::TPtr& fileCache)
+        : FileCache(fileCache)
+    { }
+
+    ~TFilesHolder() {
+        for (const auto& file : Files) {
+            FileCache->ReleaseFile(file);
+        }
+    }
+
+    void Add(const TString& objectId) {
+        Files.emplace(objectId);
+    }
+
+private:
+    std::unordered_set<TString> Files;
+    const IFileCache::TPtr FileCache;
+};
+
 class TChildProcess: private TNonCopyable {
 public:
     TChildProcess(const TString& exeName, const TVector<TString>& args, const THashMap<TString, TString>& env, const TString& workDir)
@@ -105,7 +129,9 @@ public:
     virtual ~TChildProcess() {
         try {
             NFs::RemoveRecursive(WorkDir);
-        } catch (...) { }
+        } catch (...) {
+            YQL_CLOG(DEBUG, ProviderDq) << "Error on WorkDir cleanup: " << CurrentExceptionMessage();
+        }
     }
 
     virtual TString ExternalWorkDir() {
@@ -372,7 +398,7 @@ public:
             ContainerName = portoSettings.ContainerNamePrefix + "/" + ContainerName;
         }
 
-        YQL_CLOG(DEBUG, ProviderDq) << "HardLink " << ExeName << "'" << WorkDir << "/" << name << "'";
+        YQL_CLOG(DEBUG, ProviderDq) << "HardLink " << ExeName << " -> '" << WorkDir << "/" << name << "'";
         if (NFs::HardLink(ExeName, WorkDir + "/" + name)) {
             ExeName = WorkDir + "/" + name;
         } else {
@@ -387,7 +413,9 @@ public:
     ~TPortoProcess() {
         try {
             NFs::RemoveRecursive(TmpDir);
-        } catch (...) { }
+        } catch (...) {
+            YQL_CLOG(DEBUG, ProviderDq) << "Error on TmpDir cleanup: " << CurrentExceptionMessage();
+        }
     }
 
 private:
@@ -506,6 +534,7 @@ private:
 void LoadFromProto(TDqAsyncStats& stats, const NYql::NDqProto::TDqAsyncBufferStats& f)
 {
     stats.Bytes = f.GetBytes();
+    stats.DecompressedBytes = f.GetDecompressedBytes();
     stats.Rows = f.GetRows();
     stats.Chunks = f.GetChunks();
     stats.Splits = f.GetSplits();
@@ -533,7 +562,7 @@ public:
 
 class TInputChannel : public IInputChannel {
 public:
-    TInputChannel(const ITaskRunner::TPtr& taskRunner, ui64 taskId, ui64 channelId, IInputStream& input, IOutputStream& output, i64 channelBufferSize)
+    TInputChannel(ITaskRunner* taskRunner, ui64 taskId, ui64 channelId, IInputStream& input, IOutputStream& output, i64 channelBufferSize)
         : TaskId(taskId)
         , ChannelId(channelId)
         , Input(input)
@@ -607,7 +636,7 @@ private:
     IInputStream& Input;
     IOutputStream& Output;
 
-    ITaskRunner::TPtr TaskRunner;
+    ITaskRunner* TaskRunner; // this channel is owned by TaskRunner
 
     i64 FreeSpace;
 };
@@ -1264,14 +1293,16 @@ private:
 class TTaskRunner: public IPipeTaskRunner {
 public:
     TTaskRunner(
+        std::shared_ptr<NKikimr::NMiniKQL::TScopedAlloc> alloc,
         const NDqProto::TDqTask& task,
+        TFilesHolder::TPtr&& filesHolder,
         THolder<TChildProcess>&& command,
         ui64 stageId,
         const TString& traceId)
         : TraceId(traceId)
         , Task(task)
-        , Alloc(new NKikimr::NMiniKQL::TScopedAlloc(__LOCATION__, NKikimr::TAlignedPagePoolCounters(), true),
-            [](NKikimr::NMiniKQL::TScopedAlloc* ptr) { ptr->Acquire(); delete ptr; })
+        , FilesHolder(std::move(filesHolder))
+        , Alloc(alloc)
         , AllocatedHolder(std::make_optional<TAllocatedHolder>(*Alloc, "TDqTaskRunnerProxy"))
         , Running(true)
         , Command(std::move(command))
@@ -1281,16 +1312,14 @@ public:
         , TaskId(Task.GetId())
         , StageId(stageId)
     {
-        Alloc->Release();
         StderrReader->Start();
         InitTaskMeta();
         InitChannels();
     }
 
     ~TTaskRunner() {
-        Alloc->Acquire();
+        auto guard = Guard(*Alloc);
         AllocatedHolder.reset();
-        Alloc->Release();
         Command->Kill();
         Command->Wait(TDuration::Seconds(0));
     }
@@ -1341,6 +1370,20 @@ public:
 
         NYql::NDqProto::TPrepareResponse ret;
         ret.Load(&Input);
+
+        auto state = TFailureInjector::GetCurrentState();
+        for (auto& [k, v]: state) {
+            NDqProto::TCommandHeader header;
+            header.SetVersion(1);
+            header.SetCommand(NDqProto::TCommandHeader::CONFIGURE_FAILURE_INJECTOR);
+            header.Save(&Output);
+            NYql::NDqProto::TConfigureFailureInjectorRequest request;
+            request.SetName(k);
+            request.SetSkip(v.Skip);
+            request.SetFail(v.CountOfFails);
+            request.Save(&Output);
+        }
+
         return ret;
     }
 
@@ -1557,6 +1600,7 @@ private:
 private:
     const TString TraceId;
     NDqProto::TDqTask Task;
+    TFilesHolder::TPtr FilesHolder;
     THashMap<TString, TString> SecureParams;
     THashMap<TString, TString> TaskParams;
     TVector<TString> ReadRanges;
@@ -1599,16 +1643,21 @@ private:
 class TDqTaskRunner: public NDq::IDqTaskRunner {
 public:
     TDqTaskRunner(
+        std::shared_ptr<NKikimr::NMiniKQL::TScopedAlloc> alloc,
         const NDqProto::TDqTask& task,
+        TFilesHolder::TPtr&& filesHolder,
         THolder<TChildProcess>&& command,
         ui64 stageId,
         const TString& traceId)
-        : Delegate(new TTaskRunner(task, std::move(command), stageId, traceId))
+        : Delegate(new TTaskRunner(alloc, task, std::move(filesHolder), std::move(command), stageId, traceId))
         , Task(task)
     { }
 
     ui64 GetTaskId() const override {
         return Task.GetId();
+    }
+
+    void SetSpillerFactory(std::shared_ptr<ISpillerFactory>) override {
     }
 
     void Prepare(const TDqTaskSettings& task, const TDqTaskRunnerMemoryLimits& memoryLimits,
@@ -1681,7 +1730,7 @@ public:
         return sink;
     }
 
-    std::pair<NUdf::TUnboxedValue, IDqAsyncInputBuffer::TPtr> GetInputTransform(ui64 /*inputIndex*/) override {
+    std::optional<std::pair<NUdf::TUnboxedValue, IDqAsyncInputBuffer::TPtr>> GetInputTransform(ui64 /*inputIndex*/) override {
         return {};
     }
 
@@ -1825,7 +1874,6 @@ private:
 
 /*______________________________________________________________________________________________*/
 
-
 class TPipeFactory: public IProxyFactory {
     struct TJob: public TTaskScheduler::ITask {
         TJob(NThreading::TPromise<void> p)
@@ -1881,17 +1929,17 @@ public:
         TaskScheduler.Start();
     }
 
-    ITaskRunner::TPtr GetOld(NKikimr::NMiniKQL::TScopedAlloc& alloc, const NDq::TDqTaskSettings& tmp, const TString& traceId) override {
+    ITaskRunner::TPtr GetOld(std::shared_ptr<NKikimr::NMiniKQL::TScopedAlloc> alloc, const NDq::TDqTaskSettings& tmp, const TString& traceId) override {
         Y_UNUSED(alloc);
         Yql::DqsProto::TTaskMeta taskMeta;
         tmp.GetMeta().UnpackTo(&taskMeta);
         ui64 stageId = taskMeta.GetStageId();
         auto result = GetExecutorForTask(taskMeta.GetFiles(), taskMeta.GetSettings());
-        auto task = PrepareTask(tmp, result.Get());
-        return new TTaskRunner(task, std::move(result), stageId, traceId);
+        auto [task, filesHolder] = PrepareTask(tmp, result.Get());
+        return new TTaskRunner(alloc, task, std::move(filesHolder), std::move(result), stageId, traceId);
     }
 
-    TIntrusivePtr<NDq::IDqTaskRunner> Get(NKikimr::NMiniKQL::TScopedAlloc& alloc, const NDq::TDqTaskSettings& tmp, NDqProto::EDqStatsMode statsMode, const TString& traceId) override
+    TIntrusivePtr<NDq::IDqTaskRunner> Get(std::shared_ptr<NKikimr::NMiniKQL::TScopedAlloc> alloc, const NDq::TDqTaskSettings& tmp, NDqProto::EDqStatsMode statsMode, const TString& traceId) override
     {
         Y_UNUSED(statsMode);
         Y_UNUSED(alloc);
@@ -1899,8 +1947,8 @@ public:
         tmp.GetMeta().UnpackTo(&taskMeta);
 
         auto result = GetExecutorForTask(taskMeta.GetFiles(), taskMeta.GetSettings());
-        auto task = PrepareTask(tmp, result.Get());
-        return new TDqTaskRunner(task, std::move(result), taskMeta.GetStageId(), traceId);
+        auto [task, filesHolder] = PrepareTask(tmp, result.Get());
+        return new TDqTaskRunner(alloc, task, std::move(filesHolder), std::move(result), taskMeta.GetStageId(), traceId);
     }
 
 private:
@@ -1935,9 +1983,10 @@ private:
         return exePath + "," + settings.ToString();
     }
 
-    NDqProto::TDqTask PrepareTask(const NDq::TDqTaskSettings& tmp, TChildProcess* result) {
+    std::tuple<NDqProto::TDqTask, TFilesHolder::TPtr> PrepareTask(const NDq::TDqTaskSettings& tmp, TChildProcess* result) {
         // get files from fileCache
         auto task = tmp.GetSerializedTask();
+        auto filesHolder = std::make_unique<TFilesHolder>(FileCache);
         Yql::DqsProto::TTaskMeta taskMeta;
 
         task.GetMeta().UnpackTo(&taskMeta);
@@ -1946,15 +1995,14 @@ private:
 
         for (auto& file : *files) {
             if (file.GetObjectType() != Yql::DqsProto::TFile::EEXE_FILE) {
-                auto maybeFile = FileCache->FindFile(file.GetObjectId());
+                auto maybeFile = FileCache->AcquireFile(file.GetObjectId());
                 if (!maybeFile) {
                     throw std::runtime_error("Cannot find object `" + file.GetObjectId() + "' in cache");
                 }
+                filesHolder->Add(file.GetObjectId());
                 auto name = file.GetName();
 
                 switch (file.GetObjectType()) {
-                    case Yql::DqsProto::TFile::EEXE_FILE:
-                        break;
                     case Yql::DqsProto::TFile::EUDF_FILE:
                     case Yql::DqsProto::TFile::EUSER_FILE:
                         file.SetLocalPath(InitializeLocalFile(result->ExternalWorkDir(), *maybeFile, name));
@@ -1970,7 +2018,7 @@ private:
         taskParams[WorkingDirectoryDontInitParamName] = "true";
         task.MutableMeta()->PackFrom(taskMeta);
 
-        return task;
+        return std::make_tuple(task, std::move(filesHolder));
     }
 
     TFsPath MakeLocalPath(TString fileName) {

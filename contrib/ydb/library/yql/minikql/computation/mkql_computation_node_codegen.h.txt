@@ -11,7 +11,6 @@ using NYql::GetMethodPtrIndex;
 using NYql::GetMethodIndex;
 
 using TUnboxedImmutableCodegeneratorNode = TUnboxedImmutableComputationNode;
-using TUnboxedImmutableRunCodegeneratorNode = TUnboxedImmutableComputationNode;
 using TExternalCodegeneratorNode = TExternalComputationNode;
 using TWideFlowProxyCodegeneratorNode = TWideFlowProxyComputationNode;
 
@@ -944,12 +943,6 @@ private:
     Value* CreateGetValue(const TCodegenContext& ctx, BasicBlock*&) const final;
 };
 
-class TUnboxedImmutableRunCodegeneratorNode: public TUnboxedImmutableComputationNode, public ICodegeneratorRunNode
-{
-public:
-    TUnboxedImmutableRunCodegeneratorNode(TMemoryUsageInfo* memInfo, NUdf::TUnboxedValue&& value);
-};
-
 class TExternalCodegeneratorNode: public TExternalComputationNode, public ICodegeneratorExternalNode
 {
 public:
@@ -1229,8 +1222,9 @@ protected:
         return NUdf::TUnboxedValue::Zero();
     }
 
-    void Load(const NUdf::TStringRef& state) override {
+    bool Load2(const NUdf::TUnboxedValue& state) override {
         Y_UNUSED(state);
+        return false;
     }
 
     NUdf::EFetchStatus Fetch(NUdf::TUnboxedValue& result) override {

@@ -58,12 +58,14 @@ namespace NKikimr {
         : public TEventLocal<TEvDelLogoBlobDataSyncLogResult, TEvBlobStorage::EvDelLogoBlobDataSyncLogResult>
         , public TEvVResultBase
     {
+        const TLogoBlobID Id;
         const ui64 OrderId;
 
-        TEvDelLogoBlobDataSyncLogResult(ui64 orderId, const TInstant &now,
+        TEvDelLogoBlobDataSyncLogResult(const TLogoBlobID &id, ui64 orderId, const TInstant &now,
                 ::NMonitoring::TDynamicCounters::TCounterPtr counterPtr, NVDiskMon::TLtcHistoPtr histoPtr)
             : TEvVResultBase(now, TInterconnectChannels::IC_BLOBSTORAGE_SMALL_MSG, counterPtr,
                 histoPtr)
+            , Id(id)
             , OrderId(orderId)
         {}
     };
@@ -83,15 +85,17 @@ namespace NKikimr {
         // mask of databases to compact in terms of EHullDbType type (can compact several databases at once)
         const ui32 Mask;
         const EMode Mode;
+        const bool Force;
 
-        TEvCompactVDisk(ui32 mask, EMode mode = EMode::FULL)
+        TEvCompactVDisk(ui32 mask, EMode mode = EMode::FULL, bool force = true)
             : Mask(mask)
             , Mode(mode)
+            , Force(force)
         {}
 
         // create a message for compaction one database of type 'type'
-        static TEvCompactVDisk *Create(EHullDbType type, EMode mode = EMode::FULL) {
-            return new TEvCompactVDisk(::NKikimr::Mask(type), mode);
+        static TEvCompactVDisk *Create(EHullDbType type, EMode mode = EMode::FULL, bool force = true) {
+            return new TEvCompactVDisk(::NKikimr::Mask(type), mode, force);
         }
 
         static const char *ModeToString(EMode mode) {
@@ -119,16 +123,18 @@ namespace NKikimr {
         const EHullDbType Type;
         const ui64 RequestId;
         const TEvCompactVDisk::EMode Mode;
+        const bool Force; 
 
-        TEvHullCompact(EHullDbType type, ui64 requestId, TEvCompactVDisk::EMode mode)
+        TEvHullCompact(EHullDbType type, ui64 requestId, TEvCompactVDisk::EMode mode, bool force)
             : Type(type)
             , RequestId(requestId)
             , Mode(mode)
+            , Force(force)
         {}
 
         TString ToString() const {
             return TStringBuilder() << "{Type# " << EHullDbTypeToString(Type) << " RequestId# " << RequestId
-                << " Mode# " << TEvCompactVDisk::ModeToString(Mode) << "}";
+                << " Mode# " << TEvCompactVDisk::ModeToString(Mode) << " Force# " << Force << "}";
         }
     };
 

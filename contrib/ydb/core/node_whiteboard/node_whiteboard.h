@@ -7,6 +7,7 @@
 #include <contrib/ydb/core/blobstorage/groupinfo/blobstorage_groupinfo.h>
 #include <contrib/ydb/core/blobstorage/groupinfo/blobstorage_groupinfo_iter.h>
 #include <contrib/ydb/core/protos/node_whiteboard.pb.h>
+#include <contrib/ydb/core/protos/blobstorage_disk.pb.h>
 #include <contrib/ydb/library/actors/interconnect/events_local.h>
 #include <contrib/ydb/library/actors/core/interconnect.h>
 #include <contrib/ydb/core/base/tracing.h>
@@ -301,13 +302,17 @@ struct TEvWhiteboard{
         TEvBSGroupStateUpdate() = default;
 
         TEvBSGroupStateUpdate(const TIntrusivePtr<TBlobStorageGroupInfo>& groupInfo) {
-            Record.SetGroupID(groupInfo->GroupID);
+            Record.SetGroupID(groupInfo->GroupID.GetRawId());
             Record.SetGroupGeneration(groupInfo->GroupGeneration);
             Record.SetErasureSpecies(groupInfo->Type.ErasureSpeciesName(groupInfo->Type.GetErasure()));
-            for (ui32 i = 0; i < groupInfo->GetTotalVDisksNum(); ++i) {
-                VDiskIDFromVDiskID(groupInfo->GetVDiskId(i), Record.AddVDiskIds());
-                const TActorId& actorId = groupInfo->GetActorId(i);
-                Record.AddVDiskNodeIds(actorId.NodeId());
+            if (ui32 numVDisks = groupInfo->GetTotalVDisksNum()) {
+                for (ui32 i = 0; i < numVDisks; ++i) {
+                    VDiskIDFromVDiskID(groupInfo->GetVDiskId(i), Record.AddVDiskIds());
+                    const TActorId& actorId = groupInfo->GetActorId(i);
+                    Record.AddVDiskNodeIds(actorId.NodeId());
+                }
+            } else {
+                Record.SetNoVDisksInGroup(true);
             }
             Record.SetStoragePoolName(groupInfo->GetStoragePoolName());
             if (groupInfo->GetEncryptionMode() != TBlobStorageGroupInfo::EEM_NONE) {
@@ -356,23 +361,18 @@ struct TEvWhiteboard{
             }
         }
 
-        TEvSystemStateUpdate(const TVector<std::tuple<TString, double, ui32>>& poolStats) {
+        TEvSystemStateUpdate(const TVector<std::tuple<TString, double, ui32, ui32>>& poolStats) {
             for (const auto& row : poolStats) {
                 auto& pb = *Record.AddPoolStats();
                 pb.SetName(std::get<0>(row));
                 pb.SetUsage(std::get<1>(row));
                 pb.SetThreads(std::get<2>(row));
+                pb.SetLimit(std::get<3>(row));
             }
         }
 
         TEvSystemStateUpdate(const TNodeLocation& systemLocation) {
             systemLocation.Serialize(Record.MutableLocation(), false);
-            const auto& x = systemLocation.GetLegacyValue();
-            auto *pb = Record.MutableSystemLocation();
-            pb->SetDataCenter(x.DataCenter);
-            pb->SetRoom(x.Room);
-            pb->SetRack(x.Rack);
-            pb->SetBody(x.Body);
         }
 
         TEvSystemStateUpdate(const NKikimrWhiteboard::TSystemStateInfo& systemStateInfo) {
@@ -501,5 +501,62 @@ inline TActorId MakeNodeWhiteboardServiceId(ui32 node) {
 
 IActor* CreateNodeWhiteboardService();
 
-} // NTabletState
+template<typename TRequestType>
+struct WhiteboardResponse {};
+
+template<>
+struct WhiteboardResponse<TEvWhiteboard::TEvTabletStateRequest> {
+    using Type = TEvWhiteboard::TEvTabletStateResponse;
+};
+
+template<>
+struct WhiteboardResponse<TEvWhiteboard::TEvPDiskStateRequest> {
+    using Type = TEvWhiteboard::TEvPDiskStateResponse;
+};
+
+template<>
+struct WhiteboardResponse<TEvWhiteboard::TEvVDiskStateRequest> {
+    using Type = TEvWhiteboard::TEvVDiskStateResponse;
+};
+
+template<>
+struct WhiteboardResponse<TEvWhiteboard::TEvSystemStateRequest> {
+    using Type = TEvWhiteboard::TEvSystemStateResponse;
+};
+
+template<>
+struct WhiteboardResponse<TEvWhiteboard::TEvBSGroupStateRequest> {
+    using Type = TEvWhiteboard::TEvBSGroupStateResponse;
+};
+
+template<>
+struct WhiteboardResponse<TEvWhiteboard::TEvNodeStateRequest> {
+    using Type = TEvWhiteboard::TEvNodeStateResponse;
+};
+
+template<typename TMessage>
+::google::protobuf::RepeatedField<int> InitDefaultWhiteboardFields() {
+    using namespace ::google::protobuf;
+    const Descriptor& descriptor = *TMessage::GetDescriptor();
+    ::google::protobuf::RepeatedField<int> defaultFields;
+    int fieldCount = descriptor.field_count();
+    for (int index = 0; index < fieldCount; ++index) {
+        const FieldDescriptor* field = descriptor.field(index);
+        const auto& options(field->options());
+        if (options.HasExtension(NKikimrWhiteboard::DefaultField)) {
+            if (options.GetExtension(NKikimrWhiteboard::DefaultField)) {
+                defaultFields.Add(field->number());
+            }
+        }
+    }
+    return defaultFields;
+}
+
+template<typename TMessage>
+::google::protobuf::RepeatedField<int> GetDefaultWhiteboardFields() {
+    static ::google::protobuf::RepeatedField<int> defaultFields = InitDefaultWhiteboardFields<TMessage>();
+    return defaultFields;
+}
+
+} // NNodeWhiteboard
 } // NKikimr

@@ -1,5 +1,7 @@
 UNITTEST_FOR(contrib/ydb/library/yql/parser/pg_catalog)
 
+TAG(ya:manual)
+
 SRCS(
     catalog_ut.cpp
     catalog_consts_ut.cpp

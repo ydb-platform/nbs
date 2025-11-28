@@ -20,6 +20,7 @@
 #include <library/cpp/containers/stack_vector/stack_vec.h>
 #include <library/cpp/deprecated/enum_codegen/enum_codegen.h>
 
+#include <util/string/ascii.h>
 #include <util/string/builder.h>
 #include <util/generic/array_ref.h>
 #include <util/generic/deque.h>
@@ -84,6 +85,7 @@ class TBlockExprType;
 class TScalarExprType;
 
 const size_t DefaultMistypeDistance = 3;
+const TString YqlVirtualPrefix = "_yql_virtual_";
 
 extern const TStringBuf ZeroString;
 
@@ -463,6 +465,8 @@ public:
         return Name;
     }
 
+    TStringBuf GetCleanName(bool isVirtual) const;
+
     const TTypeAnnotationNode* GetItemType() const {
         return ItemType;
     }
@@ -470,6 +474,8 @@ public:
     bool operator==(const TItemExprType& other) const {
         return GetName() == other.GetName() && GetItemType() == other.GetItemType();
     }
+
+    const TItemExprType* GetCleanItem(bool isVirtual, TExprContext& ctx) const;
 
 private:
     const TStringBuf Name;
@@ -529,6 +535,37 @@ public:
         }
 
         return it - Items.begin();
+    }
+
+    TMaybe<ui32> FindItemI(const TStringBuf& name, bool* isVirtual) const {
+        for (ui32 v = 0; v < 2; ++v) {
+            if (isVirtual) {
+                *isVirtual = v > 0;
+            }
+
+            auto nameToSearch = (v ? YqlVirtualPrefix : "") + name;
+            auto strict = FindItem(nameToSearch);
+            if (strict) {
+                return strict;
+            }
+
+            TMaybe<ui32> ret;
+            for (ui32 i = 0; i < Items.size(); ++i) {
+                if (AsciiEqualsIgnoreCase(nameToSearch, Items[i]->GetName())) {
+                    if (ret) {
+                        return Nothing();
+                    }
+
+                    ret = i;
+                }
+            }
+
+            if (ret) {
+                return ret;
+            }
+        }
+
+        return Nothing();
     }
 
     const TTypeAnnotationNode* FindItemType(const TStringBuf& name) const {
@@ -1934,6 +1971,11 @@ public:
         return Make(Position_, (EType)Type_, TListType(Children_), Content(), Flags_, newUniqueId);
     }
 
+    TPtr CloneWithPosition(ui64 newUniqueId, TPositionHandle pos) const {
+        ENSURE_NOT_DELETED
+        return Make(pos, (EType)Type_, TListType(Children_), Content(), Flags_, newUniqueId);
+    }
+
     static TPtr NewNode(TPositionHandle position, EType type, TListType&& children, const TStringBuf& content, ui32 flags, ui64 uniqueId) {
         return Make(position, type, std::move(children), content, flags, uniqueId);
     }
@@ -2509,6 +2551,8 @@ struct TExprContext : private TNonCopyable {
     [[nodiscard]]
     TExprNode::TPtr ShallowCopy(const TExprNode& node);
     [[nodiscard]]
+    TExprNode::TPtr ShallowCopyWithPosition(const TExprNode& node, TPositionHandle pos);
+    [[nodiscard]]
     TExprNode::TPtr ChangeChildren(const TExprNode& node, TExprNode::TListType&& children);
     [[nodiscard]]
     TExprNode::TPtr ChangeChild(const TExprNode& node, ui32 index, TExprNode::TPtr&& child);
@@ -2778,6 +2822,8 @@ struct TConvertToAstSettings {
     bool RefAtoms = false;
     std::function<bool(const TExprNode&)> NoInlineFunc;
     bool PrintArguments = false;
+    bool AllowFreeArgs = false;
+    bool NormalizeAtomFlags = false;
 };
 
 TAstParseResult ConvertToAst(const TExprNode& root, TExprContext& ctx, const TConvertToAstSettings& settings);

@@ -92,10 +92,12 @@ private:
 
 class TQueryPlanPrinter {
 public:
-    TQueryPlanPrinter(EOutputFormat format, bool analyzeMode = false, IOutputStream& output = Cout)
+    TQueryPlanPrinter(EOutputFormat format, bool analyzeMode = false, IOutputStream& output = Cout, size_t maxWidth = 0)
         : Format(format)
         , AnalyzeMode(analyzeMode)
-        , Output(output) {}
+        , Output(output)
+        , MaxWidth(maxWidth)
+        {}
 
     void Print(const TString& plan);
 
@@ -108,19 +110,11 @@ private:
     void PrintSimplifyJson(const NJson::TJsonValue& plan);
     TString JsonToString(const NJson::TJsonValue& jsonValue);
 
-    void SplitPlanInTree(NJson::TJsonValue& plan);
-    void SimplifyQueryPlan(NJson::TJsonValue& plan);
-    NJson::TJsonValue ReconstructQueryPlanRec(const NJson::TJsonValue& plan, int operatorIndex, const THashMap<int, NJson::TJsonValue>& planIndex, const THashMap<TString, NJson::TJsonValue>& precomputes, int& nodeCounter);
-    TVector<NJson::TJsonValue> RemoveRedundantNodes(NJson::TJsonValue& plan, const THashSet<TString>& redundantNodes);
-    THashMap<TString, NJson::TJsonValue> ExtractPrecomputes(NJson::TJsonValue& planJson);
-    void ResolvePrecomputeLinks(NJson::TJsonValue& planJson, const THashMap<TString, NJson::TJsonValue>& precomputes);
-    void DeleteSplitNodes(NJson::TJsonValue& planJson);
-
-
 private:
     EOutputFormat Format;
     bool AnalyzeMode;
     IOutputStream& Output;
+    size_t MaxWidth;
 };
 
 }

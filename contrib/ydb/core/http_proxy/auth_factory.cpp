@@ -10,6 +10,8 @@
 
 #include <contrib/ydb/library/actors/http/http_proxy.h>
 
+#include <contrib/ydb/core/protos/config.pb.h>
+
 namespace NKikimr::NHttpProxy {
 
 
