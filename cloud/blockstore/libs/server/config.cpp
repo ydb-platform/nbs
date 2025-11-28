@@ -112,7 +112,9 @@ constexpr TDuration Seconds(int s)
         NProto::EEncryptZeroPolicy,                                            \
         NProto::EZP_WRITE_ENCRYPTED_ZEROS                                     )\
     xxx(VhostPteFlushByteThreshold,  ui64,                   0                )\
-    xxx(AutomaticNbdDeviceManagement,bool,                   false            )
+    xxx(AutomaticNbdDeviceManagement,bool,                   false            )\
+                                                                               \
+    xxx(ExternalCgroupsPidWriterBinaryPath, TString,         {}               )\
 // BLOCKSTORE_SERVER_CONFIG
 
 #define BLOCKSTORE_SERVER_DECLARE_CONFIG(name, type, value)                    \

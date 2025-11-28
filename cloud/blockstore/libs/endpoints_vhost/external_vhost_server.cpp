@@ -3,6 +3,7 @@
 #include "cont_io_with_timeout.h"
 #include "external_endpoint_stats.h"
 
+#include <cloud/blockstore/libs/common/cgroups_helpers.h>
 #include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/common/device_path.h>
 #include <cloud/blockstore/libs/common/public.h>
@@ -279,11 +280,12 @@ struct TPipe
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TChild SpawnChild(
-    const TString& binaryPath,
-    TVector<TString> args)
+TChild
+SpawnChild(const TString& binaryPath, TVector<TString> args, bool passPid)
 {
-    args.push_back("--blockstore-service-pid=" + ToString(::getpid()));
+    if (passPid) {
+        args.push_back("--blockstore-service-pid=" + ToString(::getpid()));
+    }
 
     TPipe stdOut;
     TPipe stdErr;
@@ -533,19 +535,25 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void AddToCGroups(pid_t pid, const TVector<TString>& cgroups)
+void AddToCGroupsWithExternalExecutable(
+    TString path,
+    pid_t pid,
+    const TVector<TString>& cgroups)
 {
-    const auto flags =
-          EOpenModeFlag::OpenExisting
-        | EOpenModeFlag::WrOnly
-        | EOpenModeFlag::ForAppend;
-
-    const TString line = ToString(pid) + '\n';
-
-    for (auto& cgroup: cgroups) {
-        TFile file {TFsPath {cgroup} / "cgroup.procs", flags};
-
-        file.Write(line.data(), line.size());
+    TVector<TString> args;
+    args.emplace_back(ToString(pid));
+    args.insert(args.end(), cgroups.begin(), cgroups.end());
+    auto child = SpawnChild(
+        path,
+        std::move(args),
+        false   // passPid
+    );
+    auto error = child.Wait();
+    if (HasError(error)) {
+        TIFStream stderr(TFile{child.StdErr.Release()});
+        auto errMsg = stderr.ReadAll();
+        throw yexception() << "Failed to add process to cgroups: " << error
+                           << " stderr: " << errMsg;
     }
 }
 
@@ -562,6 +570,7 @@ private:
     const TString BinaryPath;
     const TVector<TString> Args;
     const TVector<TString> Cgroups;
+    const TString ExternalCgroupsPidWriterBinaryPath;
 
     TLog Log;
 
@@ -585,13 +594,16 @@ public:
             TEndpointStats stats,
             TString binaryPath,
             TVector<TString> args,
-            TVector<TString> cgroups)
+            TVector<TString> cgroups,
+            TString externalCgroupsPidWriterBinaryPath)
         : Logging{std::move(logging)}
         , Executor{std::move(executor)}
         , ClientId{std::move(clientId)}
         , BinaryPath{std::move(binaryPath)}
         , Args{std::move(args)}
         , Cgroups{std::move(cgroups)}
+        , ExternalCgroupsPidWriterBinaryPath{std::move(
+              externalCgroupsPidWriterBinaryPath)}
         , Log{Logging->CreateLog("BLOCKSTORE_EXTERNAL_ENDPOINT")}
         , Stats{std::move(stats)}
         , LogPrefix{
@@ -679,7 +691,11 @@ private:
 
     TIntrusivePtr<TEndpointProcess> StartProcess()
     {
-        auto process = SpawnChild(BinaryPath, Args);
+        auto process = SpawnChild(
+            BinaryPath,
+            Args,
+            true   // passPid
+        );
 
         STORAGE_INFO(
             LogPrefix << "Endpoint process has been started, PID:"
@@ -692,10 +708,19 @@ private:
         };
 
         try {
-            AddToCGroups(process.Pid, Cgroups);
+            if (ExternalCgroupsPidWriterBinaryPath) {
+                AddToCGroupsWithExternalExecutable(
+                    "/home/iajwjw/blockstore-cgroup-pid-writer",
+                    process.Pid,
+                    Cgroups);
+            } else {
+                AddToCGroups(process.Pid, Cgroups);
+            }
         } catch (...) {
-            ShouldStop = true;
-            throw;
+            STORAGE_ERROR(
+                "Can't add pid[" << process.Pid << "] to cgroups["
+                                 << JoinSeq(", ", Cgroups)
+                                 << "]: " << CurrentExceptionMessage());
         }
 
         auto ep = MakeIntrusive<TEndpointProcess>(
@@ -1276,7 +1301,8 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
             },
             serverConfig->GetVhostServerPath(),
             std::move(args),
-            std::move(cgroups)
+            std::move(cgroups),
+            serverConfig->GetExternalCgroupsPidWriterBinaryPath()
         );
     };
 
