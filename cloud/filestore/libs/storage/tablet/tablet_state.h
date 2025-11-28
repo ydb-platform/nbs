@@ -151,6 +151,7 @@ struct TMiscNodeStats
 struct THandlesStats
 {
     i64 UsedDirectHandlesCount{0};
+    // TODO(2566) get rid of this counter after migration
     i64 SevenBytesHandlesCount{0};
 };
 

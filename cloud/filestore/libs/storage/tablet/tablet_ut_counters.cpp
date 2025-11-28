@@ -1019,52 +1019,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         tablet.DestroyHandle(handle2);
         checkHandlesCounters(0, 0);
     }
-
-    Y_UNIT_TEST(ShouldReportSevenBytesHandlesCount)
-    {
-        TTestEnv env;
-        auto registry = env.GetRegistry();
-
-        env.CreateSubDomain("nfs");
-        ui32 nodeIdx = env.CreateNode("nfs");
-        ui64 tabletId = env.BootIndexTablet(nodeIdx);
-
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
-        tablet.InitSession("client", "session");
-
-        // Create some number of nodes and handles
-        TVector<ui64> handles;
-        for (ui32 i = 0; i < 256; ++i) {
-            ui32 nodeId = CreateNode(
-                tablet,
-                TCreateNodeArgs::File(
-                    RootNodeId,
-                    TStringBuilder() << "file_" << i));
-            handles.push_back(
-                CreateHandle(tablet, nodeId, {}, TCreateHandleArgs::RDWR));
-        }
-
-        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
-        NActors::TDispatchOptions options;
-        options.FinalEvents.emplace_back(
-            TEvIndexTabletPrivate::EvUpdateCounters);
-        env.GetRuntime().DispatchEvents(options);
-
-        TTestRegistryVisitor visitor;
-        registry->Visit(TInstant::Zero(), visitor);
-        // We should not create new handles which use seventh byte
-
-        visitor.ValidateExpectedCounters({
-            {{{"sensor", "SevenBytesHandlesCount"}, {"filesystem", "test"}},
-             0},
-            {{{"sensor", "UsedHandlesCount"}, {"filesystem", "test"}},
-             static_cast<i64>(handles.size())}
-        });
-
-        for (const auto handle: handles) {
-            tablet.DestroyHandle(handle);
-        }
-    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

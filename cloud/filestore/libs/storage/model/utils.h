@@ -21,8 +21,8 @@ constexpr ui64 ClearSeventhByteMask = ~SeventhByteMask;
 
 inline ui64 ShardedId(ui64 id, ui32 shardNo)
 {
-    // We are going to use the seventh byte for shardNo that is longer than 8
-    // bits. So, we need to stop creating handles that uses it and wait till old
+    // We are going to use the seventh byte for shardNo, which is longer than 8
+    // bits. So, we need to stop creating handles that use it and wait till old
     // handles are gone.
     id = (id & ClearSeventhByteMask);
 
