@@ -3,6 +3,7 @@ import hashlib
 import json
 import logging
 import subprocess
+import http.client
 import time
 
 from pathlib import Path
@@ -31,6 +32,39 @@ def compute_checksum(file_path: str) -> str:
         for chunk in iter(lambda: f.read(8192), b""):
             hash_sha256.update(chunk)
     return hash_sha256.hexdigest()
+
+def select_from_ydb(ydb_port: int, database: str, query: str) -> list[dict]:
+    url_suffix = "viewer/json/query?schema=multi&base64=false"
+    conn = http.client.HTTPConnection("localhost", ydb_port)
+
+    payload = json.dumps({
+        "query": query,
+        "database": database,
+        "action": "execute-query",
+        "syntax": "yql_v1",
+        "stats": "none",
+        "tracingLevel": 0,
+        "limit_rows": 10000,
+        "transaction_mode": "serializable-read-write",
+        "base64": False
+    })
+
+    headers = {'Content-Type': 'application/json'}
+    conn.request("POST", f"/{url_suffix}", payload, headers)
+
+    response = conn.getresponse()
+    data = response.read()
+    conn.close()
+
+    result = json.loads(data.decode())
+
+    if "result" not in result or not result["result"]:
+        return []
+
+    columns = [col["name"] for col in result["result"][0]["columns"]]
+    rows = result["result"][0]["rows"]
+
+    return [dict(zip(columns, row)) for row in rows]
 
 
 class _MigrationTestSetup:
