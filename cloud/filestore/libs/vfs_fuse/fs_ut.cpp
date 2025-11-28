@@ -2808,6 +2808,188 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         TestShouldSupportZeroCopyWriteByWriteBackCache(false);
         TestShouldSupportZeroCopyWriteByWriteBackCache(true);
     }
+
+    Y_UNIT_TEST(ShouldFlushAllRequestsBeforeSessionIsDestroyed)
+    {
+        // The idea is to fill WriteBackCache with requests and to stop session.
+        // It should flush both cached and pending requests befor session is
+        // destoyed. To ensure that there are pending requests, we write more
+        // data than the cache capacity (~1_MB) and temporary prevent write
+        // request from completion.
+
+        constexpr ui64 NodeCount = 8;
+        constexpr ui64 TotalByteCount = 10_MB;
+        constexpr ui64 MaxOffset = 128_KB;
+        constexpr ui64 MaxByteCount = 16_KB;
+        constexpr TDuration Timeout = TDuration::Seconds(15);
+
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        bootstrap.Service->WriteDataHandler = [&](auto, auto)
+        {
+            bootstrap.Timer->Sleep(TDuration::MilliSeconds(10));
+            NProto::TWriteDataResponse result;
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER
+        {
+            bootstrap.Stop();
+        };
+
+        // Fill WriteBackCache with requests
+        ui64 totalByteCount = 0;
+        while (totalByteCount < TotalByteCount) {
+            ui64 nodeId = RandomNumber(NodeCount) + 123;
+            ui64 handleId = nodeId + 456;
+            ui64 offset = RandomNumber(MaxOffset);
+            ui64 byteCount = RandomNumber(MaxByteCount) + 1;
+
+            auto reqWrite = std::make_shared<TWriteRequest>(
+                nodeId,
+                handleId,
+                offset,
+                CreateBuffer(byteCount, 'a'));
+
+            reqWrite->In->Body.flags |= O_WRONLY;
+            bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
+
+            totalByteCount += byteCount;
+        }
+
+        auto stopFuture = bootstrap.StopAsync();
+        UNIT_ASSERT(stopFuture.Wait(Timeout));
+    }
+
+    Y_UNIT_TEST(ShouldRestoreAndDrainCacheAfterSessionRestart)
+    {
+        const TString sessionId = CreateGuidAsString();
+
+        std::atomic<int> writeDataCalled = 0;
+        std::atomic<int> writeDataCalled2 = 0;
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+
+        {
+            NProto::TFileStoreFeatures features;
+            features.SetServerWriteBackCacheEnabled(true);
+
+            TBootstrap bootstrap(
+                CreateWallClockTimer(),
+                CreateScheduler(),
+                features);
+
+            bootstrap.Service->CreateSessionHandler = [&](auto, auto)
+            {
+                NProto::TCreateSessionResponse result;
+                result.MutableSession()->SetSessionId(sessionId);
+                result.MutableFileStore()->SetBlockSize(4096);
+                result.MutableFileStore()->MutableFeatures()->CopyFrom(
+                    features);
+                result.MutableFileStore()->SetFileSystemId(FileSystemId);
+                return MakeFuture(result);
+            };
+
+            bootstrap.Service->WriteDataHandler = [&](auto, const auto&)
+            {
+                writeDataCalled++;
+                NProto::TWriteDataResponse result;
+                return MakeFuture(result);
+            };
+
+            bootstrap.Start();
+            Y_DEFER
+            {
+                bootstrap.Stop();
+            };
+
+            auto reqWrite = std::make_shared<TWriteRequest>(
+                nodeId,
+                handleId,
+                0,
+                CreateBuffer(4096, 'a'));
+            reqWrite->In->Body.flags |= O_WRONLY;
+            auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
+            UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+
+            auto suspend = bootstrap.Loop->SuspendAsync();
+            UNIT_ASSERT(suspend.Wait(WaitTimeout));
+        }
+
+        // Since write-back cache was enabled, the actual write didn't happen
+        // and the request is stored in the persistent queue
+        UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
+
+        {
+            NProto::TFileStoreFeatures features;
+            features.SetServerWriteBackCacheEnabled(true);
+
+            TBootstrap bootstrap(
+                CreateWallClockTimer(),
+                CreateScheduler(),
+                features);
+
+            bootstrap.Service->CreateSessionHandler = [&](auto, auto)
+            {
+                // It is expected that the unwritten requests are restored from
+                // the persistent queue even if write-back cache is disabled now
+                NProto::TFileStoreFeatures features;
+                features.SetServerWriteBackCacheEnabled(false);
+
+                NProto::TCreateSessionResponse result;
+                result.MutableSession()->SetSessionId(sessionId);
+                result.MutableFileStore()->SetBlockSize(4096);
+                result.MutableFileStore()->MutableFeatures()->CopyFrom(
+                    features);
+                result.MutableFileStore()->SetFileSystemId(FileSystemId);
+                return MakeFuture(result);
+            };
+
+            bootstrap.Service->WriteDataHandler = [&](auto, const auto&)
+            {
+                writeDataCalled2++;
+                NProto::TWriteDataResponse result;
+                return MakeFuture(result);
+            };
+
+            bootstrap.Start();
+            Y_DEFER
+            {
+                bootstrap.Stop();
+            };
+
+            UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled2.load());
+
+            auto flush =
+                bootstrap.Fuse->SendRequest<TFlushRequest>(nodeId, handleId);
+            UNIT_ASSERT_NO_EXCEPTION(flush.GetValue(WaitTimeout));
+
+            // cache should be flushed
+            UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
+            UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled2.load());
+
+            auto reqWrite = std::make_shared<TWriteRequest>(
+                nodeId,
+                handleId,
+                0,
+                CreateBuffer(4096, 'a'));
+            reqWrite->In->Body.flags |= O_WRONLY;
+            auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
+            UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+
+            // Cache is drained and disabled - new requests go directly
+            // to the session
+            UNIT_ASSERT_VALUES_EQUAL(2, writeDataCalled2.load());
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse
