@@ -151,6 +151,7 @@ struct TMiscNodeStats
 struct THandlesStats
 {
     i64 UsedDirectHandlesCount{0};
+    i64 SevenBytesHandlesCount{0};
 };
 
 struct TWriteMixedBlocksResult
