@@ -1,0 +1,14 @@
+syntax = "proto2";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+// Config for LocalNVMe service.
+
+message TLocalNVMeConfig
+{
+    // The path where Local NVMe service will store the cached NVMe device list.
+    optional string CachedNVMeDevicesPath = 47;
+}
