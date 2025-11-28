@@ -54,10 +54,6 @@ CANON_SBR_RESOURCE_REGEX = re.compile(r'(sbr:/?/?(\d+))')
 
 MANDATORY_ENV_VAR_NAME = 'YA_MANDATORY_ENV_VARS'
 
-STYLE_CPP_SOURCE_EXTS = [".cpp", ".cxx", ".cc", ".c", ".C"]
-STYLE_CPP_HEADER_EXTS = [".h", ".H", ".hh", ".hpp", ".hxx", ".ipp"]
-STYLE_CPP_ALL_EXTS = STYLE_CPP_SOURCE_EXTS + STYLE_CPP_HEADER_EXTS
-
 BUILD_FLAGS_ALLOWED_IN_CONTEXT = {
     'AUTOCHECK',
     # Required for local test runs
@@ -65,6 +61,37 @@ BUILD_FLAGS_ALLOWED_IN_CONTEXT = {
     'USE_ARCADIA_PYTHON',
     'USE_SYSTEM_PYTHON',
 }
+
+STYLE_TEST_TYPES = [
+    "classpath.clash",
+    "clang_tidy",
+    "eslint",
+    "gofmt",
+    "govet",
+    "java.style",
+    "ktlint",
+    "py2_flake8",
+    "flake8",
+    "black",
+]
+
+REGULAR_TEST_TYPES = [
+    "benchmark",
+    "boost_test",
+    "exectest",
+    "fuzz",
+    "g_benchmark",
+    "go_bench",
+    "go_test",
+    "gtest",
+    "hermione",
+    "java",
+    "jest",
+    "py2test",
+    "py3test",
+    "pytest",
+    "unittest",
+]
 
 TEST_NODE_OUTPUT_RESULTS = [TESTING_OUT_TAR_NAME, YT_RUN_TEST_TAR_NAME]
 
@@ -107,14 +134,11 @@ COVERAGE_ENV_VARS = (
 PYTHON_COVERAGE_PREFIX_FILTER_ENV_NAME = 'PYTHON_COVERAGE_PREFIX_FILTER'
 PYTHON_COVERAGE_EXCLUDE_REGEXP_ENV_NAME = 'PYTHON_COVERAGE_EXCLUDE_REGEXP'
 
-# TODO get rid of this list - resolve nodes should be added automatically depending on the lang of the target module and their deps
 CLANG_COVERAGE_TEST_TYPES = (
     "boost_test",
     "coverage_extractor",
     "exectest",
-    "fuzz",
     "gtest",
-    "go_test",
     # java tests might use shared libraries
     "java",
     "py2test",
@@ -122,7 +146,6 @@ CLANG_COVERAGE_TEST_TYPES = (
     "pytest",
     "unittest",
 )
-
 COVERAGE_TABLE_CHUNKS = 20
 COVERAGE_TESTS_TIMEOUT_FACTOR = 1.5
 COVERAGE_YT_PROXY = "hahn.yt.yandex.net"
@@ -173,7 +196,6 @@ GO_TOOLS_RESOURCE = 'GO_TOOLS_RESOURCE_GLOBAL'
 JSTYLE_RUNNER_LIB = 'JSTYLE_LIB_RESOURCE_GLOBAL'
 NODEJS_RESOURCE = 'NODEJS_RESOURCE_GLOBAL'
 NYC_RESOURCE = 'NYC_RESOURCE_GLOBAL'
-RUFF_RESOURCE = 'RUFF_RESOURCE_GLOBAL'
 
 # test_tool resource for host platform.
 # source - build/platform/test_tool/host.ya.make.inc.
@@ -204,12 +226,6 @@ class Enum(object):
     @classmethod
     def enumerate(cls):
         return [v for k, v in cls.__dict__.items() if not k.startswith("_")]
-
-
-class SuiteClassType(Enum):
-    UNCLASSIFIED = '0'
-    REGULAR = '1'
-    STYLE = '2'
 
 
 class TestRequirements(Enum):
@@ -357,26 +373,6 @@ class TestSize(Enum):
         raise Exception("Unknown test size '{}'".format(size))
 
 
-class ModuleLang(Enum):
-    ABSENT = "absent"
-    NUMEROUS = "numerous"
-    UNKNOWN = "unknown"
-    CPP = "cpp"
-    DOCS = "docs"
-    GO = "go"
-    JAVA = "java"
-    KOTLIN = "kotlin"
-    PY = "py"
-    TS = "ts"
-
-
-class NodeType(Enum):
-    TEST = "test"
-    TEST_AUX = "test-aux"
-    TEST_RESULTS = "test-results"
-    DOWNLOAD = "download"
-
-
 class TestRunExitCode(Enum):
     Skipped = 2
     Failed = 3
@@ -399,6 +395,7 @@ class YaTestTags(Enum):
     HugeLogs = "ya:huge_logs"
     Manual = "ya:manual"
     MapRootUser = "ya:map_root_user"
+    NoFuse = "ya:nofuse"
     NoGracefulShutdown = "ya:no_graceful_shutdown"
     Norestart = "ya:norestart"
     Noretries = "ya:noretries"
@@ -414,7 +411,6 @@ class YaTestTags(Enum):
     YtRunner = "ya:yt"
     CopyData = "ya:copydata"
     CopyDataRO = "ya:copydataro"
-    NoPstreeTrim = "ya:no_pstree_trim"
 
 
 class ServiceTags(Enum):
