@@ -14,12 +14,6 @@ PEERDIR(
     contrib/libs/fuse
 )
 
-IF (SANITIZER_TYPE == "thread")
-    SUPPRESSIONS(
-        tsan.supp
-    )
-ENDIF()
-
 END()
 
 RECURSE(
