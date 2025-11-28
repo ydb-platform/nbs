@@ -717,10 +717,8 @@ private:
                 AddToCGroups(process.Pid, Cgroups);
             }
         } catch (...) {
-            STORAGE_ERROR(
-                "Can't add pid[" << process.Pid << "] to cgroups["
-                                 << JoinSeq(", ", Cgroups)
-                                 << "]: " << CurrentExceptionMessage());
+            ShouldStop = true;
+            throw;
         }
 
         auto ep = MakeIntrusive<TEndpointProcess>(
