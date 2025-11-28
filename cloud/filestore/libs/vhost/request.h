@@ -491,4 +491,17 @@ struct TFlushRequest
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+struct TGetAttrRequest
+    : public TRequestBase<fuse_getattr_in, fuse_attr_out, void>
+{
+    explicit TGetAttrRequest(ui64 nodeId)
+    {
+        In->Header.opcode = FUSE_GETATTR;
+        In->Header.nodeid = nodeId;
+        In->Body.getattr_flags = 0;
+    }
+};
+
 }   // namespace NCloud::NFileStore::NVhost
