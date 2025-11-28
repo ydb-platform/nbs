@@ -568,6 +568,10 @@ TSessionHandle* TIndexTabletState::CreateHandle(
     TSession* session,
     const NProto::TSessionHandle& proto)
 {
+    if (HasFlag(proto.GetFlags(), NProto::TCreateHandleRequest::E_DIRECT)) {
+        ++Impl->UsedDirectHandlesCount;
+    }
+
     auto handle = std::make_unique<TSessionHandle>(session, proto);
 
     session->Handles.PushBack(handle.get());
@@ -599,6 +603,10 @@ TSessionHandle* TIndexTabletState::CreateHandle(
 
 void TIndexTabletState::RemoveHandle(TSessionHandle* handle)
 {
+    if (HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_DIRECT)) {
+        --Impl->UsedDirectHandlesCount;
+    }
+
     std::unique_ptr<TSessionHandle> holder(handle);
 
     handle->Unlink();
@@ -690,10 +698,6 @@ TSessionHandle* TIndexTabletState::CreateHandle(
     db.WriteSessionHandle(proto);
     IncrementUsedHandlesCount(db);
 
-    if (HasFlag(proto.GetFlags(), NProto::TCreateHandleRequest::E_DIRECT)) {
-        ++Impl->UsedDirectHandlesCount;
-    }
-
     return CreateHandle(session, proto);
 }
 
@@ -706,10 +710,6 @@ void TIndexTabletState::DestroyHandle(
         handle->GetHandle());
 
     DecrementUsedHandlesCount(db);
-
-    if (HasFlag(handle->GetFlags(), NProto::TCreateHandleRequest::E_DIRECT)) {
-        --Impl->UsedDirectHandlesCount;
-    }
 
     ReleaseLocks(db, handle->GetHandle());
 
