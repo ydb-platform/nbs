@@ -184,7 +184,7 @@ class _MigrationTestSetup:
         started_at = time.monotonic()
         while True:
             if time.monotonic() - started_at > timeout_sec:
-                raise TimeoutError("Timed out snapshot migration")
+                raise TimeoutError(f"Timed out waiting for task '{task_id}'")
             output = self.admin("tasks", "get", "--id", task_id)
             status = json.loads(output)["status"]
             if status == "finished":
@@ -406,19 +406,21 @@ def test_disk_manager_several_migration_do_not_overlap(use_s3_as_src, use_s3_as_
         # There is a problem with snapshot migration where incorrect base snapshot
         # id is assigned to migrating snapshots. Check if the problem does not lead to
         # data corruption during several migrations.
+        # See:  https://github.com/ydb-platform/nbs/issues/4742
         disk_size = 16 * 1024 * 1024
         first_disk_id = "disk1"
         first_snapshot_id = "snapshot1"
-        first_image = "image1"
+        first_image_id = "image1"
         setup.create_new_disk(first_disk_id, disk_size)
         block_size = setup.get_disk(first_disk_id).block_size
         setup.fill_disk(first_disk_id, start_index=disk_size // block_size // 2)
         setup.create_snapshot(src_disk_id=first_disk_id, snapshot_id=first_snapshot_id)
         setup.create_image_from_snapshot(
             src_snapshot_id=first_snapshot_id,
-            image_id=first_image,
+            image_id=first_image_id,
         )
-        setup.migrate_snapshot(first_image)
+        setup.migrate_snapshot(first_image_id)
+
         second_disk_id = "disk2"
         second_snapshot_id = "snapshot2"
         second_image_id = "image2"
