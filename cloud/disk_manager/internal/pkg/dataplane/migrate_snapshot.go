@@ -57,11 +57,15 @@ func (t *migrateSnapshotTask) Run(
 
 	t.state.ChunkCount = srcMeta.ChunkCount
 
+	disk := srcMeta.Disk
+	if disk.DiskId == "" {
+		disk = nil
+	}
 	_, err = t.dstStorage.CreateSnapshot(
 		ctx,
 		storage.SnapshotMeta{
 			ID:           t.request.SrcSnapshotId,
-			Disk:         srcMeta.Disk,
+			Disk:         disk,
 			CheckpointID: srcMeta.CheckpointID,
 			CreateTaskID: execCtx.GetTaskID(),
 		},
