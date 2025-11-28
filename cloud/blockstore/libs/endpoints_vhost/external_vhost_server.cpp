@@ -710,7 +710,7 @@ private:
         try {
             if (ExternalCgroupsPidWriterBinaryPath) {
                 AddToCGroupsWithExternalExecutable(
-                    "/home/iajwjw/blockstore-cgroup-pid-writer",
+                    ExternalCgroupsPidWriterBinaryPath,
                     process.Pid,
                     Cgroups);
             } else {
