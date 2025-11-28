@@ -61,6 +61,7 @@ func (t *migrateSnapshotTask) Run(
 	if disk.DiskId == "" {
 		disk = nil
 	}
+
 	_, err = t.dstStorage.CreateSnapshot(
 		ctx,
 		storage.SnapshotMeta{
