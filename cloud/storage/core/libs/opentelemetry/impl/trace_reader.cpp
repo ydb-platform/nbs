@@ -31,8 +31,6 @@ private:
     ILoggingServicePtr Logging;
     ITraceServiceClientPtr TraceServiceClient;
 
-    ui64 TracksCount = 0;
-
 public:
     TTraceOpenTelemetryExporter(
             TString id,
@@ -55,7 +53,7 @@ public:
     {
         Y_UNUSED(tid);
 
-        if (tl.Items.empty() || ++TracksCount > DumpTracksLimit) {
+        if (tl.Items.empty()) {
             return;
         }
 
@@ -132,7 +130,6 @@ public:
 
     void Reset() override
     {
-        TracksCount = 0;
         Consumer->Reset();
     }
 
@@ -185,13 +182,16 @@ ITraceReaderPtr SetupTraceReaderWithOpentelemetryExport(
         std::move(traceServiceClient),
         std::move(serviceName));
     traceReader = CreateTraceLogger(
-        std::move(id),
+        id,
         std::move(traceReader),
         std::move(logging),
         std::move(componentName),
         std::move(tag),
         priority);
-    return traceReader;
+    return CreateTraceLimiter(
+        std::move(id),
+        std::move(traceReader),
+        DumpTracksLimit);
 }
 
 ITraceReaderPtr SetupTraceReaderForSlowRequestsWithOpentelemetryExport(
