@@ -531,7 +531,6 @@ func TestDiskServiceCreateSsdNonreplDiskFromPooledImage(t *testing.T) {
 	)
 }
 
-/*
 // TODO: enable after issue #3071 has been completed
 func TestDiskServiceCreateSsdNonreplDiskWithDefaultEncryptionFromPooledImage(
 	t *testing.T,
@@ -544,6 +543,7 @@ func TestDiskServiceCreateSsdNonreplDiskWithDefaultEncryptionFromPooledImage(
 		262144*4096,  // diskSize
 		"encrypted-folder",
 		nil, // encryptionDesc
+		defaultZoneID,
 	)
 }
 
@@ -565,9 +565,9 @@ func TestDiskServiceCreateEncryptedSsdNonreplDiskFromPooledImage(t *testing.T) {
 				},
 			},
 		},
+		defaultZoneID,
 	)
 }
-*/
 
 func TestDiskServiceCreateEncryptedSsdNonreplDiskFromImage(t *testing.T) {
 	testCreateDiskFromImageWithZoneID(

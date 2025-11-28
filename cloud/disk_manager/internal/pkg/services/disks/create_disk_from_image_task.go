@@ -2,7 +2,6 @@ package disks
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -109,35 +108,35 @@ func (t *createDiskFromImageTask) Run(
 		return err
 	}
 
-	diskEncryption := types.EncryptionMode_NO_ENCRYPTION
-	imageEncryption := types.EncryptionMode_NO_ENCRYPTION
+	// diskEncryption := types.EncryptionMode_NO_ENCRYPTION
+	// imageEncryption := types.EncryptionMode_NO_ENCRYPTION
 
-	if params.EncryptionDesc != nil {
-		diskEncryption = params.EncryptionDesc.Mode
-	}
+	// if params.EncryptionDesc != nil {
+	// 	diskEncryption = params.EncryptionDesc.Mode
+	// }
 
-	if imageMeta != nil && imageMeta.Encryption != nil {
-		imageEncryption = imageMeta.Encryption.Mode
-	}
+	// if imageMeta != nil && imageMeta.Encryption != nil {
+	// 	imageEncryption = imageMeta.Encryption.Mode
+	// }
 
-	if imageEncryption != types.EncryptionMode_NO_ENCRYPTION &&
-		diskEncryption != imageEncryption {
+	// if imageEncryption != types.EncryptionMode_NO_ENCRYPTION &&
+	// 	diskEncryption != imageEncryption { //  missmatch is expected
 
-		message := fmt.Sprintf(
-			"encryption mode should be the same for disk (%v) and encrypted image (%v)",
-			diskEncryption,
-			imageEncryption,
-		)
-		if imageMeta == nil {
-			return errors.NewSilentNonRetriableErrorf(message)
-		}
-		return errors.NewNonRetriableErrorf(message)
-	}
+	// 	message := fmt.Sprintf(
+	// 		"encryption mode should be the same for disk (%v) and encrypted image (%v)",
+	// 		diskEncryption,
+	// 		imageEncryption,
+	// 	)
+	// 	if imageMeta == nil {
+	// 		return errors.NewSilentNonRetriableErrorf(message)
+	// 	}
+	// 	return errors.NewNonRetriableErrorf(message)
+	// }
 
 	encryption := params.EncryptionDesc
-	if imageEncryption != types.EncryptionMode_NO_ENCRYPTION {
-		encryption = imageMeta.Encryption
-	}
+	// if imageEncryption != types.EncryptionMode_NO_ENCRYPTION {
+	// 	encryption = imageMeta.Encryption
+	// }
 
 	err = client.Create(ctx, nbs.CreateDiskParams{
 		ID:                      disk.DiskId,
