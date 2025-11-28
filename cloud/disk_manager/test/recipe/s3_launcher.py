@@ -44,6 +44,9 @@ class S3Launcher:
     def stop():
         kill_processes(SERVICE_NAME)
 
+    def stop_service(self):
+        self.__daemon.stop()
+
     @property
     def port(self):
         return self.__port

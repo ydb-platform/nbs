@@ -54,6 +54,9 @@ class MetadataServiceLauncher:
     def stop():
         kill_processes(SERVICE_NAME)
 
+    def stop_service(self):
+        self.__daemon.stop()
+
     @property
     def url(self):
         return "http://localhost:{port}".format(port=self.__port)

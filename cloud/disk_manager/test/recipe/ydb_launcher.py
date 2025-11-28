@@ -33,6 +33,9 @@ class YDBLauncher:
     def stop():
         kill_processes(SERVICE_NAME)
 
+    def stop_service(self):
+        self.__cluster.stop()
+
     @property
     def port(self):
         return list(self.__cluster.nodes.values())[0].port

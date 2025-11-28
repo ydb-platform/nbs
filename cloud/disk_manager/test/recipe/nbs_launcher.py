@@ -183,6 +183,7 @@ class NbsLauncher:
             compute_config=compute_config,
             kms_config=kms_config,
             features_config_patch=features_config_patch)
+        self.__disk_agents = []
 
     @property
     def nbs(self):
@@ -211,7 +212,10 @@ class NbsLauncher:
         )
 
         for i in range(self.__disk_agent_count):
-            self.__run_disk_agent(i)
+            self.__disk_agents.append(
+                self.__run_disk_agent(i),
+            )
+
         wait_for_secure_erase(self.__nbs.mon_port)
 
     def __run_disk_agent(self, index):
@@ -239,6 +243,11 @@ class NbsLauncher:
         wait_for_disk_agent(disk_agent.mon_port)
         register_process(DISK_AGENT_SERVICE_NAME, disk_agent.pid)
         return disk_agent
+
+    def stop_service(self):
+        self.nbs.stop()
+        for disk_agent in self.__disk_agents:
+            disk_agent.stop()
 
     @staticmethod
     def stop():

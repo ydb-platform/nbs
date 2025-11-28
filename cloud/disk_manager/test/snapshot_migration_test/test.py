@@ -159,11 +159,14 @@ class _MigrationTestSetup:
         self.initial_dpl_disk_manager.stop_daemon()
         if self.secondary_dpl_disk_manager is not None:
             self.secondary_dpl_disk_manager.stop_daemon()
-        MetadataServiceLauncher.stop()
-        NbsLauncher.stop()
-        YDBLauncher.stop()
-        if self.src_s3 is not None or self.dst_s3 is not None:
-            S3Launcher.stop()
+        self.metadata_service.stop_service()
+        self.nbs.stop_service()
+        self.ydb.stop_service()
+        self.secondary_ydb.stop_service()
+        if self.src_s3 is not None:
+            self.src_s3.stop_service()
+        if self.dst_s3 is not None:
+            self.dst_s3.stop_service()
 
     def admin(self, *args: str):
         return subprocess.check_output(
@@ -174,6 +177,20 @@ class _MigrationTestSetup:
                 *args,
             ],
         ).decode()
+
+    def wait_admin_task(self, *args, timeout_sec=360):
+        stdout = self.admin(*args)
+        task_id = stdout.replace("Task: ", "").replace("\n", "").replace("Operation: ", "")
+        started_at = time.monotonic()
+        while True:
+            if time.monotonic() - started_at > timeout_sec:
+                raise TimeoutError(f"Timed out waiting for task '{task_id}'")
+            output = self.admin("tasks", "get", "--id", task_id)
+            status = json.loads(output)["status"]
+            if status == "finished":
+                break
+
+            time.sleep(1)
 
     def blockstore_client(self, *args: str):
         return subprocess.check_output(
@@ -205,24 +222,25 @@ class _MigrationTestSetup:
             id=disk_info["id"]
         )
 
-    def fill_disk(self, disk_id: str) -> str:
+    def fill_disk(self, disk_id: str, start_index=0) -> str:
         unique_test_dir = Path(get_unique_path_for_current_test(yatest_common.output_path(), ""))
         ensure_path_exists(str(unique_test_dir))
         data_file = unique_test_dir / "disk_data.bin"
         try:
             disk = self.get_disk(disk_id)
+            count = disk.blocks_count - start_index
             subprocess.check_call([
                 "dd",
                 "if=/dev/urandom",
                 f"of={data_file}",
                 f"bs={disk.block_size}",
-                f"count={disk.blocks_count}"
+                f"count={count}"
             ])
 
             self.blockstore_client(
                 "writeblocks",
                 "--disk-id", disk_id,
-                "--start-index", "0",
+                "--start-index", str(start_index),
                 "--input", str(data_file),
             )
 
@@ -240,23 +258,25 @@ class _MigrationTestSetup:
             "--folder-id", "folder",
         )
 
+    def create_image_from_snapshot(
+        self,
+        src_snapshot_id: str,
+        image_id: str,
+    ):
+        self.wait_admin_task(
+            "images",
+            "create",
+            "--id", image_id,
+            "--src-snapshot-id", src_snapshot_id,
+            "--folder-id", "folder",
+        )
+
     def migrate_snapshot(self, snapshot_id: str, timeout_sec=360):
-        stdout = self.admin(
+        self.wait_admin_task(
             "snapshots",
             "schedule_migrate_snapshot_task",
             "--id", snapshot_id,
         )
-        task_id = stdout.replace("Task: ", "").replace("\n", "")
-        started_at = time.monotonic()
-        while True:
-            if time.monotonic() - started_at > timeout_sec:
-                raise TimeoutError("Timed out snapshot migration")
-            output = self.admin("tasks", "get", "--id", task_id)
-            status = json.loads(output)["status"]
-            if status == "finished":
-                break
-
-            time.sleep(1)
 
     def start_database_migration(self):
         stdout = self.admin(
@@ -273,7 +293,7 @@ class _MigrationTestSetup:
         stdout = self.admin("snapshots", "list")
         return stdout.splitlines()
 
-    def checksum_disk(self, disk_id: str) -> str:
+    def checksum_disk(self, disk_id: str, start_index: int = 0) -> str:
         unique_test_dir = Path(get_unique_path_for_current_test(yatest_common.output_path(), ""))
         ensure_path_exists(str(unique_test_dir))
         data_file = unique_test_dir / "disk_data.bin"
@@ -281,7 +301,7 @@ class _MigrationTestSetup:
             self.blockstore_client(
                 "readblocks",
                 "--disk-id", disk_id,
-                "--start-index", "0",
+                "--start-index", str(start_index),
                 "--output", str(data_file),
                 "--io-depth", "32",
                 "--read-all"
@@ -300,6 +320,18 @@ class _MigrationTestSetup:
             "--size", str(size),
             "--src-snapshot-id", snapshot_id,
             "--id", disk_id,
+        )
+
+    def create_disk_from_image(self, image_id: str, disk_id: str, size: int):
+        self.wait_admin_task(
+            "disks",
+            "create",
+            "--folder-id", "folder",
+            "--cloud-id", "cloud",
+            "--zone-id", "zone-a",
+            "--size", str(size),
+            "--src-image-id", image_id,
+            "--id", disk_id
         )
 
     def switch_dataplane_to_new_db(self):
@@ -353,6 +385,64 @@ def test_disk_manager_single_snapshot_migration(use_s3_as_src, use_s3_as_dst):
         setup.create_disk_from_snapshot(snapshot_id=snapshot_id, disk_id=new_disk, size=disk_size)
         new_checksum = setup.checksum_disk(new_disk)
         assert new_checksum == checksum
+
+
+@pytest.mark.parametrize(
+    ["use_s3_as_src", "use_s3_as_dst"],
+    [
+        (False, False),
+        (False, True),
+        (True, False),
+        (True, True),
+    ]
+)
+def test_disk_manager_several_migration_do_not_overlap(use_s3_as_src, use_s3_as_dst):
+    with _MigrationTestSetup(
+        use_s3_as_src=use_s3_as_src,
+        use_s3_as_dst=use_s3_as_dst,
+        migrating_snapshots_inflight_limit=1,
+    ) as setup:
+        # Test that checks that several migration do not corrupt each other
+        # There is a problem with snapshot migration where incorrect base snapshot
+        # id is assigned to migrating snapshots. Check if the problem does not lead to
+        # data corruption during several migrations.
+        # See:  https://github.com/ydb-platform/nbs/issues/4742
+        disk_size = 16 * 1024 * 1024
+        first_disk_id = "disk1"
+        first_snapshot_id = "snapshot1"
+        first_image_id = "image1"
+        setup.create_new_disk(first_disk_id, disk_size)
+        block_size = setup.get_disk(first_disk_id).block_size
+        setup.fill_disk(first_disk_id, start_index=disk_size // block_size // 2)
+        setup.create_snapshot(src_disk_id=first_disk_id, snapshot_id=first_snapshot_id)
+        setup.create_image_from_snapshot(
+            src_snapshot_id=first_snapshot_id,
+            image_id=first_image_id,
+        )
+        setup.migrate_snapshot(first_image_id)
+
+        second_disk_id = "disk2"
+        second_snapshot_id = "snapshot2"
+        second_image_id = "image2"
+        setup.create_new_disk(second_disk_id, disk_size)
+        setup.fill_disk(second_disk_id)
+        second_disk_full_checksum = setup.checksum_disk(second_disk_id)
+        setup.create_snapshot(src_disk_id=second_disk_id, snapshot_id=second_snapshot_id)
+        setup.create_image_from_snapshot(
+            src_snapshot_id=second_snapshot_id,
+            image_id=second_image_id,
+        )
+        setup.migrate_snapshot(second_image_id)
+
+        setup.switch_dataplane_to_new_db()
+        second_disk_restored_id = "restored_disk2"
+        setup.create_disk_from_image(
+            image_id=second_image_id,
+            disk_id=second_disk_restored_id,
+            size=disk_size,
+        )
+        restored_checksum = setup.checksum_disk(second_disk_restored_id)
+        assert restored_checksum == second_disk_full_checksum
 
 
 @dataclasses.dataclass
