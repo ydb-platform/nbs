@@ -365,6 +365,11 @@ public:
     TDiskRegistryState(const TDiskRegistryState&) = delete;
     TDiskRegistryState& operator=(const TDiskRegistryState&) = delete;
 
+    // Returns S_OK if the data is the same. Returns an error if the data is
+    // different.
+    [[nodiscard]] NProto::TError CompareMeaningfullFields(
+        const TDiskRegistryState& other) const;
+
     struct TAgentRegistrationResult
     {
         TVector<TDiskId> AffectedDisks;

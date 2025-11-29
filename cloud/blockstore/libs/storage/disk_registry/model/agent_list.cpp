@@ -106,6 +106,21 @@ TAgentList::TAgentList(
     }
 }
 
+NProto::TError TAgentList::CompareMeaningfullFields(
+    const TAgentList& other) const
+{
+    static_assert(
+        sizeof(TAgentList) == 400,
+        "If you have changed the fields of TAgentList, please consider "
+        "updating the comparison logic");
+
+    if (Agents != other.Agents) {
+        return MakeError(E_FAIL, "Agents are different");
+    }
+
+    return {};
+}
+
 NProto::TAgentConfig& TAgentList::AddAgent(NProto::TAgentConfig config)
 {
     auto& agent = Agents.emplace_back(std::move(config));
