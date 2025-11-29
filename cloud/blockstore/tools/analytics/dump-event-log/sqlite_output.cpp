@@ -178,33 +178,24 @@ TSqliteOutput::~TSqliteOutput()
     }
 }
 
-void TSqliteOutput::ProcessMessage(
-    const NProto::TProfileLogRecord& message,
-    EItemType itemType,
-    int index)
+void TSqliteOutput::ProcessRequest(
+    const TString& diskId,
+    TInstant timestamp,
+    ui32 requestType,
+    TBlockRange64 blockRange,
+    TDuration duration,
+    const TReplicaChecksums& replicaChecksums)
 {
-    if (itemType != EItemType::Request) {
-        return;
-    }
+    const ui64 requestId = AddRequest(
+        timestamp,
+        GetVolumeId(diskId),
+        requestType,
+        blockRange,
+        duration);
 
-    const NProto::TProfileLogRequestInfo& r = message.GetRequests(index);
+    AddChecksums(requestId, blockRange, replicaChecksums);
 
-    for (const auto& range: r.GetRanges()) {
-        const auto blockRange = TBlockRange64::WithLength(
-            range.GetBlockIndex(),
-            range.GetBlockCount());
-
-        const ui64 requestId = AddRequest(
-            TInstant::FromValue(r.GetTimestampMcs()),
-            GetVolumeId(message.GetDiskId()),
-            r.GetRequestType(),
-            blockRange,
-            TDuration::MicroSeconds(r.GetDurationMcs()));
-
-        AddChecksums(requestId, blockRange, range.GetReplicaChecksums());
-
-        AdvanceTransaction();
-    }
+    AdvanceTransaction();
 }
 
 void TSqliteOutput::CreateTables()
