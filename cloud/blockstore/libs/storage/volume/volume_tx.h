@@ -255,6 +255,7 @@ struct TTxVolume
         NProto::TError Error;
         bool ForceTabletRestart = false;
         TVector<TString> RemovedClientIds;
+        bool VolumeClientMigrationInProgress = false;
 
         TAddClient(
                 TRequestInfoPtr requestInfo,
@@ -273,6 +274,7 @@ struct TTxVolume
             WriterChanged = false;
             Error.Clear();
             ForceTabletRestart = false;
+            VolumeClientMigrationInProgress = false;
         }
     };
 
