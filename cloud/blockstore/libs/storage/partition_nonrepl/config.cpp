@@ -1,9 +1,11 @@
 #include "config.h"
 
 #include <cloud/storage/core/libs/common/helpers.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <util/generic/algorithm.h>
 #include <util/generic/utility.h>
+#include <util/string/builder.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -50,7 +52,9 @@ TNonreplicatedPartitionConfig::TNonreplicatedPartitionConfig(
     , UseSimpleMigrationBandwidthLimiter(
           params.UseSimpleMigrationBandwidthLimiter)
     , BlockIndices(MakeBlockIndices(Devices))
-    , CanReadFromAllDevices(FreshDeviceIds.empty() && OutdatedDeviceIds.empty() && AllDevicesPresent(Devices))
+    , CanReadFromAllDevices(
+          FreshDeviceIds.empty() && OutdatedDeviceIds.empty() &&
+          AllDevicesPresent(Devices))
 {
     Y_ABORT_UNLESS(Devices.size());
 }
@@ -122,10 +126,20 @@ bool TNonreplicatedPartitionConfig::DevicesReadyForReading(
 
 bool TNonreplicatedPartitionConfig::DevicesReadyForReading(
     const TBlockRange64 blockRange,
-    const THashSet<TString>& excludeAgentIds) const
+    const THashMap<TString, NProto::TLaggingAgent>& laggingAgents) const
 {
-    if (CanReadFromAllDevices && excludeAgentIds.empty()) {
+    if (CanReadFromAllDevices && laggingAgents.empty()) {
         return true;
+    }
+
+    THashSet<TString> excludeAgentIds;
+    for (const auto& [_, laggingAgent]: laggingAgents) {
+        const auto [it, inserted] =
+            excludeAgentIds.insert(laggingAgent.GetAgentId());
+        STORAGE_CHECK_PRECONDITION_C(
+            inserted,
+            TStringBuilder() << "Duplicate lagging agent: "
+                             << laggingAgent.GetAgentId().Quote());
     }
 
     const bool result = VisitDeviceRequests(

@@ -229,19 +229,12 @@ bool TMirrorPartitionState::DevicesReadyForReading(
     const TBlockRange64 blockRange) const
 {
     Y_ABORT_UNLESS(replicaIndex < ReplicaInfos.size());
+
     const auto& replicaInfo = ReplicaInfos[replicaIndex];
-    THashSet<TString> laggingAgents;
-    for (const auto& [_, laggingAgent]: replicaInfo.LaggingAgents) {
-        const auto [it, inserted] =
-            laggingAgents.insert(laggingAgent.GetAgentId());
-        STORAGE_CHECK_PRECONDITION_C(
-            inserted,
-            TStringBuilder() << "Duplicate lagging agent: "
-                             << laggingAgent.GetAgentId().Quote());
-    }
+
     return replicaInfo.Config->DevicesReadyForReading(
         blockRange,
-        laggingAgents);
+        replicaInfo.LaggingAgents);
 }
 
 void TMirrorPartitionState::AddLaggingAgent(NProto::TLaggingAgent laggingAgent)

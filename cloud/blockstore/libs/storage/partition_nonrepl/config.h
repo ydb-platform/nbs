@@ -222,7 +222,7 @@ public:
     bool DevicesReadyForReading(const TBlockRange64 blockRange) const;
     bool DevicesReadyForReading(
         const TBlockRange64 blockRange,
-        const THashSet<TString>& excludeAgentIds) const;
+        const THashMap<TString, NProto::TLaggingAgent>& laggingAgents) const;
 
     void AugmentErrorFlags(NCloud::NProto::TError& error) const;
 
