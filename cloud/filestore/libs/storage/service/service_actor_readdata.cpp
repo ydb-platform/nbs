@@ -139,7 +139,7 @@ void TReadDataActor::Bootstrap(const TActorContext& ctx)
     // a block buffer leads to memory allocation (and initialization) which is
     // heavy and we would like to execute that on a separate thread (instead of
     // this actor's parent thread)
-    BlockBuffer->ReserveAndResize(AlignedByteRange.Length);
+    BlockBuffer->ReserveAndResize(ReadRequest.GetLength());
 
     DescribeData(ctx);
     Become(&TThis::StateWork);
@@ -210,7 +210,7 @@ void ApplyFreshDataRange(
     const TActorContext& ctx,
     const NProtoPrivate::TFreshDataRange& sourceFreshData,
     TString& targetBuffer,
-    TByteRange alignedTargetByteRange,
+    TByteRange targetByteRange,
     ui32 blockSize,
     ui64 offset,
     ui64 length,
@@ -231,25 +231,24 @@ void ApplyFreshDataRange(
         "common byte range found: source: %s, target: %s, original request: "
         "[%lu, %lu), response: %s",
         sourceByteRange.Describe().c_str(),
-        alignedTargetByteRange.Describe().c_str(),
+        targetByteRange.Describe().c_str(),
         offset,
         length,
         DescribeResponseDebugString(describeResponse).Quote().c_str());
 
-    auto commonRange = sourceByteRange.Intersect(alignedTargetByteRange);
+    auto commonRange = sourceByteRange.Intersect(targetByteRange);
 
-    Y_ABORT_UNLESS(sourceByteRange == commonRange);
     if (commonRange.Length == 0) {
         LOG_WARN(
             ctx,
             TFileStoreComponents::SERVICE,
             "common range is empty: source: %s, target: %s",
             sourceByteRange.Describe().c_str(),
-            alignedTargetByteRange.Describe().c_str());
+            targetByteRange.Describe().c_str());
         return;
     }
 
-    const ui64 relOffset = commonRange.Offset - alignedTargetByteRange.Offset;
+    const ui64 relOffset = commonRange.Offset - targetByteRange.Offset;
     memcpy(
         &targetBuffer[relOffset],
         sourceFreshData.GetContent().data() +
@@ -459,7 +458,6 @@ void TReadDataActor::HandleReadBlobResponse(
             return;
         }
 
-        auto dataIter = response.Buffer.begin();
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::SERVICE,
@@ -479,11 +477,27 @@ void TReadDataActor::HandleReadBlobResponse(
             response.Buffer.size());
         TABLET_VERIFY(blobRange.GetOffset() >= AlignedByteRange.Offset);
 
-        const ui64 relOffset = blobRange.GetOffset() - AlignedByteRange.Offset;
-        dataIter.ExtractPlainDataAndAdvance(
-            &(*BlockBuffer)[relOffset],
-            blobRange.GetLength());
-        ZeroIntervals.PunchHole(relOffset, relOffset + blobRange.GetLength());
+        const auto blobByteRange =
+            TByteRange{blobRange.GetOffset(), blobRange.GetLength(), BlockSize};
+        const auto commonRange = OriginByteRange.Intersect(blobByteRange);
+        if (commonRange.Length != 0) {
+            const auto relOffset = commonRange.Offset - OriginByteRange.Offset;
+            auto dataIter = response.Buffer.begin();
+            dataIter += commonRange.Offset - blobByteRange.Offset;
+            dataIter.ExtractPlainDataAndAdvance(
+                &(*BlockBuffer)[relOffset],
+                commonRange.Length);
+            ZeroIntervals.PunchHole(
+                relOffset,
+                relOffset + blobRange.GetLength());
+        } else {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "common range is empty: origin range: %s, blob range: %s",
+                OriginByteRange.Describe().c_str(),
+                blobByteRange.Describe().c_str());
+        }
     }
 
     --RemainingBlobsToRead;
@@ -627,7 +641,7 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
             ctx,
             freshDataRange,
             *BlockBuffer,
-            AlignedByteRange,
+            OriginByteRange,
             BlockSize,
             ReadRequest.GetOffset(),
             ReadRequest.GetLength(),
@@ -654,11 +668,8 @@ void TReadDataActor::ReplyAndDie(const TActorContext& ctx)
     if (end <= OriginByteRange.Offset) {
         BlockBuffer->clear();
     } else {
-        BlockBuffer->ReserveAndResize(end - AlignedByteRange.Offset);
-        const auto bufferOffset =
-            OriginByteRange.Offset - AlignedByteRange.Offset;
+        BlockBuffer->ReserveAndResize(end - OriginByteRange.Offset);
         response->Record.set_allocated_buffer(BlockBuffer.release());
-        response->Record.SetBufferOffset(bufferOffset);
     }
 
     MoveBufferToIovecsIfNeeded(ctx, response->Record);
