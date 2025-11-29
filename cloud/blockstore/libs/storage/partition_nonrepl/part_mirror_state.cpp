@@ -161,7 +161,7 @@ bool TMirrorPartitionState::PrepareMigrationConfigForFreshDevices()
     }
 
     const auto& freshDevices = replicaInfo->Config->GetFreshDeviceIds();
-    auto& devices = replicaInfo->Config->AccessDevices();
+    const auto& devices = replicaInfo->Config->GetDevices();
 
     // initializing (copying data via migration) one device at a time
     int deviceIdx = 0;
@@ -182,8 +182,8 @@ bool TMirrorPartitionState::PrepareMigrationConfigForFreshDevices()
     for (auto& anotherReplica: ReplicaInfos) {
         const auto& anotherFreshDevices =
             anotherReplica.Config->GetFreshDeviceIds();
-        auto& anotherDevices = anotherReplica.Config->AccessDevices();
-        auto& anotherDevice = anotherDevices[deviceIdx];
+        const auto& anotherDevices = anotherReplica.Config->GetDevices();
+        const auto& anotherDevice = anotherDevices[deviceIdx];
         const auto& uuid = anotherDevice.GetDeviceUUID();
 
         if (!anotherFreshDevices.contains(uuid)) {
@@ -229,19 +229,12 @@ bool TMirrorPartitionState::DevicesReadyForReading(
     const TBlockRange64 blockRange) const
 {
     Y_ABORT_UNLESS(replicaIndex < ReplicaInfos.size());
+
     const auto& replicaInfo = ReplicaInfos[replicaIndex];
-    THashSet<TString> laggingAgents;
-    for (const auto& [_, laggingAgent]: replicaInfo.LaggingAgents) {
-        const auto [it, inserted] =
-            laggingAgents.insert(laggingAgent.GetAgentId());
-        STORAGE_CHECK_PRECONDITION_C(
-            inserted,
-            TStringBuilder() << "Duplicate lagging agent: "
-                             << laggingAgent.GetAgentId().Quote());
-    }
+
     return replicaInfo.Config->DevicesReadyForReading(
         blockRange,
-        laggingAgents);
+        replicaInfo.LaggingAgents);
 }
 
 void TMirrorPartitionState::AddLaggingAgent(NProto::TLaggingAgent laggingAgent)

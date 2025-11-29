@@ -5,6 +5,8 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
+#include <cloud/storage/core/libs/common/helpers.h>
+
 #include <util/string/join.h>
 
 using namespace NActors;
