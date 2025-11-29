@@ -356,6 +356,7 @@ void TVolumeState::Reset()
     ResetThrottlingPolicy(Config->GetPerformanceProfile());
 
     BlockCount = ComputeBlockCount(Meta);
+    BlockRangeSplitter.Reset(Meta);
 
     const auto tags = ParseTags(Meta.GetVolumeConfig().GetTagsStr());
 

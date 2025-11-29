@@ -14,8 +14,8 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/public.h>
-#include <cloud/blockstore/libs/storage/volume_throttling_manager/volume_throttling_manager.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
+#include <cloud/blockstore/libs/storage/volume/model/block_range_splitter.h>
 #include <cloud/blockstore/libs/storage/volume/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/volume/model/checkpoint_light.h>
 #include <cloud/blockstore/libs/storage/volume/model/client_state.h>
@@ -23,6 +23,7 @@
 #include <cloud/blockstore/libs/storage/volume/model/meta.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_params.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_throttling_policy.h>
+#include <cloud/blockstore/libs/storage/volume_throttling_manager/volume_throttling_manager.h>
 
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 #include <cloud/storage/core/libs/common/error.h>
@@ -223,6 +224,7 @@ private:
     TPartitionInfo::EState PartitionsState = TPartitionInfo::UNKNOWN;
     TActorsStack DiskRegistryBasedPartitionActor;
     TNonreplicatedPartitionConfigPtr NonreplicatedPartitionConfig;
+    TBlockRangeSplitter BlockRangeSplitter;
 
     TVector<TPartitionStatInfo> PartitionStatInfos;
 
@@ -425,6 +427,15 @@ public:
     ui64 GetBlocksCount() const
     {
         return BlockCount;
+    }
+
+    size_t CalculateRequestCount(
+        TBlockRange64 blockRange,
+        TVector<TBlockRange64>* splittedRanges) const
+    {
+        return BlockRangeSplitter.CalculateRequestCount(
+            blockRange,
+            splittedRanges);
     }
 
     void FillDeviceInfo(NProto::TVolume& volume) const;

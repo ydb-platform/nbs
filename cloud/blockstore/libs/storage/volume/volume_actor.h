@@ -1089,6 +1089,15 @@ private:
         const ui64 volumeRequestId);
 
     template <typename TMethod>
+    void SplitRequest(
+        const NActors::TActorContext& ctx,
+        const typename TMethod::TRequest::TPtr& ev,
+        TBlockRange64 blockRange,
+        ui64 volumeRequestId,
+        bool isTraced,
+        ui64 traceTime);
+
+    template <typename TMethod>
     bool HandleMultipartitionVolumeRequest(
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,

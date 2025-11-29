@@ -7,6 +7,7 @@ GENERATE_ENUM_SERIALIZATION(follower_disk.h)
 GENERATE_ENUM_SERIALIZATION(requests_time_tracker.h)
 
 SRCS(
+    block_range_splitter.cpp
     checkpoint.cpp
     checkpoint_light.cpp
     client_state.cpp

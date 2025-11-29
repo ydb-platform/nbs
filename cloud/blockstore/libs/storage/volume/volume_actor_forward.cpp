@@ -31,6 +31,68 @@ namespace {
 
 Y_HAS_MEMBER(SetThrottlerDelay);
 
+template <typename TRequest>
+std::unique_ptr<TRequest> MakeSubRequest(
+    TRequest& request,
+    TBlockRange64 subRange);
+
+template <>
+std::unique_ptr<TEvService::TEvReadBlocksRequest> MakeSubRequest(
+    TEvService::TEvReadBlocksRequest& request,
+    TBlockRange64 subRange)
+{
+    auto subRequest = std::make_unique<TEvService::TEvReadBlocksRequest>();
+    subRequest->Record = request.Record;
+    subRequest->Record.SetStartIndex(subRange.Start);
+    subRequest->Record.SetBlocksCount(subRange.Size());
+    return subRequest;
+}
+
+//template <typename TMethod>
+class TSplitRequestActor
+    : public NActors::TActorBootstrapped<TSplitRequestActor>
+{
+private:
+    using TRequest = typename TEvService::TReadBlocksMethod::TRequest;
+
+    TActorId VolumeActorId;
+    TRequestInfoPtr RequestInfo;
+    TRequestTraceInfo TraceInfo;
+    std::unique_ptr<TRequest> Request;
+    TVector<TBlockRange64> SubRanges;
+
+public:
+    TSplitRequestActor(
+        TActorId volumeActorId,
+        TRequest::TPtr request,
+        TVector<TBlockRange64> subRanges,
+        TRequestTraceInfo traceInfo)
+        : VolumeActorId(volumeActorId)
+        , RequestInfo(CreateRequestInfo(
+            request->Sender,
+            request->Cookie,
+            request->Get()->CallContext))
+        , TraceInfo(std::move(traceInfo))
+        , Request(request->Release().Release())
+        , SubRanges(std::move(subRanges))
+    {}
+
+    void Bootstrap(const NActors::TActorContext& ctx)
+    {
+        for (ui64 i = 0; i < SubRanges.size(); ++i) {
+            auto subRequest = MakeSubRequest(*Request, SubRanges[i]);
+            NCloud::Send(ctx, VolumeActorId, std::move(subRequest), i);
+        }
+    }
+
+private:
+
+
+    STFUNC(StateWork);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 template <typename TResponse>
 void StoreThrottlerDelay(TResponse& response, TDuration delay)
 {
@@ -129,6 +191,37 @@ void TVolumeActor::UpdateIngestTimeStats(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+template <typename TMethod>
+void TVolumeActor::SplitRequest(
+    const NActors::TActorContext& ctx,
+    const typename TMethod::TRequest::TPtr& ev,
+    TBlockRange64 blockRange,
+    ui64 volumeRequestId,
+    bool isTraced,
+    ui64 traceTime)
+{
+    Y_UNUSED(ctx, isTraced);
+
+    TVector<TBlockRange64> subRanges;
+    State->CalculateRequestCount(blockRange, &subRanges);
+
+    auto wrappedRequest = WrapRequest<TMethod>(
+        ev,
+        TActorId{},
+        volumeRequestId,
+        blockRange,
+        traceTime,
+        true,
+        false);
+
+    NCloud::Register<TSplitRequestActor>(
+        ctx,
+        SelfId(),
+        std::move(wrappedRequest),
+        std::move(subRanges),
+        TRequestTraceInfo(isTraced, traceTime, TraceSerializer));
+}
 
 template <typename TMethod>
 bool TVolumeActor::HandleMultipartitionVolumeRequest(
@@ -1037,6 +1130,26 @@ void TVolumeActor::ForwardRequest(
                 LogTitle.GetWithTime().c_str(),
                 DuplicateRequestCount);
 
+            return;
+        }
+    }
+
+    if constexpr (std::is_same_v<TMethod, TEvService::TReadBlocksMethod>) {
+        if (State->CalculateRequestCount(blockRange, nullptr) > 1) {
+            LOG_INFO(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s %s request %s should be splitted",
+                LogTitle.GetWithTime().c_str(),
+                TMethod::Name,
+                DescribeRange(blockRange).c_str());
+            SplitRequest<TMethod>(
+                ctx,
+                ev,
+                blockRange,
+                volumeRequestId,
+                isTraced,
+                now);
             return;
         }
     }
