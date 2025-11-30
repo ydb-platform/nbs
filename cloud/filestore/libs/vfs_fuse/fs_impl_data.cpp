@@ -353,8 +353,10 @@ void TFileSystem::Read(
     request->SetOffset(offset);
     request->SetLength(size);
 
+    const bool useWriteBackCache = ShouldUseServerWriteBackCache(fi);
+
     TFuture<NProto::TReadDataResponse> future;
-    if (WriteBackCache) {
+    if (useWriteBackCache) {
         future = WriteBackCache.ReadData(callContext, std::move(request));
     } else {
         future = Session->ReadData(callContext, std::move(request));

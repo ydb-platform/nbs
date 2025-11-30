@@ -64,6 +64,11 @@ struct TRequestBuffer<THeader, TBody, true>
         Header.len = len;
     }
 
+    [[nodiscard]] void* Data() const
+    {
+        return const_cast<void*>(reinterpret_cast<const void*>(this + 1));
+    }
+
     static auto Create(size_t dataSize = 0)
     {
         size_t len = sizeof(TSelf) + dataSize;
@@ -248,7 +253,7 @@ struct TWriteRequest
 };
 
 struct TReadRequest
-    : public TRequestBase<fuse_read_in, ui32, ui32>
+    : public TRequestBase<fuse_read_in, void, ui32>
 {
     TReadRequest(ui64 nodeId, ui64 handle, ui64 offset, ui64 size)
     {
