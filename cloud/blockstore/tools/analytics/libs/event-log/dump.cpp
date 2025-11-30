@@ -172,6 +172,7 @@ void DumpRequest(
         << "\t" << RequestName(r.GetRequestType())
         << "\tR"
         << "\t" << r.GetDurationMcs()
+        << "\t" << r.GetPostponedTimeMcs()
         << "\t";
     if (r.GetRanges().empty()) {
         // legacy branch

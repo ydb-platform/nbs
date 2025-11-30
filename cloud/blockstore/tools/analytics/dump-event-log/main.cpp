@@ -1,5 +1,6 @@
 #include <cloud/blockstore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
+#include <cloud/blockstore/tools/analytics/dump-event-log/dataset_output.h>
 #include <cloud/blockstore/tools/analytics/dump-event-log/sqlite_output.h>
 #include <cloud/blockstore/tools/analytics/libs/event-log/dump.h>
 
@@ -42,6 +43,7 @@ struct TEventProcessor: TProtobufEventProcessor
     TEventLogPtr EventLog;
     TString OutputFilename;
     TString OutputDatabaseFilename;
+    TString OutputDatasetFilename;
     TString FilterByDiskId;
     TString FilterByDiskIdFile;
     TString FilterByRequestTypeFile;
@@ -49,6 +51,7 @@ struct TEventProcessor: TProtobufEventProcessor
     TSet<ui32> RequestTypeSet;
     std::optional<TBlockRange64> FilterRange;
     std::unique_ptr<TSqliteOutput> SqliteOutput;
+    std::unique_ptr<TDatasetOutput> DatasetOutput;
 
     void DoProcessEvent(const TEvent* ev, IOutputStream* out) override
     {
@@ -78,6 +81,14 @@ struct TEventProcessor: TProtobufEventProcessor
             if (RequestTypeSet.empty()) {
                 RequestTypeSet = LoadRequestTypes(FilterByRequestTypeFile);
             }
+        }
+
+        if (OutputDatasetFilename) {
+            if (!DatasetOutput) {
+                DatasetOutput = std::make_unique<TDatasetOutput>(OutputDatasetFilename);
+            }
+            DatasetOutput->ProcessRequests(*message);
+            return;
         }
 
         const TVector<TItemDescriptor> order = GetItemOrder(*message);
@@ -233,6 +244,12 @@ public:
                     FromString<ui64>(lhs),
                     FromString<ui64>(rhs));
             });
+
+        opts.AddLongOption(
+                "output-dataset-file",
+                "Enables output to the dataset file")
+            .Optional()
+            .StoreResult(&Processor->OutputDatasetFilename);
 
         opts.AddLongOption(
                 "output-sqlite-file",
