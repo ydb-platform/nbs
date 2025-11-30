@@ -21,6 +21,7 @@ constexpr TStringBuf CreateRequestsTable = R"__(
         StartBlock integer not null,
         EndBlock integer not null,
         DurationUs integer not null,
+        PostponedUs integer not null,
         PRIMARY KEY ("Id" AUTOINCREMENT)
     );
 )__";
@@ -115,9 +116,9 @@ constexpr TStringBuf AddDiskSql = R"__(
 
 constexpr TStringBuf AddRequestSql = R"__(
     INSERT INTO Requests
-        (At, DiskId, RequestTypeId, StartBlock, EndBlock, DurationUs)
+        (At, DiskId, RequestTypeId, StartBlock, EndBlock, DurationUs, PostponedUs)
     VALUES
-        (?, ?, ?, ?, ?, ?);
+        (?, ?, ?, ?, ?, ?, ?);
 )__";
 
 constexpr TStringBuf AddChecksumSql = R"__(
@@ -125,6 +126,20 @@ constexpr TStringBuf AddChecksumSql = R"__(
         (RequestId, StartBlock, EndBlock, Checksum0, Checksum1, Checksum2)
     VALUES
         (?, ?, ?, ?, ?, ?);
+)__";
+
+constexpr TStringBuf SelectWritesDescSql = R"__(
+    SELECT
+        r.At,
+        d.DiskId,
+        r.DurationUs,
+        r.PostponedUs,
+        r.EndBlock - r.StartBlock + 1 as BlockCount
+    FROM Requests as r
+    INNER join Disks as d on d.Id == r.DiskId
+    INNER JOIN RequestTypes as rt on rt.id = r.RequestTypeId
+    WHERE rt.Request = "WriteBlocks"
+    ORDER BY At ASC;
 )__";
 
 }   // namespace
@@ -199,12 +214,65 @@ void TSqliteOutput::ProcessMessage(
             GetVolumeId(message.GetDiskId()),
             r.GetRequestType(),
             blockRange,
-            TDuration::MicroSeconds(r.GetDurationMcs()));
+            TDuration::MicroSeconds(r.GetDurationMcs()),
+            TDuration::MicroSeconds(r.GetPostponedTimeMcs()));
 
         AddChecksums(requestId, blockRange, range.GetReplicaChecksums());
 
         AdvanceTransaction();
     }
+}
+
+void TSqliteOutput::SelectWriteRequestsDescending(
+    std::function<void(TWriteRequest)> callback)
+{
+    sqlite3_stmt* selectStmt = nullptr;
+    if (sqlite3_prepare_v2(
+            Db,
+            SelectWritesDescSql.data(),
+            -1,
+            &selectStmt,
+            nullptr) != SQLITE_OK)
+    {
+        ythrow yexception() << "Prepare error: " << sqlite3_errmsg(Db);
+    }
+
+    while (sqlite3_step(selectStmt) == SQLITE_ROW) {
+        const unsigned char* at = sqlite3_column_text(selectStmt, 0);
+        const unsigned char* diskId = sqlite3_column_text(selectStmt, 1);
+        const sqlite3_int64 duration = sqlite3_column_int64(selectStmt, 2);
+        const sqlite3_int64 postponed = sqlite3_column_int64(selectStmt, 3);
+        const int blockCount = sqlite3_column_int(selectStmt, 4);
+
+        Y_ABORT_UNLESS(blockCount > 0);
+
+        TWriteRequest writeRequest{
+            TInstant::ParseIso8601(reinterpret_cast<const char*>(at)),
+            TString(reinterpret_cast<const char*>(diskId)),
+            TDuration::MicroSeconds(duration),
+            TDuration::MicroSeconds(postponed),
+            static_cast<ui32>(blockCount)};
+        callback(std::move(writeRequest));
+    }
+
+    sqlite3_finalize(selectStmt);
+}
+
+void TSqliteOutput::DumpDataset() {
+    // sqlite3_stmt* selectStmt = nullptr;
+    // if (sqlite3_prepare_v2(Db, SelectWritesDescSql.data(), -1, &selectStmt, nullptr) != SQLITE_OK) {
+    //     ythrow yexception() << "Prepare error: " << sqlite3_errmsg(Db);
+    // }
+
+    // while (sqlite3_step(selectStmt) == SQLITE_ROW) {
+    //     const unsigned char* at = sqlite3_column_text(selectStmt, 0);
+    //     const unsigned char* diskId = sqlite3_column_text(selectStmt, 1);
+    //     const sqlite3_int64 duration = sqlite3_column_int64(selectStmt, 2);
+    //     const sqlite3_int64 postponed = sqlite3_column_int64(selectStmt, 3);
+    //     TString d = TString(reinterpret_cast<const char*>(diskId));
+    //     const auto timestamp = TInstant::ParseIso8601(reinterpret_cast<const char*>(at));
+    // }
+
 }
 
 void TSqliteOutput::CreateTables()
@@ -405,7 +473,8 @@ ui64 TSqliteOutput::AddRequest(
     ui64 volumeId,
     ui64 requestTypeId,
     TBlockRange64 range,
-    TDuration duration)
+    TDuration duration,
+    TDuration postponed)
 {
     sqlite3_reset(AddRequestStmt);
 
@@ -438,6 +507,7 @@ ui64 TSqliteOutput::AddRequest(
     bindInt(4, range.Start);
     bindInt(5, range.End);
     bindInt(6, duration.MicroSeconds());
+    bindInt(7, postponed.MicroSeconds());
 
     if (sqlite3_step(AddRequestStmt) != SQLITE_DONE) {
         ythrow yexception() << "Step error: " << sqlite3_errmsg(Db);

@@ -4,6 +4,8 @@
 #include <cloud/blockstore/libs/service/request.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 
+#include <library/cpp/json/json_writer.h>
+
 #include <util/generic/serialized_enum.h>
 #include <util/generic/yexception.h>
 #include <util/string/join.h>
@@ -49,6 +51,16 @@ struct TRequestData
     {
         Y_ABORT_UNLESS(ExecTime >= TDuration::Zero());
     }
+    explicit TRequestData(TWriteRequest writeRequest)
+        : DiskId(std::move(writeRequest.DiskId))
+        , EndTimestamp(writeRequest.Timestamp)
+        , RequestType(EBlockStoreRequest::WriteBlocks)
+        , ExecTime(writeRequest.Duration - writeRequest.Postponed)
+        , PostponedTime(writeRequest.Postponed)
+        , BlockCount(writeRequest.BlockCount)
+    {
+        Y_ABORT_UNLESS(ExecTime >= TDuration::Zero());
+    }
     ~TRequestData() = default;
 
     TRequestData& operator=(const TRequestData& other) = default;
@@ -83,12 +95,15 @@ class TDatasetOutput::TImpl
 
     TInstant Start;
     TRingBuffer<TRequestData> RequestsWindow;
+    // TRingBuffer<TWriteRequest> RequestsWindow;
 
 public:
     explicit TImpl(const TString& filename);
     ~TImpl();
 
     void ProcessRequests(const NProto::TProfileLogRecord& record);
+
+    void ProcessWriteRequest(TWriteRequest writeRequest);
 };
 
 TDatasetOutput::TImpl::TImpl(const TString& filename)
@@ -260,6 +275,71 @@ void TDatasetOutput::TImpl::ProcessRequests(const NProto::TProfileLogRecord& rec
     // }
 }
 
+void TDatasetOutput::TImpl::ProcessWriteRequest(TWriteRequest writeRequest)
+{
+    if (Start == TInstant::Zero()) {
+        Start = writeRequest.Timestamp - writeRequest.Duration +
+                writeRequest.Postponed + TDuration::Seconds(1);
+    }
+
+    auto currRequest = TRequestData(std::move(writeRequest));
+
+    // Cerr << "currRequest.EndTimestamp = " << currRequest.EndTimestamp.MicroSeconds() << "; RequestsWindow.size = " << RequestsWindow.Size() << Endl;
+
+    if (RequestsWindow.IsFull()) {
+        for (size_t j = 1; j < RequestsWindowSize; ++j) {
+            auto& nextRequest = const_cast<TRequestData&>(RequestsWindow.Back(j));
+            Y_ABORT_UNLESS(nextRequest.EndTimestamp <= currRequest.EndTimestamp);
+            if (nextRequest.EndTimestamp <= currRequest.GetRealStartTimestamp()) {
+                break;
+            }
+            currRequest.RequestIntersections++;
+            nextRequest.RequestIntersections++;
+
+            const ui32 byteCount = nextRequest.BlockCount * BlockSize;
+            currRequest.BytesInFlight += byteCount;
+            nextRequest.BytesInFlight += byteCount;
+        }
+    }
+
+    auto droppedRequest = RequestsWindow.PushBack(std::move(currRequest));
+    if (!droppedRequest || droppedRequest->EndTimestamp <= Start) {
+        return;
+    }
+
+    Y_ABORT_UNLESS(!droppedRequest->DiskId.empty());
+
+    NJson::TJsonValue jsonResult;
+    jsonResult["DiskId"] = droppedRequest->DiskId;
+    jsonResult["RequestType"] = GetBlockStoreRequestName(droppedRequest->RequestType);
+    jsonResult["EndTimestamp"] = droppedRequest->EndTimestamp.MicroSeconds();
+    jsonResult["ExecTime"] = droppedRequest->ExecTime.MicroSeconds();
+    jsonResult["PostponedTime"] = droppedRequest->PostponedTime.MicroSeconds();
+    jsonResult["ByteSize"] = droppedRequest->BlockCount * BlockSize;
+    jsonResult["Intersections"] = droppedRequest->RequestIntersections;
+    jsonResult["BytesInFlight"] = droppedRequest->BytesInFlight;
+
+    auto jsonStr = NJson::WriteJson(jsonResult, false, false, false);
+    Output << jsonStr << "\n";
+
+    // NJson::TJsonWriter jsonWriter(Output);
+
+    // Output
+    //     << droppedRequest->DiskId << " "
+    //     << GetBlockStoreRequestName(droppedRequest->RequestType) << " "
+    //     << droppedRequest->EndTimestamp.MicroSeconds() << " "
+    //     << "exec=" << droppedRequest->ExecTime.MicroSeconds() << " "
+    //     << "postponed=" << droppedRequest->PostponedTime.MicroSeconds() << " "
+    //     << "size=" << droppedRequest->BlockCount * BlockSize << " "
+    //     << "intersections=" << droppedRequest->RequestIntersections << " "
+    //     << "bytes=" << droppedRequest->BytesInFlight
+    //     << " "
+    //     // << "indexes=["
+    //     // << JoinStrings(request.Indexes.begin(), request.Indexes.end(), ", ")
+    //     // << "]"
+    //     << "\n";
+}
+
 TDatasetOutput::TDatasetOutput(const TString& filename)
     : Impl(std::make_unique<TImpl>(filename))
 {}
@@ -269,6 +349,10 @@ TDatasetOutput::~TDatasetOutput() = default;
 void TDatasetOutput::ProcessRequests(const NProto::TProfileLogRecord& record)
 {
     Impl->ProcessRequests(record);
+}
+
+void TDatasetOutput::ProcessWriteRequest(TWriteRequest writeRequest) {
+    Impl->ProcessWriteRequest(std::move(writeRequest));
 }
 
 }   // namespace NCloud::NBlockStore

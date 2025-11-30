@@ -83,13 +83,13 @@ struct TEventProcessor: TProtobufEventProcessor
             }
         }
 
-        if (OutputDatasetFilename) {
-            if (!DatasetOutput) {
-                DatasetOutput = std::make_unique<TDatasetOutput>(OutputDatasetFilename);
-            }
-            DatasetOutput->ProcessRequests(*message);
-            return;
-        }
+        // if (OutputDatasetFilename) {
+        //     if (!DatasetOutput) {
+        //         DatasetOutput = std::make_unique<TDatasetOutput>(OutputDatasetFilename);
+        //     }
+        //     DatasetOutput->ProcessRequests(*message);
+        //     return;
+        // }
 
         const TVector<TItemDescriptor> order = GetItemOrder(*message);
         for (const auto& [type, index]: order) {
@@ -283,9 +283,22 @@ int main(int argc, const char** argv)
     TEventProcessor processor;
     TEventProcessorProxy proxy(&processor);
 
-    return IterateEventLog(
+    int code = IterateEventLog(
         NEvClass::Factory(),
         static_cast<ITunableEventProcessor*>(&proxy),
         argc,
         argv);
+    if (code != 0) {
+        return code;
+    }
+
+    if (processor.OutputDatasetFilename && processor.SqliteOutput) {
+        auto datasetOutput =
+            std::make_unique<TDatasetOutput>(processor.OutputDatasetFilename);
+        processor.SqliteOutput->SelectWriteRequestsDescending(
+            [&](TWriteRequest writeRequest)
+            { datasetOutput->ProcessWriteRequest(writeRequest); });
+    }
+
+    return 0;
 }

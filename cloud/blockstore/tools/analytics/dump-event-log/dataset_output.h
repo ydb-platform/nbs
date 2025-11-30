@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/diagnostics/events/profile_events.ev.pb.h>
+#include <cloud/blockstore/tools/analytics/dump-event-log/sqlite_output.h>
 #include <cloud/blockstore/tools/analytics/libs/event-log/dump.h>
 
 #include <cloud/storage/core/libs/common/ring_buffer.h>
@@ -23,6 +24,8 @@ public:
     ~TDatasetOutput();
 
     void ProcessRequests(const NProto::TProfileLogRecord& record);
+
+    void ProcessWriteRequest(TWriteRequest writeRequest);
 };
 
 }   // namespace NCloud::NBlockStore

@@ -12,6 +12,14 @@
 
 namespace NCloud::NBlockStore {
 
+struct TWriteRequest {
+    TInstant Timestamp;
+    TString DiskId;
+    TDuration Duration;
+    TDuration Postponed;
+    ui32 BlockCount;
+};
+
 class TSqliteOutput
 {
     class TTransaction;
@@ -42,6 +50,11 @@ public:
         EItemType itemType,
         int index);
 
+    void SelectWriteRequestsDescending(
+        std::function<void(TWriteRequest)> callback);
+
+    void DumpDataset();
+
 private:
     void CreateTables();
     void ReadDisks();
@@ -55,7 +68,8 @@ private:
         ui64 volumeId,
         ui64 requestTypeId,
         TBlockRange64 range,
-        TDuration duration);
+        TDuration duration,
+        TDuration postponed);
     void AddChecksums(
         ui64 requestId,
         TBlockRange64 blockRange,
