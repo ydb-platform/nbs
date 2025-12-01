@@ -1716,9 +1716,10 @@ func (c *client) ModifyTags(
 				ctx,
 				"ModifyTags",
 				&private_protos.TModifyTagsRequest{
-					DiskId:       diskID,
-					TagsToAdd:    tagsToAdd,
-					TagsToRemove: tagsToRemove,
+					DiskId:        diskID,
+					TagsToAdd:     tagsToAdd,
+					TagsToRemove:  tagsToRemove,
+					ConfigVersion: volume.ConfigVersion,
 				},
 				response,
 			)

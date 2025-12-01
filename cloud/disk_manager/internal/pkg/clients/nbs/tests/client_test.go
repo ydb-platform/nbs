@@ -1097,6 +1097,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 		0,  // dstPlacementPartitionIndex
 		1,  // fillGeneration
 		"", // baseDiskID
+		"", // tagsStr
 	)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
@@ -1118,6 +1119,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 		0,  // dstPlacementPartitionIndex
 		1,  // fillGeneration
 		"", // baseDiskID
+		"", // tagsStr
 	)
 	require.NoError(t, err)
 
@@ -1133,6 +1135,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 		0,  // dstPlacementPartitionIndex
 		1,  // fillGeneration
 		"", // baseDiskID
+		"", // tagsStr
 	)
 	require.NoError(t, err)
 
@@ -1143,6 +1146,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 		0,  // dstPlacementPartitionIndex
 		2,  // fillGeneration
 		"", // baseDiskID
+		"", // tagsStr
 	)
 	require.Error(t, err)
 	require.True(t, errors.CanRetry(err))
@@ -1156,6 +1160,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 		0,  // dstPlacementPartitionIndex
 		2,  // fillGeneration
 		"", // baseDiskID
+		"", // tagsStr
 	)
 	require.NoError(t, err)
 
@@ -1166,6 +1171,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 		0,  // dstPlacementPartitionIndex
 		1,  // fillGeneration
 		"", // baseDiskID
+		"", // tagsStr
 	)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "config mismatch")
@@ -1197,6 +1203,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 		0,  // dstPlacementPartitionIndex
 		3,  // fillGeneration
 		"", // baseDiskID
+		"", // tagsStr
 	)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
@@ -1218,6 +1225,7 @@ func TestCloneDiskFromOneZoneToAnother(t *testing.T) {
 		0,  // dstPlacementPartitionIndex
 		2,  // fillGeneration
 		"", // baseDiskID
+		"", // tagsStr
 	)
 	require.Error(t, err)
 	require.True(t, !errors.CanRetry(err))
@@ -1247,6 +1255,7 @@ func TestCloneDiskFromOneZoneToAnotherConcurrently(t *testing.T) {
 		0,  // dstPlacementPartitionIndex
 		1,  // fillGeneration
 		"", // baseDiskID
+		"", // tagsStr
 	)
 	require.NoError(t, err)
 
@@ -1263,6 +1272,7 @@ func TestCloneDiskFromOneZoneToAnotherConcurrently(t *testing.T) {
 			0,  // dstPlacementPartitionIndex
 			2,  // fillGeneration
 			"", // baseDiskID
+			"", // tagsStr
 		)
 	}()
 
@@ -1308,6 +1318,7 @@ func TestFinishFillDisk(t *testing.T) {
 		0,  // dstPlacementPartitionIndex
 		1,  // fillGeneration
 		"", // baseDiskID
+		"", // tagsStr
 	)
 	require.NoError(t, err)
 

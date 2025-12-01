@@ -363,6 +363,7 @@ type MultiZoneClient interface {
 		dstPlacementPartitionIndex uint32,
 		fillGeneration uint64,
 		baseDiskID string,
+		tagsStr string,
 	) error
 }
 

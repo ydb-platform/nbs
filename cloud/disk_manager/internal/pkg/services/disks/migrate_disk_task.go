@@ -190,6 +190,11 @@ func (t *migrateDiskTask) GetResponse() proto.Message {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func (t *migrateDiskTask) getSourceDiskIdTagStr() string {
+	return "source-disk-id=" +
+		t.request.Disk.ZoneId + "_" + t.request.Disk.DiskId
+}
+
 func (t *migrateDiskTask) start(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
@@ -272,6 +277,7 @@ func (t *migrateDiskTask) start(
 			t.request.DstPlacementPartitionIndex,
 			t.state.FillGeneration,
 			t.state.RelocateInfo.TargetBaseDiskID,
+			t.getSourceDiskIdTagStr(),
 		)
 		if err != nil {
 			return err
@@ -496,7 +502,7 @@ func (t *migrateDiskTask) finishMigration(
 		t.request.Disk.DiskId,
 		[]string{},
 		[]string{
-			"source-disk-id=" + t.request.Disk.ZoneId + "_" + t.request.Disk.DiskId,
+			t.getSourceDiskIdTagStr(),
 		},
 	)
 	if err != nil {
