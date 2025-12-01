@@ -27,6 +27,10 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
 
         *response.MutableFileStore() = Store;
 
+        auto& cloudId = Store.GetCloudId();
+        auto& folderId = Store.GetFolderId();
+        auto& fsId = Store.GetFileSystemId();
+
         auto* features = response.MutableFileStore()->MutableFeatures();
         features->SetDirectIoEnabled(Config->GetDirectIoEnabled());
         features->SetDirectIoAlign(Config->GetDirectIoAlign());
@@ -46,12 +50,16 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         features->SetMaxBackground(Config->GetMaxBackground());
         features->SetMaxFuseLoopThreads(Config->GetMaxFuseLoopThreads());
         features->SetFSyncQueueDisabled(Config->GetFSyncQueueDisabled());
-        features->SetEntryTimeout(Config->GetEntryTimeout().MilliSeconds());
+        features->SetEntryTimeout(
+            Config->GetEntryTimeout(cloudId, folderId, fsId).MilliSeconds());
         features->SetNegativeEntryTimeout(
-            Config->GetNegativeEntryTimeout().MilliSeconds());
-        features->SetAttrTimeout(Config->GetAttrTimeout().MilliSeconds());
+            Config->GetNegativeEntryTimeout(cloudId, folderId, fsId)
+                .MilliSeconds());
+        features->SetAttrTimeout(
+            Config->GetAttrTimeout(cloudId, folderId, fsId).MilliSeconds());
         features->SetXAttrCacheTimeout(
-            Config->GetXAttrCacheTimeout().MilliSeconds());
+            Config->GetXAttrCacheTimeout(cloudId, folderId, fsId)
+                .MilliSeconds());
         features->SetDirectoryHandlesStorageEnabled(
             Config->GetDirectoryHandlesStorageEnabled());
         if (Config->GetDirectoryHandlesStorageEnabled()) {
