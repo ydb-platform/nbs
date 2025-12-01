@@ -107,8 +107,6 @@ public:
 
     void Push(TThread::TId tid, const NLWTrace::TTrackLog& tl) override
     {
-        Y_UNUSED(tid);
-
         if (tl.Items.empty()) {
             return;
         }
@@ -159,8 +157,6 @@ public:
 
     void Push(TThread::TId tid, const NLWTrace::TTrackLog& tl) override
     {
-        Y_UNUSED(tid);
-
         if (tl.Items.empty()) {
             return;
         }
@@ -249,8 +245,6 @@ public:
 
     void Push(TThread::TId tid, const NLWTrace::TTrackLog& tl) override
     {
-        Y_UNUSED(tid);
-
         if (tl.Items.empty() || TracesCount >= TraceLimit) {
             return;
         }
