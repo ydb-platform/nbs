@@ -212,6 +212,7 @@ class _MigrationTestSetup:
             "--size", str(size),
             "--id", disk_id
         )
+        return self.get_disk(disk_id)
 
     def get_disk(self, disk_id: str) -> '_Disk':
         output = self.admin("disks", "get", "--id", disk_id)
@@ -225,16 +226,14 @@ class _MigrationTestSetup:
     def fill_disk(
             self,
             disk_id: str,
-            start_block_index=0,
-            blocks_count=None,
+            start_block_index: int,
+            blocks_count: int,
     ) -> str:
         unique_test_dir = Path(get_unique_path_for_current_test(yatest_common.output_path(), ""))
         ensure_path_exists(str(unique_test_dir))
         data_file = unique_test_dir / "disk_data.bin"
         try:
             disk = self.get_disk(disk_id)
-            if blocks_count is None:
-                blocks_count = disk.blocks_count - start_block_index
             subprocess.check_call([
                 "dd",
                 "if=/dev/urandom",
@@ -382,8 +381,8 @@ def test_disk_manager_single_snapshot_migration(use_s3_as_src, use_s3_as_dst):
         disk_size = 16 * 1024 * 1024
         initial_disk_id = "example"
         snapshot_id = "snapshot1"
-        setup.create_new_disk(initial_disk_id, disk_size)
-        checksum = setup.fill_disk("example")
+        created_disk = setup.create_new_disk(initial_disk_id, disk_size)
+        checksum = setup.fill_disk("example", 0, created_disk.blocks_count)
         setup.create_snapshot(src_disk_id=initial_disk_id, snapshot_id=snapshot_id)
         setup.migrate_snapshot(snapshot_id)
         setup.switch_dataplane_to_new_db()
@@ -421,7 +420,11 @@ def test_disk_manager_several_migrations_do_not_overlap(use_s3_as_src, use_s3_as
         block_size = setup.get_disk(first_disk_id).block_size
         # Fill the second half of the disk, to make shure data chunks in first
         # and second disks do not overlap.
-        setup.fill_disk(first_disk_id, start_block_index=disk_size // block_size // 2)
+        setup.fill_disk(
+            first_disk_id,
+            start_block_index=disk_size // block_size // 2,
+            blocks_count=disk_size // block_size // 2,
+        )
         first_disk_checksum = setup.checksum_disk(first_disk_id)
         setup.create_snapshot(src_disk_id=first_disk_id, snapshot_id=first_snapshot_id)
         setup.create_image_from_snapshot(
@@ -514,8 +517,8 @@ def test_disk_manager_dataplane_database_migration(
 
         # Create disks and snapshots before migration
         for config in migration_configs[:snapshot_count // 2]:
-            setup.create_new_disk(config.src_disk_id, config.size)
-            config.checksum = setup.fill_disk(config.src_disk_id)
+            disk = setup.create_new_disk(config.src_disk_id, config.size)
+            config.checksum = setup.fill_disk(config.src_disk_id, 0, disk.blocks_count)
             setup.create_snapshot(
                 src_disk_id=config.src_disk_id,
                 snapshot_id=config.snapshot_id,
@@ -527,8 +530,8 @@ def test_disk_manager_dataplane_database_migration(
 
         # Prepare disks to create snapshots from during migration
         for config in migration_configs[snapshot_count // 2:]:
-            setup.create_new_disk(config.src_disk_id, config.size)
-            config.checksum = setup.fill_disk(config.src_disk_id)
+            disk = setup.create_new_disk(config.src_disk_id, config.size)
+            config.checksum = setup.fill_disk(config.src_disk_id, 0, disk.blocks_count)
 
         task_id = setup.start_database_migration()
 
