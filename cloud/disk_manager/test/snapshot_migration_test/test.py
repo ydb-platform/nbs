@@ -451,13 +451,13 @@ def test_disk_manager_several_migrations_do_not_overlap(use_s3_as_src, use_s3_as
         setup.migrate_snapshot(second_image_id)
 
         setup.switch_dataplane_to_new_db()
-        first_restored_id = "restored_disk1"
+        first_disk_restored_id = "restored_disk1"
         setup.create_disk_from_image(
             image_id=first_image_id,
-            disk_id=first_restored_id,
+            disk_id=first_disk_restored_id,
             size=disk_size,
         )
-        restored_checksum = setup.checksum_disk(first_restored_id)
+        restored_checksum = setup.checksum_disk(first_disk_restored_id)
         assert restored_checksum == first_disk_checksum
         second_disk_restored_id = "restored_disk2"
         setup.create_disk_from_image(
