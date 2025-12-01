@@ -4,6 +4,7 @@
 
 #include <util/generic/hash_set.h>
 #include <util/generic/string.h>
+#include <util/generic/vector.h>
 
 namespace NCloud::NFeatures {
 
@@ -15,6 +16,7 @@ private:
     THashSet<TString> CloudIds;
     THashSet<TString> FolderIds;
     THashSet<TString> EntityIds;   // DiskIds or FsIds
+    NProto::EFilterMatchAlgorithm MatchAlgorithm;
 
 public:
     explicit TFilters(NProto::TFilters config);
