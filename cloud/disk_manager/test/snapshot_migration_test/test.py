@@ -222,25 +222,31 @@ class _MigrationTestSetup:
             id=disk_info["id"]
         )
 
-    def fill_disk(self, disk_id: str, start_index=0) -> str:
+    def fill_disk(
+            self,
+            disk_id: str,
+            start_block_index=0,
+            blocks_count=-1,
+    ) -> str:
+        if blocks_count <= 0:
+            blocks_count = disk.blocks_count - start_block_index
         unique_test_dir = Path(get_unique_path_for_current_test(yatest_common.output_path(), ""))
         ensure_path_exists(str(unique_test_dir))
         data_file = unique_test_dir / "disk_data.bin"
         try:
             disk = self.get_disk(disk_id)
-            count = disk.blocks_count - start_index
             subprocess.check_call([
                 "dd",
                 "if=/dev/urandom",
                 f"of={data_file}",
                 f"bs={disk.block_size}",
-                f"count={count}"
+                f"count={blocks_count}"
             ])
 
             self.blockstore_client(
                 "writeblocks",
                 "--disk-id", disk_id,
-                "--start-index", str(start_index),
+                "--start-index", str(start_block_index),
                 "--input", str(data_file),
             )
 
@@ -293,7 +299,7 @@ class _MigrationTestSetup:
         stdout = self.admin("snapshots", "list")
         return stdout.splitlines()
 
-    def checksum_disk(self, disk_id: str, start_index: int = 0) -> str:
+    def checksum_disk(self, disk_id: str, start_block_index: int = 0) -> str:
         unique_test_dir = Path(get_unique_path_for_current_test(yatest_common.output_path(), ""))
         ensure_path_exists(str(unique_test_dir))
         data_file = unique_test_dir / "disk_data.bin"
@@ -301,7 +307,7 @@ class _MigrationTestSetup:
             self.blockstore_client(
                 "readblocks",
                 "--disk-id", disk_id,
-                "--start-index", str(start_index),
+                "--start-index", str(start_block_index),
                 "--output", str(data_file),
                 "--io-depth", "32",
                 "--read-all"
@@ -396,7 +402,7 @@ def test_disk_manager_single_snapshot_migration(use_s3_as_src, use_s3_as_dst):
         (True, True),
     ]
 )
-def test_disk_manager_several_migration_do_not_overlap(use_s3_as_src, use_s3_as_dst):
+def test_disk_manager_several_migrations_do_not_overlap(use_s3_as_src, use_s3_as_dst):
     with _MigrationTestSetup(
         use_s3_as_src=use_s3_as_src,
         use_s3_as_dst=use_s3_as_dst,
@@ -413,7 +419,9 @@ def test_disk_manager_several_migration_do_not_overlap(use_s3_as_src, use_s3_as_
         first_image_id = "image1"
         setup.create_new_disk(first_disk_id, disk_size)
         block_size = setup.get_disk(first_disk_id).block_size
-        setup.fill_disk(first_disk_id, start_index=disk_size // block_size // 2)
+        # Fill the second half of the disk, to make shure data chunks in first
+        # and second disks do not overlap.
+        setup.fill_disk(first_disk_id, start_block_index=disk_size // block_size // 2)
         setup.create_snapshot(src_disk_id=first_disk_id, snapshot_id=first_snapshot_id)
         setup.create_image_from_snapshot(
             src_snapshot_id=first_snapshot_id,
@@ -425,7 +433,12 @@ def test_disk_manager_several_migration_do_not_overlap(use_s3_as_src, use_s3_as_
         second_snapshot_id = "snapshot2"
         second_image_id = "image2"
         setup.create_new_disk(second_disk_id, disk_size)
-        setup.fill_disk(second_disk_id)
+        # Fill the first half of the disk.
+        setup.fill_disk(
+            second_disk_id,
+            start_block_index=0,
+            blocks_count=disk_size // block_size // 2,
+        )
         second_disk_full_checksum = setup.checksum_disk(second_disk_id)
         setup.create_snapshot(src_disk_id=second_disk_id, snapshot_id=second_snapshot_id)
         setup.create_image_from_snapshot(
