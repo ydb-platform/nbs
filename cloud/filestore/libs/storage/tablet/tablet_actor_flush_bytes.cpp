@@ -88,7 +88,7 @@ public:
 
                 Accept(b, blobId, blobOffset);
             }
-       }
+        }
     }
 
     void Accept(const TBlockDeletion& deletion) override
