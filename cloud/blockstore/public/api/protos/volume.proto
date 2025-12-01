@@ -404,7 +404,7 @@ message TVolumeStats
     // Current trim fresh log as commit id
     uint64 TrimFreshLogToCommitId = 29;
 
-    uint32 StalledUnconfirmedBlobCount = 30;
+    uint32 ObsoleteUnconfirmedBlobCount = 30;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

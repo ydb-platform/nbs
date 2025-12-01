@@ -353,12 +353,12 @@ void TPartitionActor::HandleWriteBlocksCompleted(
             // (for this commit) later
             State->BlobsConfirmed(commitId, std::move(msg->BlobsToConfirm));
         } else {
-            // blobs are stalled, so they need to be deleted
-            State->BlobsStalled(commitId, std::move(msg->BlobsToConfirm));
+            // blobs are obsolete, so they need to be deleted
+            State->BlobsObsoleted(commitId, std::move(msg->BlobsToConfirm));
         }
         Y_DEBUG_ABORT_UNLESS(msg->CollectGarbageBarrierAcquired);
         // commit & garbage queue barriers will be released when confirmed
-        // blobs are added or when stalled blobs are deleted
+        // blobs are added or when obsolete blobs are deleted
     } else {
         LOG_TRACE(
             ctx,

@@ -1394,7 +1394,7 @@ public:
 
     void BlobsConfirmed(ui64 commitId, TVector<TBlobToConfirm> blobs);
 
-    void BlobsStalled(ui64 commitId, TVector<TBlobToConfirm> blobs);
+    void BlobsObsoleted(ui64 commitId, TVector<TBlobToConfirm> blobs);
 
    //
    // WriteBlob

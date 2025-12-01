@@ -4,7 +4,6 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 
-#include <cloud/storage/core/libs/common/alloc.h>
 #include <cloud/storage/core/libs/tablet/blob_id.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
