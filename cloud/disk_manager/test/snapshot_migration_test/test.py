@@ -226,14 +226,14 @@ class _MigrationTestSetup:
             self,
             disk_id: str,
             start_block_index=0,
-            blocks_count=-1,
+            blocks_count=None,
     ) -> str:
         unique_test_dir = Path(get_unique_path_for_current_test(yatest_common.output_path(), ""))
         ensure_path_exists(str(unique_test_dir))
         data_file = unique_test_dir / "disk_data.bin"
         try:
             disk = self.get_disk(disk_id)
-            if blocks_count <= 0:
+            if blocks_count is None:
                 blocks_count = disk.blocks_count - start_block_index
             subprocess.check_call([
                 "dd",
