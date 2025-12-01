@@ -80,7 +80,7 @@ private:
     TDrainActorCompanion DrainActorCompanion{
         RequestsInProgress,
         DiskId,
-        &RequestsInProgress.GetRequestBoundsTracker()};
+        &RequestsInProgress};
     TGetDeviceForRangeCompanion GetDeviceForRangeCompanion{
         TGetDeviceForRangeCompanion::EAllowedOperation::Read};
 
