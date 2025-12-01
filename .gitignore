@@ -102,3 +102,6 @@ test-results
 .input
 .secrets
 .vars
+
+# linter output
+*-golangci-lint-report.*
