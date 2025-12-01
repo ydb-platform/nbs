@@ -1333,8 +1333,8 @@ private:
     ui32 ConfirmedBlobCount = 0;
     // contains entries from UnconfirmedBlobs that failed to write and need to
     // be deleted
-    TCommitIdToBlobsToConfirm StalledUnconfirmedBlobs;
-    ui32 StalledUnconfirmedBlobCount = 0;
+    TCommitIdToBlobsToConfirm ObsoleteUnconfirmedBlobs;
+    ui32 ObsoleteUnconfirmedBlobCount = 0;
 
 public:
     const TCommitIdToBlobsToConfirm& GetUnconfirmedBlobs() const
@@ -1357,20 +1357,20 @@ public:
         return ConfirmedBlobCount;
     }
 
-    const TCommitIdToBlobsToConfirm& GetStalledUnconfirmedBlobs() const
+    const TCommitIdToBlobsToConfirm& GetObsoleteUnconfirmedBlobs() const
     {
-        return StalledUnconfirmedBlobs;
+        return ObsoleteUnconfirmedBlobs;
     }
 
-    ui32 GetStalledUnconfirmedBlobCount() const
+    ui32 GetObsoleteUnconfirmedBlobCount() const
     {
-        return StalledUnconfirmedBlobCount;
+        return ObsoleteUnconfirmedBlobCount;
     }
 
-    void ClearStalledUnconfirmedBlobs()
+    void ClearObsoleteUnconfirmedBlobs()
     {
-        StalledUnconfirmedBlobs.clear();
-        StalledUnconfirmedBlobCount = 0;
+        ObsoleteUnconfirmedBlobs.clear();
+        ObsoleteUnconfirmedBlobCount = 0;
     }
 
     bool OverlapsUnconfirmedBlobs(
@@ -1423,16 +1423,16 @@ public:
     }
 
     //
-    // StalledUnconfirmedBlobs
+    // ObsoleteUnconfirmedBlobs
     //
 
 private:
-    TOperationState StalledUnconfirmedBlobsState;
+    TOperationState ObsoleteUnconfirmedBlobsState;
 
 public:
-    TOperationState& GetStalledUnconfirmedBlobsState()
+    TOperationState& GetObsoleteUnconfirmedBlobsState()
     {
-        return StalledUnconfirmedBlobsState;
+        return ObsoleteUnconfirmedBlobsState;
     }
 
     //
