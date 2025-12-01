@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
+#include <cloud/blockstore/libs/local_nvme/public.h>
 #include <cloud/blockstore/libs/nvme/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/service/public.h>
@@ -47,6 +48,7 @@ struct TDiskAgentActorSystemArgs
     NNvme::INvmeManagerPtr NvmeManager;
     NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
     ITaskQueuePtr BackgroundThreadPool;
+    ILocalNVMeServicePtr LocalNVMeService;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

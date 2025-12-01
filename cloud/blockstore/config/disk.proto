@@ -356,6 +356,9 @@ message TDiskAgentConfig
 
     // Allows to control data integrity validation for DR-based disks.
     optional EDataIntegrityValidationPolicy DataIntegrityValidationPolicyForDrBasedDisks = 46;
+
+    // The path where Disk Agent will store the cached NVMe device list.
+    optional string CachedNVMeDevicesPath = 47;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

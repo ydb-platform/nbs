@@ -7,9 +7,10 @@
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
+#include <cloud/blockstore/libs/local_nvme/service.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
-#include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
+#include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/spdk/iface/env_stub.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
@@ -177,8 +178,8 @@ auto CreateDiskAgentStateSpdk(TDiskAgentConfigPtr config)
         nullptr,   // rdmaTargetConfig
         TOldRequestCounters(),
         nullptr,   // multiAgentWriteHandler
-        nullptr    // backgroundThreadPool
-    );
+        nullptr,   // backgroundThreadPool
+        CreateLocalNVMeServiceStub());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -381,8 +382,8 @@ struct TFiles
             nullptr,   // rdmaTargetConfig
             TOldRequestCounters(),
             nullptr,   // multiAgentWriteHandler
-            nullptr    // backgroundThreadPool
-        );
+            nullptr,   // backgroundThreadPool
+            CreateLocalNVMeServiceStub());
     }
 };
 
@@ -558,8 +559,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             nullptr,   // rdmaTargetConfig
             TOldRequestCounters(),
             nullptr,   // multiAgentWriteHandler
-            nullptr    // backgroundThreadPool
-        );
+            nullptr,   // backgroundThreadPool
+            CreateLocalNVMeServiceStub());
 
         auto future = state.Initialize();
         const auto& r = future.GetValue(WaitTimeout);
@@ -774,8 +775,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                     nullptr,   // rdmaTargetConfig
                     TOldRequestCounters(),
                     nullptr,   // multiAgentWriteHandler
-                    nullptr    // backgroundThreadPool
-                );
+                    nullptr,   // backgroundThreadPool
+                    CreateLocalNVMeServiceStub());
 
                 auto future = state.Initialize();
                 const auto& r = future.GetValue(WaitTimeout);
@@ -845,8 +846,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             nullptr,   // rdmaTargetConfig
             TOldRequestCounters(),
             nullptr,   // multiAgentWriteHandler
-            nullptr    // backgroundThreadPool
-        );
+            nullptr,   // backgroundThreadPool
+            CreateLocalNVMeServiceStub());
 
         auto future = state.Initialize();
         const auto& r = future.GetValue(WaitTimeout);
@@ -1269,8 +1270,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             nullptr,   // rdmaTargetConfig
             TOldRequestCounters(),
             nullptr,   // multiAgentWriteHandler
-            nullptr    // backgroundThreadPool
-        );
+            nullptr,   // backgroundThreadPool
+            CreateLocalNVMeServiceStub());
 
         auto future = state.Initialize();
         const auto& r = future.GetValue(WaitTimeout);
@@ -1431,8 +1432,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             nullptr,   // rdmaTargetConfig
             TOldRequestCounters(),
             nullptr,   // multiAgentWriteHandler
-            nullptr    // backgroundThreadPool
-        );
+            nullptr,    // backgroundThreadPool
+            CreateLocalNVMeServiceStub());
 
         auto future = state->Initialize();
         const auto& result = future.GetValue(WaitTimeout);
@@ -1515,8 +1516,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             nullptr,   // rdmaTargetConfig
             TOldRequestCounters(),
             nullptr,   // multiAgentWriteHandler
-            nullptr    // backgroundThreadPool
-        );
+            nullptr,   // backgroundThreadPool
+            CreateLocalNVMeServiceStub());
 
         auto future = state->Initialize();
         const auto& result = future.GetValue(WaitTimeout);
@@ -1599,8 +1600,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 nullptr,   // rdmaTargetConfig
                 TOldRequestCounters(),
                 nullptr,   // multiAgentWriteHandler
-                nullptr    // backgroundThreadPool
-            );
+                nullptr,   // backgroundThreadPool
+                CreateLocalNVMeServiceStub());
         };
 
         {
@@ -2165,8 +2166,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             nullptr,   // rdmaTargetConfig
             TOldRequestCounters(),
             nullptr,   // multiAgentWriteHandler
-            nullptr    // backgroundThreadPool
-        );
+            nullptr,   // backgroundThreadPool
+            CreateLocalNVMeServiceStub());
 
         auto future = state.Initialize();
         const auto& r = future.GetValue(WaitTimeout);

@@ -51,8 +51,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
             SerializeToTextFormat(proto, cacheFilePath);
         }
 
-        ILoggingServicePtr logging = CreateLoggingService("console");
-
+        auto logging = CreateLoggingService("console");
         auto service = CreateLocalNVMeService(cacheFilePath, logging);
         service->Start();
         Y_DEFER
@@ -99,12 +98,13 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
 
     Y_UNIT_TEST(ShouldStub)
     {
-        auto service = CreateLocalNVMeServiceStub();
+        auto logging = CreateLoggingService("console");
+        auto service = CreateLocalNVMeServiceStub(logging);
         service->Start();
 
         UNIT_ASSERT_VALUES_EQUAL(0, service->GetNVMeDevices().size());
         auto future = service->ResetNVMeDevice("foo");
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, future.GetValueSync().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, future.GetValueSync().GetCode());
 
         service->Stop();
     }

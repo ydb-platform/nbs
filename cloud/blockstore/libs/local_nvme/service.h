@@ -33,6 +33,6 @@ ILocalNVMeServicePtr CreateLocalNVMeService(
     TString deviceListFilePath,
     ILoggingServicePtr logging);
 
-ILocalNVMeServicePtr CreateLocalNVMeServiceStub();
+ILocalNVMeServicePtr CreateLocalNVMeServiceStub(ILoggingServicePtr logging);
 
 }   // namespace NCloud::NBlockStore::NStorage

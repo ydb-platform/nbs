@@ -246,7 +246,7 @@ def generate_log_txt():
         b"BLOCKSTORE_SERVICE_PROXY",
         b"BLOCKSTORE_DISCOVERY",
         b"BLOCKSTORE_DISK_REGISTRY_PROXY",
-        b"BLOCKSTORE_VOLUME",
+        b"BLOCKSTORE_VOLUME"
     ]
 
     services_dbg = [

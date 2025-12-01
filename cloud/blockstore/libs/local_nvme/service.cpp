@@ -108,15 +108,41 @@ private:
         }
 
         Devices = std::move(devices);
+
+        STORAGE_INFO(
+            "Discovered: " <<
+            [&]
+            {
+                TStringStream ss;
+                for (size_t i = 0; i != Devices.size(); ++i) {
+                    if (i) {
+                        ss << ", ";
+                    }
+                    ss << Devices[i];
+                }
+                return ss.Str();
+            }() << " ...");
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TLocalNVMeServiceStub final: public ILocalNVMeService
+class TLocalNVMeServiceStub final: public ILocalNVMeService
 {
-    void Start() final
+private:
+    const ILoggingServicePtr Logging;
+
+    TLog Log;
+
+public:
+    explicit TLocalNVMeServiceStub(ILoggingServicePtr logging)
+        : Logging(std::move(logging))
     {}
+
+    void Start() final
+    {
+        Log = Logging->CreateLog("BLOCKSTORE_LOCAL_NVME");
+    }
 
     void Stop() final
     {}
@@ -129,9 +155,12 @@ struct TLocalNVMeServiceStub final: public ILocalNVMeService
     [[nodiscard]] TFuture<NCloud::NProto::TError> ResetNVMeDevice(
         const TString& serialNumber) const final
     {
-        Y_UNUSED(serialNumber);
+        STORAGE_INFO("Reset NVMe device " << serialNumber.Quote() << " ...");
 
-        return MakeFuture(NProto::TError());
+        return MakeFuture(MakeError(
+            E_NOT_FOUND,
+            TStringBuilder()
+                << "Device " << serialNumber.Quote() << " not found"));
     }
 };
 
@@ -148,9 +177,9 @@ ILocalNVMeServicePtr CreateLocalNVMeService(
         std::move(logging));
 }
 
-ILocalNVMeServicePtr CreateLocalNVMeServiceStub()
+ILocalNVMeServicePtr CreateLocalNVMeServiceStub(ILoggingServicePtr logging)
 {
-    return std::make_shared<TLocalNVMeServiceStub>();
+    return std::make_shared<TLocalNVMeServiceStub>(std::move(logging));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

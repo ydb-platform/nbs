@@ -14,6 +14,7 @@
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/stats_aggregator.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
+#include <cloud/blockstore/libs/local_nvme/service.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/rdma/iface/config.h>
 #include <cloud/blockstore/libs/rdma/iface/probes.h>
@@ -524,6 +525,10 @@ bool TBootstrap::InitKikimrService()
 
     STORAGE_INFO("DigestGenerator initialized");
 
+    LocalNVMeService = NStorage::CreateLocalNVMeServiceStub(logging);
+
+    STORAGE_INFO("Local NVMe service initialized");
+
     NStorage::TDiskAgentActorSystemArgs args;
     args.ModuleFactories = ModuleFactories;
     args.NodeId = nodeId;
@@ -544,6 +549,7 @@ bool TBootstrap::InitKikimrService()
     args.NvmeManager = NvmeManager;
     args.StatsFetcher = StatsFetcher;
     args.BackgroundThreadPool = BackgroundThreadPool;
+    args.LocalNVMeService = LocalNVMeService;
 
     ActorSystem = NStorage::CreateDiskAgentActorSystem(args);
 
@@ -658,6 +664,7 @@ void TBootstrap::Start()
     START_COMPONENT(Spdk);
     START_COMPONENT(RdmaServer);
     START_COMPONENT(FileIOServiceProvider);
+    START_COMPONENT(LocalNVMeService);
     START_COMPONENT(ActorSystem);
 
     // we need to start scheduler after all other components for 2 reasons:
@@ -707,6 +714,7 @@ void TBootstrap::Stop()
     STOP_COMPONENT(Monitoring);
     STOP_COMPONENT(Logging);
     STOP_COMPONENT(AsyncLogger);
+    STOP_COMPONENT(LocalNVMeService);
     STOP_COMPONENT(BackgroundThreadPool);
 
 #undef STOP_COMPONENT

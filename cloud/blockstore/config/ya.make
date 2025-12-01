@@ -11,7 +11,6 @@ SRCS(
     disk.proto
     grpc_client.proto
     http_proxy.proto
-    local_nvme.proto
     logbroker.proto
     notify.proto
     plugin.proto

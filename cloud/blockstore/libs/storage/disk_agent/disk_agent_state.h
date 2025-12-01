@@ -8,6 +8,7 @@
 #include <cloud/blockstore/config/disk.pb.h>
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
+#include <cloud/blockstore/libs/local_nvme/public.h>
 #include <cloud/blockstore/libs/nvme/public.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/service/public.h>
@@ -69,6 +70,8 @@ private:
 
     ITaskQueuePtr BackgroundThreadPool;
 
+    ILocalNVMeServicePtr LocalNVMeService;
+
 public:
     TDiskAgentState(
         TStorageConfigPtr storageConfig,
@@ -84,7 +87,8 @@ public:
         TRdmaTargetConfigPtr rdmaTargetConfig,
         TOldRequestCounters oldRequestCounters,
         IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
-        ITaskQueuePtr backgroundThreadPool);
+        ITaskQueuePtr backgroundThreadPool,
+        ILocalNVMeServicePtr localNVMeService);
 
     struct TInitializeResult
     {
@@ -178,6 +182,15 @@ public:
     bool GetPartiallySuspended() const;
 
     NThreading::TFuture<void> DetachPaths(const TVector<TString>& paths);
+
+    [[nodiscard]] auto GetNVMeDevices() const
+        -> TResultOrError<TVector<NProto::TNVMeDevice>>;
+
+    [[nodiscard]] NThreading::TFuture<NProto::TError> AcquireNVMeDevice(
+        const TString& serialNumber);
+
+    [[nodiscard]] NThreading::TFuture<NProto::TError> ReleaseNVMeDevice(
+        const TString& serialNumber);
 
 private:
     TStorageAdapterPtr GetDeviceStorageAdapter(
