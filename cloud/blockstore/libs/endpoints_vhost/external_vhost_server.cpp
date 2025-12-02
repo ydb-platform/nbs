@@ -280,13 +280,8 @@ struct TPipe
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TChild
-SpawnChild(const TString& binaryPath, TVector<TString> args, bool passPid)
+TChild SpawnChild(const TString& binaryPath, TVector<TString> args)
 {
-    if (passPid) {
-        args.push_back("--blockstore-service-pid=" + ToString(::getpid()));
-    }
-
     TPipe stdOut;
     TPipe stdErr;
 
@@ -543,11 +538,7 @@ void AddToCGroupsWithExternalExecutable(
     TVector<TString> args;
     args.emplace_back(ToString(pid));
     args.insert(args.end(), cgroups.begin(), cgroups.end());
-    auto child = SpawnChild(
-        path,
-        std::move(args),
-        false   // passPid
-    );
+    auto child = SpawnChild(path, std::move(args));
     auto error = child.Wait();
     if (HasError(error)) {
         TIFStream stderr(TFile{child.StdErr.Release()});
@@ -555,6 +546,14 @@ void AddToCGroupsWithExternalExecutable(
         throw yexception() << "Failed to add process to cgroups: " << error
                            << " stderr: " << errMsg;
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TVector<TString> AppendPidArg(TVector<TString> args)
+{
+    args.push_back("--blockstore-service-pid=" + ToString(::getpid()));
+    return args;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -691,11 +690,7 @@ private:
 
     TIntrusivePtr<TEndpointProcess> StartProcess()
     {
-        auto process = SpawnChild(
-            BinaryPath,
-            Args,
-            true   // passPid
-        );
+        auto process = SpawnChild(BinaryPath, AppendPidArg(Args));
 
         STORAGE_INFO(
             LogPrefix << "Endpoint process has been started, PID:"
