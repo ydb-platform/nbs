@@ -24,15 +24,10 @@ TVector<ui64> MakeBlockIndices(const TDevices& devices)
     return result;
 }
 
-bool AllDevicesPresent(const TDevices& devices)
-{
-    return AllOf(
-        devices,
-        [](const NProto::TDeviceConfig& config)
-        { return !config.GetDeviceUUID().empty(); });
-}
 
 }   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
 
 TNonreplicatedPartitionConfig::TNonreplicatedPartitionConfig(
     TNonreplicatedPartitionConfigInitParams params)
@@ -52,9 +47,11 @@ TNonreplicatedPartitionConfig::TNonreplicatedPartitionConfig(
     , UseSimpleMigrationBandwidthLimiter(
           params.UseSimpleMigrationBandwidthLimiter)
     , BlockIndices(MakeBlockIndices(Devices))
-    , CanReadFromAllDevices(
-          FreshDeviceIds.empty() && OutdatedDeviceIds.empty() &&
-          AllDevicesPresent(Devices))
+    , CanReadFromAllDevices(AllOf(
+          Devices,
+          [this](const NProto::TDeviceConfig& device)
+          { return IsDeviceReadyForReading(device); }))
+
 {
     Y_ABORT_UNLESS(Devices.size());
 }
@@ -153,11 +150,8 @@ bool TNonreplicatedPartitionConfig::DevicesReadyForReading(
             Y_UNUSED(requestRange);
             Y_UNUSED(relativeRange);
 
-            // Note. Keep sync with CanReadFromAllDevices calculation.
-            return !Devices[i].GetDeviceUUID() ||
-                   excludeAgentIds.contains(Devices[i].GetAgentId()) ||
-                   FreshDeviceIds.contains(Devices[i].GetDeviceUUID()) ||
-                   OutdatedDeviceIds.contains(Devices[i].GetDeviceUUID());
+            return !IsDeviceReadyForReading(Devices[i]) ||
+                   excludeAgentIds.contains(Devices[i].GetAgentId());
         });
     return result;
 }
@@ -259,6 +253,14 @@ bool TNonreplicatedPartitionConfig::VisitDeviceRequests(
     }
 
     return true;
+}
+
+bool TNonreplicatedPartitionConfig::IsDeviceReadyForReading(
+    const NProto::TDeviceConfig& device) const
+{
+    return !device.GetDeviceUUID().empty() &&
+           !FreshDeviceIds.contains(device.GetDeviceUUID()) &&
+           !OutdatedDeviceIds.contains(device.GetDeviceUUID());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

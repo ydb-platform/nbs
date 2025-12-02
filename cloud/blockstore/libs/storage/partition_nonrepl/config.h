@@ -246,6 +246,8 @@ private:
     bool VisitDeviceRequests(
         const TBlockRange64 blockRange,
         const TDeviceRequestVisitor& visitor) const;
+
+    bool IsDeviceReadyForReading(const NProto::TDeviceConfig& device) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
