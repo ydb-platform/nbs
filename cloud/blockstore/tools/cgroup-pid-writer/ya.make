@@ -5,7 +5,6 @@ SRCS(
 )
 
 PEERDIR(
-    cloud/storage/core/libs/common
     cloud/blockstore/libs/common
 )
 
