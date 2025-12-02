@@ -1010,15 +1010,17 @@ void TStartVolumeActor::HandleTabletMetrics(
     const TEvLocal::TEvTabletMetrics::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
-    const auto& metrics = msg->ResourceValues;
+    if (Config->GetSendLocalTabletMetricsToHiveEnabled()) {
+        const auto* msg = ev->Get();
+        const auto& metrics = msg->ResourceValues;
 
-    ctx.Send(
-        MakeHiveProxyServiceId(),
-        new TEvLocal::TEvTabletMetrics(
-            msg->TabletId,
-            msg->FollowerId,
-            metrics));
+        ctx.Send(
+            MakeHiveProxyServiceId(),
+            new TEvLocal::TEvTabletMetrics(
+                msg->TabletId,
+                msg->FollowerId,
+                metrics));
+    }
 }
 
 void TStartVolumeActor::HandleWakeup(

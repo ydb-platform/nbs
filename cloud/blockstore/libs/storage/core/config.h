@@ -741,6 +741,8 @@ public:
     [[nodiscard]] bool GetAttachDetachPathsEnabled() const;
 
     [[nodiscard]] NProto::ENonreplAllocationPolicy GetNonreplAllocationPolicy() const;
+
+    [[nodiscard]] bool GetSendLocalTabletMetricsToHiveEnabled() const;
 };
 
 ui64 GetAllocationUnit(
