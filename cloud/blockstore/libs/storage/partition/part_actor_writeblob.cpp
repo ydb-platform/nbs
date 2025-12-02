@@ -189,8 +189,7 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
 
     auto traceId = GetTraceIdForRequestId(
         RequestInfo->CallContext->LWOrbit,
-        RequestInfo->CallContext->RequestId,
-        true);
+        RequestInfo->CallContext->RequestId);
 
     request->Orbit = std::move(RequestInfo->CallContext->LWOrbit);
 

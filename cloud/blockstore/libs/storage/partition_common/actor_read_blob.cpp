@@ -88,8 +88,7 @@ void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
 
     auto traceId = GetTraceIdForRequestId(
         RequestInfo->CallContext->LWOrbit,
-        RequestInfo->CallContext->RequestId,
-        false);
+        RequestInfo->CallContext->RequestId);
     request->Orbit = std::move(RequestInfo->CallContext->LWOrbit);
 
     RequestSent = ctx.Now();

@@ -201,8 +201,7 @@ void TCollectGarbageActor::CollectGarbage(const TActorContext& ctx)
                 RequestInfo->Cookie,
                 GetTraceIdForRequestId(
                     RequestInfo->CallContext->LWOrbit,
-                    RequestInfo->CallContext->RequestId,
-                    false));
+                    RequestInfo->CallContext->RequestId));
 
             ++RequestsInFlight;
         }
