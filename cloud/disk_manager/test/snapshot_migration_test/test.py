@@ -33,39 +33,6 @@ def compute_checksum(file_path: str) -> str:
             hash_sha256.update(chunk)
     return hash_sha256.hexdigest()
 
-def select_from_ydb(ydb_port: int, database: str, query: str) -> list[dict]:
-    url_suffix = "viewer/json/query?schema=multi&base64=false"
-    conn = http.client.HTTPConnection("localhost", ydb_port)
-
-    payload = json.dumps({
-        "query": query,
-        "database": database,
-        "action": "execute-query",
-        "syntax": "yql_v1",
-        "stats": "none",
-        "tracingLevel": 0,
-        "limit_rows": 10000,
-        "transaction_mode": "serializable-read-write",
-        "base64": False
-    })
-
-    headers = {'Content-Type': 'application/json'}
-    conn.request("POST", f"/{url_suffix}", payload, headers)
-
-    response = conn.getresponse()
-    data = response.read()
-    conn.close()
-
-    result = json.loads(data.decode())
-
-    if "result" not in result or not result["result"]:
-        return []
-
-    columns = [col["name"] for col in result["result"][0]["columns"]]
-    rows = result["result"][0]["rows"]
-
-    return [dict(zip(columns, row)) for row in rows]
-
 
 class _MigrationTestSetup:
 
@@ -99,6 +66,7 @@ class _MigrationTestSetup:
         self.blockstore_client_binary_path = yatest_common.binary_path("cloud/blockstore/apps/client/blockstore-client")
         self.disk_manager_admin_binary_path = yatest_common.binary_path("cloud/disk_manager/cmd/disk-manager-admin/disk-manager-admin")
 
+        self.database = "/Root"
         self.ydb = YDBLauncher(ydb_binary_path=ydb_binary_path)
         self.ydb.start()
         self.secondary_ydb = YDBLauncher(ydb_binary_path=ydb_binary_path)
@@ -396,6 +364,42 @@ class _MigrationTestSetup:
             if metric.value == value:
                 break
 
+    def select_from_ydb(self, port: int, query: str) -> list[dict]:
+        url_suffix = "viewer/json/query?schema=multi&base64=false"
+        conn = http.client.HTTPConnection("localhost", port)
+
+        payload = json.dumps({
+            "query": query,
+            "database": self.database,
+            "action": "execute-query",
+            "syntax": "yql_v1",
+            "stats": "none",
+            "tracingLevel": 0,
+            "limit_rows": 10000,
+            "transaction_mode": "serializable-read-write",
+            "base64": False
+        })
+
+        headers = {'Content-Type': 'application/json'}
+        conn.request("POST", f"/{url_suffix}", payload, headers)
+
+        response = conn.getresponse()
+        data = response.read()
+        conn.close()
+
+        result = json.loads(data.decode())
+
+        if "result" not in result or not result["result"]:
+            return []
+
+        columns = [col["name"] for col in result["result"][0]["columns"]]
+        rows = result["result"][0]["rows"]
+
+        return [dict(zip(columns, row)) for row in rows]
+
+    def get_snapshot_database_entries(self, port: int) -> list[dict]:
+        return self. select_from_ydb(port, "SELECT * FROM `snapshot/snapshots`")
+
 
 @pytest.mark.parametrize(
     ["use_s3_as_src", "use_s3_as_dst"],
@@ -412,6 +416,7 @@ def test_disk_manager_single_snapshot_migration(use_s3_as_src, use_s3_as_dst):
         use_s3_as_dst=use_s3_as_dst,
         migrating_snapshots_inflight_limit=10,
     ) as setup:
+        assert setup.list_snapshots() == []
         disk_size = 16 * 1024 * 1024
         initial_disk_id = "example"
         snapshot_id = "snapshot1"
@@ -441,6 +446,7 @@ def test_disk_manager_several_migrations_do_not_overlap(use_s3_as_src, use_s3_as
         use_s3_as_dst=use_s3_as_dst,
         migrating_snapshots_inflight_limit=1,
     ) as setup:
+        assert setup.list_snapshots() == []
         # Test that checks that several migration do not corrupt each other
         # There is a problem with snapshot migration where incorrect base snapshot
         # id is assigned to migrating snapshots. Check if the problem does not lead to
@@ -501,6 +507,11 @@ def test_disk_manager_several_migrations_do_not_overlap(use_s3_as_src, use_s3_as
         )
         restored_checksum = setup.checksum_disk(second_disk_restored_id)
         assert restored_checksum == second_disk_full_checksum
+        # Check for repro of issue-4742
+        for record in setup.get_snapshot_database_entries(
+            setup.secondary_ydb.mon_port,
+        ):
+            assert record['base_snapshot_id'] == ""
 
 
 @dataclasses.dataclass
@@ -538,6 +549,7 @@ def test_disk_manager_dataplane_database_migration(
         migrating_snapshots_inflight_limit=migrating_snapshots_inflight_limit,
         with_nemesis=with_nemesis,
     ) as setup:
+        assert setup.list_snapshots() == []
         snapshot_count = 10
         migration_configs = [
             _SingleSnapshotMigrationConfig(
