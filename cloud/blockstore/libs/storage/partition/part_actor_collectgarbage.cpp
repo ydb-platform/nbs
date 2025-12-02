@@ -198,7 +198,7 @@ void TCollectGarbageActor::CollectGarbage(const TActorContext& ctx)
                 ctx,
                 kv.first,
                 request.release(),
-                0,
+                RequestInfo->Cookie,
                 GetTraceIdForRequestId(
                     RequestInfo->CallContext->LWOrbit,
                     RequestInfo->CallContext->RequestId,
