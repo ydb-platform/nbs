@@ -406,16 +406,9 @@ struct TBootstrap
                 return MakeFuture(response);
             }
 
-            auto data = FlushedData[nodeId];
-            // Append zeroes if needed
-            auto newSize = Max(
-                data.size(),
-                request->GetOffset() + request->GetLength());
-            data.resize(newSize, 0);
-
-            data = TStringBuf(data).SubString(
-                request->GetOffset(),
-                request->GetLength());
+            auto data = TStringBuf(FlushedData[nodeId]);
+            data = data.Skip(Min(request->GetOffset(), data.size()));
+            data = data.Trunc(Min(request->GetLength(), data.size()));
 
             auto responseOffset = RandomNumber(10u);
             auto responseBuffer = TString(data.size() + responseOffset, 0);
@@ -557,19 +550,6 @@ struct TBootstrap
         return ReadFromCache(nodeId, handle, offset, length);
     }
 
-    void ValidateCache(ui64 nodeId, ui64 offset, TString expected)
-    {
-        auto future = ReadFromCache(nodeId, offset, expected.length());
-        auto response = future.GetValueSync();
-
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            expected,
-            response.GetBuffer().substr(response.GetBufferOffset()),
-            TStringBuilder() << " while validating @" << nodeId
-            << " at offset " << offset
-            << " and length " << expected.length());
-    }
-
     void ValidateCache(ui64 nodeId, ui64 offset, size_t length)
     {
         auto future = ReadFromCache(nodeId, offset, length);
@@ -587,8 +567,13 @@ struct TBootstrap
         TString expected;
         {
             std::unique_lock lock(ExpectedDataMutex);
-            expected =
-                TStringBuf(ExpectedData[nodeId]).SubString(offset, length);
+            auto it = ExpectedData.find(nodeId);
+            if (it != ExpectedData.end()) {
+                auto buf = TStringBuf(it->second);
+                buf = buf.Skip(Min(offset, buf.size()));
+                buf = buf.Trunc(Min(length, buf.size()));
+                expected = buf;
+            }
         }
 
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -1112,7 +1097,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         auto readFuture = b.ReadFromCache(1, 0, 1);
         UNIT_ASSERT(readFuture.HasValue());
         UNIT_ASSERT_VALUES_EQUAL(
-            TString(1, 0),
+            "",
             readFuture.GetValue().GetBuffer());
     }
 
@@ -1120,14 +1105,14 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     {
         TBootstrap b;
 
-        b.ValidateCache(1, 0, TString(3, '\0'));
-        b.ValidateCache(2, 10, TString(4, '\0'));
+        b.ValidateCache(1, 0, 3);
+        b.ValidateCache(2, 10, 4);
 
         b.FlushCache();
-        b.ValidateCache(1, 5, TString(3, '\0'));
+        b.ValidateCache(1, 5, 3);
 
         b.FlushCache(1);
-        b.ValidateCache(1, 100, TString(6, '\0'));
+        b.ValidateCache(1, 100, 6);
     }
 
     Y_UNIT_TEST(ShouldMergeRequestsWhenFlushing)
@@ -2204,6 +2189,79 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT(flushAllDataFuture.HasValue());
         UNIT_ASSERT_VALUES_EQUAL(0, b.Stats->CachedStats.InProgressCount);
         UNIT_ASSERT(b.Cache.IsEmpty());
+    }
+
+    Y_UNIT_TEST(ShouldNotReadBeyondFileEnd)
+    {
+        TBootstrap b;
+
+        auto makeReadRequest = [](ui64 offset, ui64 length)
+        {
+            auto request = std::make_shared<NProto::TReadDataRequest>();
+            request->SetNodeId(1);
+            request->SetHandle(1 + NodeToHandleOffset);
+            request->SetOffset(offset);
+            request->SetLength(length);
+            return request;
+        };
+
+        auto readFromSession = [&](ui64 offset, ui64 length)
+        {
+            auto request = makeReadRequest(offset, length);
+            auto future = b.Session->ReadData(b.CallContext, request);
+            const auto& response = future.GetValueSync();
+            return response.GetBuffer().substr(response.GetBufferOffset());
+        };
+
+        auto readFromCache = [&](ui64 offset, ui64 length)
+        {
+            auto request = makeReadRequest(offset, length);
+            auto future = b.Cache.ReadData(b.CallContext, request);
+            const auto& response = future.GetValueSync();
+            return response.GetBuffer().substr(response.GetBufferOffset());
+        };
+
+        // Scenario 1: empty cache
+        b.WriteToCacheSync(1, 2, "abcdef");
+        b.FlushCache(1);
+
+        UNIT_ASSERT(b.Cache.IsEmpty());
+
+        UNIT_ASSERT_VALUES_EQUAL("cdef", readFromSession(4, 12));
+        UNIT_ASSERT_VALUES_EQUAL("", readFromSession(13, 5));
+
+        UNIT_ASSERT_VALUES_EQUAL("cdef", readFromCache(4, 12));
+        UNIT_ASSERT_VALUES_EQUAL("", readFromCache(13, 5));
+
+        // Scenario 2: cached data exceeds file size
+        b.WriteToCacheSync(1, 5, "123456");
+
+        UNIT_ASSERT_VALUES_EQUAL("cdef", readFromSession(4, 12));
+        UNIT_ASSERT_VALUES_EQUAL("", readFromSession(13, 5));
+
+        UNIT_ASSERT_VALUES_EQUAL("c123456", readFromCache(4, 12));
+        UNIT_ASSERT_VALUES_EQUAL("", readFromCache(13, 5));
+
+        // Scenario 3: cached data doesn't exceed file size
+        b.FlushCache(1);
+        b.WriteToCacheSync(1, 3, "xyz");
+
+        UNIT_ASSERT_VALUES_EQUAL("c123456", readFromSession(4, 12));
+        UNIT_ASSERT_VALUES_EQUAL("", readFromSession(13, 5));
+
+        UNIT_ASSERT_VALUES_EQUAL("yz23456", readFromCache(4, 12));
+        UNIT_ASSERT_VALUES_EQUAL("", readFromCache(13, 5));
+
+        // Scenario 4: there are cached data outside the read region
+        b.WriteToCacheSync(1, 100, "!");
+
+        UNIT_ASSERT_VALUES_EQUAL("c123456", readFromSession(4, 12));
+        UNIT_ASSERT_VALUES_EQUAL("", readFromSession(13, 5));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "yz23456" + TString(5, '\0'),
+            readFromCache(4, 12));
+        UNIT_ASSERT_VALUES_EQUAL(TString(5, '\0'), readFromCache(13, 5));
     }
 }
 
