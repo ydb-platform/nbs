@@ -13123,10 +13123,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         {
             auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            // Without proper error handling it crashes in BlobsConfirmed due to
-            // checksum verification, so execution never reaches this point. If
-            // we disable verification, we hit the `1 != 0` check — meaning we
-            // end up confirming an E_REJECTED blob without a checksum.
+            // In case of errors we just delete obsolete unconfirmed blobs
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
         }
     }
@@ -13251,7 +13248,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             return false;
         };
 
-        // Set up event order controller to ensure that
+        // Set up event order filter to ensure that
         // AddUnconfirmedBlobsResponse is processed before WriteBlobResponse
         TEventExecutionOrderFilter addWriteBlobOrderFilter(
             *runtime,
@@ -13273,7 +13270,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(1, stats.GetUnconfirmedBlobCount());
         }
 
-        // Set up event order controller to ensure that
+        // Set up event order filter to ensure that
         // WriteBlobResponse is processed before AddUnconfirmedBlobsResponse
         TEventExecutionOrderFilter writeAddBlobOrderFilter(
             *runtime,
