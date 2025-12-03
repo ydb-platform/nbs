@@ -681,10 +681,22 @@ struct TEvPartitionPrivate
 
     struct TDeleteObsoleteUnconfirmedBlobsRequest
     {
+        ui64 CommitId = 0;
+        TVector<TBlobToConfirm> Blobs;
+
+        TDeleteObsoleteUnconfirmedBlobsRequest() = default;
+
+        TDeleteObsoleteUnconfirmedBlobsRequest(
+            ui64 commitId,
+            TVector<TBlobToConfirm> blobs)
+            : CommitId(commitId)
+            , Blobs(std::move(blobs))
+        {}
     };
 
     struct TDeleteObsoleteUnconfirmedBlobsResponse
     {
+        ui64 ExecCycles = 0;
     };
 
     //

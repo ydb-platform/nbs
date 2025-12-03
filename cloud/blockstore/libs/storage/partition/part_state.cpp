@@ -706,6 +706,25 @@ void TPartitionState::WriteUnconfirmedBlob(
     UnconfirmedBlobCount++;
 }
 
+void TPartitionState::DeleteUnconfirmedBlobs(
+    TPartitionDatabase& db,
+    ui64 commitId,
+    const TVector<TBlobToConfirm>& blobs)
+{
+    for (const auto& blob: blobs) {
+        auto blobId = MakePartialBlobId(commitId, blob.UniqueId);
+        db.DeleteUnconfirmedBlob(blobId);
+    }
+
+    auto it = UnconfirmedBlobs.find(commitId);
+    if (it != UnconfirmedBlobs.end()) {
+        const auto blobCount = it->second.size();
+        UnconfirmedBlobs.erase(it);
+        Y_DEBUG_ABORT_UNLESS(UnconfirmedBlobCount >= blobCount);
+        UnconfirmedBlobCount -= blobCount;
+    }
+}
+
 void TPartitionState::ConfirmedBlobsAdded(
     TPartitionDatabase& db,
     ui64 commitId)
@@ -760,22 +779,6 @@ void TPartitionState::BlobsConfirmed(
     UnconfirmedBlobCount -= blobCount;
 }
 
-void TPartitionState::BlobsObsoleted(ui64 commitId, TVector<TBlobToConfirm> blobs)
-{
-    auto it = UnconfirmedBlobs.find(commitId);
-    Y_DEBUG_ABORT_UNLESS(it != UnconfirmedBlobs.end());
-
-    auto& dstBlobs = it->second;
-    const auto blobCount = dstBlobs.size();
-    Y_DEBUG_ABORT_UNLESS(blobs.empty() || blobCount == blobs.size());
-
-    ObsoleteUnconfirmedBlobs[commitId] = std::move(dstBlobs);
-    ObsoleteUnconfirmedBlobCount += blobCount;
-
-    UnconfirmedBlobs.erase(it);
-    Y_DEBUG_ABORT_UNLESS(UnconfirmedBlobCount >= blobCount);
-    UnconfirmedBlobCount -= blobCount;
-}
 
 void TPartitionState::ConfirmBlobs(
     TPartitionDatabase& db,
