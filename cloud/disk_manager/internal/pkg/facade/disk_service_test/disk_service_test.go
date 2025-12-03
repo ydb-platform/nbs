@@ -569,6 +569,21 @@ func TestDiskServiceCreateEncryptedSsdNonreplDiskFromPooledImage(t *testing.T) {
 }
 */
 
+func TestDiskServiceCreateEncryptedAtRestSsdNonreplDiskFromPooledImage(t *testing.T) {
+	testCreateDiskFromImageWithZoneID(
+		t,
+		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		32*1024*4096, // imageSize
+		true,         // pooled
+		262144*4096,  // diskSize
+		"folder",
+		&disk_manager.EncryptionDesc{
+			Mode: disk_manager.EncryptionMode_ENCRYPTION_AT_REST,
+		},
+		defaultZoneID,
+	)
+}
+
 func TestDiskServiceCreateEncryptedSsdNonreplDiskFromImage(t *testing.T) {
 	testCreateDiskFromImageWithZoneID(
 		t,

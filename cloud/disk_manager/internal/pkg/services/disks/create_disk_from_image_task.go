@@ -158,6 +158,11 @@ func (t *createDiskFromImageTask) Run(
 	}
 
 	var taskID string
+	if encryption.Mode == types.EncryptionMode_ENCRYPTION_AT_REST {
+		encryption = &types.EncryptionDesc{
+			Mode: types.EncryptionMode_NO_ENCRYPTION,
+		}
+	}
 
 	// Old images without metadata we consider as not dataplane.
 	if imageMeta != nil && imageMeta.UseDataplaneTasks {
