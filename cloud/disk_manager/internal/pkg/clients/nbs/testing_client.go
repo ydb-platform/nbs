@@ -271,7 +271,7 @@ func (c *testingClient) CalculateCrc32WithEncryption(
 	}
 	if encryptionSpec != nil {
 		if encryptionSpec.Mode == protos.EEncryptionMode_ENCRYPTION_AT_REST {
-			encryptionSpec.Mode = protos.EEncryptionMode_ENCRYPTION_AT_REST
+			encryptionSpec.Mode = protos.EEncryptionMode_NO_ENCRYPTION
 		}
 	}
 
