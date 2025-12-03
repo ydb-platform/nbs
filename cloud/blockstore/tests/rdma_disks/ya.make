@@ -8,8 +8,17 @@ DEPENDS(
     cloud/blockstore/apps/client
     cloud/blockstore/apps/disk_agent
     cloud/blockstore/apps/server
-    contrib/ydb/apps/ydbd
 )
+
+IF (OPENSOURCE)
+    DEPENDS(
+        cloud/storage/core/tools/testing/ydb/bin
+    )
+ELSE()
+    DEPENDS(
+        contrib/ydb/apps/ydbd
+    )
+ENDIF()
 
 DATA(
     arcadia/cloud/blockstore/tests/certs/server.crt
