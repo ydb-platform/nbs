@@ -84,7 +84,12 @@ private:
         const auto& computeResponse = Executor->WaitFor(computeFuture);
         if (HasError(computeResponse)) {
             const auto& err = computeResponse.GetError();
-            return MakeError(err.GetCode(), TStringBuilder()
+            auto errorCode = err.GetCode();
+            if (errorCode == E_GRPC_NOT_FOUND) {
+                // Disk not found. Transform to non-retriable error type.
+                errorCode = E_NOT_FOUND;
+            }
+            return MakeError(errorCode, TStringBuilder()
                 << "failed to create token for disk " << diskId
                 << ", error: " << err.GetMessage());
         }
