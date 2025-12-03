@@ -482,6 +482,8 @@ public:
 
     bool IsAcquireInProgress(const TString& diskId) const;
 
+    bool CompareMeaningfulFields(const TDiskRegistryState& rhs) const;
+
     const TVector<NProto::TAgentConfig>& GetAgents() const;
 
     NProto::TError UpdateConfig(
