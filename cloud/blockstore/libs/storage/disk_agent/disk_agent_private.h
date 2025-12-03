@@ -226,7 +226,6 @@ struct TEvDiskAgentPrivate
 
         TVector<TString> PathsToAttach;
         TVector<TString> AlreadyAttachedPaths;
-        ui64 DiskAgentGeneration;
     };
 
     //
