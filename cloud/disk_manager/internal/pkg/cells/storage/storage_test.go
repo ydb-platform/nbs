@@ -80,12 +80,10 @@ func requireClusterCapacitiesAreEqual(
 	actual ClusterCapacity,
 ) {
 
-	require.Equal(t, expected.CellID, actual.CellID)
-	require.Equal(t, expected.ZoneID, actual.ZoneID)
-	require.Equal(t, expected.Kind, actual.Kind)
-	require.Equal(t, expected.FreeBytes, actual.FreeBytes)
-	require.Equal(t, expected.TotalBytes, actual.TotalBytes)
 	require.WithinDuration(t, expected.CreatedAt, actual.CreatedAt, time.Microsecond)
+	actual.CreatedAt = expected.CreatedAt
+
+	require.Equal(t, expected, actual)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
