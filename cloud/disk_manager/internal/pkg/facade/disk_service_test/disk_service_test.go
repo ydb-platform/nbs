@@ -570,7 +570,7 @@ func TestDiskServiceCreateEncryptedSsdNonreplDiskFromPooledImage(t *testing.T) {
 	)
 }
 
-func TestDiskServiceCreateEncryptedAtRestSsdNonreplDiskFromPooledImage(t *testing.T) {
+func TestDiskServiceCreateEncryptedAtRestSsdNonreplDiskFromImage(t *testing.T) {
 	testCreateDiskFromImageWithZoneID(
 		t,
 		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
