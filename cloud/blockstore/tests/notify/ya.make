@@ -9,7 +9,6 @@ DEPENDS(
     cloud/blockstore/apps/disk_agent
     cloud/blockstore/apps/server
     cloud/blockstore/tools/testing/notify-mock
-    contrib/ydb/apps/ydbd
 )
 
 DATA(
@@ -25,5 +24,7 @@ PEERDIR(
     contrib/ydb/core/protos
     contrib/ydb/tests/library
 )
+
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/ydbd.inc)
 
 END()

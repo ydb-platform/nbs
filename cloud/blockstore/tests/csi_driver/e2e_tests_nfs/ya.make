@@ -22,7 +22,6 @@ DEPENDS(
     cloud/blockstore/apps/server
     cloud/filestore/apps/client
     cloud/filestore/apps/vhost
-    contrib/ydb/apps/ydbd
 )
 
 PEERDIR(
@@ -38,5 +37,6 @@ SET_APPEND(QEMU_VIRTIO none)
 SET_APPEND(QEMU_ENABLE_KVM True)
 SET_APPEND(QEMU_MEM 8G)
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/qemu.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/ydbd.inc)
 
 END()
