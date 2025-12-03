@@ -132,10 +132,10 @@ void TDiskAgentActor::HandleAttachPaths(
     auto future = State->AttachPaths(pathsToAttach);
 
     auto* actorSystem = TActivationContext::ActorSystem();
-    auto daId = ctx.SelfID;
+    auto selfId = ctx.SelfID;
 
     future.Subscribe(
-        [pathsToAttach = std::move(pathsToAttach), actorSystem, daId](
+        [actorSystem, selfId](
             TFuture<TResultOrError<TDiskAgentState::TAttachPathResult>>
                 future) mutable
         {
@@ -150,7 +150,8 @@ void TDiskAgentActor::HandleAttachPaths(
             response->Stats = std::move(result.Stats);
             response->Configs = std::move(result.Configs);
 
-            actorSystem->Send(new IEventHandle{daId, daId, response.release()});
+            actorSystem->Send(
+                new IEventHandle{selfId, selfId, response.release()});
         });
 }
 
