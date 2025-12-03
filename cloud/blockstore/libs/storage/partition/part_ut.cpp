@@ -13216,7 +13216,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT(!barriers.empty());
     }
 
-    Y_UNIT_TEST(ShouldCleanupUnconfirmedBlobsAfterErrorsInWriteBlocks)
+    Y_UNIT_TEST(ShouldCleanupUnconfirmedBlobsAfterErrorOnWriteBlob)
     {
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(1);
@@ -13227,7 +13227,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             {},
             {.MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID});
 
-        bool shouldRejectDeleteObsoleteUnconfirmedBlobsRequest = true;
+        bool shouldRejectDeleteUnconfirmedBlobsRequest = true;
         // Create event filter for WriteBlobResponse rejection
         TTestActorRuntimeBase::TEventFilter rejectionFilter =
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
@@ -13241,8 +13241,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     return false;
                 }
                 case TEvPartitionPrivate::
-                    EvDeleteObsoleteUnconfirmedBlobsRequest: {
-                    return shouldRejectDeleteObsoleteUnconfirmedBlobsRequest;
+                    EvDeleteUnconfirmedBlobsRequest: {
+                    return shouldRejectDeleteUnconfirmedBlobsRequest;
                 }
             };
             return false;
@@ -13299,7 +13299,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
         }
 
-        shouldRejectDeleteObsoleteUnconfirmedBlobsRequest = false;
+        shouldRejectDeleteUnconfirmedBlobsRequest = false;
 
         partition.SendWriteBlocksRequest(TBlockRange32::WithLength(12, 1), 1);
 

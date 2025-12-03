@@ -352,17 +352,23 @@ void TPartitionActor::HandleWriteBlocksCompleted(
         if (HasError(msg->GetError())) {
             // blobs are obsolete, delete them directly
             auto request = std::make_unique<
-                TEvPartitionPrivate::TEvDeleteObsoleteUnconfirmedBlobsRequest>(
+                TEvPartitionPrivate::TEvDeleteUnconfirmedBlobsRequest>(
                 MakeIntrusive<TCallContext>(CreateRequestId()),
-                commitId,
-                std::move(msg->BlobsToConfirm));
+                commitId);
             NCloud::Send(ctx, SelfId(), std::move(request));
         } else {
             // blobs are confirmed, but AddBlobs request will be executed
             // (for this commit) later
             State->BlobsConfirmed(commitId, std::move(msg->BlobsToConfirm));
         }
-        Y_DEBUG_ABORT_UNLESS(msg->CollectGarbageBarrierAcquired);
+        STORAGE_VERIFY(
+            msg->CollectGarbageBarrierAcquired,
+            TWellKnownEntityTypes::TABLET,
+            TabletID());
+        STORAGE_VERIFY(
+            !msg->TrimFreshLogBarrierAcquired,
+            TWellKnownEntityTypes::TABLET,
+            TabletID());
         // commit & garbage queue barriers will be released when confirmed
         // blobs are added or when obsolete blobs are deleted
     } else {

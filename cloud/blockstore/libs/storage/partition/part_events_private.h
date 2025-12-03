@@ -179,7 +179,7 @@ using TFlushedCommitIds = TVector<TFlushedCommitId>;
     xxx(PatchBlob,                 __VA_ARGS__)                                \
     xxx(AddConfirmedBlobs,         __VA_ARGS__)                                \
     xxx(AddUnconfirmedBlobs,       __VA_ARGS__)                                \
-    xxx(DeleteObsoleteUnconfirmedBlobs, __VA_ARGS__)                           \
+    xxx(DeleteUnconfirmedBlobs,    __VA_ARGS__)                                \
 // BLOCKSTORE_PARTITION_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -676,30 +676,6 @@ struct TEvPartitionPrivate
     };
 
     //
-    // DeleteObsoleteUnconfirmedBlobs
-    //
-
-    struct TDeleteObsoleteUnconfirmedBlobsRequest
-    {
-        ui64 CommitId = 0;
-        TVector<TBlobToConfirm> Blobs;
-
-        TDeleteObsoleteUnconfirmedBlobsRequest() = default;
-
-        TDeleteObsoleteUnconfirmedBlobsRequest(
-            ui64 commitId,
-            TVector<TBlobToConfirm> blobs)
-            : CommitId(commitId)
-            , Blobs(std::move(blobs))
-        {}
-    };
-
-    struct TDeleteObsoleteUnconfirmedBlobsResponse
-    {
-        ui64 ExecCycles = 0;
-    };
-
-    //
     // AddUnconfirmedBlobs
     //
 
@@ -719,6 +695,26 @@ struct TEvPartitionPrivate
     };
 
     struct TAddUnconfirmedBlobsResponse
+    {
+        ui64 ExecCycles = 0;
+    };
+
+    //
+    // DeleteUnconfirmedBlobs
+    //
+
+    struct TDeleteUnconfirmedBlobsRequest
+    {
+        ui64 CommitId = 0;
+
+        TDeleteUnconfirmedBlobsRequest() = default;
+
+        explicit TDeleteUnconfirmedBlobsRequest(ui64 commitId)
+            : CommitId(commitId)
+        {}
+    };
+
+    struct TDeleteUnconfirmedBlobsResponse
     {
         ui64 ExecCycles = 0;
     };

@@ -708,17 +708,17 @@ void TPartitionState::WriteUnconfirmedBlob(
 
 void TPartitionState::DeleteUnconfirmedBlobs(
     TPartitionDatabase& db,
-    ui64 commitId,
-    const TVector<TBlobToConfirm>& blobs)
+    ui64 commitId)
 {
-    for (const auto& blob: blobs) {
-        auto blobId = MakePartialBlobId(commitId, blob.UniqueId);
-        db.DeleteUnconfirmedBlob(blobId);
-    }
-
     auto it = UnconfirmedBlobs.find(commitId);
     if (it != UnconfirmedBlobs.end()) {
-        const auto blobCount = it->second.size();
+        const auto& blobs = it->second;
+        for (const auto& blob: blobs) {
+            auto blobId = MakePartialBlobId(commitId, blob.UniqueId);
+            db.DeleteUnconfirmedBlob(blobId);
+        }
+
+        const auto blobCount = blobs.size();
         UnconfirmedBlobs.erase(it);
         Y_DEBUG_ABORT_UNLESS(UnconfirmedBlobCount >= blobCount);
         UnconfirmedBlobCount -= blobCount;
