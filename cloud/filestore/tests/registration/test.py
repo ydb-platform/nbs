@@ -1,3 +1,4 @@
+import os
 import pytest
 from collections import namedtuple
 import logging
@@ -25,7 +26,7 @@ import yatest.common as yatest_common
 logger = logging.getLogger(__name__)
 
 CFG_PREFIX = 'Cloud.Filestore.'
-kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+kikimr_binary_path = yatest_common.binary_path(os.getenv("YDBD_BINARY"))
 
 
 def enable_custom_cms_configs(client):
