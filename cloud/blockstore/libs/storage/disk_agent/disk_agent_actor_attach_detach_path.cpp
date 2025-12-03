@@ -203,10 +203,9 @@ void TDiskAgentActor::HandlePathsAttached(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_AGENT,
-        "Attached paths [%s] with Disk Agent Generation %lu Already attached "
+        "Attached paths [%s] Already attached "
         "paths [%s]",
         JoinSeq(",", msg->PathsToAttach).c_str(),
-        msg->DiskAgentGeneration,
         JoinSeq(",", msg->AlreadyAttachedPaths).c_str());
 
     NCloud::Reply(ctx, *PendingAttachDetachPathsRequest, std::move(response));
