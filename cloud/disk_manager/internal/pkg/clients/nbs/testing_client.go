@@ -269,11 +269,12 @@ func (c *testingClient) CalculateCrc32WithEncryption(
 	if err != nil {
 		return DiskContentInfo{}, err
 	}
-
-	if encryptionSpec.Mode == protos.EEncryptionMode_ENCRYPTION_AT_REST{
-		encryptionSpec.Mode = protos.EEncryptionMode_ENCRYPTION_AT_REST
+	if encryptionSpec != nil {
+		if encryptionSpec.Mode == protos.EEncryptionMode_ENCRYPTION_AT_REST {
+			encryptionSpec.Mode = protos.EEncryptionMode_ENCRYPTION_AT_REST
+		}
 	}
-	
+
 	opts := nbs_client.MountVolumeOpts{
 		MountFlags:     protoFlags(protos.EMountFlag_MF_THROTTLING_DISABLED),
 		MountSeqNumber: 0,

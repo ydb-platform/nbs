@@ -120,10 +120,6 @@ func (t *createDiskFromImageTask) Run(
 		imageEncryption = imageMeta.Encryption.Mode
 	}
 
-	// invalid, should be
-	// no - no
-	// no - at rest
-	// aes-xts - aes-xts
 	if imageEncryption != types.EncryptionMode_NO_ENCRYPTION &&
 		diskEncryption != imageEncryption {
 
