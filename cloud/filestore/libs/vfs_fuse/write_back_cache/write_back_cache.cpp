@@ -538,23 +538,6 @@ public:
     }
 
     // should be protected by |Lock|
-    TVector<TWriteDataEntryPart> CalculateCachedDataPartsToRead(
-        ui64 nodeId,
-        ui64 startingFromOffset,
-        ui64 length)
-    {
-        auto entriesIter = NodeStates.find(nodeId);
-        if (entriesIter == NodeStates.end()) {
-            return {};
-        }
-
-        return TUtil::CalculateDataPartsToRead(
-            entriesIter->second->CachedEntryIntervalMap,
-            startingFromOffset,
-            length);
-    }
-
-    // should be protected by |Lock|
     static void ReadDataPart(
         TWriteDataEntryPart part,
         ui64 startingFromOffset,
@@ -1021,25 +1004,35 @@ private:
 
     TVector<TWriteDataEntryPart> CalculateDataPartsToReadAndFillBuffer(
         ui64 nodeId,
-        ui64 startingFromOffset,
+        ui64 offset,
         ui64 length,
         TString* buffer)
     {
         with_lock (Lock) {
-            auto parts = CalculateCachedDataPartsToRead(
-                nodeId,
-                startingFromOffset,
+            auto* nodeState = GetNodeStateOrNull(nodeId);
+            if (nodeState == nullptr) {
+                return {};
+            }
+            if (nodeState->CachedEntryIntervalMap.empty()) {
+                return {};
+            }
+            const auto last = nodeState->CachedEntryIntervalMap.rbegin();
+            if (last->second.End <= offset) {
+                return {};
+            }
+
+            auto parts = TUtil::CalculateDataPartsToRead(
+                nodeState->CachedEntryIntervalMap,
+                offset,
                 length);
 
-            if (!parts.empty()) {
-                // TODO(nasonov): it is possible to completely get rid of copy
-                // here by referencing the buffer directly in the cache and
-                // adding reference count in order to prevent evicting buffer
-                // from the cache
-                *buffer = TString(length, 0);
-                for (const auto& part: parts) {
-                    ReadDataPart(part, startingFromOffset, buffer);
-                }
+            // TODO(nasonov): it is possible to completely get rid of copy
+            // here by referencing the buffer directly in the cache and
+            // adding reference count in order to prevent evicting buffer
+            // from the cache
+            *buffer = TString(Min(length, last->second.End - offset), 0);
+            for (const auto& part: parts) {
+                ReadDataPart(part, offset, buffer);
             }
 
             return parts;
@@ -1157,11 +1150,6 @@ private:
 
         if (state.Buffer.empty()) {
             // Cache miss
-            if (responseBufferLength < state.Length) {
-                response.MutableBuffer()->resize(
-                    response.GetBufferOffset() + state.Length,
-                    0);
-            }
             state.Promise.SetValue(std::move(response));
             return;
         }
@@ -1178,8 +1166,8 @@ private:
         // Determine if it is better to apply cached data parts on
         // top of the ReadData response or copy non-cached data from
         // the response to the buffer with cached data parts
-        bool useResponseBuffer = responseBufferLength == state.Length;
-        if (useResponseBuffer) {
+        bool useResponseBuffer = responseBufferLength >= state.Buffer.length();
+        if (responseBufferLength == state.Buffer.length()) {
             size_t sumPartsSize = 0;
             for (const auto& part: state.Parts) {
                 sumPartsSize += part.Length;

@@ -22,8 +22,10 @@ public:
 
     using TData = TMap<TKey, TItem>;
     using TIterator = typename TData::iterator;
+    using TReverseIterator = typename TData::reverse_iterator;
     using TVisitor = std::function<void(TIterator it)>;
     using TConstIterator = typename TData::const_iterator;
+    using TConstReverseIterator = typename TData::const_reverse_iterator;
     using TConstVisitor = std::function<void(TConstIterator it)>;
 
 private:
@@ -89,6 +91,11 @@ public:
         }
     }
 
+    bool empty() const
+    {
+        return Data.empty();
+    }
+
     TIterator begin()
     {
         return Data.begin();
@@ -107,6 +114,26 @@ public:
     TConstIterator end() const
     {
         return Data.end();
+    }
+
+    TReverseIterator rbegin()
+    {
+        return Data.rbegin();
+    }
+
+    TReverseIterator rend()
+    {
+        return Data.rend();
+    }
+
+    TConstReverseIterator rbegin() const
+    {
+        return Data.rbegin();
+    }
+
+    TConstReverseIterator rend() const
+    {
+        return Data.rend();
     }
 };
 
