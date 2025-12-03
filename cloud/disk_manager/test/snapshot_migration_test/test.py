@@ -298,7 +298,7 @@ class _MigrationTestSetup:
 
     def list_snapshots(self) -> list[str]:
         stdout = self.admin("snapshots", "list")
-        return stdout.splitlines()
+        return [x for x in stdout.splitlines() if x != ""]
 
     def checksum_disk(self, disk_id: str, start_block_index: int = 0) -> str:
         unique_test_dir = Path(get_unique_path_for_current_test(yatest_common.output_path(), ""))
