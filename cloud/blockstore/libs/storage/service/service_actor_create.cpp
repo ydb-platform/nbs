@@ -161,14 +161,14 @@ bool TCreateVolumeActor::ShouldCreateVolumeWithEncryptionAtRest() const
 void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
 {
     if (ShouldCreateVolumeWithEncryptionAtRest()) {
-        if (!Request.GetBaseDiskId().empty()) {
-            ReplyAndDie(
-                ctx,
-                std::make_unique<TEvService::TEvCreateVolumeResponse>(MakeError(
-                    E_NOT_IMPLEMENTED,
-                    "Encrypted overlay disks are not supported")));
-            return;
-        }
+        // if (!Request.GetBaseDiskId().empty()) {
+        //     ReplyAndDie(
+        //         ctx,
+        //         std::make_unique<TEvService::TEvCreateVolumeResponse>(MakeError(
+        //             E_NOT_IMPLEMENTED,
+        //             "Encrypted overlay disks are not supported")));
+        //     return;
+        // }
 
         LOG_INFO_S(
             ctx,
