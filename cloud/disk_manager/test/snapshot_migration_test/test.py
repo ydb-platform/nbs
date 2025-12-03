@@ -398,7 +398,24 @@ class _MigrationTestSetup:
         return [dict(zip(columns, row)) for row in rows]
 
     def get_snapshot_database_entries(self, port: int) -> list[dict]:
-        return self. select_from_ydb(port, "SELECT * FROM `snapshot/snapshots`")
+        max_retries = 5
+        timeout_sec = 60
+        started_at = time.monotonic()
+        while True:
+            if time.monotonic() - started_at > timeout_sec:
+                raise TimeoutError("Timed out waiting for snapshot database entries")
+            try:
+                return self. select_from_ydb(port, "SELECT * FROM `snapshot/snapshots`")
+            except Exception as e:
+                if max_retries == 0:
+                    raise e
+                max_retries -= 1
+                _logger.error(
+                    "Error querying YDB: %s. Retries left: %d",
+                    max_retries,
+                    exc_info=e,
+                )
+                time.sleep(0.1)
 
 
 @pytest.mark.parametrize(
@@ -508,9 +525,11 @@ def test_disk_manager_several_migrations_do_not_overlap(use_s3_as_src, use_s3_as
         restored_checksum = setup.checksum_disk(second_disk_restored_id)
         assert restored_checksum == second_disk_full_checksum
         # Check for repro of issue-4742
-        for record in setup.get_snapshot_database_entries(
+        database_entries = setup.get_snapshot_database_entries(
             setup.secondary_ydb.mon_port,
-        ):
+        )
+        assert len(database_entries) == 2
+        for record in database_entries:
             assert record['base_snapshot_id'] == ""
 
 
