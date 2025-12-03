@@ -1206,6 +1206,9 @@ STFUNC(TVolumeActor::StateZombie)
 
         IgnoreFunc(TEvService::TEvDestroyVolumeResponse);
 
+        IgnoreFunc(TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted);
+        IgnoreFunc(TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished);
+
         default:
             if (!RejectRequests(ev)) {
                 HandleUnexpectedEvent(

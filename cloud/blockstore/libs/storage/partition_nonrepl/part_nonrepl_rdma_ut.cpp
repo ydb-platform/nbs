@@ -1,4 +1,5 @@
 #include "part_nonrepl_rdma.h"
+
 #include "part_nonrepl_rdma_actor.h"
 #include "ut_env.h"
 
@@ -13,6 +14,7 @@
 #include <cloud/blockstore/libs/storage/testlib/diagnostics.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_agent_mock.h>
 
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>

@@ -15,7 +15,7 @@ constexpr ui64 RowsPerTransaction = 100000;
 constexpr TStringBuf CreateRequestsTable = R"__(
     CREATE TABLE IF NOT EXISTS Requests (
         Id integer not null unique,
-        At datetime not null,
+        AtUs integer not null,
         DiskId integer not null,
         RequestTypeId integer not null,
         StartBlock integer not null,
@@ -115,7 +115,7 @@ constexpr TStringBuf AddDiskSql = R"__(
 
 constexpr TStringBuf AddRequestSql = R"__(
     INSERT INTO Requests
-        (At, DiskId, RequestTypeId, StartBlock, EndBlock, DurationUs)
+        (AtUs, DiskId, RequestTypeId, StartBlock, EndBlock, DurationUs)
     VALUES
         (?, ?, ?, ?, ?, ?);
 )__";
@@ -156,12 +156,15 @@ TSqliteOutput::TSqliteOutput(const TString& filename)
         ythrow yexception() << "can't open database: " << sqlite3_errmsg(Db);
     }
 
+    Transaction = std::make_unique<TTransaction>(Db);
+
     CreateTables();
     AddZeroChecksumsTypes();
     AddRequestTypes();
     AddBlocksSequence();
     ReadDisks();
 
+    Transaction.reset();
     Transaction = std::make_unique<TTransaction>(Db);
 }
 
@@ -178,33 +181,24 @@ TSqliteOutput::~TSqliteOutput()
     }
 }
 
-void TSqliteOutput::ProcessMessage(
-    const NProto::TProfileLogRecord& message,
-    EItemType itemType,
-    int index)
+void TSqliteOutput::ProcessRequest(
+    const TString& diskId,
+    TInstant timestamp,
+    ui32 requestType,
+    TBlockRange64 blockRange,
+    TDuration duration,
+    const TReplicaChecksums& replicaChecksums)
 {
-    if (itemType != EItemType::Request) {
-        return;
-    }
+    const ui64 requestId = AddRequest(
+        timestamp,
+        GetVolumeId(diskId),
+        requestType,
+        blockRange,
+        duration);
 
-    const NProto::TProfileLogRequestInfo& r = message.GetRequests(index);
+    AddChecksums(requestId, blockRange, replicaChecksums);
 
-    for (const auto& range: r.GetRanges()) {
-        const auto blockRange = TBlockRange64::WithLength(
-            range.GetBlockIndex(),
-            range.GetBlockCount());
-
-        const ui64 requestId = AddRequest(
-            TInstant::FromValue(r.GetTimestampMcs()),
-            GetVolumeId(message.GetDiskId()),
-            r.GetRequestType(),
-            blockRange,
-            TDuration::MicroSeconds(r.GetDurationMcs()));
-
-        AddChecksums(requestId, blockRange, range.GetReplicaChecksums());
-
-        AdvanceTransaction();
-    }
+    AdvanceTransaction();
 }
 
 void TSqliteOutput::CreateTables()
@@ -417,22 +411,7 @@ ui64 TSqliteOutput::AddRequest(
         }
     };
 
-    auto bindDateTime = [&](int index, TInstant value)
-    {
-        auto str = value.ToString();
-        if (sqlite3_bind_text(
-                AddRequestStmt,
-                index,
-                str.c_str(),
-                str.size(),
-                SQLITE_TRANSIENT) != SQLITE_OK)
-        {
-            ythrow yexception()
-                << "Binding param error: " << sqlite3_errmsg(Db);
-        }
-    };
-
-    bindDateTime(1, timestamp);
+    bindInt(1, timestamp.MicroSeconds());
     bindInt(2, volumeId);
     bindInt(3, requestTypeId);
     bindInt(4, range.Start);

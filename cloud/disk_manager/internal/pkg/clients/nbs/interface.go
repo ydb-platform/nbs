@@ -301,6 +301,14 @@ type Client interface {
 
 	Stat(ctx context.Context, diskID string) (DiskStats, error)
 
+	ModifyTags(
+		ctx context.Context,
+		saveState func() error,
+		diskID string,
+		tagsToAdd []string,
+		tagsToRemove []string,
+	) error
+
 	Freeze(
 		ctx context.Context,
 		saveState func() error,
@@ -355,6 +363,7 @@ type MultiZoneClient interface {
 		dstPlacementPartitionIndex uint32,
 		fillGeneration uint64,
 		baseDiskID string,
+		tagsStr string,
 	) error
 }
 
