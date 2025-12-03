@@ -19,7 +19,7 @@
 
 #include <grpc/support/port_platform.h>
 
-#include <jni.h>
+#error #include <jni.h>
 
 #include <functional>
 #include <util/generic/string.h>

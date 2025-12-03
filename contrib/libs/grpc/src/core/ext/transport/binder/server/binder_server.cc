@@ -36,7 +36,7 @@
 
 #ifdef GPR_SUPPORT_BINDER_TRANSPORT
 
-#include <jni.h>
+#error #include <jni.h>
 
 extern "C" {
 

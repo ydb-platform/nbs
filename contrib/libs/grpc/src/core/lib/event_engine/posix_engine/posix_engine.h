@@ -197,7 +197,6 @@ class PosixEventEngine final : public PosixEventEngineWithFdSupport,
       const DNSResolver::ResolverOptions& options) override;
   void Run(Closure* closure) override;
   void Run(y_absl::AnyInvocable<void()> closure) override;
-  // Caution!! The timer implementation cannot create any fds. See #20418.
   TaskHandle RunAfter(Duration when, Closure* closure) override;
   TaskHandle RunAfter(Duration when,
                       y_absl::AnyInvocable<void()> closure) override;

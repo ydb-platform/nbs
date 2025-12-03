@@ -20,7 +20,7 @@
 #ifdef GPR_SUPPORT_BINDER_TRANSPORT
 
 #include <assert.h>
-#include <jni.h>
+#error #include <jni.h>
 
 #include <memory>
 

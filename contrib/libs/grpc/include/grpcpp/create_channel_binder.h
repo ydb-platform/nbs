@@ -19,7 +19,7 @@
 
 #ifdef GPR_ANDROID
 
-#include <jni.h>
+#error #include <jni.h>
 
 #include <memory>
 

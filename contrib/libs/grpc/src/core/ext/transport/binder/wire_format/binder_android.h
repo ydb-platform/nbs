@@ -19,13 +19,13 @@
 
 #ifdef GPR_SUPPORT_BINDER_TRANSPORT
 
-#include <jni.h>
+#error #include <jni.h>
 
 #include <memory>
 
 #include "y_absl/memory/memory.h"
 
-#include "src/core/ext/transport/binder/utils/binder_auto_utils.h"
+#error #include "src/core/ext/transport/binder/utils/binder_auto_utils.h"
 #include "src/core/ext/transport/binder/utils/ndk_binder.h"
 #include "src/core/ext/transport/binder/wire_format/binder.h"
 #include "src/core/ext/transport/binder/wire_format/wire_reader.h"
