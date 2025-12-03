@@ -26,15 +26,12 @@ func matchClusterCapacities(t *testing.T, expected cells_storage.ClusterCapacity
 		}
 
 		got := actual[0]
-		if expected.FreeBytes != got.FreeBytes ||
-			expected.TotalBytes != got.TotalBytes ||
-			expected.CellID != got.CellID || expected.Kind != got.Kind ||
-			expected.ZoneID != got.ZoneID ||
-			time.Now().Sub(got.CreatedAt).Abs() >= time.Minute {
+		if expected.CreatedAt.Sub(got.CreatedAt).Abs() >= time.Minute {
 			return false
 		}
 
-		return true
+		got.CreatedAt = expected.CreatedAt
+		return got == expected
 	})
 }
 
@@ -85,6 +82,7 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 				Kind:       types.DiskKind_DISK_KIND_SSD,
 				FreeBytes:  1024,
 				TotalBytes: 2048,
+				CreatedAt:  time.Now(),
 			},
 		),
 		deleteOlderThanExpectation,
@@ -99,6 +97,7 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 				Kind:       types.DiskKind_DISK_KIND_SSD,
 				FreeBytes:  1024,
 				TotalBytes: 2048,
+				CreatedAt:  time.Now(),
 			},
 		),
 		deleteOlderThanExpectation,
@@ -113,6 +112,7 @@ func TestCollectClusterCapacityTask(t *testing.T) {
 				Kind:       types.DiskKind_DISK_KIND_SSD,
 				FreeBytes:  1024,
 				TotalBytes: 2048,
+				CreatedAt:  time.Now(),
 			},
 		),
 		deleteOlderThanExpectation,
@@ -195,6 +195,7 @@ func TestCollectClusterCapacityFailureNbsReturnsError(t *testing.T) {
 				Kind:       types.DiskKind_DISK_KIND_SSD,
 				FreeBytes:  1024,
 				TotalBytes: 2048,
+				CreatedAt:  time.Now(),
 			},
 		),
 		mock.Anything, // deleteOlderThan.
@@ -265,6 +266,7 @@ func TestCollectClusterCapacityFailureStorageReturnsError(t *testing.T) {
 				Kind:       types.DiskKind_DISK_KIND_SSD,
 				FreeBytes:  1024,
 				TotalBytes: 2048,
+				CreatedAt:  time.Now(),
 			},
 		),
 		mock.Anything, // deleteOlderThan.
@@ -279,6 +281,7 @@ func TestCollectClusterCapacityFailureStorageReturnsError(t *testing.T) {
 				Kind:       types.DiskKind_DISK_KIND_SSD,
 				FreeBytes:  1024,
 				TotalBytes: 2048,
+				CreatedAt:  time.Now(),
 			},
 		),
 		mock.Anything, // deleteOlderThan.
@@ -348,6 +351,7 @@ func TestCollectClusterCapacityOneCellHasAlreadyBeenProcessed(t *testing.T) {
 				Kind:       types.DiskKind_DISK_KIND_SSD,
 				FreeBytes:  1024,
 				TotalBytes: 2048,
+				CreatedAt:  time.Now(),
 			},
 		),
 		mock.Anything, // deleteOlderThan.
