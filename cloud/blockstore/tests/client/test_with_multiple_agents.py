@@ -78,8 +78,7 @@ class TestWithMultipleAgents(object):
         self.agent_count = agent_count
         self.__disk_agents = []
 
-        self.kikimr_binary_path = yatest_common.binary_path(
-            "contrib/ydb/apps/ydbd/ydbd")
+        self.kikimr_binary_path = yatest_common.binary_path(os.getenv("YDBD_BINARY"))
         self.nbs_binary_path = yatest_common.binary_path(
             "cloud/blockstore/apps/server/nbsd")
         self.disk_agent_binary_path = yatest_common.binary_path(

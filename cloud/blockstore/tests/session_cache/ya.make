@@ -8,7 +8,6 @@ DEPENDS(
     cloud/blockstore/apps/client
     cloud/blockstore/apps/disk_agent
     cloud/blockstore/apps/server
-    contrib/ydb/apps/ydbd
 )
 
 DATA(
@@ -21,5 +20,7 @@ PEERDIR(
 
     library/python/retry
 )
+
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/ydbd.inc)
 
 END()

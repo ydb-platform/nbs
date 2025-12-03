@@ -1,3 +1,4 @@
+import os
 import json
 import time
 import logging
@@ -32,7 +33,7 @@ DEFAULT_BLOCK_COUNT = 4096
 
 
 def kikimr_start():
-    kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    kikimr_binary_path = yatest_common.binary_path(os.getenv("YDBD_BINARY"))
 
     configurator = KikimrConfigGenerator(
         erasure=None,

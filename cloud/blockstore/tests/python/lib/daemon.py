@@ -1,4 +1,5 @@
 import json
+import os
 import requests
 import subprocess
 import socket
@@ -254,7 +255,7 @@ def __enable_custom_cms_configs(ydb):
 def start_ydb(grpc_ssl_enable=False):
     configurator = KikimrConfigGenerator(
         erasure=None,
-        binary_path=yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd"),
+        binary_path=yatest_common.binary_path(os.getenv("YDBD_BINARY")),
         use_in_memory_pdisks=True,
         grpc_ssl_enable=grpc_ssl_enable,
         dynamic_storage_pools=[
