@@ -27,6 +27,7 @@ private:
     const ui64 CommitId;
     /*const*/ TVector<TMergedBlob> Blobs;
     const TWriteRange WriteRange;
+    const bool ShouldAddUnconfirmedBlobs;
     ui32 BlobsSize = 0;
 
 public:
@@ -37,7 +38,8 @@ public:
         TRequestInfoPtr requestInfo,
         ui64 commitId,
         TVector<TMergedBlob> blobs,
-        TWriteRange writeRange);
+        TWriteRange writeRange,
+        bool shouldAddUnconfirmedBlobs);
 
     void Bootstrap(const TActorContext& ctx);
 
