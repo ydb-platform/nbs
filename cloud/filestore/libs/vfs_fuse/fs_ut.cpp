@@ -2864,8 +2864,15 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             totalByteCount += byteCount;
         }
 
+        auto path = TempDir.Path() / "WriteBackCache" / FileSystemId /
+                    SessionId / "write_back_cache";
+
+        UNIT_ASSERT(path.Exists());
+
         auto stopFuture = bootstrap.StopAsync();
         UNIT_ASSERT(stopFuture.Wait(Timeout));
+
+        UNIT_ASSERT(!path.Exists());
     }
 }
 
