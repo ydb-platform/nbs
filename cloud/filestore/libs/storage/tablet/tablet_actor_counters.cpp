@@ -355,6 +355,11 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(SessionTimeouts, EMetricType::MT_DERIVATIVE);
     REGISTER_AGGREGATABLE_SUM(SessionCleanupAttempts, EMetricType::MT_DERIVATIVE);
 
+    REGISTER_LOCAL(
+        StrictFileSystemSizeEnforcementEnabled,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(DirectoryCreationInShardsEnabled, EMetricType::MT_ABSOLUTE);
+
     REGISTER_AGGREGATABLE_SUM(ReassignCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(WritableChannelCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UnwritableChannelCount, EMetricType::MT_ABSOLUTE);
@@ -589,6 +594,13 @@ void TIndexTabletActor::TMetrics::Update(
     Store(UsedDirectHandlesCount, handlesStats.UsedDirectHandlesCount);
     Store(SevenBytesHandlesCount, handlesStats.SevenBytesHandlesCount);
     Store(UsedLocksCount, stats.GetUsedLocksCount());
+
+    Store(
+        StrictFileSystemSizeEnforcementEnabled,
+        fileSystem.GetStrictFileSystemSizeEnforcementEnabled());
+    Store(
+        DirectoryCreationInShardsEnabled,
+        fileSystem.GetDirectoryCreationInShardsEnabled());
 
     Store(FreshBytesCount, stats.GetFreshBytesCount());
     Store(FreshBytesItemCount, stats.GetFreshBytesItemCount());
