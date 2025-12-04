@@ -5,7 +5,7 @@ SRCS(
 )
 
 PEERDIR(
-    cloud/blockstore/libs/common
+    library/cpp/getopt/small
 )
 
 END()
