@@ -525,7 +525,7 @@ bool TBootstrap::InitKikimrService()
 
     STORAGE_INFO("DigestGenerator initialized");
 
-    LocalNVMeService = NStorage::CreateLocalNVMeServiceStub(logging);
+    LocalNVMeService = CreateLocalNVMeServiceStub(logging);
 
     STORAGE_INFO("Local NVMe service initialized");
 

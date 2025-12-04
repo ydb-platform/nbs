@@ -1,5 +1,6 @@
 #include "test_env.h"
 
+#include <cloud/blockstore/libs/local_nvme/service.h>
 #include <cloud/blockstore/libs/nvme/nvme_stub.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/service/storage.h>
@@ -383,6 +384,8 @@ TTestEnv TTestEnvBuilder::Build()
     auto backgroundThreadPool = CreateThreadPool("Background", 1);
     backgroundThreadPool->Start();
 
+    auto logging = CreateLoggingService("console");
+
     auto diskAgent = CreateDiskAgent(
         config,
         agentConfig,
@@ -392,11 +395,11 @@ TTestEnv TTestEnvBuilder::Build()
         StorageProvider,
         CreateProfileLogStub(),
         CreateBlockDigestGeneratorStub(),
-        CreateLoggingService("console"),
+        logging,
         nullptr,   // rdmaServer
         NvmeManager,
         backgroundThreadPool,
-        CreateLocalNVMeServiceStub());
+        CreateLocalNVMeServiceStub(logging));
 
     const ui32 firstDiskAgentNodeIndex = 0;
 
@@ -419,11 +422,11 @@ TTestEnv TTestEnvBuilder::Build()
             StorageProvider,
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
-            CreateLoggingService("console"),
+            logging,
             nullptr,   // rdmaServer
             NvmeManager,
             CreateThreadPool("Background", 1),
-            CreateLocalNVMeServiceStub());
+            CreateLocalNVMeServiceStub(logging));
 
         Runtime.AddLocalService(
             MakeDiskAgentServiceId(Runtime.GetNodeId(additionalDiskAgentNodeIndex)),

@@ -12,7 +12,7 @@
 
 #include <util/generic/fwd.h>
 
-namespace NCloud::NBlockStore::NStorage {
+namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -22,7 +22,11 @@ struct ILocalNVMeService
     [[nodiscard]] virtual auto GetNVMeDevices() const
         -> TVector<NProto::TNVMeDevice> = 0;
 
-    [[nodiscard]] virtual auto ResetNVMeDevice(
+    [[nodiscard]] virtual auto AcquireNVMeDevice(
+        const TString& serialNumber) const
+        -> NThreading::TFuture<NCloud::NProto::TError> = 0;
+
+    [[nodiscard]] virtual auto ReleaseNVMeDevice(
         const TString& serialNumber) const
         -> NThreading::TFuture<NCloud::NProto::TError> = 0;
 };
@@ -30,9 +34,9 @@ struct ILocalNVMeService
 ////////////////////////////////////////////////////////////////////////////////
 
 ILocalNVMeServicePtr CreateLocalNVMeService(
-    TString deviceListFilePath,
+    TLocalNVMeConfigPtr config,
     ILoggingServicePtr logging);
 
 ILocalNVMeServicePtr CreateLocalNVMeServiceStub(ILoggingServicePtr logging);
 
-}   // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NBlockStore

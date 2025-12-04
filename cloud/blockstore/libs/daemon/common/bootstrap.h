@@ -84,7 +84,7 @@ protected:
     NBD::IErrorHandlerMapPtr NbdErrorHandlerMap;
     NRdma::IServerPtr RdmaRequestServer;
     IStartablePtr RdmaTarget;
-    NStorage::ILocalNVMeServicePtr LocalNVMeService;
+    ILocalNVMeServicePtr LocalNVMeService;
 
     TProgramShouldContinue ShouldContinue;
     TVector<TString> PostponedCriticalEvents;

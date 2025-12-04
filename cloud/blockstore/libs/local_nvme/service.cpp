@@ -1,5 +1,7 @@
 #include "service.h"
 
+#include "config.h"
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -11,7 +13,7 @@
 #include <util/string/builder.h>
 #include <util/system/fs.h>
 
-namespace NCloud::NBlockStore::NStorage {
+namespace NCloud::NBlockStore {
 
 namespace {
 
@@ -43,7 +45,7 @@ using namespace NThreading;
 class TLocalNVMeService final: public ILocalNVMeService
 {
 private:
-    const TString DeviceListFilePath;
+    const TLocalNVMeConfigPtr Config;
     const ILoggingServicePtr Logging;
 
     TLog Log;
@@ -51,8 +53,8 @@ private:
     TVector<NProto::TNVMeDevice> Devices;
 
 public:
-    TLocalNVMeService(TString deviceListFilePath, ILoggingServicePtr logging)
-        : DeviceListFilePath(std::move(deviceListFilePath))
+    TLocalNVMeService(TLocalNVMeConfigPtr config, ILoggingServicePtr logging)
+        : Config(std::move(config))
         , Logging(std::move(logging))
     {}
 
@@ -71,7 +73,7 @@ public:
         return Devices;
     }
 
-    [[nodiscard]] TFuture<NCloud::NProto::TError> ResetNVMeDevice(
+    [[nodiscard]] TFuture<NCloud::NProto::TError> AcquireNVMeDevice(
         const TString& serialNumber) const final
     {
         auto* device = FindIfPtr(
@@ -85,9 +87,26 @@ public:
                     << "Device " << serialNumber.Quote() << " not found"));
         }
 
-        STORAGE_INFO("Reset NVMe device " << serialNumber.Quote() << " ...");
+        STORAGE_INFO("Acquire NVMe device " << serialNumber.Quote());
 
-        // TODO: ...
+        return MakeFuture(NProto::TError());
+    }
+
+    [[nodiscard]] TFuture<NCloud::NProto::TError> ReleaseNVMeDevice(
+        const TString& serialNumber) const final
+    {
+        auto* device = FindIfPtr(
+            Devices,
+            [&](const auto& d) { return d.GetSerialNumber() == serialNumber; });
+
+        if (!device) {
+            return MakeFuture(MakeError(
+                E_NOT_FOUND,
+                TStringBuilder()
+                    << "Device " << serialNumber.Quote() << " not found"));
+        }
+
+        STORAGE_INFO("Release NVMe device " << serialNumber.Quote());
 
         return MakeFuture(NProto::TError());
     }
@@ -95,11 +114,12 @@ public:
 private:
     void DiscoverNVMeDevices()
     {
-        if (DeviceListFilePath.empty()) {
+        if (Config->GetNVMeDevicesCacheFile().empty()) {
             return;
         }
 
-        auto [devices, error] = LoadNVMeDevices(DeviceListFilePath);
+        auto [devices, error] =
+            LoadNVMeDevices(Config->GetNVMeDevicesCacheFile());
         if (HasError(error)) {
             STORAGE_ERROR(
                 "Can't load NVMe devices from the cache: "
@@ -152,10 +172,21 @@ public:
         return {};
     }
 
-    [[nodiscard]] TFuture<NCloud::NProto::TError> ResetNVMeDevice(
+    [[nodiscard]] TFuture<NCloud::NProto::TError> AcquireNVMeDevice(
         const TString& serialNumber) const final
     {
-        STORAGE_INFO("Reset NVMe device " << serialNumber.Quote() << " ...");
+        STORAGE_INFO("Acquire NVMe device " << serialNumber.Quote());
+
+        return MakeFuture(MakeError(
+            E_NOT_FOUND,
+            TStringBuilder()
+                << "Device " << serialNumber.Quote() << " not found"));
+    }
+
+    [[nodiscard]] TFuture<NCloud::NProto::TError> ReleaseNVMeDevice(
+        const TString& serialNumber) const final
+    {
+        STORAGE_INFO("Release NVMe device " << serialNumber.Quote());
 
         return MakeFuture(MakeError(
             E_NOT_FOUND,
@@ -169,11 +200,11 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 ILocalNVMeServicePtr CreateLocalNVMeService(
-    TString deviceListFilePath,
+    TLocalNVMeConfigPtr config,
     ILoggingServicePtr logging)
 {
     return std::make_shared<TLocalNVMeService>(
-        std::move(deviceListFilePath),
+        std::move(config),
         std::move(logging));
 }
 
@@ -182,4 +213,4 @@ ILocalNVMeServicePtr CreateLocalNVMeServiceStub(ILoggingServicePtr logging)
     return std::make_shared<TLocalNVMeServiceStub>(std::move(logging));
 }
 
-}   // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NBlockStore

@@ -76,7 +76,7 @@ private:
     IStorageProviderPtr LocalStorageProvider;
     NNvme::INvmeManagerPtr NvmeManager;
     NRdma::IServerPtr RdmaServer;
-    NStorage::ILocalNVMeServicePtr LocalNVMeService;
+    ILocalNVMeServicePtr LocalNVMeService;
 
     TProgramShouldContinue ShouldContinue;
     TVector<TString> PostponedCriticalEvents;

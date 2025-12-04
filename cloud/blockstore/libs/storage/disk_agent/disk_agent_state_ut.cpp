@@ -164,6 +164,8 @@ TStorageConfigPtr CreateStorageConfig()
 
 auto CreateDiskAgentStateSpdk(TDiskAgentConfigPtr config)
 {
+    auto logging = CreateLoggingService("console");
+
     return std::make_unique<TDiskAgentState>(
         CreateStorageConfig(),
         std::move(config),
@@ -172,14 +174,14 @@ auto CreateDiskAgentStateSpdk(TDiskAgentConfigPtr config)
         nullptr,   // storageProvider
         CreateProfileLogStub(),
         CreateBlockDigestGeneratorStub(),
-        CreateLoggingService("console"),
+        logging,
         nullptr,   // rdmaServer
         nullptr,   // nvmeManager
         nullptr,   // rdmaTargetConfig
         TOldRequestCounters(),
         nullptr,   // multiAgentWriteHandler
         nullptr,   // backgroundThreadPool
-        CreateLocalNVMeServiceStub());
+        CreateLocalNVMeServiceStub(logging));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -342,6 +344,8 @@ struct TFiles
     const NNvme::INvmeManagerPtr NvmeManager =
         std::make_shared<TTestNvmeManager>();
 
+    const ILoggingServicePtr Logging = CreateLoggingService("console");
+
     void PrepareFile(const TString& path, size_t size)
     {
         TFile fileData(path, EOpenModeFlag::CreateNew);
@@ -376,14 +380,14 @@ struct TFiles
             NServer::CreateNullStorageProvider(),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
-            CreateLoggingService("console"),
+            Logging,
             nullptr,   // rdmaServer
             NvmeManager,
             nullptr,   // rdmaTargetConfig
             TOldRequestCounters(),
             nullptr,   // multiAgentWriteHandler
             nullptr,   // backgroundThreadPool
-            CreateLocalNVMeServiceStub());
+            CreateLocalNVMeServiceStub(Logging));
     }
 };
 
@@ -553,14 +557,14 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             }),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
-            CreateLoggingService("console"),
+            Logging,
             nullptr,   // rdmaServer
             NvmeManager,
             nullptr,   // rdmaTargetConfig
             TOldRequestCounters(),
             nullptr,   // multiAgentWriteHandler
             nullptr,   // backgroundThreadPool
-            CreateLocalNVMeServiceStub());
+            CreateLocalNVMeServiceStub(Logging));
 
         auto future = state.Initialize();
         const auto& r = future.GetValue(WaitTimeout);
@@ -769,14 +773,14 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                         config->GetFileDevices()[2].GetPath()}),
                     CreateProfileLogStub(),
                     CreateBlockDigestGeneratorStub(),
-                    CreateLoggingService("console"),
+                    Logging,
                     nullptr,   // rdmaServer
                     NvmeManager,
                     nullptr,   // rdmaTargetConfig
                     TOldRequestCounters(),
                     nullptr,   // multiAgentWriteHandler
                     nullptr,   // backgroundThreadPool
-                    CreateLocalNVMeServiceStub());
+                    CreateLocalNVMeServiceStub(Logging));
 
                 auto future = state.Initialize();
                 const auto& r = future.GetValue(WaitTimeout);
@@ -832,6 +836,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             device.SetDeviceId("uuid-" + ToString(i + 1));
         }
 
+        auto logging = CreateLoggingService("console");
+
         TDiskAgentState state(
             CreateStorageConfig(),
             std::make_shared<TDiskAgentConfig>(std::move(config), "rack", 1000),
@@ -840,14 +846,14 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             NServer::CreateNullStorageProvider(),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
-            CreateLoggingService("console"),
+            logging,
             nullptr,   // rdmaServer
             std::make_shared<TTestNvmeManager>(),
             nullptr,   // rdmaTargetConfig
             TOldRequestCounters(),
             nullptr,   // multiAgentWriteHandler
             nullptr,   // backgroundThreadPool
-            CreateLocalNVMeServiceStub());
+            CreateLocalNVMeServiceStub(logging));
 
         auto future = state.Initialize();
         const auto& r = future.GetValue(WaitTimeout);
@@ -1264,14 +1270,14 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             std::make_shared<TTestStorageProvider>(storageState),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
-            CreateLoggingService("console"),
+            Logging,
             nullptr,   // rdmaServer
             NvmeManager,
             nullptr,   // rdmaTargetConfig
             TOldRequestCounters(),
             nullptr,   // multiAgentWriteHandler
             nullptr,   // backgroundThreadPool
-            CreateLocalNVMeServiceStub());
+            CreateLocalNVMeServiceStub(Logging));
 
         auto future = state.Initialize();
         const auto& r = future.GetValue(WaitTimeout);
@@ -1426,14 +1432,14 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             std::make_shared<TTestStorageProvider>(storageState),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
-            CreateLoggingService("console"),
+            Logging,
             nullptr,   // rdmaServer
             NvmeManager,
             nullptr,   // rdmaTargetConfig
             TOldRequestCounters(),
             nullptr,   // multiAgentWriteHandler
             nullptr,    // backgroundThreadPool
-            CreateLocalNVMeServiceStub());
+            CreateLocalNVMeServiceStub(Logging));
 
         auto future = state->Initialize();
         const auto& result = future.GetValue(WaitTimeout);
@@ -1510,14 +1516,14 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             std::make_shared<TTestStorageProvider>(storageState),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
-            CreateLoggingService("console"),
+            Logging,
             nullptr,   // rdmaServer
             NvmeManager,
             nullptr,   // rdmaTargetConfig
             TOldRequestCounters(),
             nullptr,   // multiAgentWriteHandler
             nullptr,   // backgroundThreadPool
-            CreateLocalNVMeServiceStub());
+            CreateLocalNVMeServiceStub(Logging));
 
         auto future = state->Initialize();
         const auto& result = future.GetValue(WaitTimeout);
@@ -1594,14 +1600,14 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
                 std::make_shared<TTestStorageProvider>(storageState),
                 CreateProfileLogStub(),
                 CreateBlockDigestGeneratorStub(),
-                CreateLoggingService("console"),
+                Logging,
                 nullptr,   // rdmaServer
                 NvmeManager,
                 nullptr,   // rdmaTargetConfig
                 TOldRequestCounters(),
                 nullptr,   // multiAgentWriteHandler
                 nullptr,   // backgroundThreadPool
-                CreateLocalNVMeServiceStub());
+                CreateLocalNVMeServiceStub(Logging));
         };
 
         {
@@ -2160,14 +2166,14 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
             std::make_shared<TTestStorageProvider>(storageState),
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
-            CreateLoggingService("console"),
+            Logging,
             nullptr,   // rdmaServer
             NvmeManager,
             nullptr,   // rdmaTargetConfig
             TOldRequestCounters(),
             nullptr,   // multiAgentWriteHandler
             nullptr,   // backgroundThreadPool
-            CreateLocalNVMeServiceStub());
+            CreateLocalNVMeServiceStub(Logging));
 
         auto future = state.Initialize();
         const auto& r = future.GetValue(WaitTimeout);

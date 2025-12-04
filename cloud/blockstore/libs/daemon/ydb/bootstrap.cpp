@@ -22,6 +22,7 @@
 #include <cloud/blockstore/libs/kms/iface/compute_client.h>
 #include <cloud/blockstore/libs/kms/iface/key_provider.h>
 #include <cloud/blockstore/libs/kms/iface/kms_client.h>
+#include <cloud/blockstore/libs/local_nvme/config.h>
 #include <cloud/blockstore/libs/local_nvme/service.h>
 #include <cloud/blockstore/libs/logbroker/iface/config.h>
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
@@ -414,6 +415,7 @@ void TBootstrapYdb::InitConfigs()
     Configs->InitIamClientConfig();
     Configs->InitKmsClientConfig();
     Configs->InitRootKmsConfig();
+    Configs->InitLocalNVMeConfig();
     Configs->InitComputeClientConfig();
     Configs->InitCellsConfig();
 }
@@ -803,13 +805,13 @@ void TBootstrapYdb::InitKikimrService()
     STORAGE_INFO("NotifyService initialized");
 
     if (Configs->DiskAgentConfig->GetEnabled() &&
-        Configs->DiskAgentConfig->GetCachedNVMeDevicesPath())
+        !Configs->DiskAgentConfig->GetDedicatedDiskAgent())
     {
-        LocalNVMeService = NStorage::CreateLocalNVMeService(
-            Configs->DiskAgentConfig->GetCachedNVMeDevicesPath(),
+        LocalNVMeService = CreateLocalNVMeService(
+            std::make_shared<TLocalNVMeConfig>(Configs->LocalNVMeConfig),
             logging);
     } else {
-        LocalNVMeService = NStorage::CreateLocalNVMeServiceStub(logging);
+        LocalNVMeService = CreateLocalNVMeServiceStub(logging);
     }
 
     STORAGE_INFO("Local NVMe service initialized");

@@ -1,5 +1,7 @@
 #include "service.h"
 
+#include "config.h"
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -51,8 +53,11 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
             SerializeToTextFormat(proto, cacheFilePath);
         }
 
+        NProto::TLocalNVMeConfig protoConfig;
+        protoConfig.SetNVMeDevicesCacheFile(cacheFilePath);
+        auto config = std::make_shared<TLocalNVMeConfig>(protoConfig);
         auto logging = CreateLoggingService("console");
-        auto service = CreateLocalNVMeService(cacheFilePath, logging);
+        auto service = CreateLocalNVMeService(config, logging);
         service->Start();
         Y_DEFER
         {
@@ -88,12 +93,30 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         }
 
         for (const auto& d: devices) {
-            auto future = service->ResetNVMeDevice(d.GetSerialNumber());
+            auto future =
+                service->AcquireNVMeDevice(d.GetSerialNumber());
             UNIT_ASSERT_VALUES_EQUAL(S_OK, future.GetValueSync().GetCode());
         }
 
-        auto future = service->ResetNVMeDevice("unk");
-        UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, future.GetValueSync().GetCode());
+        for (const auto& d: devices) {
+            auto future =
+                service->ReleaseNVMeDevice(d.GetSerialNumber());
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, future.GetValueSync().GetCode());
+        }
+
+        {
+            auto future = service->AcquireNVMeDevice("unk");
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_NOT_FOUND,
+                future.GetValueSync().GetCode());
+        }
+
+        {
+            auto future = service->ReleaseNVMeDevice("unk");
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_NOT_FOUND,
+                future.GetValueSync().GetCode());
+        }
     }
 
     Y_UNIT_TEST(ShouldStub)
@@ -103,7 +126,7 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         service->Start();
 
         UNIT_ASSERT_VALUES_EQUAL(0, service->GetNVMeDevices().size());
-        auto future = service->ResetNVMeDevice("foo");
+        auto future = service->ReleaseNVMeDevice("foo");
         UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, future.GetValueSync().GetCode());
 
         service->Stop();

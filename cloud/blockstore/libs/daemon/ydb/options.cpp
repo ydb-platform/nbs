@@ -44,6 +44,10 @@ TOptionsYdb::TOptionsYdb()
     Opts.AddLongOption("compute-file")
         .RequiredArgument("PATH")
         .StoreResult(&ComputeConfig);
+
+    Opts.AddLongOption("local-nvme-file")
+        .RequiredArgument("PATH")
+        .StoreResult(&LocalNVMeConfig);
 }
 
 void TOptionsYdb::Parse(int argc, char** argv)

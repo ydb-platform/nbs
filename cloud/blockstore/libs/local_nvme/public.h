@@ -2,11 +2,14 @@
 
 #include <memory>
 
-namespace NCloud::NBlockStore::NStorage {
+namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
 struct ILocalNVMeService;
 using ILocalNVMeServicePtr = std::shared_ptr<ILocalNVMeService>;
 
-}   // namespace NCloud::NBlockStore::NStorage
+class TLocalNVMeConfig;
+using TLocalNVMeConfigPtr = std::shared_ptr<TLocalNVMeConfig>;
+
+}   // namespace NCloud::NBlockStore

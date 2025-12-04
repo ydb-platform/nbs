@@ -64,7 +64,6 @@ namespace {
     xxx(UseLocalStorageSubmissionThread,    bool,       true                  )\
     xxx(KickOutOldClientsEnabled,           bool,       false                 )\
     xxx(UseOneSubmissionThreadPerAIOServiceEnabled,     bool,       false     )\
-    xxx(CachedNVMeDevicesPath,              TString,    ""                    )\
 // BLOCKSTORE_AGENT_CONFIG
 
 #define BLOCKSTORE_DECLARE_CONFIG(name, type, value)                           \

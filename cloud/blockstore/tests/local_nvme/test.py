@@ -3,6 +3,7 @@ import os
 import pytest
 
 from cloud.blockstore.libs.storage.protos import disk_pb2
+from cloud.blockstore.config.local_nvme_pb2 import TLocalNVMeConfig
 
 from cloud.blockstore.tests.python.lib.test_base import wait_for_nbs_server
 
@@ -89,10 +90,11 @@ def start_nbs_daemon(ydb, cached_nvme_devices_path):
     cfg.generate_default_nbs_configs()
 
     disk_agent_config = generate_disk_agent_txt(agent_id='')
-    disk_agent_config.CachedNVMeDevicesPath = cached_nvme_devices_path
     disk_agent_config.DedicatedDiskAgent = False
 
     cfg.files["disk-agent"] = disk_agent_config
+    cfg.files["local-nvme"] = TLocalNVMeConfig(
+        NVMeDevicesCacheFile=cached_nvme_devices_path)
 
     daemon = start_nbs(cfg)
 

@@ -1255,25 +1255,13 @@ auto TDiskAgentState::GetNVMeDevices() const
 auto TDiskAgentState::AcquireNVMeDevice(const TString& serialNumber)
     -> TFuture<NProto::TError>
 {
-    const auto& devices = LocalNVMeService->GetNVMeDevices();
-    const auto* device = FindIfPtr(
-        devices,
-        [&](const NProto::TNVMeDevice& d)
-        { return d.GetSerialNumber() == serialNumber; });
-
-    if (device) {
-        return MakeFuture(NProto::TError());
-    }
-
-    return MakeFuture(MakeError(
-        E_NOT_FOUND,
-        TStringBuilder() << "Device " << serialNumber.Quote() << " not found"));
+    return LocalNVMeService->AcquireNVMeDevice(serialNumber);
 }
 
 auto TDiskAgentState::ReleaseNVMeDevice(const TString& serialNumber)
     -> TFuture<NProto::TError>
 {
-    return LocalNVMeService->ResetNVMeDevice(serialNumber);
+    return LocalNVMeService->ReleaseNVMeDevice(serialNumber);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
