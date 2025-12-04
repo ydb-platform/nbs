@@ -667,7 +667,6 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(Balancer)                                                              \
     xxx(IncrementalCompaction)                                                 \
     xxx(MultipartitionVolumes)                                                 \
-    xxx(AllocateFreshChannel)                                                  \
     xxx(FreshChannelWriteRequests)                                             \
     xxx(MixedIndexCacheV1)                                                     \
     xxx(BatchCompaction)                                                       \

@@ -856,7 +856,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldAllocateFreshChannelOnAlterIfFeatureIsEnabledForCloud)
+    Y_UNIT_TEST(ShouldAllocateFreshChannelOnAlter)
     {
         TTestEnv env(1, 2);
 
@@ -864,13 +864,9 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         ui32 nodeIdx2;
         {
             NProto::TStorageServiceConfig config;
-            config.SetFreshChannelCount(0);
+            config.SetFreshChannelCount(1);
 
             NProto::TFeaturesConfig featuresConfig;
-            auto* feature = featuresConfig.AddFeatures();
-            feature->SetName("AllocateFreshChannel");
-            auto* whitelist = feature->MutableWhitelist();
-            *whitelist->AddCloudIds() = "cloud_id";
 
             nodeIdx1 = SetupTestEnv(env);
             nodeIdx2 = SetupTestEnv(env, config, featuresConfig);
