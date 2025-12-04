@@ -666,7 +666,7 @@ def test_disk_manager_snapshot_database_migration_with_incremental_snapshot(
         checksum = setup.fill_disk(initial_disk_id, 0, created_disk.blocks_count)
         setup.create_snapshot(src_disk_id=initial_disk_id, snapshot_id=base_snapshot_id)
         checksums_by_snapshot_id[base_snapshot_id] = setup.checksum_disk(initial_disk_id)
-        # Create a long incremental chaing, with the size
+        # Create a long incremental chain, with the size
         # greater than migrating_snapshots_inflight_limit
         for i in range(10):
             intermediate_snapshot_id = f"intermediate_snapshot_{i}"
@@ -683,7 +683,7 @@ def test_disk_manager_snapshot_database_migration_with_incremental_snapshot(
 
         task_id = setup.start_database_migration()
         setup.wait_for_dpl_metric_equals(0)
-        # Create incremetal snapshots during migration
+        # Create incremental snapshots during migration
         for i in range(10, 20):
             intermediate_snapshot_id = f"intermediate_snapshot_{i}"
             setup.fill_disk(

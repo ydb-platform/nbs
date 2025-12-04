@@ -211,6 +211,10 @@ func (m *migrateSnapshotDatabaseTask) checkBaseSnapshotIsMigrated(
 		ctx,
 		src.BaseSnapshotID,
 	)
+	if err != nil {
+		return false, err
+	}
+
 	if baseSnapshotMeta == nil {
 		return false, nil
 	}
