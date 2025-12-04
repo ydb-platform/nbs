@@ -2,6 +2,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
+#include <google/protobuf/util/message_differencer.h>
 
 #include <util/string/builder.h>
 
@@ -505,6 +506,34 @@ auto TAgentList::RegisterAgent(
         .LostDeviceIds = std::move(lostDeviceIds),
         .PrevNodeId = prevNodeId,
         .OldConfigs = std::move(oldConfigs)};
+}
+
+bool TAgentList::operator==(const TAgentList& rhs) const
+{
+    // using google::protobuf::util::MessageDifferencer;
+
+    const auto& vAgentListParams = rhs.GetDiskRegistryAgentListParams();
+    if(GetDiskRegistryAgentListParams().size() != vAgentListParams.size()) {
+        return false;
+    }
+    for(const auto& [k, v] : GetDiskRegistryAgentListParams()) {
+        if(vAgentListParams.find(k) == vAgentListParams.end()) {
+            return false;
+        }
+        if(!google::protobuf::util::MessageDifferencer::ApproximatelyEquals(v, vAgentListParams.at(k))) {
+            return false;
+        }
+    }
+
+    if (Agents.size() != rhs.Agents.size()) {
+        return false;
+    }
+    for (size_t i = 0; i < Agents.size(); ++i) {
+        if (!google::protobuf::util::MessageDifferencer::ApproximatelyEquals(Agents[i], rhs.Agents[i])) {
+            return false;
+        }
+    }
+    return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

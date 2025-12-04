@@ -54,6 +54,26 @@ TNotificationSystem::TNotificationSystem(
     }
 }
 
+bool TNotificationSystem::operator==(const TNotificationSystem& rhs) const {
+    const auto& vUserNotifications = rhs.UserNotifications.Storage;
+    for(const auto& [k, v] : UserNotifications.Storage) {
+        if(vUserNotifications.find(k) == vUserNotifications.end()) {
+            return false;
+        }
+        auto n1 = v.Notifications;
+        auto n2 = vUserNotifications.at(k).Notifications;
+        if(n1.size() != n2.size()) {
+            return false;
+        }
+        for(size_t i = 0; i < n1.size(); i++) {
+            if(!google::protobuf::util::MessageDifferencer::ApproximatelyEquals(n1[i], n2[i])) {
+                return false;
+            }
+        }    
+    }
+    return true;
+}
+
 // TODO: Remove legacy compatibility in next release
 void TNotificationSystem::PullInUserNotifications(
     TVector<TString> errorNotifications,

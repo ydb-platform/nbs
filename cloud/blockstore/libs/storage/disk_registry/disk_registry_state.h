@@ -274,6 +274,23 @@ class TDiskRegistryState
         TVector<NProto::TDiskHistoryItem> History;
 
         TVector<TLaggingDevice> OutdatedLaggingDevices;
+
+        bool operator==(const TDiskState& rhs) const {
+            return CloudId == rhs.CloudId &&
+                    FolderId == rhs.FolderId &&
+                    UserId == rhs.UserId &&
+                    Devices == rhs.Devices &&
+                    LogicalBlockSize == rhs.LogicalBlockSize &&
+                    State == rhs.State &&
+                    StateTs == rhs.StateTs &&
+                    ReplicaCount == rhs.ReplicaCount &&
+                    MasterDiskId == rhs.MasterDiskId &&
+                    google::protobuf::util::MessageDifferencer::ApproximatelyEquals(
+                        CheckpointReplica,
+                        rhs.CheckpointReplica) &&
+                    MediaKind == rhs.MediaKind &&
+                    MigrationStartTs == rhs.MigrationStartTs;
+        }
     };
 
     struct TVolumeDeviceOverrides

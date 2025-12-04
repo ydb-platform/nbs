@@ -126,6 +126,7 @@ struct TBrokenDiskInfo
 {
     TString DiskId;
     TInstant TsToDestroy;
+    bool operator==(const TBrokenDiskInfo& rhs) const = default;
 };
 
 struct TDirtyDevice

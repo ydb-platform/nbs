@@ -437,7 +437,6 @@ TDiskRegistryState::TDiskRegistryState(
 TDiskRegistryState::~TDiskRegistryState() = default;
 
 bool TDiskRegistryState::CompareMeaningfulFields(const TDiskRegistryState& rhs) const{
-    using google::protobuf::Message;
     using google::protobuf::util::MessageDifferencer;
 
     auto CompareProtoVectors = []<typename T>(TVector<T> vec1,
@@ -451,68 +450,11 @@ bool TDiskRegistryState::CompareMeaningfulFields(const TDiskRegistryState& rhs) 
             }
         }
         return true;
-    };
+    };    
 
-    if(Disks.size() != rhs.Disks.size()) {
+    if(!MessageDifferencer::ApproximatelyEquals(CurrentConfig, rhs.CurrentConfig)) {
         return false;
     }
-
-    for(const auto& [k, v] : Disks) {
-        if(rhs.Disks.find(k) == rhs.Disks.end()) {
-            return false;
-        }
-        const auto& v_rhs = Disks.at(k);
-        if(v.CloudId != v_rhs.CloudId ||
-            v.FolderId != v_rhs.FolderId ||
-            v.UserId == v_rhs.UserId &&
-            v.Devices != v_rhs.Devices ||
-            v.LogicalBlockSize != v_rhs.LogicalBlockSize ||
-            v.State != v_rhs.State ||
-            v.StateTs != v_rhs.StateTs ||
-            v.ReplicaCount != v_rhs.ReplicaCount ||
-            v.MasterDiskId != v_rhs.MasterDiskId ||
-            !MessageDifferencer::ApproximatelyEquals(
-                v.CheckpointReplica,
-                 v_rhs.CheckpointReplica) ||
-            v.MediaKind != v_rhs.MediaKind ||
-            v.MigrationStartTs != v_rhs.MigrationStartTs) {
-            return false;
-        }
-    }
-
-    const auto& vUserNotifications = rhs.NotificationSystem.GetUserNotifications().Storage;
-    for(const auto& [k, v] : NotificationSystem.GetUserNotifications().Storage) {
-        if(vUserNotifications.find(k) == vUserNotifications.end()) {
-            return false;
-        }
-        auto n1 = v.Notifications;
-        auto n2 = vUserNotifications.at(k).Notifications;
-        if(n1.size() != n2.size()) {
-            return false;
-        }
-        for(size_t i = 0; i < n1.size(); i++) {
-            if(!MessageDifferencer::ApproximatelyEquals(n1[i], n2[i])) {
-                return false;
-            }
-        }    
-    }
-
-    const auto& vAgentListParams = rhs.AgentList.GetDiskRegistryAgentListParams();
-    if(AgentList.GetDiskRegistryAgentListParams().size() != vAgentListParams.size()) {
-        return false;
-    }
-    for(const auto& [k, v] : AgentList.GetDiskRegistryAgentListParams()) {
-        if(vAgentListParams.find(k) == vAgentListParams.end()) {
-            return false;
-        }
-        if(!MessageDifferencer::ApproximatelyEquals(v, vAgentListParams.at(k))) {
-            return false;
-        }
-    }
-
-    if(!std::ranges::equal(BrokenDisks, rhs.BrokenDisks, [](const auto& a, const auto& b) {
-        return a.DiskId == b.DiskId && a.TsToDestroy == b.TsToDestroy;
-    })) {return false;}
 
     const auto& vPlacementGroups = rhs.PlacementGroups;
     if(PlacementGroups.size() != vPlacementGroups.size()) {
@@ -529,10 +471,11 @@ bool TDiskRegistryState::CompareMeaningfulFields(const TDiskRegistryState& rhs) 
 
     return google::protobuf::util::MessageDifferencer::Equals(StorageConfig->GetStorageConfigProto(), rhs.StorageConfig->GetStorageConfigProto()) &&
             CompareProtoVectors(GetDirtyDevices(), rhs.GetDirtyDevices()) &&
-            CompareProtoVectors(AgentList.GetAgents(), rhs.AgentList.GetAgents()) &&
+            AgentList == rhs.AgentList &&
+            Disks == rhs.Disks &&
+            BrokenDisks == rhs.BrokenDisks &&
             GetDisksToReallocate() == rhs.GetDisksToReallocate() &&
-            
-            NotificationSystem.GetDiskStateSeqNo() == rhs.NotificationSystem.GetDiskStateSeqNo() &&
+            NotificationSystem == rhs.NotificationSystem &&
             DisksToCleanup == rhs.DisksToCleanup &&
             GetOutdatedVolumeConfigs() == rhs.GetOutdatedVolumeConfigs() &&
             CompareProtoVectors(GetSuspendedDevices(), rhs.GetSuspendedDevices()) &&
