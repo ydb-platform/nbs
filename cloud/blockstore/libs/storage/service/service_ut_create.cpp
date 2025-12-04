@@ -1858,7 +1858,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         NProto::TStorageServiceConfig config;
         NProto::TFeaturesConfig featuresConfig;
         auto* feature = featuresConfig.AddFeatures();
-        feature->SetName("EncryptionAtRestForDiskRegistryBasedDisks");
+        feature->SetName("RootKmsEncryptionForDiskRegistryBasedDisks");
         feature->MutableWhitelist()->AddFolderIds("encrypted-folder");
 
         ui32 nodeIdx = SetupTestEnv(env, config, featuresConfig);
@@ -1882,7 +1882,9 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             auto response = service.DescribeVolume("vol0");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
             auto desc = response->Record.GetVolume().GetEncryptionDesc();
-            UNIT_ASSERT_EQUAL(NProto::ENCRYPTION_AT_REST, desc.GetMode());
+            UNIT_ASSERT_EQUAL(
+                NProto::ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY,
+                desc.GetMode());
             UNIT_ASSERT_VALUES_EQUAL("", desc.GetKeyHash());
             UNIT_ASSERT_VALUES_UNEQUAL("", desc.GetEncryptionKey().GetKekId());
             UNIT_ASSERT_VALUES_UNEQUAL(

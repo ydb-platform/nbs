@@ -52,7 +52,7 @@ public:
 private:
     ui32 GetBlockSize() const;
     NCloud::NProto::EStorageMediaKind GetStorageMediaKind() const;
-    bool ShouldCreateVolumeWithEncryptionAtRest() const;
+    bool ShouldCreateVolumeWithRootKmsEncryption() const;
 
     void DescribeBaseVolume(const TActorContext& ctx);
     void CreateVolume(const TActorContext& ctx);
@@ -137,30 +137,31 @@ void TCreateVolumeActor::DescribeBaseVolume(const TActorContext& ctx)
     }
 }
 
-bool TCreateVolumeActor::ShouldCreateVolumeWithEncryptionAtRest() const
+bool TCreateVolumeActor::ShouldCreateVolumeWithRootKmsEncryption() const
 {
     if (IsDiskRegistryLocalMediaKind(GetStorageMediaKind())) {
-        // Encryption at rest for local disks is not implemented (#2598)
+        // Root KMS encryption for local disks is not implemented (#2598)
         return false;
     }
 
     return IsDiskRegistryMediaKind(GetStorageMediaKind()) &&
-            // Direct request for encryption at rest
+           // Direct request for the Root KMS encryption
            (Request.GetEncryptionSpec().GetMode() ==
-                NProto::ENCRYPTION_AT_REST ||
+                NProto::ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY ||
             // Client did not request encryption with the provided key
             (Request.GetEncryptionSpec().GetMode() == NProto::NO_ENCRYPTION &&
-            // and the feature is enabled for the disk/cloud/folder
-             (Config->GetEncryptionAtRestForDiskRegistryBasedDisksEnabled() ||
-              Config->IsEncryptionAtRestForDiskRegistryBasedDisksFeatureEnabled(
-                  Request.GetCloudId(),
-                  Request.GetFolderId(),
-                  Request.GetDiskId()))));
+             // and the feature is enabled for the disk/cloud/folder
+             (Config->GetRootKmsEncryptionForDiskRegistryBasedDisksEnabled() ||
+              Config
+                  ->IsRootKmsEncryptionForDiskRegistryBasedDisksFeatureEnabled(
+                      Request.GetCloudId(),
+                      Request.GetFolderId(),
+                      Request.GetDiskId()))));
 }
 
 void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
 {
-    if (ShouldCreateVolumeWithEncryptionAtRest()) {
+    if (ShouldCreateVolumeWithRootKmsEncryption()) {
         if (!Request.GetBaseDiskId().empty()) {
             ReplyAndDie(
                 ctx,
@@ -324,7 +325,7 @@ void TCreateVolumeActor::HandleCreateEncryptionKeyResponse(
                             << " with default AES XTS encryption");
 
     NKikimrBlockStore::TEncryptionDesc encryptionDesc;
-    encryptionDesc.SetMode(NProto::ENCRYPTION_AT_REST);
+    encryptionDesc.SetMode(NProto::ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY);
 
     auto& dek = *encryptionDesc.MutableEncryptedDataKey();
     dek.SetKekId(msg.KmsKey.GetKekId());
