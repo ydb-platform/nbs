@@ -3,7 +3,6 @@
 #include "cont_io_with_timeout.h"
 #include "external_endpoint_stats.h"
 
-#include <cloud/blockstore/libs/common/cgroups_helpers.h>
 #include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/common/device_path.h>
 #include <cloud/blockstore/libs/common/public.h>
@@ -100,6 +99,15 @@ TString ReadFromFile(const TString& fileName)
     } catch (...) {
         return {};
     }
+}
+
+void AppendToFile(const TFsPath& path, TStringBuf line)
+{
+    const auto flags = EOpenModeFlag::OpenExisting | EOpenModeFlag::WrOnly |
+                       EOpenModeFlag::ForAppend;
+
+    TFile file{path / "cgroup.procs", flags};
+    file.Write(line.data(), line.size());
 }
 
 TString ParseDiskIdFromCmdLine(const TString& cmdLine)
@@ -563,13 +571,12 @@ class TEndpoint final
     , public std::enable_shared_from_this<TEndpoint>
 {
 private:
+    const TServerAppConfigPtr ServerConfig;
     const ILoggingServicePtr Logging;
     const TExecutorPtr Executor;
     const TString ClientId;
-    const TString BinaryPath;
     const TVector<TString> Args;
     const TVector<TString> Cgroups;
-    const TString ExternalCgroupsPidWriterBinaryPath;
 
     TLog Log;
 
@@ -588,21 +595,18 @@ private:
 public:
     TEndpoint(
             TString clientId,
+            TServerAppConfigPtr serverConfig,
             ILoggingServicePtr logging,
             TExecutorPtr executor,
             TEndpointStats stats,
-            TString binaryPath,
             TVector<TString> args,
-            TVector<TString> cgroups,
-            TString externalCgroupsPidWriterBinaryPath)
-        : Logging{std::move(logging)}
+            TVector<TString> cgroups)
+        : ServerConfig(std::move(serverConfig))
+        , Logging{std::move(logging)}
         , Executor{std::move(executor)}
         , ClientId{std::move(clientId)}
-        , BinaryPath{std::move(binaryPath)}
         , Args{std::move(args)}
         , Cgroups{std::move(cgroups)}
-        , ExternalCgroupsPidWriterBinaryPath{std::move(
-              externalCgroupsPidWriterBinaryPath)}
         , Log{Logging->CreateLog("BLOCKSTORE_EXTERNAL_ENDPOINT")}
         , Stats{std::move(stats)}
         , LogPrefix{
@@ -618,7 +622,8 @@ public:
     void PrepareToStart() override
     {
         const auto startAt = TInstant::Now();
-        const bool succ = PrefetchBinaryToCache(BinaryPath);
+        const bool succ =
+            PrefetchBinaryToCache(ServerConfig->GetVhostServerPath());
         const auto logPriority = succ ? TLOG_INFO : TLOG_ERR;
 
         STORAGE_LOG(
@@ -690,7 +695,8 @@ private:
 
     TIntrusivePtr<TEndpointProcess> StartProcess()
     {
-        auto process = SpawnChild(BinaryPath, AppendPidArg(Args));
+        auto process =
+            SpawnChild(ServerConfig->GetVhostServerPath(), AppendPidArg(Args));
 
         STORAGE_INFO(
             LogPrefix << "Endpoint process has been started, PID:"
@@ -703,14 +709,7 @@ private:
         };
 
         try {
-            if (ExternalCgroupsPidWriterBinaryPath) {
-                AddToCGroupsWithExternalExecutable(
-                    ExternalCgroupsPidWriterBinaryPath,
-                    process.Pid,
-                    Cgroups);
-            } else {
-                AddToCGroups(process.Pid, Cgroups);
-            }
+            AddToCGroups(process.Pid);
         } catch (...) {
             ShouldStop = true;
             throw;
@@ -759,6 +758,22 @@ private:
         }
 
         return nullptr;
+    }
+
+    void AddToCGroups(pid_t pid)
+    {
+        if (ServerConfig->GetExternalCgroupsPidWriterBinaryPath()) {
+            AddToCGroupsWithExternalExecutable(
+                ServerConfig->GetExternalCgroupsPidWriterBinaryPath(),
+                pid,
+                Cgroups);
+            return;
+        }
+
+        const TString line = ToString(pid) + '\n';
+        for (const auto& cgroup: Cgroups) {
+            AppendToFile(cgroup, line);
+        }
     }
 };
 
@@ -1285,6 +1300,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     {
         return std::make_shared<TEndpoint>(
             clientId,
+            serverConfig,
             logging,
             executor,
             TEndpointStats {
@@ -1292,11 +1308,8 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
                 .DiskId = diskId,
                 .ServerStats = serverStats
             },
-            serverConfig->GetVhostServerPath(),
             std::move(args),
-            std::move(cgroups),
-            serverConfig->GetExternalCgroupsPidWriterBinaryPath()
-        );
+            std::move(cgroups));
     };
 
     return std::make_shared<TExternalVhostEndpointListener>(
