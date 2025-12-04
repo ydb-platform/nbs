@@ -353,6 +353,9 @@ public:
     bool GetGuestHandleKillPrivV2Enabled() const;
 
     [[nodiscard]] bool GetAllowAdditionalSystemTablets() const;
+
+    bool GetAddingUnconfirmedBlobsEnabled() const;
+    ui32 GetUnconfirmedBlobCountHardLimit() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

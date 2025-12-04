@@ -422,6 +422,8 @@ void TIndexTabletActor::CompleteTx_WriteData(
 
     AcquireCollectBarrier(args.CommitId);
 
+    bool ShouldAddUnconfirmedBlobs = Config->GetAddingUnconfirmedBlobsEnabled();
+
     auto actor = std::make_unique<TWriteDataActor>(
         TraceSerializer,
         LogTag,
@@ -429,7 +431,8 @@ void TIndexTabletActor::CompleteTx_WriteData(
         args.RequestInfo,
         args.CommitId,
         std::move(blobs),
-        TWriteRange{args.NodeId, args.ByteRange.End()});
+        TWriteRange{args.NodeId, args.ByteRange.End()},
+        ShouldAddUnconfirmedBlobs);
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);

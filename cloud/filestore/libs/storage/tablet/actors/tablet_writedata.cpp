@@ -24,7 +24,8 @@ TWriteDataActor::TWriteDataActor(
         TRequestInfoPtr requestInfo,
         ui64 commitId,
         TVector<TMergedBlob> blobs,
-        TWriteRange writeRange)
+        TWriteRange writeRange,
+        bool shouldAddUnconfirmedBlobs)
     : TraceSerializer(std::move(traceSerializer))
     , LogTag(std::move(logTag))
     , Tablet(tablet)
@@ -32,6 +33,7 @@ TWriteDataActor::TWriteDataActor(
     , CommitId(commitId)
     , Blobs(std::move(blobs))
     , WriteRange(writeRange)
+    , ShouldAddUnconfirmedBlobs(shouldAddUnconfirmedBlobs)
 {
     for (const auto& blob: Blobs) {
         BlobsSize += blob.BlobContent.size();
@@ -123,7 +125,8 @@ void TWriteDataActor::ReplyAndDie(
             CommitId,
             1,
             BlobsSize,
-            ctx.Now() - RequestInfo->StartedTs);
+            ctx.Now() - RequestInfo->StartedTs,
+            ShouldAddUnconfirmedBlobs);
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
