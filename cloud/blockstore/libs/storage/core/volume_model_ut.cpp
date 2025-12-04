@@ -1187,6 +1187,7 @@ Y_UNIT_TEST_SUITE(TVolumeModelTest)
         {
             NProto::TStorageServiceConfig storageServiceConfig;
             storageServiceConfig.SetMinChannelCount(1);
+            storageServiceConfig.SetFreshChannelCount(0);
             auto config = std::make_unique<TStorageConfig>(
                 std::move(storageServiceConfig),
                 std::make_shared<NFeatures::TFeaturesConfig>(

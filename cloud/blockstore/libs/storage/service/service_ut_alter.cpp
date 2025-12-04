@@ -864,12 +864,12 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         ui32 nodeIdx2;
         {
             NProto::TStorageServiceConfig config;
-            config.SetFreshChannelCount(1);
+            config.SetFreshChannelCount(0);
 
             NProto::TFeaturesConfig featuresConfig;
 
-            nodeIdx1 = SetupTestEnv(env);
-            nodeIdx2 = SetupTestEnv(env, config, featuresConfig);
+            nodeIdx1 = SetupTestEnv(env, config, {});
+            nodeIdx2 = SetupTestEnv(env);
         }
 
         auto& runtime = env.GetRuntime();
