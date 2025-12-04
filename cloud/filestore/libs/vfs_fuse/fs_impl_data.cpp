@@ -412,7 +412,17 @@ void TFileSystem::Write(
     request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
     request->SetBuffer(alignedBuffer.TakeBuffer());
 
-    const auto size = buffer.size();
+    DoWrite(callContext, req, ino, std::move(request), buffer.size(), fi);
+}
+
+void TFileSystem::DoWrite(
+    TCallContextPtr callContext,
+    fuse_req_t req,
+    fuse_ino_t ino,
+    std::shared_ptr<NProto::TWriteDataRequest> request,
+    ui64 size,
+    fuse_file_info* fi)
+{
     const auto wbcMode = GetServerWriteBackCacheMode(fi);
 
     const auto handle = fi->fh;
@@ -599,68 +609,7 @@ void TFileSystem::WriteBuf(
     request->SetHandle(fi->fh);
     request->SetOffset(offset);
 
-    const auto wbcMode = GetServerWriteBackCacheMode(fi);
-    const auto handle = fi->fh;
-    const auto reqId = callContext->RequestId;
-
-    auto callback = [=, ptr = weak_from_this()](const auto& future)
-    {
-        auto self = ptr.lock();
-        if (!self) {
-            return;
-        }
-
-        const auto& response = future.GetValue();
-        const auto& error = response.GetError();
-
-        if (wbcMode != EServerWriteBackCacheState::Enabled) {
-            self->FSyncQueue
-                ->Dequeue(reqId, error, TNodeId{ino}, THandle{handle});
-        }
-
-        if (self->CheckResponse(self, *callContext, req, response)) {
-            self->ReplyWrite(*callContext, error, req, size);
-        }
-    };
-
-    if (wbcMode == EServerWriteBackCacheState::Enabled) {
-        WriteBackCache.WriteData(callContext, std::move(request))
-            .Subscribe(std::move(callback));
-        return;
-    }
-
-    FSyncQueue->Enqueue(reqId, TNodeId{ino}, THandle{handle});
-
-    if (wbcMode == EServerWriteBackCacheState::Disabled) {
-        Session->WriteData(callContext, std::move(request))
-            .Subscribe(std::move(callback));
-        return;
-    }
-
-    Y_ABORT_UNLESS(
-        wbcMode == EServerWriteBackCacheState::Draining,
-        "Invalid EServerWriteBackCacheState value = %d",
-        wbcMode);
-
-    auto flushFuture = WriteBackCache.FlushNodeData(request->GetNodeId());
-    if (flushFuture.HasValue()) {
-        Session->WriteData(callContext, std::move(request))
-            .Subscribe(std::move(callback));
-        return;
-    }
-
-    flushFuture.Subscribe(
-        [ptr = weak_from_this(),
-         callback = std::move(callback),
-         callContext = std::move(callContext),
-         request = std::move(request)](const auto& f) mutable
-        {
-            f.GetValue();
-            if (auto self = ptr.lock()) {
-                self->Session->WriteData(callContext, std::move(request))
-                    .Subscribe(std::move(callback));
-            }
-        });
+    DoWrite(callContext, req, ino, std::move(request), size, fi);
 }
 
 void TFileSystem::FAllocate(

@@ -468,6 +468,14 @@ private:
     void ScheduleProcessHandleOpsQueue();
     void ProcessHandleOpsQueue();
 
+    void DoWrite(
+        TCallContextPtr callContext,
+        fuse_req_t req,
+        fuse_ino_t ino,
+        std::shared_ptr<NProto::TWriteDataRequest> request,
+        ui64 size,
+        fuse_file_info* fi);
+
 #define FILESYSTEM_REPLY_IMPL(name, ...)                                       \
     template<typename... TArgs>                                                \
     int Reply##name(                                                           \
