@@ -55,6 +55,7 @@ TNotificationSystem::TNotificationSystem(
 }
 
 bool TNotificationSystem::operator==(const TNotificationSystem& rhs) const {
+    static_assert(sizeof(*this) == 200);
     const auto& vUserNotifications = rhs.UserNotifications.Storage;
     for(const auto& [k, v] : UserNotifications.Storage) {
         if(vUserNotifications.find(k) == vUserNotifications.end()) {

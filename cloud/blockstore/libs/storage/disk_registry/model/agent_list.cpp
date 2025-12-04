@@ -510,7 +510,8 @@ auto TAgentList::RegisterAgent(
 
 bool TAgentList::operator==(const TAgentList& rhs) const
 {
-    // using google::protobuf::util::MessageDifferencer;
+    static_assert(sizeof(*this) == 400);
+    using google::protobuf::util::MessageDifferencer;
 
     const auto& vAgentListParams = rhs.GetDiskRegistryAgentListParams();
     if(GetDiskRegistryAgentListParams().size() != vAgentListParams.size()) {
@@ -520,7 +521,7 @@ bool TAgentList::operator==(const TAgentList& rhs) const
         if(vAgentListParams.find(k) == vAgentListParams.end()) {
             return false;
         }
-        if(!google::protobuf::util::MessageDifferencer::ApproximatelyEquals(v, vAgentListParams.at(k))) {
+        if(!MessageDifferencer::ApproximatelyEquals(v, vAgentListParams.at(k))) {
             return false;
         }
     }
@@ -529,7 +530,7 @@ bool TAgentList::operator==(const TAgentList& rhs) const
         return false;
     }
     for (size_t i = 0; i < Agents.size(); ++i) {
-        if (!google::protobuf::util::MessageDifferencer::ApproximatelyEquals(Agents[i], rhs.Agents[i])) {
+        if (!MessageDifferencer::ApproximatelyEquals(Agents[i], rhs.Agents[i])) {
             return false;
         }
     }

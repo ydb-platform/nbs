@@ -436,6 +436,24 @@ TDiskRegistryState::TDiskRegistryState(
 
 TDiskRegistryState::~TDiskRegistryState() = default;
 
+bool TDiskRegistryState::TDiskState::operator==(const TDiskState& rhs) const {
+    static_assert(sizeof(*this) == 328);
+    return CloudId == rhs.CloudId &&
+            FolderId == rhs.FolderId &&
+            UserId == rhs.UserId &&
+            Devices == rhs.Devices &&
+            LogicalBlockSize == rhs.LogicalBlockSize &&
+            State == rhs.State &&
+            StateTs == rhs.StateTs &&
+            ReplicaCount == rhs.ReplicaCount &&
+            MasterDiskId == rhs.MasterDiskId &&
+            google::protobuf::util::MessageDifferencer::ApproximatelyEquals(
+                CheckpointReplica,
+                rhs.CheckpointReplica) &&
+            MediaKind == rhs.MediaKind &&
+            MigrationStartTs == rhs.MigrationStartTs;
+}
+
 bool TDiskRegistryState::CompareMeaningfulFields(const TDiskRegistryState& rhs) const{
     using google::protobuf::util::MessageDifferencer;
 
