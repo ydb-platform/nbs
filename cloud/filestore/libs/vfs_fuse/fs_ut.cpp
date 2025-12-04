@@ -2812,10 +2812,10 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     Y_UNIT_TEST(ShouldFlushAllRequestsBeforeSessionIsDestroyed)
     {
         // The idea is to fill WriteBackCache with requests and to stop session.
-        // It should flush both cached and pending requests befor session is
-        // destoyed. To ensure that there are pending requests, we write more
-        // data than the cache capacity (~1_MB) and temporary prevent write
-        // request from completion.
+        // It should flush both cached and pending requests before session is
+        // destroyed. To ensure that there are pending requests, we write more
+        // data than the cache capacity (~1_MB) and temporarily prevent write
+        // requests from completion.
 
         constexpr ui64 NodeCount = 8;
         constexpr ui64 TotalByteCount = 10_MB;
