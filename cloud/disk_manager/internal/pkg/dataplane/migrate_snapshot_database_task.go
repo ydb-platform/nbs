@@ -198,7 +198,7 @@ func (m *migrateSnapshotDatabaseTask) checkBaseSnapshotIsMigrated(
 	snapshotID string,
 ) (bool, error) {
 
-	src, err := m.dstStorage.GetSnapshotMeta(ctx, snapshotID)
+	src, err := m.srcStorage.GetSnapshotMeta(ctx, snapshotID)
 	if err != nil {
 		return false, err
 	}
