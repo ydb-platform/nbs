@@ -439,9 +439,13 @@ public:
         const NThreading::TFuture<ui32>& future,
         TFileIOCompletion* completion)
     {
-        Y_ABORT_UNLESS(future.HasValue());
+        Y_ABORT_UNLESS(future.HasException() || future.HasValue());
 
         try {
+            if (future.HasException()) {
+                future.TryRethrow();
+            }
+
             auto value = future.GetValue();
             if (value >= 0) {
                 completion->Func(completion, {}, value);
