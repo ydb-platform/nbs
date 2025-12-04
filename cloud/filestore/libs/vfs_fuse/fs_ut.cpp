@@ -188,13 +188,12 @@ struct TBootstrap
             DirectoryHandlesStoragePath = proto.GetDirectoryHandlesStoragePath();
         }
 
-        if (featuresConfig.GetServerWriteBackCacheEnabled()) {
-            proto.SetWriteBackCachePath(TempDir.Path() / "WriteBackCache");
-            // minimum possible capacity
-            proto.SetWriteBackCacheCapacity(writeBackCacheCapacity);
-            proto.SetWriteBackCacheAutomaticFlushPeriod(
-                writeBackCacheAutomaticFlushPeriodMs);
-        }
+        // WriteBackCache should be configured even if it is disabled
+        proto.SetWriteBackCachePath(TempDir.Path() / "WriteBackCache");
+        // minimum possible capacity
+        proto.SetWriteBackCacheCapacity(writeBackCacheCapacity);
+        proto.SetWriteBackCacheAutomaticFlushPeriod(
+            writeBackCacheAutomaticFlushPeriodMs);
 
         auto config = std::make_shared<TVFSConfig>(std::move(proto));
         Loop = NFuse::CreateFuseLoop(
@@ -2964,16 +2963,20 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         const ui64 nodeId = 123;
         const ui64 handleId = 456;
 
+        auto createBootstrap = [&](bool serverWriteBackCacheEnabled,
+                                   std::atomic<int>& counter)
         {
             NProto::TFileStoreFeatures features;
-            features.SetServerWriteBackCacheEnabled(true);
+            features.SetServerWriteBackCacheEnabled(
+                serverWriteBackCacheEnabled);
 
             TBootstrap bootstrap(
                 CreateWallClockTimer(),
                 CreateScheduler(),
                 features);
 
-            bootstrap.Service->CreateSessionHandler = [&](auto, auto)
+            bootstrap.Service->CreateSessionHandler =
+                [features, &sessionId](auto, auto)
             {
                 NProto::TCreateSessionResponse result;
                 result.MutableSession()->SetSessionId(sessionId);
@@ -2984,12 +2987,18 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 return MakeFuture(result);
             };
 
-            bootstrap.Service->WriteDataHandler = [&](auto, const auto&)
+            bootstrap.Service->WriteDataHandler = [&counter](auto, const auto&)
             {
-                writeDataCalled++;
+                counter++;
                 NProto::TWriteDataResponse result;
                 return MakeFuture(result);
             };
+
+            return bootstrap;
+        };
+
+        {
+            auto bootstrap = createBootstrap(true, writeDataCalled);
 
             bootstrap.Start();
             Y_DEFER
@@ -3015,36 +3024,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
 
         {
-            NProto::TFileStoreFeatures features;
-            features.SetServerWriteBackCacheEnabled(true);
-
-            TBootstrap bootstrap(
-                CreateWallClockTimer(),
-                CreateScheduler(),
-                features);
-
-            bootstrap.Service->CreateSessionHandler = [&](auto, auto)
-            {
-                // It is expected that the unwritten requests are restored from
-                // the persistent queue even if write-back cache is disabled now
-                NProto::TFileStoreFeatures features;
-                features.SetServerWriteBackCacheEnabled(false);
-
-                NProto::TCreateSessionResponse result;
-                result.MutableSession()->SetSessionId(sessionId);
-                result.MutableFileStore()->SetBlockSize(4096);
-                result.MutableFileStore()->MutableFeatures()->CopyFrom(
-                    features);
-                result.MutableFileStore()->SetFileSystemId(FileSystemId);
-                return MakeFuture(result);
-            };
-
-            bootstrap.Service->WriteDataHandler = [&](auto, const auto&)
-            {
-                writeDataCalled2++;
-                NProto::TWriteDataResponse result;
-                return MakeFuture(result);
-            };
+            auto bootstrap = createBootstrap(false, writeDataCalled2);
 
             bootstrap.Start();
             Y_DEFER
@@ -3059,7 +3039,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             UNIT_ASSERT_NO_EXCEPTION(flush.GetValue(WaitTimeout));
 
             // cache should be flushed
-            UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
             UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled2.load());
 
             auto reqWrite = std::make_shared<TWriteRequest>(

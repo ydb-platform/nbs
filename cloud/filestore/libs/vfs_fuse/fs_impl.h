@@ -57,15 +57,18 @@ struct TReleaseRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum class EServerWriteBackCacheMode
+enum class EServerWriteBackCacheState
 {
-    // The request should go to the session
+    // Requests should bypass WriteBackCache and go directly to the session
+    // (even if WriteBackCache is initialized)
     Disabled,
 
-    // The request should go to the WriteBackCache
+    // Requests should go to the WriteBackCache
     Enabled,
 
-    // The request should wait until the cache is empty then go to the session
+    // WriteBackCache is in the transition from Enabled to Disabled state.
+    // Requests should wait until WriteBackCache is flushed and then go
+    // directly to the session
     Draining
 };
 
@@ -409,7 +412,7 @@ private:
         fuse_ino_t ino,
         uint64_t fh);
 
-    EServerWriteBackCacheMode GetServerWriteBackCacheMode(
+    EServerWriteBackCacheState GetServerWriteBackCacheMode(
         const fuse_file_info* fi) const;
 
     bool UpdateNodeCache(

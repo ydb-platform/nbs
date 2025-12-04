@@ -428,7 +428,7 @@ void TFileSystem::Write(
         const auto& response = future.GetValue();
         const auto& error = response.GetError();
 
-        if (wbcMode != EServerWriteBackCacheMode::Enabled) {
+        if (wbcMode != EServerWriteBackCacheState::Enabled) {
             self->FSyncQueue
                 ->Dequeue(reqId, error, TNodeId{ino}, THandle{handle});
         }
@@ -438,7 +438,7 @@ void TFileSystem::Write(
         }
     };
 
-    if (wbcMode == EServerWriteBackCacheMode::Enabled) {
+    if (wbcMode == EServerWriteBackCacheState::Enabled) {
         WriteBackCache.WriteData(callContext, std::move(request))
             .Subscribe(std::move(callback));
         return;
@@ -446,15 +446,15 @@ void TFileSystem::Write(
 
     FSyncQueue->Enqueue(reqId, TNodeId {ino}, THandle {handle});
 
-    if (wbcMode == EServerWriteBackCacheMode::Disabled) {
+    if (wbcMode == EServerWriteBackCacheState::Disabled) {
         Session->WriteData(callContext, std::move(request))
             .Subscribe(std::move(callback));
         return;
     }
 
     Y_ABORT_UNLESS(
-        wbcMode == EServerWriteBackCacheMode::Draining,
-        "Invalid EServerWriteBackCacheMode value = %d",
+        wbcMode == EServerWriteBackCacheState::Draining,
+        "Invalid EServerWriteBackCacheState value = %d",
         wbcMode);
 
     auto flushFuture = WriteBackCache.FlushNodeData(request->GetNodeId());
@@ -613,7 +613,7 @@ void TFileSystem::WriteBuf(
         const auto& response = future.GetValue();
         const auto& error = response.GetError();
 
-        if (wbcMode != EServerWriteBackCacheMode::Enabled) {
+        if (wbcMode != EServerWriteBackCacheState::Enabled) {
             self->FSyncQueue
                 ->Dequeue(reqId, error, TNodeId{ino}, THandle{handle});
         }
@@ -623,7 +623,7 @@ void TFileSystem::WriteBuf(
         }
     };
 
-    if (wbcMode == EServerWriteBackCacheMode::Enabled) {
+    if (wbcMode == EServerWriteBackCacheState::Enabled) {
         WriteBackCache.WriteData(callContext, std::move(request))
             .Subscribe(std::move(callback));
         return;
@@ -631,15 +631,15 @@ void TFileSystem::WriteBuf(
 
     FSyncQueue->Enqueue(reqId, TNodeId{ino}, THandle{handle});
 
-    if (wbcMode == EServerWriteBackCacheMode::Disabled) {
+    if (wbcMode == EServerWriteBackCacheState::Disabled) {
         Session->WriteData(callContext, std::move(request))
             .Subscribe(std::move(callback));
         return;
     }
 
     Y_ABORT_UNLESS(
-        wbcMode == EServerWriteBackCacheMode::Draining,
-        "Invalid EServerWriteBackCacheMode value = %d",
+        wbcMode == EServerWriteBackCacheState::Draining,
+        "Invalid EServerWriteBackCacheState value = %d",
         wbcMode);
 
     auto flushFuture = WriteBackCache.FlushNodeData(request->GetNodeId());
@@ -1005,23 +1005,23 @@ void TFileSystem::FSyncDir(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-EServerWriteBackCacheMode TFileSystem::GetServerWriteBackCacheMode(
+EServerWriteBackCacheState TFileSystem::GetServerWriteBackCacheMode(
     const fuse_file_info* fi) const
 {
     if (!WriteBackCache) {
-        return EServerWriteBackCacheMode::Disabled;
+        return EServerWriteBackCacheState::Disabled;
     }
 
     if (fi->flags & O_DIRECT) {
-        return EServerWriteBackCacheMode::Disabled;
+        return EServerWriteBackCacheState::Disabled;
     }
 
     if (Config->GetServerWriteBackCacheEnabled()) {
-        return EServerWriteBackCacheMode::Enabled;
+        return EServerWriteBackCacheState::Enabled;
     }
 
-    return WriteBackCache.IsEmpty() ? EServerWriteBackCacheMode::Disabled
-                                    : EServerWriteBackCacheMode::Draining;
+    return WriteBackCache.IsEmpty() ? EServerWriteBackCacheState::Disabled
+                                    : EServerWriteBackCacheState::Draining;
 }
 
 }   // namespace NCloud::NFileStore::NFuse
