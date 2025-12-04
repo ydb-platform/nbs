@@ -1,6 +1,7 @@
 #pragma once
 
-#include <cloud/filestore/libs/diagnostics/public.h>
+#include <cloud/filestore/libs/diagnostics/profile_log_events.h>
+#include <cloud/filestore/libs/service/request.h>
 
 namespace NCloud::NFileStore::NProto {
     class TProfileLogRequestInfo;
@@ -57,8 +58,24 @@ void InitProfileLogRequestInfo(
 
 void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
+    EFileStoreRequest requestType,
+    TInstant currentTs);
+
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
     EFileStoreSystemRequest requestType,
     TInstant currentTs);
+
+template <typename TProtoRequest>
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
+    EFileStoreRequest requestType,
+    const TProtoRequest &proto,
+    TInstant currentTs)
+{
+    InitProfileLogRequestInfo(profileLogRequest, requestType, currentTs);
+    NFileStore::InitProfileLogRequestInfo(profileLogRequest, proto);
+}
 
 void FinalizeProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo&& profileLogRequest,

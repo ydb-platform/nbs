@@ -200,6 +200,11 @@ struct TProfileAware
         ProfileLogRequest.SetRequestType(static_cast<ui32>(requestType));
     }
 
+    explicit TProfileAware(NProto::TProfileLogRequestInfo profileLogRequest) noexcept
+        : ProfileLogRequest(std::move(profileLogRequest))
+    {
+    }
+
 protected:
     void Clear()
     {
@@ -1696,6 +1701,7 @@ struct TTxIndexTablet
     struct TWriteData
         : TTxIndexTabletBase
         , TSessionAware
+        , TProfileAware
         , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
@@ -1716,8 +1722,10 @@ struct TTxIndexTablet
                 const ui32 writeBlobThreshold,
                 const NProto::TWriteDataRequest& request,
                 TByteRange byteRange,
-                IBlockBufferPtr buffer)
+                IBlockBufferPtr buffer,
+                NProto::TProfileLogRequestInfo profileLogRequest)
             : TSessionAware(request)
+            , TProfileAware(std::move(profileLogRequest))
             , RequestInfo(std::move(requestInfo))
             , WriteBlobThreshold(writeBlobThreshold)
             , Handle(request.GetHandle())

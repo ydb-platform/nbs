@@ -4,6 +4,7 @@
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/storage/tablet/actors/tablet_writedata.h>
 #include <cloud/filestore/libs/storage/tablet/model/blob_builder.h>
+#include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 #include <cloud/filestore/libs/storage/tablet/model/split_range.h>
 
 #include <util/generic/set.h>
@@ -25,6 +26,13 @@ void TIndexTabletActor::HandleWriteData(
 {
     auto* msg = ev->Get();
 
+    NProto::TProfileLogRequestInfo profileLogRequest;
+    InitProfileLogRequestInfo(
+        profileLogRequest,
+        EFileStoreRequest::WriteData,
+        msg->Record,
+        ctx.Now());
+
     TString& buffer = *msg->Record.MutableBuffer();
     const TByteRange range(
         msg->Record.GetOffset(),
@@ -32,7 +40,8 @@ void TIndexTabletActor::HandleWriteData(
         GetBlockSize()
     );
 
-    auto replyError = [&] (const NProto::TError& error) {
+    auto replyError = [&] (const NProto::TError& error)
+    {
         FILESTORE_TRACK(
             ResponseSent_Tablet,
             msg->CallContext,
@@ -41,6 +50,13 @@ void TIndexTabletActor::HandleWriteData(
         auto response =
             std::make_unique<TEvService::TEvWriteDataResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
+
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            error,
+            ProfileLog);
     };
 
     if (!CompactionStateLoadStatus.Finished) {
@@ -140,7 +156,8 @@ void TIndexTabletActor::HandleWriteData(
         Config->GetWriteBlobThreshold(),
         msg->Record,
         range,
-        std::move(blockBuffer));
+        std::move(blockBuffer),
+        std::move(profileLogRequest));
 }
 
 void TIndexTabletActor::HandleWriteDataCompleted(
@@ -352,6 +369,13 @@ void TIndexTabletActor::CompleteTx_WriteData(
             ctx);
 
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+        FinalizeProfileLogRequestInfo(
+            std::move(args.ProfileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            args.Error,
+            ProfileLog);
     };
 
     if (FAILED(args.Error.GetCode())) {

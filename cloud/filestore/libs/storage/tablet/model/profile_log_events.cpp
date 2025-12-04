@@ -135,6 +135,15 @@ void InitProfileLogRequestInfo(
     InitProfileLogRequestInfo(profileLogRequest, currentTs);
 }
 
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
+    EFileStoreRequest requestType,
+    TInstant currentTs)
+{
+    profileLogRequest.SetRequestType(static_cast<ui32>(requestType));
+    InitProfileLogRequestInfo(profileLogRequest, currentTs);
+}
+
 void FinalizeProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo&& profileLogRequest,
     TInstant currentTs,
