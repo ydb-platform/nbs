@@ -46,21 +46,22 @@ func (t *collectCellsMetricsTask) Run(
 		types.DiskKind_DISK_KIND_HDD_NONREPLICATED,
 	}
 
-	defer t.cleanupMetrics(collectedDiskKinds)
-
 	ticker := time.NewTicker(t.metricsCollectionInterval)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		for zoneID, _ := range t.config.Cells {
-			err := t.collectZoneMetrics(ctx, zoneID, collectedDiskKinds)
-			if err != nil {
-				return err
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			for zoneID, _ := range t.config.Cells {
+				err := t.collectZoneMetrics(ctx, zoneID, collectedDiskKinds)
+				if err != nil {
+					return err
+				}
 			}
 		}
 	}
-
-	return nil
 }
 
 func (t *collectCellsMetricsTask) Cancel(
@@ -118,24 +119,4 @@ func (t *collectCellsMetricsTask) collectZoneMetrics(
 	}
 
 	return nil
-}
-
-func (t *collectCellsMetricsTask) cleanupMetrics(
-	collectedDiskKinds []types.DiskKind,
-) {
-
-	for zoneID, cells := range t.config.Cells {
-		for _, cellID := range cells.Cells {
-			for _, kind := range collectedDiskKinds {
-				subRegistry := t.registry.WithTags(map[string]string{
-					"kind": common.DiskKindToString(kind),
-					"zone": zoneID,
-					"cell": cellID,
-				})
-				subRegistry.Gauge("free_bytes").Set(float64(0))
-				subRegistry.Gauge("total_bytes").Set(float64(0))
-				subRegistry.Gauge("time_since_last_update").Set(float64(0))
-			}
-		}
-	}
 }
