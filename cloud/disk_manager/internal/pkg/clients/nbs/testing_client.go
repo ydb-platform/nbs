@@ -269,6 +269,10 @@ func (c *testingClient) CalculateCrc32WithEncryption(
 	if err != nil {
 		return DiskContentInfo{}, err
 	}
+
+	// Disks created with the encryption at rest option, or within a folder with
+	// encryption at rest enabled, must be mounted without the encryption option.
+	// NBS processes encryption on its side.
 	if encryptionSpec != nil {
 		if encryptionSpec.Mode == protos.EEncryptionMode_ENCRYPTION_AT_REST {
 			encryptionSpec.Mode = protos.EEncryptionMode_NO_ENCRYPTION

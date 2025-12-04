@@ -158,6 +158,9 @@ func (t *createDiskFromImageTask) Run(
 	}
 
 	var taskID string
+	// Disks created with the encryption at rest option, or within a folder with
+	// encryption at rest enabled, must be mounted without the encryption option.
+	// NBS processes encryption on its side.
 	if encryption != nil {
 		if encryption.Mode == types.EncryptionMode_ENCRYPTION_AT_REST {
 			encryption = &types.EncryptionDesc{
