@@ -200,10 +200,6 @@ func TestDeleteNonexistingFilesystemSnapshot(t *testing.T) {
 	storage := newStorage(t, ctx, db)
 	filesystemSnapshot := FilesystemSnapshotMeta{
 		ID: "fs-snapshot",
-		Filesystem: &types.Filesystem{
-			FilesystemId: "fs",
-			ZoneId:       "zone",
-		},
 	}
 
 	err = storage.FilesystemSnapshotDeleted(
