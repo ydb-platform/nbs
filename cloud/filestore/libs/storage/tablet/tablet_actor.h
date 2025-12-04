@@ -94,6 +94,9 @@ private:
         std::atomic<i64> SevenBytesHandlesCount{0};
         std::atomic<i64> UsedLocksCount{0};
 
+        std::atomic<i64> StrictFileSystemSizeEnforcementEnabled{0};
+        std::atomic<i64> DirectoryCreationInShardsEnabled{0};
+
         // Session stats
         std::atomic<i64> StatefulSessionsCount{0};
         std::atomic<i64> StatelessSessionsCount{0};
