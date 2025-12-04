@@ -467,25 +467,19 @@ void TFileSystem::DoWrite(
         "Invalid EServerWriteBackCacheState value = %d",
         wbcMode);
 
-    auto flushFuture = WriteBackCache.FlushNodeData(request->GetNodeId());
-    if (flushFuture.HasValue()) {
-        Session->WriteData(callContext, std::move(request))
-            .Subscribe(std::move(callback));
-        return;
-    }
-
-    flushFuture.Subscribe(
-        [ptr = weak_from_this(),
-         callback = std::move(callback),
-         callContext = std::move(callContext),
-         request = std::move(request)](const auto& f) mutable
-        {
-            f.GetValue();
-            if (auto self = ptr.lock()) {
-                self->Session->WriteData(callContext, std::move(request))
-                    .Subscribe(std::move(callback));
-            }
-        });
+    WriteBackCache.FlushNodeData(request->GetNodeId())
+        .Subscribe(
+            [ptr = weak_from_this(),
+             callback = std::move(callback),
+             callContext = std::move(callContext),
+             request = std::move(request)](const auto& f) mutable
+            {
+                f.GetValue();
+                if (auto self = ptr.lock()) {
+                    self->Session->WriteData(callContext, std::move(request))
+                        .Subscribe(std::move(callback));
+                }
+            });
 }
 
 void TFileSystem::WriteBufLocal(
