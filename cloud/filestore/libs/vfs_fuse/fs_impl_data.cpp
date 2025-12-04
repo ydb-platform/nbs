@@ -423,7 +423,7 @@ void TFileSystem::DoWrite(
     ui64 size,
     fuse_file_info* fi)
 {
-    const auto wbcMode = GetServerWriteBackCacheMode(fi);
+    const auto wbcMode = GetServerWriteBackCacheState(fi);
 
     const auto handle = fi->fh;
     const auto reqId = callContext->RequestId;
@@ -948,7 +948,7 @@ void TFileSystem::FSyncDir(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-EServerWriteBackCacheState TFileSystem::GetServerWriteBackCacheMode(
+EServerWriteBackCacheState TFileSystem::GetServerWriteBackCacheState(
     const fuse_file_info* fi) const
 {
     if (!WriteBackCache) {

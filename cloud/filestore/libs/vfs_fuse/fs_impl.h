@@ -412,7 +412,7 @@ private:
         fuse_ino_t ino,
         uint64_t fh);
 
-    EServerWriteBackCacheState GetServerWriteBackCacheMode(
+    EServerWriteBackCacheState GetServerWriteBackCacheState(
         const fuse_file_info* fi) const;
 
     bool UpdateNodeCache(
