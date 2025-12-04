@@ -715,7 +715,7 @@ def test_disk_manager_snapshot_database_migration_with_incremental_snapshot(
         assert len(database_entries) == len(checksums_by_snapshot_id)
         base_snapshot_ids = {}
         for record in database_entries:
-            base_snapshot_ids[record['snapshot_id']] = record['base_snapshot_id']
+            base_snapshot_ids[record['id']] = record['base_snapshot_id']
 
         # Check that base snapshot ids form a correct chain
         for i, snapshot_id in enumerate(checksums_by_snapshot_id.keys()):
