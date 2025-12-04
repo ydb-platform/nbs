@@ -351,6 +351,8 @@ public:
     ui64 GetDirectoryHandlesTableSize() const;
 
     bool GetGuestHandleKillPrivV2Enabled() const;
+
+    [[nodiscard]] bool GetAllowAdditionalSystemTablets() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
