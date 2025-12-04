@@ -725,7 +725,7 @@ public:
                 return;
             }
 
-            p->OnStop(std::move(s));
+            p->StopAsyncOnCompletionQueueStopped(std::move(s));
         };
 
         CompletionQueue->StopAsync(FUSE_ERROR).Subscribe(
@@ -1174,7 +1174,7 @@ private:
         FileSystem->Init();
     }
 
-    void OnStop(TPromise<void> stopCompleted)
+    void StopAsyncOnCompletionQueueStopped(TPromise<void> stopCompleted)
     {
         if (WriteBackCache && !WriteBackCache.IsEmpty()) {
             STORAGE_INFO(
@@ -1189,14 +1189,32 @@ private:
                 {
                     f.GetValue();
                     if (auto p = w.lock()) {
-                        p->OnFlushAllData(std::move(s));
+                        p->StopAsyncOnWriteBackCacheFlushed(std::move(s));
                     } else {
                         s.SetValue();
                     }
                 });
-            return;
+        } else {
+            StopAsyncDestroySession(std::move(stopCompleted));
         }
+    }
 
+    void StopAsyncOnWriteBackCacheFlushed(TPromise<void> stopCompleted)
+    {
+        Y_ABORT_UNLESS(
+            WriteBackCache && WriteBackCache.IsEmpty(),
+            "WriteBackCache was not emptied after FlushAllData");
+
+        STORAGE_INFO(
+            "[f:%s][c:%s] completed FlushAllData",
+            Config->GetFileSystemId().Quote().c_str(),
+            Config->GetClientId().Quote().c_str());
+
+        StopAsyncDestroySession(std::move(stopCompleted));
+    }
+
+    void StopAsyncDestroySession(TPromise<void> stopCompleted)
+    {
         FuseLoop->Unmount();
         FuseLoop = nullptr;
 
@@ -1216,25 +1234,14 @@ private:
                     s.SetValue();
                     return;
                 }
-                p->OnDestroySession(*callContext, f.GetValue(), std::move(s));
+                p->StopAsyncOnSessionDestroyed(
+                    *callContext,
+                    f.GetValue(),
+                    std::move(s));
             });
     }
 
-    void OnFlushAllData(TPromise<void> stopCompleted)
-    {
-        Y_ABORT_UNLESS(
-            WriteBackCache && WriteBackCache.IsEmpty(),
-            "WriteBackCache was not emptied after FlushAllData");
-
-        STORAGE_INFO(
-            "[f:%s][c:%s] completed FlushAllData",
-            Config->GetFileSystemId().Quote().c_str(),
-            Config->GetClientId().Quote().c_str());
-
-        OnStop(std::move(stopCompleted));
-    }
-
-    void OnDestroySession(
+    void StopAsyncOnSessionDestroyed(
         TCallContext& callContext,
         const NProto::TDestroySessionResponse& response,
         TPromise<void> stopCompleted)
