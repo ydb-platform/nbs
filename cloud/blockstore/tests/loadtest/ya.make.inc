@@ -10,6 +10,7 @@ DEPENDS(
     cloud/blockstore/tools/testing/loadtest/bin
 
     contrib/ydb/apps/ydb
+    contrib/ydb/apps/ydbd
 )
 
 PEERDIR(
@@ -19,5 +20,3 @@ PEERDIR(
     contrib/ydb/core/protos
     contrib/ydb/tests/library
 )
-
-INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/ydbd.inc)

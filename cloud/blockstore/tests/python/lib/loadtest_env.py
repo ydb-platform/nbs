@@ -58,7 +58,7 @@ class LocalLoadTest:
         self.__endpoint = endpoint
 
         if kikimr_binary_path is None:
-            kikimr_binary_path = yatest_common.binary_path(os.getenv("YDBD_BINARY"))
+            kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
 
         self.configurator = KikimrConfigGenerator(
             erasure=None,
