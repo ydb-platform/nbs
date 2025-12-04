@@ -41,6 +41,10 @@ class YDBLauncher:
         return list(self.__cluster.nodes.values())[0].port
 
     @property
+    def mon_port(self):
+        return list(self.__cluster.nodes.values())[0].mon_port
+
+    @property
     def domains_txt(self):
         return self.__cluster.config.domains_txt
 
