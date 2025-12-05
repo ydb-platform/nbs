@@ -252,18 +252,7 @@ struct TEvIndexTabletPrivate
     {
     };
 
-    struct TWriteBatchCompleted: TIndexOperationCompleted
-    {
-        const bool AddingUnconfirmedBlobsRequested;
-
-        TWriteBatchCompleted(
-            TSet<ui32> mixedBlocksRanges,
-            ui64 commitId,
-            bool addingUnconfirmedBlobsRequested)
-            : TIndexOperationCompleted(std::move(mixedBlocksRanges), commitId)
-            , AddingUnconfirmedBlobsRequested(addingUnconfirmedBlobsRequested)
-        {}
-    };
+    using TWriteBatchCompleted = TIndexOperationCompleted;
 
     //
     // ReadBlob
