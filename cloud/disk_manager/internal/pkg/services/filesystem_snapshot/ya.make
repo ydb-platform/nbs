@@ -1,6 +1,7 @@
 GO_LIBRARY()
 
 SRCS(
+    clear_deleted_filesystem_snapshots_task.go
     create_filesystem_snapshot_task.go
     delete_filesystem_snapshot_task.go
     interface.go
