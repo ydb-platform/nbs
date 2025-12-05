@@ -467,23 +467,7 @@ bool TDiskRegistryState::TDiskState::operator==(const TDiskState& rhs) const {
 
 bool TDiskRegistryState::CompareMeaningfulFields(const TDiskRegistryState& rhs) const{
     using google::protobuf::util::MessageDifferencer;
-
-    auto CompareProtoVectors = []<typename T>(TVector<T> vec1,
-         TVector<T> vec2) {
-        if (vec1.size() != vec2.size()) {
-            return false;
-        }
-        for (size_t i = 0; i < vec1.size(); ++i) {
-            if (!MessageDifferencer::ApproximatelyEquals(vec1[i], vec2[i])) {
-                return false;
-            }
-        }
-        return true;
-    };    
-
-    if(!MessageDifferencer::ApproximatelyEquals(CurrentConfig, rhs.CurrentConfig)) {
-        return false;
-    }
+    static_assert(sizeof(*this) == 2144);
 
     const auto& vPlacementGroups = rhs.PlacementGroups;
     if(PlacementGroups.size() != vPlacementGroups.size()) {
@@ -498,16 +482,12 @@ bool TDiskRegistryState::CompareMeaningfulFields(const TDiskRegistryState& rhs) 
         }
     }
 
-    return google::protobuf::util::MessageDifferencer::Equals(StorageConfig->GetStorageConfigProto(), rhs.StorageConfig->GetStorageConfigProto()) &&
-            CompareProtoVectors(GetDirtyDevices(), rhs.GetDirtyDevices()) &&
-            AgentList == rhs.AgentList &&
-            Disks == rhs.Disks &&
+    return MessageDifferencer::Equals(StorageConfig->GetStorageConfigProto(), rhs.StorageConfig->GetStorageConfigProto()) &&
+            MessageDifferencer::ApproximatelyEquals(CurrentConfig, rhs.CurrentConfig) &&
+            DeviceList.CompareDevices(rhs.DeviceList) &&
+            AgentList.CompareAgents(rhs.AgentList) &&
             BrokenDisks == rhs.BrokenDisks &&
-            GetDisksToReallocate() == rhs.GetDisksToReallocate() &&
             NotificationSystem == rhs.NotificationSystem &&
-            DisksToCleanup == rhs.DisksToCleanup &&
-            GetOutdatedVolumeConfigs() == rhs.GetOutdatedVolumeConfigs() &&
-            CompareProtoVectors(GetSuspendedDevices(), rhs.GetSuspendedDevices()) &&
             AutomaticallyReplacedDeviceIds == rhs.AutomaticallyReplacedDeviceIds;
 }
 

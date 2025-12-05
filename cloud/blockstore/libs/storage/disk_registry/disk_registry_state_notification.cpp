@@ -56,6 +56,9 @@ TNotificationSystem::TNotificationSystem(
 
 bool TNotificationSystem::operator==(const TNotificationSystem& rhs) const {
     static_assert(sizeof(*this) == 200);
+    if(UserNotifications.Count != rhs.UserNotifications.Count) {
+        return false;
+    }
     const auto& vUserNotifications = rhs.UserNotifications.Storage;
     for(const auto& [k, v] : UserNotifications.Storage) {
         if(vUserNotifications.find(k) == vUserNotifications.end()) {
@@ -72,7 +75,15 @@ bool TNotificationSystem::operator==(const TNotificationSystem& rhs) const {
             }
         }    
     }
-    return true;
+
+    return
+        SupportsNotifications == rhs.SupportsNotifications &&
+        DisksToReallocate == rhs.DisksToReallocate &&
+        DisksToReallocateSeqNo == rhs.DisksToReallocateSeqNo &&
+        DiskStateUpdates == rhs.DiskStateUpdates &&
+        DiskStateSeqNo == rhs.DiskStateSeqNo &&
+        OutdatedVolumeConfigs == rhs.OutdatedVolumeConfigs &&
+        VolumeConfigSeqNo == rhs.VolumeConfigSeqNo;
 }
 
 // TODO: Remove legacy compatibility in next release

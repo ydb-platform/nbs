@@ -508,10 +508,10 @@ auto TAgentList::RegisterAgent(
         .OldConfigs = std::move(oldConfigs)};
 }
 
-bool TAgentList::operator==(const TAgentList& rhs) const
+bool TAgentList::CompareAgents(const TAgentList& rhs) const
 {
-    static_assert(sizeof(*this) == 400);
     using google::protobuf::util::MessageDifferencer;
+    static_assert(sizeof(*this) == 400);
 
     const auto& vAgentListParams = rhs.GetDiskRegistryAgentListParams();
     if(GetDiskRegistryAgentListParams().size() != vAgentListParams.size()) {

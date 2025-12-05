@@ -121,6 +121,8 @@ public:
 
     void RemoveDevices(const NProto::TAgentConfig& agent);
 
+    [[nodiscard]] bool CompareDevices(const TDeviceList& rhs) const;
+
     [[nodiscard]] TNodeId FindNodeId(const TDeviceId& id) const;
     [[nodiscard]] TString FindAgentId(const TDeviceId& id) const;
 

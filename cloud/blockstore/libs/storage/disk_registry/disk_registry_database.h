@@ -34,6 +34,7 @@ struct TFinishedMigration
                         // we may not start migration if this field is set to
                         // false
         true;
+    bool operator==(const TFinishedMigration& rhs) const = default;
 };
 
 struct TLaggingDevice

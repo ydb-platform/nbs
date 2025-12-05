@@ -103,7 +103,7 @@ public:
         TVector<TDeviceId> NewDevices;
     };
 
-    bool operator==(const TAgentList& rhs) const;
+    bool CompareAgents(const TAgentList& rhs) const;
 
     // If agent with agentId exists, split devices between Devices &
     // UnknownDevices according to knownAgent.
