@@ -2923,7 +2923,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     // as pending and will wait instead.
 
                     // Cache fullness can be detected by non-zero WriteData
-                    // attempts from Flush that is triggered when there is not
+                    // attempts from Flush that is triggered when there is no
                     // space to store the request
 
                     const bool nonZeroPendingIsExpected =
