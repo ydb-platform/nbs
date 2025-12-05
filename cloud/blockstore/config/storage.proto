@@ -1379,4 +1379,7 @@ message TStorageServiceConfig
 
     // Policy for allocating nonreplicated disks.
     optional ENonreplAllocationPolicy NonreplAllocationPolicy = 469;
+
+    // Enable to send metrics from local tablets to hive.
+    optional bool SendLocalTabletMetricsToHiveEnabled = 470;
 }
