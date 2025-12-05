@@ -40,6 +40,7 @@ struct TLaggingDevice
 {
     NProto::TLaggingDevice Device;
     ui64 SeqNo = 0;
+    bool operator==(const TLaggingDevice& rhs) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

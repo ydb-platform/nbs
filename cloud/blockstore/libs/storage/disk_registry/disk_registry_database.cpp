@@ -23,6 +23,12 @@ enum EDiskRegistryConfigKey
 
 using namespace NKikimr;
 
+bool TLaggingDevice::operator==(const TLaggingDevice& rhs) const
+{
+    static_assert(sizeof(*this) == 40);
+    return google::protobuf::util::MessageDifferencer::ApproximatelyEquals(
+               Device, rhs.Device) && SeqNo == rhs.SeqNo;
+}
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskRegistryDatabase::InitSchema()

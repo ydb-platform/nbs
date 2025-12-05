@@ -442,7 +442,14 @@ bool TDiskRegistryState::TDiskState::operator==(const TDiskState& rhs) const {
             FolderId == rhs.FolderId &&
             UserId == rhs.UserId &&
             Devices == rhs.Devices &&
+            MigrationTarget2Source == rhs.MigrationTarget2Source &&
+            MigrationSource2Target == rhs.MigrationSource2Target &&
+            FinishedMigrations == rhs.FinishedMigrations &&
+            MigrationStartTs == rhs.MigrationStartTs &&
+            AcquireInProgress == rhs.AcquireInProgress &&
             LogicalBlockSize == rhs.LogicalBlockSize &&
+            PlacementGroupId == rhs.PlacementGroupId &&
+            PlacementPartitionIndex == rhs.PlacementPartitionIndex &&
             State == rhs.State &&
             StateTs == rhs.StateTs &&
             ReplicaCount == rhs.ReplicaCount &&
@@ -450,8 +457,12 @@ bool TDiskRegistryState::TDiskState::operator==(const TDiskState& rhs) const {
             google::protobuf::util::MessageDifferencer::ApproximatelyEquals(
                 CheckpointReplica,
                 rhs.CheckpointReplica) &&
+            LostDeviceIds == rhs.LostDeviceIds &&
             MediaKind == rhs.MediaKind &&
-            MigrationStartTs == rhs.MigrationStartTs;
+            std::ranges::equal(History, rhs.History, [](const NProto::TDiskHistoryItem& lhs, const NProto::TDiskHistoryItem& rhs){
+                return google::protobuf::util::MessageDifferencer::ApproximatelyEquals(lhs, rhs);
+            }) &&
+            OutdatedLaggingDevices == rhs.OutdatedLaggingDevices;
 }
 
 bool TDiskRegistryState::CompareMeaningfulFields(const TDiskRegistryState& rhs) const{
