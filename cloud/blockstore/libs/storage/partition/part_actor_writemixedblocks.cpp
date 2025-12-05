@@ -235,6 +235,7 @@ void TWriteMixedBlocksActor::WriteBlobs(const TActorContext& ctx)
             BlockSizeForChecksums,
             false); // async
 
+        ui64 requestId = request->CallContext->RequestId;
         for (const auto& sr: req.SubRequests) {
             if (!sr.RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
                 LWTRACK(
@@ -243,7 +244,11 @@ void TWriteMixedBlocksActor::WriteBlobs(const TActorContext& ctx)
                     "TEvPartitionPrivate::TEvWriteBlobRequest",
                     sr.RequestInfo->CallContext->RequestId);
             }
+            if (sr.RequestInfo->CallContext->LWOrbit.HasShuttles()) {
+                requestId = sr.RequestInfo->CallContext->RequestId;
+            }
         }
+        request->CallContext->RequestId = requestId;
 
         ForkedCallContexts.emplace_back(request->CallContext);
 

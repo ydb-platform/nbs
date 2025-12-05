@@ -97,12 +97,13 @@
         NAMES(NCloud::NProbeParam::RequestType, "requestId"))                  \
     PROBE(BackgroundTaskStarted_Partition,                                     \
         GROUPS("NBSBackground"),                                               \
-        TYPES(TString, ui32, ui64, TString),                                   \
+        TYPES(TString, ui32, ui64, TString, ui64),                             \
         NAMES(                                                                 \
             NCloud::NProbeParam::RequestType,                                  \
             NCloud::NProbeParam::MediaKind,                                    \
             "requestId",                                                       \
-            "diskId"))                                                         \
+            "diskId",                                                          \
+            NCloud::NProbeParam::StartTime))                                   \
     PROBE(ForkFailed,                                                          \
         GROUPS("NBSRequest"),                                                  \
         TYPES(TString, ui64),                                                  \

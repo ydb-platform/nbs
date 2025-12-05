@@ -17,14 +17,15 @@
             "diskId"))                                                         \
     PROBE(RequestStarted,                                                      \
         GROUPS("NBSRequest"),                                                  \
-        TYPES(TString, ui32, ui64, TString, ui64, ui64),                       \
+        TYPES(TString, ui32, ui64, TString, ui64, ui64, ui64),                 \
         NAMES(                                                                 \
             NCloud::NProbeParam::RequestType,                                  \
             NCloud::NProbeParam::MediaKind,                                    \
             NCloud::NProbeParam::RequestId,                                    \
             NCloud::NProbeParam::DiskId,                                       \
             NCloud::NProbeParam::StartBlock,                                   \
-            NCloud::NProbeParam::RequestSize))                                 \
+            NCloud::NProbeParam::RequestSize,                                  \
+            NCloud::NProbeParam::StartTime))                                   \
     PROBE(RequestAcquired,                                                     \
         GROUPS("NBSRequest"),                                                  \
         TYPES(TString, ui64, TString),                                         \
