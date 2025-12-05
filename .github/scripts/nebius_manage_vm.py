@@ -1,5 +1,4 @@
 import argparse
-import logging
 import math
 import os
 import random
@@ -11,6 +10,7 @@ import asyncio
 import requests
 import yaml
 import functools
+from .helpers import setup_logger, github_output, KeyValueAction, SENSITIVE_DATA_VALUES
 from github import Auth as GithubAuth
 from github import Github
 
@@ -35,35 +35,7 @@ from nebius.api.nebius.compute.v1 import (
     ExistingDisk,
 )
 
-SENSITIVE_DATA_VALUES = {}
-if os.environ.get("GITHUB_TOKEN"):
-    SENSITIVE_DATA_VALUES["github_token"] = os.environ.get("GITHUB_TOKEN")
-if os.environ.get("VM_USER_PASSWD"):
-    SENSITIVE_DATA_VALUES["passwd"] = os.environ.get("VM_USER_PASSWD")
-
-
-class MaskingFormatter(logging.Formatter):
-    @staticmethod
-    def mask_sensitive_data(msg):
-        # Iterate over the patterns and replace sensitive data with '***'
-        for pattern_name, pattern in SENSITIVE_DATA_VALUES.items():
-            msg = msg.replace(pattern, f"[{pattern_name}=***]")
-        return msg
-
-    def format(self, record):
-        original = logging.Formatter.format(self, record)
-        return self.mask_sensitive_data(original)
-
-
-formatter = MaskingFormatter("%(asctime)s: %(levelname)s: %(message)s")
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
-console_handler.setFormatter(formatter)
-
-logger = logging.getLogger()
-logger.addHandler(console_handler)
-logger.setLevel(logging.INFO)
-
+logger = setup_logger()
 
 DISK_NAME_PREFIX = "disk-"
 PRESETS = {
@@ -94,31 +66,12 @@ PRESETS = {
 }
 
 
-def github_output(key: str, value: str, is_secret: bool = False):
-    GITHUB_OUTPUT = os.environ.get("GITHUB_OUTPUT")
-
-    if GITHUB_OUTPUT:
-        with open(GITHUB_OUTPUT, "a") as fp:
-            fp.write(f"{key}={value}\n")
-
-    logger.info('echo "%s=%s" >> $GITHUB_OUTPUT', key, "******" if is_secret else value)
-
-
 def generate_github_label():
     generated_string = "".join(
         random.choices(string.ascii_lowercase + string.digits, k=8)
     )
     logger.info("Generated label: %s", generated_string)
     return generated_string
-
-
-class KeyValueAction(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string=None):  # noqa: U100
-        kv_dict = {}
-        for item in values.split(","):
-            key, value = item.split("=")
-            kv_dict[key] = value
-        setattr(namespace, self.dest, kv_dict)
 
 
 def fetch_github_team_public_keys(gh: Github, github_org: str, team_slug: str):
@@ -435,7 +388,7 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
 
     GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
 
-    gh = Github(auth=GithubAuth.Token(GITHUB_TOKEN))
+    gh = Github(GITHUB_TOKEN)
 
     runner_registration_token = get_runner_token(
         args.github_repo_owner, args.github_repo, GITHUB_TOKEN
@@ -476,11 +429,12 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
         args.github_repo,
         runner_registration_token,
         args.github_runner_version,
-        runner_github_label,
+        runner_github_label + ",runner_" + args.runner_flavor,
     )
 
     labels = args.labels
     labels["runner-label"] = runner_github_label
+    labels["runner-flavor"] = args.runner_flavor
 
     disk_id = await create_disk(sdk, args)
     service = InstanceServiceClient(sdk)
@@ -558,12 +512,12 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
             instance_id,
             runner_github_label,
         )
-        github_output("instance-id", instance_id)
-        github_output("label", runner_github_label)
-        github_output("local-ipv4", local_ipv4)
-        github_output("vm-preset", args.preset)
+        github_output(logger, "instance-id", instance_id)
+        github_output(logger, "label", runner_github_label)
+        github_output(logger, "local-ipv4", local_ipv4)
+        github_output(logger, "vm-preset", args.preset)
         if external_ipv4:
-            github_output("external-ipv4", external_ipv4)
+            github_output(logger, "external-ipv4", external_ipv4)
 
         logger.info("Waiting for VM to be registered as Github Runner")
         runner_id = wait_for_runner_registration(
@@ -581,44 +535,46 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
 
 
 def remove_runner_from_github(
-    github_repo_owner: str, github_repo: str, vm_id: str, apply: bool
-):
-    github_token = os.environ["GITHUB_TOKEN"]
-
-    gh = Github(auth=GithubAuth.Token(github_token))
-
-    runner_id = find_runner_by_name(gh, github_repo_owner, github_repo, vm_id)
+    client: Github, github_repo_owner: str, github_repo: str, vm_id: str, apply: bool
+) -> str:
+    runner_id = find_runner_by_name(client, github_repo_owner, github_repo, vm_id)
+    repo = os.environ.get("GITHUB_REPOSITORY")
 
     if runner_id is None:
         # this is not critical error, just log it and be done with it,
         # removing the VM is more important
         logger.info("Runner with name %s not found, skipping", vm_id)
-        return
+        return "not_found"
+
+    runner = client.get_repo(repo).get_self_hosted_runner(runner_id)
+    if runner is None:
+        logger.info("Runner with name %s not found, skipping", vm_id)
+        return "not_found"
+    logger.info(
+        "Runner with name %s found: id:%s status:%s busy: %s ",
+        runner.name,
+        runner.id,
+        runner.status,
+        runner.busy,
+    )
+    if runner.busy:
+        logger.info("Runner with name %s is busy, skipping", vm_id)
+        return "busy"
 
     if apply:
-        delete_status = requests.delete(
-            f"https://api.github.com/repos/{github_repo_owner}/{github_repo}/actions/runners/{runner_id}",
-            headers={
-                "Authorization": f"Bearer {github_token}",
-                "Accept": "application/vnd.github+json",
-                "X-Github-Api-Version": "2022-11-28",
-            },
-        )
+        result = client.get_repo(repo).remove_self_hosted_runner(runner_id)
 
-        if delete_status.status_code != 204:
+        if not result:
             # removed throwing exception here, because removing VM is more important
             # added additional logging to see what went wrong
-            logger.info(
-                "Failed to remove runner with name %s, status_code: %d",
-                vm_id,
-                delete_status.status_code,
-            )
-            logger.info("Response: %s", delete_status.text)
-            return
+            logger.info("Failed to remove runner with name %s", vm_id)
+            return "failed"
 
         logger.info("Removed runner with name %s and id %s", vm_id, runner_id)
+        return "removed"
     else:
         logger.info("Would remove runner with name %s and id %s", vm_id, runner_id)
+        return "would_remove"
 
 
 async def remove_disk_by_name(sdk: SDK, args: argparse.Namespace, instance_name: str):
@@ -635,6 +591,7 @@ async def remove_disk_by_name(sdk: SDK, args: argparse.Namespace, instance_name:
         response = await service.get_by_name(request)
         disk_id = response.metadata.id
         if disk_id is None:
+            logger.info("ListDisksRequest result: %s", response)
             logger.error(
                 "Failed to find disk with name %s", DISK_NAME_PREFIX + instance_name
             )
@@ -690,9 +647,22 @@ async def remove_vm_by_id(sdk: SDK, instance_id: int = None) -> str:
 
 
 async def remove_vm(sdk: SDK, args: argparse.Namespace):
-    remove_runner_from_github(
-        args.github_repo_owner, args.github_repo, args.id, args.apply
+    GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
+
+    gh = Github(GITHUB_TOKEN)
+
+    result = remove_runner_from_github(
+        gh, args.github_repo_owner, args.github_repo, args.id, args.apply
     )
+    if result == "not_found":
+        logger.info("Runner with name %s not found in github, we can continue", args.id)
+    elif result == "busy":
+        logger.info("Runner with name %s is busy, skipping", args.id)
+        return
+    elif result == "failed":
+        logger.error("Failed to remove runner with name %s, we can ignore it", args.id)
+    elif result == "removed" or result == "would_remove":
+        logger.info("Runner with name %s removed from github", args.id)
 
     if not args.apply:
         logger.info("Would delete VM with ID %s", args.id)
@@ -804,6 +774,11 @@ async def main() -> None:
         action=KeyValueAction,
         default="",
         help="Label for the VM (k=v,k2=v2)",
+    )
+    create.add_argument(
+        "--runner-flavor",
+        default="none",
+        help="Additional label for the Github Runner",
     )
 
     create.add_argument("--retry-time", default=10, help="How often to retry (seconds)")

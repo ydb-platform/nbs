@@ -1,0 +1,91 @@
+name: Manage nebius runners
+description: Create and delete nebius runners to achieve desired amount of runners
+inputs:
+  parent_id:
+    required: true
+    description: "parent id"
+  vms_ttl:
+    required: true
+    description: "vms ttl"
+  max_vms_to_create:
+    required: true
+    description: "max vms to create"
+  maximum_amount_of_vms_to_have:
+    required: true
+    description: "maximum amount of vms to have"
+  extra_vms_if_needed:
+    required: true
+    description: "extra vms if needed"
+  loop:
+    required: false
+    description: "loop the action"
+    default: "no"
+  flavor:
+    required: true
+    description: "required flavor"
+  token:
+    required: true
+    description: "github token"
+  service_account_key:
+    required: true
+    description: "service account key"
+outputs:
+  VMS_TO_CREATE:
+    value: ${{ steps.populate.outputs.VMS_TO_CREATE }}
+    description: "vms to create"
+  VMS_TO_REMOVE:
+    value: ${{ steps.populate.outputs.VMS_TO_REMOVE }}
+    description: "vms to remove"
+  BROKEN_VMS_TO_REMOVE:
+    value: ${{ steps.populate.outputs.BROKEN_VMS_TO_REMOVE }}
+    description: "broken vms to remove"
+
+runs:
+  using: composite
+  steps:
+    - name: set up home
+      shell: bash
+      run: echo "HOME=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+    - name: write service account key to file
+      shell: bash
+      run: |
+        export SERVICE_ACCOUNT_KEY=$(mktemp sa.XXXX)
+        echo "SERVICE_ACCOUNT_KEY=${SERVICE_ACCOUNT_KEY}" >> $GITHUB_ENV
+        echo "${KEY_CONTENTS}" > $SERVICE_ACCOUNT_KEY
+      env:
+        KEY_CONTENTS: ${{ inputs.service_account_key }}
+    - name: install dependencies
+      shell: bash
+      run: |
+        pip install -r .github/scripts/requirements.txt
+    - name: Select nebius runner
+      shell: bash
+      id: populate
+      run: |
+        export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
+        python3 -m scripts.nebius_populate_vms \
+          --service-account-key "${SERVICE_ACCOUNT_KEY}" \
+          ${LOOP_ARG} \
+          --github-repo-owner "${OWNER}" \
+          --github-repo "${REPO}" \
+          --parent-id "${PARENT_ID}" \
+          --max-vms-to-create "${MAX_VMS_TO_CREATE}" \
+          --flavor "${FLAVOR}" \
+          --vms-older-than "${VMS_OLDER_THAN}" \
+          --maximum-amount-of-vms-to-have "${MAXIMUM_AMOUNT_OF_VMS_TO_HAVE}" \
+          --extra-vms-if-needed "${EXTRA_VMS_IF_NEEDED}"
+      env:
+        OWNER: ${{ github.event.repository.owner.login }}
+        REPO: ${{ github.event.repository.name }}
+        PARENT_ID: ${{ inputs.parent_id }}
+        MAX_VMS_TO_CREATE: ${{ inputs.max_vms_to_create }}
+        MAXIMUM_AMOUNT_OF_VMS_TO_HAVE: ${{ inputs.maximum_amount_of_vms_to_have }}
+        EXTRA_VMS_IF_NEEDED: ${{ inputs.extra_vms_if_needed }}
+        FLAVOR: ${{ inputs.flavor }}
+        VMS_OLDER_THAN: ${{ inputs.vms_ttl }}
+        GITHUB_TOKEN: ${{ inputs.token }}
+        LOOP_ARG: ${{ inputs.loop == 'yes' && '--loop' || '' }}
+    - name: cleanup
+      if: always()
+      shell: bash
+      run: rm -f "${SERVICE_ACCOUNT_KEY}"

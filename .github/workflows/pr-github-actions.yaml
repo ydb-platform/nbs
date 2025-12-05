@@ -49,7 +49,7 @@ concurrency:
 
 jobs:
   set-env:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
     outputs:
       allow_downgrade: ${{ env.allow_downgrade == 'false' && 'no' || 'yes' }}
       large_tests: ${{ env.large_tests == 'false' && 'no' || 'yes' }}
@@ -59,7 +59,7 @@ jobs:
         id: set-env
         run: echo
   check-running-allowed:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
     outputs:
       result: ${{ steps.check-ownership-membership.outputs.result }}
     steps:
@@ -177,7 +177,7 @@ jobs:
   shell:
     needs: [set-env, check-running-allowed]
     if: needs.check-running-allowed.outputs.result == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
 
     steps:
       - name: checkout
@@ -199,7 +199,7 @@ jobs:
 
       - name: generate shellscripts from github actions
         run: |
-          python .github/scripts/shell-extractor.py
+          python3 .github/scripts/shell_extractor.py
           find .temporary/ -type f -name "*.sh";
 
       - name: shellcheck for .github dir
@@ -227,7 +227,7 @@ jobs:
   python:
     needs: [set-env, check-running-allowed]
     if: needs.check-running-allowed.outputs.result == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
 
     steps:
       - name: checkout
@@ -251,7 +251,10 @@ jobs:
           python-version: "3.10"
 
       - name: set up dependencies
-        run: pip install -r .github/scripts/requirements_dev.txt
+        run: |
+          pip install -r .github/scripts/requirements.txt
+          pip install -r .github/scripts/requirements_dev.txt
+
 
       - name: flake8
         uses: reviewdog/action-flake8@v3.8.0
@@ -267,11 +270,46 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           workdir: .github/
           reporter: ${{ steps.reporter.outputs.value }}
+      
+      - name: pytest
+        id: pytest
+        shell: bash
+        run: |
+          set -x
+          export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
+          cd .github/ || true
+          pytest --tb=short --disable-warnings --maxfail=1 --junitxml=${GITHUB_WORKSPACE}/pytest-test-results.xml --html=${GITHUB_WORKSPACE}/pytest-report.html --self-contained-html
+      - name: Upload pytest test results
+        if: ${{ always() }}
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-results
+          path: pytest-test-results.xml
+      - name: Upload pytest test results
+        if: ${{ always() }}
+        id: upload-html
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-report-html
+          path: pytest-report.html 
+      - name: comment on issue (${{ steps.pytest.outcome }})
+        if: ${{ github.event_name == 'pull_request' && always() }}
+        uses: actions/github-script@v7.0.1
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: 'status: ${{ steps.pytest.outcome == 'success' && ':green_circle:' || ':red_circle:' }} [pytest result](${{ steps.upload.outputs.artifact-url }}) [pytest report](${{ steps.upload-html.outputs.artifact-url }})'
+            })
+
 
   workflows:
     needs: [set-env, check-running-allowed]
     if: needs.check-running-allowed.outputs.result == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
     steps:
       - name: checkout
         uses: actions/checkout@v4

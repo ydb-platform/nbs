@@ -124,10 +124,10 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     outputs:
-      label: ${{ steps.start-runner.outputs.label }}
-      instance-id: ${{ steps.start-runner.outputs.instance-id }}
-      runner_ipv4: ${{ steps.start-runner.outputs.external-ipv4 }}
-      runner_local_ipv4: ${{ steps.start-runner.outputs.local-ipv4 }}
+      label: ${{ steps.start-runner.outputs.LABEL }}
+      instance-id: ${{ steps.start-runner.outputs.INSTANCE_ID }}
+      runner_ipv4: ${{ steps.start-runner.outputs.RUNNER_IPV4 }}
+      runner_local_ipv4: ${{ steps.start-runner.outputs.RUNNER_LOCAL_IPV4 }}
       build_threads: ${{ steps.calculate-threads.outputs.build_threads || '60' }}
       test_threads: ${{ steps.calculate-threads.outputs.test_threads || '32' }}
       link_threads: ${{ steps.calculate-threads.outputs.link_threads || '24' }}
@@ -187,7 +187,7 @@ jobs:
 
   build-and-test:
     name: Build and test NBS (${{ inputs.build_preset }}) [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }} ip=${{ needs.provide-runner.outputs.runner_ipv4 }}]
-    uses: ./.github/workflows/build_and_test_ya.yaml
+    uses: ./.github/workflows/on_demand_build_and_test_ya.yaml
     needs:
       - provide-runner
     with:

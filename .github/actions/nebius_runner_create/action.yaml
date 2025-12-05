@@ -46,6 +46,10 @@ inputs:
   vm_labels:
     required: true
     description: "vm labels"
+  vm_flavor:
+    required: false
+    description: "runner flavor"
+    default: "none"
   vm_user_passwd:
     required: true
     description: "vm user password"
@@ -54,32 +58,35 @@ inputs:
     description: "allow downgrade"
 
 outputs:
-  label:
+  LABEL:
     description: >-
       Name of the unique label assigned to the runner.
       The label is used in two cases:
       - to use as the input of 'runs-on' property for the following jobs;
       - to remove the runner from GitHub when it is not needed anymore.
     value: ${{ steps.create-vm.outputs.label }}
-  instance-id:
+  INSTANCE_ID:
     description: >-
       Instance id of the created runner.
       The id is used to terminate the instance when the runner is not needed anymore.
     value: ${{ steps.create-vm.outputs.instance-id }}
-  local-ipv4:
+  RUNNER_LOCAL_IPV4:
     description: >-
       Local ipv4 address of the created runner.
       The address is used to connect to the runner via SSH.
     value: ${{ steps.create-vm.outputs.local-ipv4 }}
-  external-ipv4:
+  RUNNER_IPV4:
     description: >-
       External ipv4 address of the created runner.
       The address is used to connect to the runner via SSH.
     value: ${{ steps.create-vm.outputs.external-ipv4 || '0.0.0.0' }}
-  vm-preset:
+  VM_PRESET:
     description: >-
       Resulting VM preset of the created runner.
     value: ${{ steps.create-vm.outputs.vm-preset || inputs.vm_preset }}
+  RUNNER_FLAVOR:
+    value: ${{ steps.result.outputs.RUNNER_FLAVOR }}
+    description: "runner flavor"
 
 
 
@@ -89,7 +96,7 @@ runs:
     - name: write service account key to file
       shell: bash
       run: |
-        export SERVICE_ACCOUNT_KEY=$(mktemp)
+        export SERVICE_ACCOUNT_KEY=$(mktemp sa.XXXX)
         echo "SERVICE_ACCOUNT_KEY=${SERVICE_ACCOUNT_KEY}" >> $GITHUB_ENV
         echo "${KEY_CONTENTS}" > $SERVICE_ACCOUNT_KEY
       env:
@@ -102,7 +109,8 @@ runs:
       id: create-vm
       shell: bash
       run: |
-        python .github/scripts/nebius-manage-vm.py create ${ORG} ${TEAM} ${VM_ALLOW_DOWNGRADE} \
+        export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
+        python3 -m scripts.nebius_manage_vm create ${ORG} ${TEAM} ${VM_ALLOW_DOWNGRADE} \
           --github-repo-owner "${REPO_OWNER}" \
           --github-repo "${REPO}" \
           --service-account-key "${SERVICE_ACCOUNT_KEY}" \
@@ -114,6 +122,7 @@ runs:
           --subnet-id "${VM_SUBNET}" \
           --image-id "$VM_IMAGE" \
           --labels "$VM_LABELS" \
+          --runner-flavor "$VM_FLAVOR" \
           --apply
       env:
         GITHUB_TOKEN: ${{ inputs.token }}
@@ -130,9 +139,14 @@ runs:
         VM_SUBNET: ${{ inputs.vm_subnet }}
         VM_IMAGE: ${{ inputs.vm_image }}
         VM_LABELS: ${{ inputs.vm_labels }}
+        VM_FLAVOR: ${{ inputs.vm_flavor }}
         VM_USER_PASSWD: ${{ inputs.vm_user_passwd }}
         VM_ALLOW_DOWNGRADE: ${{ inputs.vm_allow_downgrade == 'yes' && '--allow-downgrade' || '' }}
 
+    - name: cleanup
+      if: always()
+      shell: bash
+      run: rm -f "${SERVICE_ACCOUNT_KEY}"
     - name: save console output if we had any
       if: ${{ steps.create-vm.outputs.console-output }}
       uses: actions/upload-artifact@v4

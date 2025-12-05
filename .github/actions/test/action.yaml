@@ -64,6 +64,11 @@ inputs:
     required: false
     default: "/mnt/ya_make_tmpfs"
     description: "Mount point path for the tmpfs filesystem"
+outputs:
+  failed_tests:
+    description: "List of failed tests"
+    value: ${{ steps.check_test_results.outputs.failed_tests }}
+
 runs:
   using: composite
   steps:
@@ -71,7 +76,7 @@ runs:
       shell: bash --noprofile --norc -eo pipefail -x {0}
       id: init
       run: |
-        export TMP_DIR=/home/github/tmp
+        export TMP_DIR=/home/github/tmp_test
         {
           echo "TMP_DIR=$TMP_DIR"
           echo "LOG_DIR=$TMP_DIR/logs"
@@ -81,7 +86,7 @@ runs:
           echo "REPORTS_ARTIFACTS_DIR=$TMP_DIR/artifacts/test_reports"
           echo "JUNIT_REPORT_XML=$TMP_DIR/junit.xml"
           echo "JUNIT_REPORT_PARTS=$TMP_DIR/junit-split"
-          echo "SUMMARY_LINKS=$(mktemp -p /home/github)"
+          echo "SUMMARY_LINKS=$(mktemp -p /home/github summary_links.XXXX)"
         } | tee -a $GITHUB_ENV
 
     - name: prepare
@@ -107,7 +112,7 @@ runs:
       env:
         BAZEL_REMOTE_PASSWORD: ${{ inputs.bazel_remote_password }}
       run: |
-        export BAZEL_REMOTE_PASSWORD_FILE=$(mktemp)
+        export BAZEL_REMOTE_PASSWORD_FILE=$(mktemp -p /home/github bazel.XXXX)
         echo -n "$BAZEL_REMOTE_PASSWORD" > "$BAZEL_REMOTE_PASSWORD_FILE"
         echo "BAZEL_REMOTE_PASSWORD_FILE=$BAZEL_REMOTE_PASSWORD_FILE" >> "$GITHUB_ENV"
         chmod 600 "$BAZEL_REMOTE_PASSWORD_FILE"
@@ -230,6 +235,9 @@ runs:
         echo "RETRIES=${RETRIES}" | tee -a "$GITHUB_ENV"
         RETRY_FLAG=""
         i=0
+        # setting variable in case that test will be interrupter by OOM killer that
+        # will kill VM with runner
+        echo "failed_tests=yes" >> $GITHUB_OUTPUT
         while [ "$RETRIES" -gt 0 ]; do
           RETRIES=$((RETRIES - 1))
           i=$((i + 1))
@@ -445,8 +453,10 @@ runs:
         echo "END_EXIT_CODE=${FAIL_CHECKER_RC}" |tee -a "$GITHUB_ENV"
         if [ "$BUILD_FAILED" -eq 1 ]; then
           echo "BUILD_FAILED=1" | tee -a "$GITHUB_ENV"
+          echo "failed_tests=yes" >> $GITHUB_OUTPUT
         else
           echo "BUILD_FAILED=0" | tee -a "$GITHUB_ENV"
+         echo "failed_tests=yes" >> $GITHUB_OUTPUT
         fi
 
     - name: copying system files
@@ -620,3 +630,14 @@ runs:
       if: always()
       shell: bash --noprofile --norc -eo pipefail -x {0}
       run: df -h
+
+    - name: clean up
+      if: always()
+      shell: bash
+      run: |
+        echo "::group::clean-up"
+        sudo -E -H -u github rm -rf $TMP_DIR $SUMMARY_LINKS $BAZEL_REMOTE_PASSWORD_FILE \
+                                    $SUMMARY_OUT_ENV_PATH $SUMMARY_LINKS
+        chown -R root:root $GITHUB_WORKSPACE 
+        echo "::endgroup::"
+
