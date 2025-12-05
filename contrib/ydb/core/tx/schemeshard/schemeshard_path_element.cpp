@@ -187,7 +187,7 @@ bool TPathElement::IsContainer() const {
 }
 
 bool TPathElement::IsLikeDirectory() const {
-    return IsDirectory() || IsDomainRoot() || IsOlapStore();
+    return IsDirectory() || IsDomainRoot() || IsOlapStore() || IsTableIndex();
 }
 
 bool TPathElement::HasActiveChanges() const {
@@ -217,6 +217,14 @@ bool TPathElement::IsExternalDataSource() const {
 
 bool TPathElement::IsView() const {
     return PathType == EPathType::EPathTypeView;
+}
+
+bool TPathElement::IsTemporary() const {
+    return !!TempDirOwnerActorId;
+}
+
+bool TPathElement::IsResourcePool() const {
+    return PathType == EPathType::EPathTypeResourcePool;
 }
 
 void TPathElement::SetDropped(TStepId step, TTxId txId) {
@@ -410,6 +418,10 @@ bool TPathElement::CheckFileStoreSpaceChange(TFileStoreSpace newSpace, TFileStor
             CheckSpaceChanged(FileStoreSpaceSSDSystem, newSpace.SSDSystem, oldSpace.SSDSystem, errStr, "filestore", " (ssd_system)"));
 }
 
+void TPathElement::SetAsyncReplica(bool value) {
+    IsAsyncReplica = value;
+}
+
 bool TPathElement::HasRuntimeAttrs() const {
     return (VolumeSpaceRaw.Allocated > 0 ||
             VolumeSpaceSSD.Allocated > 0 ||
@@ -418,7 +430,8 @@ bool TPathElement::HasRuntimeAttrs() const {
             VolumeSpaceSSDSystem.Allocated > 0 ||
             FileStoreSpaceSSD.Allocated > 0 ||
             FileStoreSpaceHDD.Allocated > 0 ||
-            FileStoreSpaceSSDSystem.Allocated > 0);
+            FileStoreSpaceSSDSystem.Allocated > 0 ||
+            IsAsyncReplica);
 }
 
 void TPathElement::SerializeRuntimeAttrs(
@@ -443,6 +456,12 @@ void TPathElement::SerializeRuntimeAttrs(
     process(FileStoreSpaceSSD, "__filestore_space_allocated_ssd");
     process(FileStoreSpaceHDD, "__filestore_space_allocated_hdd");
     process(FileStoreSpaceSSDSystem, "__filestore_space_allocated_ssd_system");
+
+    if (IsAsyncReplica) {
+        auto* attr = userAttrs->Add();
+        attr->SetKey(ToString(ATTR_ASYNC_REPLICA));
+        attr->SetValue("true");
+    }
 }
 
 }

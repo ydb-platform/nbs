@@ -394,12 +394,29 @@ TWriteSettings ISource::GetWriteSettings() const {
     return {};
 }
 
+TNodePtr ISource::PrepareSamplingRate(TPosition pos, ESampleClause clause, TNodePtr samplingRate) {
+    if (ESampleClause::Sample == clause) {
+        samplingRate = Y("*", samplingRate, Y("Double", Q("100")));
+    }
+    auto ensureLow  = Y("Ensure", "samplingRate", Y(">=", "samplingRate", Y("Double", Q("0"))), Y("String", BuildQuotedAtom(pos, "Expected sampling rate to be nonnegative")));
+    auto ensureHigh = Y("Ensure", "samplingRate", Y("<=", "samplingRate", Y("Double", Q("100"))), Y("String", BuildQuotedAtom(pos, "Sampling rate is over 100%")));
+
+    auto block(Y(Y("let", "samplingRate", samplingRate)));
+    block = L(block, Y("let", "samplingRate", ensureLow));
+    block = L(block, Y("let", "samplingRate", ensureHigh));
+    samplingRate = Y("block", Q(L(block, Y("return", "samplingRate"))));
+    return samplingRate;
+}
+
+
 bool ISource::SetSamplingOptions(TContext& ctx,
                                  TPosition pos,
+                                 ESampleClause sampleClause,
                                  ESampleMode mode,
                                  TNodePtr samplingRate,
                                  TNodePtr samplingSeed) {
     Y_UNUSED(pos);
+    Y_UNUSED(sampleClause);
     Y_UNUSED(mode);
     Y_UNUSED(samplingRate);
     Y_UNUSED(samplingSeed);
@@ -417,11 +434,15 @@ bool ISource::SetTableHints(TContext& ctx, TPosition pos, const TTableHints& hin
     return true;
 }
 
-bool ISource::CalculateGroupingHint(TContext& ctx, const TVector<TString>& columns, ui64& hint) const {
+bool ISource::AddGrouping(TContext& ctx, const TVector<TString>& columns, TString& grouingColumn) {
     Y_UNUSED(columns);
-    Y_UNUSED(hint);
+    Y_UNUSED(grouingColumn);
     ctx.Error() << "Source not support grouping hint";
     return false;
+}
+
+size_t ISource::GetGroupingColumnsCount() const {
+    return 0;
 }
 
 TNodePtr ISource::BuildFilter(TContext& ctx, const TString& label) {
@@ -529,13 +550,12 @@ bool ISource::BuildSamplingLambda(TNodePtr& node) {
     return !!node;
 }
 
-bool ISource::SetSamplingRate(TContext& ctx, TNodePtr samplingRate) {
+bool ISource::SetSamplingRate(TContext& ctx, ESampleClause clause, TNodePtr samplingRate) {
     if (samplingRate) {
         if (!samplingRate->Init(ctx, this)) {
             return false;
         }
-        SamplingRate = Y("Ensure", samplingRate, Y(">=", samplingRate, Y("Double", Q("0"))), Y("String", Q("\"Expected sampling rate to be nonnegative\"")));
-        SamplingRate = Y("Ensure", SamplingRate, Y("<=", SamplingRate, Y("Double", Q("100"))), Y("String", Q("\"Sampling rate is over 100%\"")));
+        SamplingRate = PrepareSamplingRate(Pos, clause, samplingRate);
     }
     return true;
 }
@@ -550,6 +570,19 @@ std::pair<TNodePtr, bool> ISource::BuildAggregation(const TString& label, TConte
     for (const auto& key: OrderedGroupKeys) {
         YQL_ENSURE(GroupKeys.contains(key));
         keysTuple = L(keysTuple, BuildQuotedAtom(Pos, key));
+    }
+
+    std::map<std::pair<bool, TString>, std::vector<IAggregation*>> genericAggrs;
+    for (const auto& aggr: Aggregations) {
+        if (const auto key = aggr->GetGenericKey()) {
+            genericAggrs[{aggr->IsDistinct(), *key}].emplace_back(aggr.Get());
+        }
+    }
+
+    for (const auto& aggr : genericAggrs) {
+        for (size_t i = 1U; i < aggr.second.size(); ++i) {
+            aggr.second.front()->Join(aggr.second[i]);
+        }
     }
 
     const auto listType = Y("TypeOf", label);
@@ -824,6 +857,11 @@ TNodePtr ISource::BuildSort(TContext& ctx, const TString& label) {
 
 TNodePtr ISource::BuildCleanupColumns(TContext& ctx, const TString& label) {
     Y_UNUSED(ctx);
+    Y_UNUSED(label);
+    return nullptr;
+}
+
+TNodePtr ISource::BuildGroupingColumns(const TString& label) {
     Y_UNUSED(label);
     return nullptr;
 }

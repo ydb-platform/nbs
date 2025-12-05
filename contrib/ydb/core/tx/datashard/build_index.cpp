@@ -6,6 +6,7 @@
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/counters.h>
 #include <contrib/ydb/core/scheme/scheme_tablecell.h>
+#include <contrib/ydb/core/scheme/scheme_types_proto.h>
 #include <contrib/ydb/core/tablet_flat/flat_row_state.h>
 #include <contrib/ydb/core/kqp/common/kqp_types.h>
 
@@ -64,17 +65,6 @@ static TTags BuildTags(const TColumnsTags& allTags, const TVector<TString>& inde
     return result;
 }
 
-static void ProtoYdbTypeFromTypeInfo(Ydb::Type* type, const NScheme::TTypeInfo typeInfo) {
-    if (typeInfo.GetTypeId() == NScheme::NTypeIds::Pg) {
-        auto* typeDesc = typeInfo.GetTypeDesc();
-        auto* pg = type->mutable_pg_type();
-        pg->set_type_name(NPg::PgTypeNameFromTypeDesc(typeDesc));
-        pg->set_oid(NPg::PgTypeIdFromTypeDesc(typeDesc));
-    } else {
-        type->set_type_id((Ydb::Type::PrimitiveTypeId)typeInfo.GetTypeId());
-    }
-}
-
 static std::shared_ptr<TTypes> BuildTypes(const TColumnsTypes& types, const TUserTable::TCPtr& tableInfo, const NKikimrIndexBuilder::TColumnBuildSettings& buildSettings, const TVector<TString>& indexColumns, const TVector<TString>& dataColumns) {
     auto result = std::make_shared<TTypes>();
     result->reserve(indexColumns.size());
@@ -83,7 +73,7 @@ static std::shared_ptr<TTypes> BuildTypes(const TColumnsTypes& types, const TUse
         for(const auto& keyColId : tableInfo->KeyColumnIds) {
             auto it = tableInfo->Columns.at(keyColId);
             Ydb::Type type;
-            ProtoYdbTypeFromTypeInfo(&type, it.Type);
+            NScheme::ProtoFromTypeInfo(it.Type, type);
             result->emplace_back(it.Name, type);
         }
 
@@ -95,13 +85,13 @@ static std::shared_ptr<TTypes> BuildTypes(const TColumnsTypes& types, const TUse
     } else {
         for (const auto& colName: indexColumns) {
             Ydb::Type type;
-            ProtoYdbTypeFromTypeInfo(&type, types.at(colName));
+            NScheme::ProtoFromTypeInfo(types.at(colName), type);
             result->emplace_back(colName, type);
         }
 
         for (const auto& colName: dataColumns) {
             Ydb::Type type;
-            ProtoYdbTypeFromTypeInfo(&type, types.at(colName));
+            NScheme::ProtoFromTypeInfo(types.at(colName), type);
             result->emplace_back(colName, type);
         }
 
@@ -151,7 +141,10 @@ struct TStatus {
     }
 
     bool IsRetriable() const {
-        return StatusCode == Ydb::StatusIds::UNAVAILABLE || StatusCode == Ydb::StatusIds::OVERLOADED;
+        return StatusCode == Ydb::StatusIds::UNAVAILABLE
+            || StatusCode == Ydb::StatusIds::OVERLOADED
+            || StatusCode == Ydb::StatusIds::TIMEOUT
+            ;
     }
 
     TString ToString() const {
@@ -170,7 +163,7 @@ struct TUploadLimits {
     ui32 BackoffCeiling = 3;
 
     TDuration GetTimeoutBackouff(ui32 retryNo) const {
-        return TDuration::Seconds(1u << Max(retryNo, BackoffCeiling));
+        return TDuration::Seconds(1u << Min(retryNo, BackoffCeiling));
     }
 };
 

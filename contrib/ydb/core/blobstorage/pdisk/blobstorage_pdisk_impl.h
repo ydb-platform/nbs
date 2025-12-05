@@ -142,7 +142,7 @@ public:
     ui64 InsaneLogChunks = 0;  // Set when pdisk sees insanely large log, to give vdisks a chance to cut it
     ui32 FirstLogChunkToParseCommits = 0;
 
-    // Chunks that is owned by killed owner, but has operations InFlight
+    // Chunks that are owned by killed owner, but have operations InFlight
     TVector<TChunkIdx> QuarantineChunks;
     TVector<TOwner> QuarantineOwners;
 
@@ -177,6 +177,10 @@ public:
 
     TIntrusivePtr<TPDiskConfig> Cfg;
     TInstant CreationTime;
+    // Last chunk and sector indexes we have seen on initial log read.
+    // Used to limit log reading in read-only mode.
+    ui32 LastInitialChunkIdx;
+    ui64 LastInitialSectorIdx;
 
     ui64 ExpectedSlotCount = 0; // Number of slots to use for space limit calculation.
 
@@ -205,6 +209,7 @@ public:
     bool IsFormatMagicValid(ui8 *magicData, ui32 magicDataSize); // Called by actor
     bool CheckGuid(TString *outReason); // Called by actor
     bool CheckFormatComplete(); // Called by actor
+    bool CheckPlainChunksNotUsed(); // Called by actor
     void ReadSysLog(const TActorId &pDiskActor); // Called by actor
     bool ProcessChunk0(const TEvReadLogResult &readLogResult, TString& errorReason);
     void PrintChunksDebugInfo();
@@ -288,7 +293,7 @@ public:
     void SendChunkReadError(const TIntrusivePtr<TChunkRead>& read, TStringStream& errorReason,
             NKikimrProto::EReplyStatus status);
     EChunkReadPieceResult ChunkReadPiece(TIntrusivePtr<TChunkRead> &read, ui64 pieceCurrentSector, ui64 pieceSizeLimit,
-            ui64 *reallyReadBytes, NWilson::TTraceId traceId);
+            ui64 *reallyReadBytes, NWilson::TTraceId traceId, NLWTrace::TOrbit&& orbit);
     void SplitChunkJobSize(ui32 totalSize, ui32 *outSmallJobSize, ui32 *outLargeJObSize, ui32 *outSmallJobCount);
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Chunk locking
@@ -320,7 +325,7 @@ public:
             TString textMessage, const bool isErasureEncodeUserLog, const bool trimEntireDevice);
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Owner initialization
-    void ReplyErrorYardInitResult(TYardInit &evYardInit, const TString &str);
+    void ReplyErrorYardInitResult(TYardInit &evYardInit, const TString &str, NKikimrProto::EReplyStatus status = NKikimrProto::ERROR);
     TOwner FindNextOwnerId();
     bool YardInitStart(TYardInit &evYardInit);
     void YardInitFinish(TYardInit &evYardInit);
@@ -389,6 +394,7 @@ private:
     void AddCbs(ui32 ownerId, EGate gate, const char *gateName, ui64 minBudget);
     void AddCbsSet(ui32 ownerId);
     void UpdateMinLogCostNs();
+    bool HandleReadOnlyIfWrite(TRequestBase *request);
 };
 
 void ParsePayloadFromSectorOffset(const TDiskFormat& format, ui64 firstSector, ui64 lastSector, ui64 currentSector,

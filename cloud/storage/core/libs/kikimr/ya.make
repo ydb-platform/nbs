@@ -31,6 +31,9 @@ PEERDIR(
     contrib/ydb/library/actors/util
     contrib/ydb/library/actors/protos
     contrib/ydb/library/actors/wilson
+    contrib/ydb/library/yql/public/udf
+    contrib/ydb/library/yql/public/udf/service/exception_policy
+    contrib/ydb/library/yql/sql/pg_dummy
 
     contrib/ydb/core/base
     contrib/ydb/core/config/init

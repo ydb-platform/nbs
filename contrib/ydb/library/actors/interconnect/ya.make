@@ -37,6 +37,8 @@ SRCS(
     interconnect_tcp_server.h
     interconnect_tcp_session.cpp
     interconnect_tcp_session.h
+    interconnect_zc_processor.cpp
+    interconnect_zc_processor.h
     load.cpp
     load.h
     logging.h
@@ -53,6 +55,8 @@ SRCS(
     poller_tcp_unit_select.h
     profiler.h
     slowpoke_actor.h
+    subscription_manager.cpp
+    subscription_manager.h
     types.cpp
     types.h
     watchdog_timer.h

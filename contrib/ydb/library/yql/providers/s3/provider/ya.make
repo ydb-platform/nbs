@@ -44,7 +44,9 @@ PEERDIR(
     contrib/ydb/library/yql/providers/common/transform
     contrib/ydb/library/yql/providers/dq/common
     contrib/ydb/library/yql/providers/dq/expr_nodes
+    contrib/ydb/library/yql/providers/generic/provider
     contrib/ydb/library/yql/providers/result/expr_nodes
+    contrib/ydb/library/yql/providers/s3/actors
     contrib/ydb/library/yql/providers/s3/common
     contrib/ydb/library/yql/providers/s3/expr_nodes
     contrib/ydb/library/yql/providers/s3/object_listers

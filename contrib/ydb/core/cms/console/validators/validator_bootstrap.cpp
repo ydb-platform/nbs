@@ -1,6 +1,7 @@
 #include "validator_bootstrap.h"
 
 #include <contrib/ydb/core/base/localdb.h>
+#include <contrib/ydb/core/protos/bootstrap.pb.h>
 #include <contrib/ydb/core/protos/console_config.pb.h>
 #include <contrib/ydb/core/tablet/resource_broker.h>
 

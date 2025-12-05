@@ -5,6 +5,10 @@
 #include <contrib/ydb/library/yql/ast/yql_gc_nodes.h>
 #include <util/system/mutex.h>
 
+#ifndef YQL_OPERATION_STATISTICS_CUSTOM_FIELDS
+#define YQL_OPERATION_STATISTICS_CUSTOM_FIELDS
+#endif
+
 namespace NYql {
     struct TOperationProgress {
 #define YQL_OPERATION_PROGRESS_STATE_MAP(xx) \
@@ -18,14 +22,25 @@ namespace NYql {
             YQL_OPERATION_PROGRESS_STATE_MAP(ENUM_VALUE_GEN)
         };
 
+#define YQL_OPERATION_BLOCK_STATUS_MAP(xx) \
+    xx(None, 0)                            \
+    xx(Partial, 1)                         \
+    xx(Full, 2)
+
+        enum class EOpBlockStatus {
+            YQL_OPERATION_BLOCK_STATUS_MAP(ENUM_VALUE_GEN)
+        };
+
         TString Category;
         ui32 Id;
         EState State;
+        TMaybe<EOpBlockStatus> BlockStatus;
 
         using TStage = std::pair<TString, TInstant>;
         TStage Stage;
 
         TString RemoteId;
+        THashMap<TString, TString> RemoteData;
 
         struct TCounters {
             ui64 Completed = 0ULL;
@@ -35,6 +50,7 @@ namespace NYql {
             ui64 Failed = 0ULL;
             ui64 Lost = 0ULL;
             ui64 Pending = 0ULL;
+            THashMap<TString, i64> Custom = {};
             bool operator==(const TCounters& rhs) const noexcept {
                 return Completed == rhs.Completed &&
                        Running == rhs.Running &&
@@ -42,7 +58,8 @@ namespace NYql {
                        Aborted == rhs.Aborted &&
                        Failed == rhs.Failed &&
                        Lost == rhs.Lost &&
-                       Pending == rhs.Pending;
+                       Pending == rhs.Pending &&
+                       Custom == rhs.Custom;
             }
 
             bool operator!=(const TCounters& rhs) const noexcept {

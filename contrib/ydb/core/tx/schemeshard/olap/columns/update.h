@@ -4,8 +4,10 @@
 #include <contrib/ydb/core/tx/schemeshard/olap/common/common.h>
 #include <contrib/ydb/library/accessor/accessor.h>
 #include <contrib/ydb/core/scheme_types/scheme_type_info.h>
+#include <contrib/ydb/core/formats/arrow/accessor/abstract/request.h>
 #include <contrib/ydb/core/formats/arrow/dictionary/object.h>
 #include <contrib/ydb/core/formats/arrow/serializer/abstract.h>
+#include <contrib/ydb/core/tx/columnshard/engines/scheme/defaults/common/scalar.h>
 
 namespace NKikimr::NSchemeShard {
 
@@ -14,12 +16,27 @@ private:
     YDB_READONLY_DEF(TString, Name);
     YDB_READONLY_DEF(NArrow::NSerialization::TSerializerContainer, Serializer);
     YDB_READONLY_DEF(NArrow::NDictionary::TEncodingDiff, DictionaryEncoding);
+    YDB_READONLY_DEF(std::optional<TString>, StorageId);
+    YDB_READONLY_DEF(std::optional<TString>, DefaultValue);
+    YDB_READONLY_DEF(NArrow::NAccessor::TRequestedConstructorContainer, AccessorConstructor);
 public:
     bool ParseFromRequest(const NKikimrSchemeOp::TOlapColumnDiff& columnSchema, IErrorCollector& errors) {
         Name = columnSchema.GetName();
+        if (!!columnSchema.GetStorageId()) {
+            StorageId = columnSchema.GetStorageId();
+        }
         if (!Name) {
             errors.AddError("empty field name");
             return false;
+        }
+        if (columnSchema.HasDefaultValue()) {
+            DefaultValue = columnSchema.GetDefaultValue();
+        }
+        if (columnSchema.HasDataAccessorConstructor()) {
+            if (!AccessorConstructor.DeserializeFromProto(columnSchema.GetDataAccessorConstructor())) {
+                errors.AddError("cannot parse accessor constructor from proto");
+                return false;
+            }
         }
         if (columnSchema.HasSerializer()) {
             if (!Serializer.DeserializeFromProto(columnSchema.GetSerializer())) {
@@ -41,9 +58,12 @@ private:
     YDB_READONLY_DEF(TString, Name);
     YDB_READONLY_DEF(TString, TypeName);
     YDB_READONLY_DEF(NScheme::TTypeInfo, Type);
+    YDB_READONLY_DEF(TString, StorageId);
     YDB_FLAG_ACCESSOR(NotNull, false);
     YDB_READONLY_DEF(std::optional<NArrow::NSerialization::TSerializerContainer>, Serializer);
     YDB_READONLY_DEF(std::optional<NArrow::NDictionary::TEncodingSettings>, DictionaryEncoding);
+    YDB_READONLY_DEF(NOlap::TColumnDefaultScalarValue, DefaultValue);
+    YDB_READONLY_DEF(NArrow::NAccessor::TConstructorContainer, AccessorConstructor);
 public:
     TOlapColumnAdd(const std::optional<ui32>& keyOrder)
         : KeyOrder(keyOrder) {
@@ -57,7 +77,8 @@ public:
         return !!KeyOrder;
     }
     static bool IsAllowedType(ui32 typeId);
-    static bool IsAllowedFirstPkType(ui32 typeId);
+    static bool IsAllowedPkType(ui32 typeId);
+    static bool IsAllowedPgType(ui32 pgTypeId);
 };
 
 class TOlapColumnsUpdate {

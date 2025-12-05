@@ -21,6 +21,25 @@ namespace NYql {
 
     namespace {
 
+        TString GetSourceType(NYql::NConnector::NApi::TDataSourceInstance dsi) {
+            switch (dsi.kind()) {
+                case NYql::NConnector::NApi::CLICKHOUSE:
+                    return "ClickHouseGeneric";
+                case NYql::NConnector::NApi::POSTGRESQL:
+                    return "PostgreSqlGeneric";
+                case NYql::NConnector::NApi::MYSQL:
+                    return "MySqlGeneric";
+                case NYql::NConnector::NApi::YDB:
+                    return "YdbGeneric";
+                case NYql::NConnector::NApi::GREENPLUM:
+                    return "GreenplumGeneric";
+                case NYql::NConnector::NApi::MS_SQL_SERVER:
+                    return "MsSQLServerGeneric";
+                default:
+                    ythrow yexception() << "Data source kind is unknown or not specified";
+            }
+        }
+
         class TGenericDqIntegration: public TDqIntegrationBase {
         public:
             TGenericDqIntegration(TGenericState::TPtr state)
@@ -93,24 +112,16 @@ namespace NYql {
             }
 
             void FillSourceSettings(const TExprNode& node, ::google::protobuf::Any& protoSettings,
-                                    TString& sourceType) override {
+                                    TString& sourceType, size_t) override {
                 const TDqSource source(&node);
                 if (const auto maybeSettings = source.Settings().Maybe<TGenSourceSettings>()) {
                     const auto settings = maybeSettings.Cast();
                     const auto& clusterName = source.DataSource().Cast<TGenDataSource>().Cluster().StringValue();
                     const auto& table = settings.Table().StringValue();
-                    const auto& token = settings.Token().Name().StringValue();
-                    const auto& endpoint = State_->Configuration->ClusterNamesToClusterConfigs[clusterName].endpoint();
+                    const auto& clusterConfig = State_->Configuration->ClusterNamesToClusterConfigs[clusterName];
+                    const auto& endpoint = clusterConfig.endpoint();
 
-                    Generic::TSource srcDesc;
-                    srcDesc.set_token(token);
-
-                    // for backward compability full path can be used (cluster_name.`db_name.table`)
-                    // TODO: simplify during https://st.yandex-team.ru/YQ-2494
-                    TStringBuf db, dbTable;
-                    if (!TStringBuf(table).TrySplit('.', db, dbTable)) {
-                        dbTable = table;
-                    }
+                    Generic::TSource source;
 
                     YQL_CLOG(INFO, ProviderGeneric)
                         << "Filling source settings"
@@ -126,8 +137,8 @@ namespace NYql {
                     }
 
                     // prepare select
-                    auto select = srcDesc.mutable_select();
-                    select->mutable_from()->set_table(TString(dbTable));
+                    auto select = source.mutable_select();
+                    select->mutable_from()->set_table(TString(table));
                     select->mutable_data_source_instance()->CopyFrom(tableMeta.value()->DataSourceInstance);
 
                     auto items = select->mutable_what()->mutable_items();
@@ -149,26 +160,21 @@ namespace NYql {
                         }
                     }
 
-                    // store data source instance
-                    srcDesc.mutable_data_source_instance()->CopyFrom(tableMeta.value()->DataSourceInstance);
+                    // Managed YDB supports access via IAM token.
+                    // If exist, copy service account creds to obtain tokens during request execution phase.
+                    // If exists, copy previously created token.
+                    if (clusterConfig.kind() == NConnector::NApi::EDataSourceKind::YDB) {
+                        source.SetServiceAccountId(clusterConfig.GetServiceAccountId());
+                        source.SetServiceAccountIdSignature(clusterConfig.GetServiceAccountIdSignature());
+                        source.SetToken(State_->Types->Credentials->FindCredentialContent(
+                            "default_" + clusterConfig.name(),
+                            "default_generic",
+                            clusterConfig.GetToken()));
+                    }
 
                     // preserve source description for read actor
-                    protoSettings.PackFrom(srcDesc);
-
-                    switch (srcDesc.data_source_instance().kind()) {
-                        case NYql::NConnector::NApi::CLICKHOUSE:
-                            sourceType = "ClickHouseGeneric";
-                            break;
-                        case NYql::NConnector::NApi::POSTGRESQL:
-                            sourceType = "PostgreSqlGeneric";
-                            break;
-                        case NYql::NConnector::NApi::YDB:
-                            sourceType = "YdbGeneric";
-                            break;
-                        default:
-                            ythrow yexception() << "Data source kind is unknown or not specified";
-                            break;
-                    }
+                    protoSettings.PackFrom(source);
+                    sourceType = GetSourceType(select->data_source_instance());
                 }
             }
 
@@ -196,8 +202,17 @@ namespace NYql {
                         case NConnector::NApi::POSTGRESQL:
                             properties["SourceType"] = "PostgreSql";
                             break;
+                        case NConnector::NApi::MYSQL:
+                            properties["SourceType"] = "MySql";
+                            break;
                         case NConnector::NApi::YDB:
                             properties["SourceType"] = "Ydb";
+                            break;
+                        case NConnector::NApi::GREENPLUM:
+                            properties["SourceType"] = "Greenplum";
+                            break;
+                        case NConnector::NApi::MS_SQL_SERVER:
+                            properties["SourceType"] = "MsSQLServer";
                             break;
                         case NConnector::NApi::DATA_SOURCE_KIND_UNSPECIFIED:
                             break;
@@ -238,6 +253,54 @@ namespace NYql {
 
             void RegisterMkqlCompiler(NCommon::TMkqlCallableCompilerBase& compiler) override {
                 RegisterDqGenericMkqlCompilers(compiler, State_);
+            }
+
+            void FillLookupSourceSettings(const TExprNode& node, ::google::protobuf::Any& protoSettings, TString& sourceType) override {
+                const TDqLookupSourceWrap wrap(&node);
+                const auto settings = wrap.Input().Cast<TGenSourceSettings>();
+
+                const auto& clusterName = wrap.DataSource().Cast<TGenDataSource>().Cluster().StringValue();
+                const auto& table = settings.Table().StringValue();
+                const auto& clusterConfig = State_->Configuration->ClusterNamesToClusterConfigs[clusterName];
+                const auto& endpoint = clusterConfig.endpoint();
+
+                // for backward compability full path can be used (cluster_name.`db_name.table`)
+                // TODO: simplify during https://st.yandex-team.ru/YQ-2494
+                TStringBuf db, dbTable;
+                if (!TStringBuf(table).TrySplit('.', db, dbTable)) {
+                    dbTable = table;
+                }
+
+                YQL_CLOG(INFO, ProviderGeneric)
+                    << "Filling lookup source settings"
+                    << ": cluster: " << clusterName
+                    << ", table: " << table
+                    << ", endpoint: " << endpoint.ShortDebugString();
+
+                auto [tableMeta, issue] = State_->GetTable(clusterName, table);
+                if (issue.has_value()) {
+                    ythrow yexception() << "Get table metadata: " << issue.value();
+                }
+
+                Generic::TLookupSource source;
+                source.set_table(TString(dbTable));
+                *source.mutable_data_source_instance() = tableMeta.value()->DataSourceInstance;
+
+                // Managed YDB supports access via IAM token.
+                // If exist, copy service account creds to obtain tokens during request execution phase.
+                // If exists, copy previously created token.
+                if (clusterConfig.kind() == NConnector::NApi::EDataSourceKind::YDB) {
+                    source.SetServiceAccountId(clusterConfig.GetServiceAccountId());
+                    source.SetServiceAccountIdSignature(clusterConfig.GetServiceAccountIdSignature());
+                    source.SetToken(State_->Types->Credentials->FindCredentialContent(
+                        "default_" + clusterConfig.name(),
+                        "default_generic",
+                        clusterConfig.GetToken()));
+                }
+
+                // preserve source description for read actor
+                protoSettings.PackFrom(source);
+                sourceType = GetSourceType(source.data_source_instance());
             }
 
         private:

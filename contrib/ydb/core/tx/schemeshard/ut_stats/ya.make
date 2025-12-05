@@ -19,6 +19,7 @@ PEERDIR(
     contrib/ydb/core/cms
     contrib/ydb/core/testlib/default
     contrib/ydb/core/tx
+    contrib/ydb/core/tx/datashard/ut_common
     contrib/ydb/core/tx/schemeshard/ut_helpers
     contrib/ydb/core/wrappers/ut_helpers
 )

@@ -50,6 +50,7 @@ public:
         auto ev = MakeHolder<NKqp::TEvKqp::TEvQueryRequest>();
         SetAuthToken(ev, *Request_);
         SetDatabase(ev, *Request_);
+        ev->Record.MutableRequest()->SetClientAddress(Request_->GetPeerName());
 
         if (traceId) {
             ev->Record.SetTraceId(traceId.GetRef());
@@ -70,7 +71,7 @@ public:
         ev->Record.MutableRequest()->SetQuery(req->yql_text());
         ev->Record.MutableRequest()->SetCollectDiagnostics(req->Getcollect_full_diagnostics());
 
-        ctx.Send(NKqp::MakeKqpProxyID(ctx.SelfID.NodeId()), ev.Release());
+        ctx.Send(NKqp::MakeKqpProxyID(ctx.SelfID.NodeId()), ev.Release(), 0, 0, Span_.GetTraceId());
     }
 
     void Handle(NKqp::TEvKqp::TEvQueryResponse::TPtr& ev, const TActorContext& ctx) {

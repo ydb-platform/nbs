@@ -384,9 +384,10 @@ namespace NKikimr {
             const bool fromVPutCommand = true;
             const TLogoBlobID id = LogoBlobIDFromLogoBlobID(PutMsg.GetBlobID());
             const TString &buf = PutMsg.GetBuffer();
-            TIngress ingress = *TIngress::CreateIngressWithLocal(LocRecCtx->VCtx->Top.get(), LocRecCtx->VCtx->ShortSelfVDisk, id);
+            TMaybe<TIngress> ingress = TIngress::CreateIngressWithLocal(LocRecCtx->VCtx->Top.get(), LocRecCtx->VCtx->ShortSelfVDisk, id);
+            Y_VERIFY_S(ingress, "Failed to create ingress, VDiskId# " << LocRecCtx->VCtx->ShortSelfVDisk << ", BlobId# " << id);
 
-            PutLogoBlobToHullAndSyncLog(ctx, record.Lsn, id, ingress, buf, fromVPutCommand);
+            PutLogoBlobToHullAndSyncLog(ctx, record.Lsn, id, *ingress, buf, fromVPutCommand);
             return EDispatchStatus::Success;
         }
 
@@ -396,10 +397,12 @@ namespace NKikimr {
                 return EDispatchStatus::Error;
 
             const bool fromVPutCommand = true;
-            TIngress ingress = *TIngress::CreateIngressWithLocal(LocRecCtx->VCtx->Top.get(), LocRecCtx->VCtx->ShortSelfVDisk,
+            TMaybe<TIngress> ingress = TIngress::CreateIngressWithLocal(LocRecCtx->VCtx->Top.get(), LocRecCtx->VCtx->ShortSelfVDisk,
                 PutMsgOpt.Id);
+            Y_VERIFY_S(ingress, "Failed to create ingress, VDiskId# " << LocRecCtx->VCtx->ShortSelfVDisk << 
+                    ", BlobId# " << PutMsgOpt.Id);
 
-            PutLogoBlobToHullAndSyncLog(ctx, record.Lsn, PutMsgOpt.Id, ingress, PutMsgOpt.Data, fromVPutCommand);
+            PutLogoBlobToHullAndSyncLog(ctx, record.Lsn, PutMsgOpt.Id, *ingress, PutMsgOpt.Data, fromVPutCommand);
             return EDispatchStatus::Success;
         }
 
@@ -426,10 +429,9 @@ namespace NKikimr {
 
         void ApplySyncDataByRecord(const TActorContext &ctx, ui64 recordLsn) {
             // count number of records
-            ui64 recsNum = 0;
-            auto count = [&recsNum] (const void *) { recsNum++; };
             NSyncLog::TFragmentReader fragment(LocalSyncDataMsg.Data);
-            fragment.ForEach(count, count, count, count);
+            std::vector<const NSyncLog::TRecordHdr*> records = fragment.ListRecords();
+            ui64 recsNum = records.size();
 
             // calculate lsn
             Y_DEBUG_ABORT_UNLESS(recordLsn >= recsNum, "recordLsn# %" PRIu64 " recsNum# %" PRIu64,
@@ -462,7 +464,9 @@ namespace NKikimr {
             };
 
             // apply local sync data
-            fragment.ForEach(blobHandler, blockHandler, barrierHandler, blockHandlerV2);
+            for (const NSyncLog::TRecordHdr* rec : records) {
+                NSyncLog::HandleRecordHdr(rec, blobHandler, blockHandler, barrierHandler, blockHandlerV2);
+            }
         }
 
         void PutLogoBlobsBatchToHull(
@@ -752,7 +756,7 @@ namespace NKikimr {
             }
 
             TEvAnubisOsirisPut put(AnubisOsirisPutMsg);
-            TEvAnubisOsirisPut::THullDbInsert insert = put.PrepareInsert(LocRecCtx->VCtx->Top.get(), LocRecCtx->VCtx->ShortSelfVDisk);
+            THullDbInsert insert = put.PrepareInsert(LocRecCtx->VCtx->Top.get(), LocRecCtx->VCtx->ShortSelfVDisk);
             const bool fromVPutCommand = false;
             PutLogoBlobToHullAndSyncLog(ctx, record.Lsn, insert.Id, insert.Ingress, TString(), fromVPutCommand);
             return EDispatchStatus::Success;

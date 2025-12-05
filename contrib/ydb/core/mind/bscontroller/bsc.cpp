@@ -2,6 +2,8 @@
 #include "config.h"
 #include "self_heal.h"
 #include "sys_view.h"
+#include "cluster_balancing.h"
+#include "util.h"
 
 namespace NKikimr {
 
@@ -127,23 +129,25 @@ void TBlobStorageController::OnActivateExecutor(const TActorContext&) {
 void TBlobStorageController::Handle(TEvNodeWardenStorageConfig::TPtr ev) {
     ev->Get()->Config->Swap(&StorageConfig);
 
-    StaticPDisks.clear();
-    StaticVSlots.clear();
+    auto prevStaticPDisks = std::exchange(StaticPDisks, {});
+    auto prevStaticVSlots = std::exchange(StaticVSlots, {});
     StaticVDiskMap.clear();
+
+    const TMonotonic mono = TActivationContext::Monotonic();
 
     if (StorageConfig.HasBlobStorageConfig()) {
         if (const auto& bsConfig = StorageConfig.GetBlobStorageConfig(); bsConfig.HasServiceSet()) {
             const auto& ss = bsConfig.GetServiceSet();
             for (const auto& pdisk : ss.GetPDisks()) {
                 const TPDiskId pdiskId(pdisk.GetNodeID(), pdisk.GetPDiskID());
-                StaticPDisks.emplace(pdiskId, pdisk);
+                StaticPDisks.try_emplace(pdiskId, pdisk, prevStaticPDisks);
                 SysViewChangedPDisks.insert(pdiskId);
             }
             for (const auto& vslot : ss.GetVDisks()) {
                 const auto& location = vslot.GetVDiskLocation();
                 const TPDiskId pdiskId(location.GetNodeID(), location.GetPDiskID());
                 const TVSlotId vslotId(pdiskId, location.GetVDiskSlotID());
-                StaticVSlots.emplace(vslotId, vslot);
+                StaticVSlots.try_emplace(vslotId, vslot, prevStaticVSlots, mono);
                 const TVDiskID& vdiskId = VDiskIDFromVDiskID(vslot.GetVDiskID());
                 StaticVDiskMap.emplace(vdiskId, vslotId);
                 StaticVDiskMap.emplace(TVDiskID(vdiskId.GroupID, 0, vdiskId), vslotId);
@@ -151,16 +155,32 @@ void TBlobStorageController::Handle(TEvNodeWardenStorageConfig::TPtr ev) {
                 SysViewChangedVSlots.insert(vslotId);
                 SysViewChangedGroups.insert(vdiskId.GroupID);
             }
+        } else {
+            Y_FAIL("no storage configuration provided");
         }
     }
 
-    if (!std::exchange(StorageConfigObtained, true) && HostRecords) {
-        Execute(CreateTxInitScheme());
+    if (!std::exchange(StorageConfigObtained, true)) {
+        if (HostRecords) {
+            Execute(CreateTxInitScheme());
+
+            if (!SelfHealId) {
+                SelfHealSettings = ParseSelfHealSettings(StorageConfig);
+                SelfHealId = Register(CreateSelfHealActor());
+            }
+        }
+
+        ClusterBalancingSettings = ParseClusterBalancingSettings(StorageConfig);
+        if (ClusterBalancingSettings.Enable) {
+            ClusterBalanceActorId = Register(CreateClusterBalancingActor(SelfId(), ClusterBalancingSettings));
+        }
     }
 
     if (Loaded) {
         ApplyStorageConfig();
     }
+
+    PushStaticGroupsToSelfHeal();
 }
 
 void TBlobStorageController::Handle(TEvents::TEvUndelivered::TPtr ev) {
@@ -169,11 +189,29 @@ void TBlobStorageController::Handle(TEvents::TEvUndelivered::TPtr ev) {
     }
 }
 
+void TBlobStorageController::ApplyBscSettings(const NKikimrConfig::TBlobStorageConfig& bsConfig) {
+    if (!bsConfig.HasBscSettings()) {
+        return;
+    }
+
+    auto ev = std::make_unique<TEvBlobStorage::TEvControllerConfigRequest>();
+    auto& r = ev->Record;
+    auto *request = r.MutableRequest();
+    auto* command = request->AddCommand();
+
+    command->MutableUpdateSettings()->CopyFrom(FromBscConfig(bsConfig.GetBscSettings()));
+
+    STLOG(PRI_DEBUG, BS_CONTROLLER, BSC17, "ApplyBSCSettings", (Request, r));
+    Send(SelfId(), ev.release());
+}
+
 void TBlobStorageController::ApplyStorageConfig() {
     if (!StorageConfig.HasBlobStorageConfig()) {
         return;
     }
     const auto& bsConfig = StorageConfig.GetBlobStorageConfig();
+
+    ApplyBscSettings(bsConfig);
 
     if (!bsConfig.HasAutoconfigSettings()) {
         return;
@@ -266,12 +304,35 @@ void TBlobStorageController::Handle(TEvInterconnect::TEvNodesInfo::TPtr &ev) {
     const bool initial = !HostRecords;
     HostRecords = std::make_shared<THostRecordMap::element_type>(ev->Get());
     if (initial) {
-        SelfHealId = Register(CreateSelfHealActor());
+        if (auto *appData = AppData()) {
+            if (appData->Icb) {
+                EnableSelfHealWithDegraded = std::make_shared<TControlWrapper>(0, 0, 1);
+                appData->Icb->RegisterSharedControl(*EnableSelfHealWithDegraded,
+                    "BlobStorageControllerControls.EnableSelfHealWithDegraded");
+            }
+        }
         if (StorageConfigObtained) {
             Execute(CreateTxInitScheme());
+
+            if (!SelfHealId) {
+                SelfHealSettings = ParseSelfHealSettings(StorageConfig);
+                SelfHealId = Register(CreateSelfHealActor());
+            }
+
+            if (!ClusterBalanceActorId) {
+                ClusterBalancingSettings = ParseClusterBalancingSettings(StorageConfig);
+                if (ClusterBalancingSettings.Enable) {
+                    ClusterBalanceActorId = Register(CreateClusterBalancingActor(SelfId(), ClusterBalancingSettings));
+                }
+            }
         }
     }
-    Send(SelfHealId, new TEvPrivate::TEvUpdateHostRecords(HostRecords));
+
+    PushStaticGroupsToSelfHeal();
+
+    if (SelfHealId) {
+        Send(SelfHealId, new TEvPrivate::TEvUpdateHostRecords(HostRecords));
+    }
 }
 
 void TBlobStorageController::IssueInitialGroupContent() {
@@ -332,7 +393,7 @@ void TBlobStorageController::ValidateInternalState() {
             Y_ABORT_UNLESS(donor->GetShortVDiskId() == vslot->GetShortVDiskId());
         }
         if (vslot->Group) {
-            if (vslot->Status == NKikimrBlobStorage::EVDiskStatus::READY) {
+            if (vslot->GetStatus() == NKikimrBlobStorage::EVDiskStatus::READY) {
                 Y_DEBUG_ABORT_UNLESS(vslot->IsReady || vslot->IsInVSlotReadyTimestampQ());
             } else {
                 Y_DEBUG_ABORT_UNLESS(!vslot->IsReady && !vslot->IsInVSlotReadyTimestampQ());
@@ -370,7 +431,6 @@ ui32 TBlobStorageController::GetEventPriority(IEventHandle *ev) {
         case TEvBlobStorage::EvControllerGroupDecommittedNotify:       return 1;
 
         // auxiliary messages that are not usually urgent (also includes RW transactions in TConfigRequest and UpdateDiskStatus)
-        case TEvBlobStorage::EvControllerGroupReconfigureWipe:         return 2;
         case TEvPrivate::EvDropDonor:                                  return 2;
         case TEvBlobStorage::EvControllerScrubQueryStartQuantum:       return 2;
         case TEvBlobStorage::EvControllerScrubQuantumFinished:         return 2;
@@ -397,7 +457,7 @@ ui32 TBlobStorageController::GetEventPriority(IEventHandle *ev) {
             const auto& record = msg->Record;
             for (const auto& item : record.GetVDiskStatus()) {
                 const TVSlotId vslotId(item.GetNodeId(), item.GetPDiskId(), item.GetVSlotId());
-                if (TVSlotInfo *slot = FindVSlot(vslotId); slot && slot->Status > item.GetStatus()) {
+                if (TVSlotInfo *slot = FindVSlot(vslotId); slot && slot->GetStatus() > item.GetStatus()) {
                     return 1;
                 } else if (const auto it = StaticVSlots.find(vslotId); it != StaticVSlots.end() && it->second.VDiskStatus > item.GetStatus()) {
                     return 1;
@@ -448,6 +508,10 @@ ui32 TBlobStorageController::GetEventPriority(IEventHandle *ev) {
                     case NKikimrBlobStorage::TConfigRequest::TCommand::kSanitizeGroup:
                     case NKikimrBlobStorage::TConfigRequest::TCommand::kCancelVirtualGroup:
                     case NKikimrBlobStorage::TConfigRequest::TCommand::kSetVDiskReadOnly:
+                    case NKikimrBlobStorage::TConfigRequest::TCommand::kRestartPDisk:
+                    case NKikimrBlobStorage::TConfigRequest::TCommand::kSetPDiskReadOnly:
+                    case NKikimrBlobStorage::TConfigRequest::TCommand::kStopPDisk:
+                    case NKikimrBlobStorage::TConfigRequest::TCommand::kMovePDisk:
                         return 2; // read-write commands go with higher priority as they are needed to keep cluster intact
 
                     case NKikimrBlobStorage::TConfigRequest::TCommand::kReadHostConfig:

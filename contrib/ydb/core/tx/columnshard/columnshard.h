@@ -1,18 +1,24 @@
 #pragma once
 #include "defs.h"
 #include "blob.h"
+#include "common/snapshot.h"
 
+#include <contrib/ydb/core/protos/statistics.pb.h>
+#include <contrib/ydb/core/protos/tx_columnshard.pb.h>
 #include <contrib/ydb/core/tx/tx.h>
 #include <contrib/ydb/core/tx/message_seqno.h>
-#include <contrib/ydb/core/protos/tx_columnshard.pb.h>
+#include <contrib/ydb/core/tx/data_events/common/modification_type.h>
 #include <contrib/ydb/core/tx/data_events/write_data.h>
-
+#include <contrib/ydb/core/tx/datashard/datashard.h>
 #include <contrib/ydb/core/tx/long_tx_service/public/types.h>
 
-// TODO: temporarily reuse datashard TEvScan (KIKIMR-11069) and TEvPeriodicTableStats
-#include <contrib/ydb/core/tx/datashard/datashard.h>
+#include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
 
 namespace NKikimr {
+
+namespace NOlap {
+class TPKRangesFilter;
+}
 
 namespace NColumnShard {
 
@@ -66,11 +72,58 @@ struct TEvColumnShard {
         EvWriteResult,
         EvReadResult,
 
+        EvDeleteSharedBlobs,
+        EvDeleteSharedBlobsFinished,
+
+        EvDataSharingProposeFromInitiator,
+        EvDataSharingConfirmFromInitiator,
+        EvDataSharingAckFinishFromInitiator,
+        EvDataSharingStartToSource,
+        EvDataSharingSendDataFromSource,
+        EvDataSharingAckDataToSource,
+        EvDataSharingFinishedFromSource,
+        EvDataSharingAckFinishToSource,
+        EvDataSharingCheckStatusFromInitiator,
+        EvDataSharingCheckStatusResult,
+        EvApplyLinksModification,
+        EvApplyLinksModificationFinished,
+        EvInternalScan,
+
         EvEnd
     };
 
     static_assert(EvEnd < EventSpaceEnd(TKikimrEvents::ES_TX_COLUMNSHARD),
                   "expect EvEnd < EventSpaceEnd(TKikimrEvents::ES_TX_COLUMNSHARD)");
+
+    struct TEvInternalScan: public TEventLocal<TEvInternalScan, EvInternalScan> {
+    private:
+        YDB_READONLY(ui64, PathId, 0);
+        YDB_READONLY_DEF(std::optional<ui64>, LockId);
+        YDB_ACCESSOR(bool, Reverse, false);
+        YDB_ACCESSOR(ui32, ItemsLimit, 0);
+        YDB_READONLY_DEF(std::vector<ui32>, ColumnIds);
+        YDB_READONLY_DEF(std::vector<TString>, ColumnNames);
+        std::set<ui32> ColumnIdsSet;
+        std::set<TString> ColumnNamesSet;
+    public:
+        std::optional<NOlap::TSnapshot> ReadFromSnapshot;
+        std::optional<NOlap::TSnapshot> ReadToSnapshot;
+        std::shared_ptr<NOlap::TPKRangesFilter> RangesFilter;
+    public:
+        void AddColumn(const ui32 id, const TString& columnName) {
+            AFL_VERIFY(ColumnIdsSet.emplace(id).second);
+            ColumnIds.emplace_back(id);
+            AFL_VERIFY(ColumnNamesSet.emplace(columnName).second);
+            ColumnNames.emplace_back(columnName);
+        }
+
+        TEvInternalScan(const ui64 pathId, const std::optional<ui64> lockId)
+            : PathId(pathId)
+            , LockId(lockId)
+        {
+
+        }
+    };
 
     struct TEvProposeTransaction
         : public TEventPB<TEvProposeTransaction,
@@ -93,15 +146,16 @@ struct TEvColumnShard {
                 ui64 txId, TString txBody, const ui32 flags = 0)
             : TEvProposeTransaction(txKind, source, txId, std::move(txBody), flags)
         {
-            Y_ABORT_UNLESS(txKind == NKikimrTxColumnShard::TX_KIND_SCHEMA);
+//            Y_ABORT_UNLESS(txKind == NKikimrTxColumnShard::TX_KIND_SCHEMA);
             Record.SetSchemeShardId(ssId);
         }
 
         TEvProposeTransaction(NKikimrTxColumnShard::ETransactionKind txKind, ui64 ssId, const TActorId& source,
-                ui64 txId, TString txBody, const NKikimrSubDomains::TProcessingParams& processingParams, const ui32 flags = 0)
+            ui64 txId, TString txBody, const TMessageSeqNo& seqNo, const NKikimrSubDomains::TProcessingParams& processingParams, const ui32 flags = 0)
             : TEvProposeTransaction(txKind, ssId, source, txId, std::move(txBody), flags)
         {
             Record.MutableProcessingParams()->CopyFrom(processingParams);
+            *Record.MutableSeqNo() = seqNo.SerializeToProto();
         }
 
         TActorId GetSource() const {
@@ -188,12 +242,14 @@ struct TEvColumnShard {
         TEvWrite() = default;
 
         TEvWrite(const TActorId& source, const NLongTxService::TLongTxId& longTxId, ui64 tableId,
-                 const TString& dedupId, const TString& data, const ui32 writePartId) {
+                 const TString& dedupId, const TString& data, const ui32 writePartId,
+                const NEvWrite::EModificationType modificationType) {
             ActorIdToProto(source, Record.MutableSource());
             Record.SetTableId(tableId);
             Record.SetDedupId(dedupId);
             Record.SetData(data);
             Record.SetWritePartId(writePartId);
+            Record.SetModificationType(TEnumOperator<NEvWrite::EModificationType>::SerializeToProto(modificationType));
             longTxId.ToProto(Record.MutableLongTxId());
         }
 
@@ -210,8 +266,7 @@ struct TEvColumnShard {
         }
     };
 
-    struct TEvWriteResult : public TEventPB<TEvWriteResult, NKikimrTxColumnShard::TEvWriteResult,
-                            TEvColumnShard::EvWriteResult> {
+    struct TEvWriteResult : public TEventPB<TEvWriteResult, NKikimrTxColumnShard::TEvWriteResult, TEvColumnShard::EvWriteResult> {
         TEvWriteResult() = default;
 
         TEvWriteResult(ui64 origin, const NEvWrite::TWriteMeta& writeMeta, ui32 status)

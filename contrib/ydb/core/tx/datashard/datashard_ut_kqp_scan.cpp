@@ -87,7 +87,7 @@ Y_UNIT_TEST_SUITE(KqpScan) {
                  * Trick executor to think that all datashard are located on node 1.
                  */
                 case NKqp::TKqpExecuterEvents::EvShardsResolveStatus: {
-                    auto* msg = ev->Get<NKqp::TEvKqpExecuter::TEvShardsResolveStatus>();
+                    auto* msg = ev->Get<NKqp::NShardResolver::TEvShardsResolveStatus>();
                     for (auto& [shardId, nodeId]: msg->ShardNodes) {
                         Cerr << "-- nodeId: " << nodeId << Endl;
                         Cerr.Flush();
@@ -116,9 +116,8 @@ Y_UNIT_TEST_SUITE(KqpScan) {
                     Y_ASSERT(record.GetResultSet().rows().at(0).items().size() == 1);
                     result = record.GetResultSet().rows().at(0).items().at(0).uint64_value();
 
-                    auto resp = MakeHolder<NKqp::TEvKqpExecuter::TEvStreamDataAck>();
+                    auto resp = MakeHolder<NKqp::TEvKqpExecuter::TEvStreamDataAck>(record.GetSeqNo(), record.GetChannelId());
                     resp->Record.SetEnough(false);
-                    resp->Record.SetSeqNo(ev->Get<NKqp::TEvKqpExecuter::TEvStreamData>()->Record.GetSeqNo());
                     resp->Record.SetFreeSpace(100);
                     runtime.Send(new IEventHandle(ev->Sender, sender, resp.Release()));
                     return TTestActorRuntime::EEventAction::DROP;
@@ -193,7 +192,7 @@ Y_UNIT_TEST_SUITE(KqpScan) {
                  * Trick executor to think that all datashard are located on node 1.
                  */
                 case NKqp::TKqpExecuterEvents::EvShardsResolveStatus: {
-                    auto* msg = ev->Get<NKqp::TEvKqpExecuter::TEvShardsResolveStatus>();
+                    auto* msg = ev->Get<NKqp::NShardResolver::TEvShardsResolveStatus>();
                     for (auto& [shardId, nodeId]: msg->ShardNodes) {
                         nodeId = firstNodeId;
                     }
@@ -213,9 +212,8 @@ Y_UNIT_TEST_SUITE(KqpScan) {
                     Y_ASSERT(record.GetResultSet().rows().at(0).items().size() == 1);
                     result = record.GetResultSet().rows().at(0).items().at(0).uint64_value();
 
-                    auto resp = MakeHolder<NKqp::TEvKqpExecuter::TEvStreamDataAck>();
+                    auto resp = MakeHolder<NKqp::TEvKqpExecuter::TEvStreamDataAck>(record.GetSeqNo(), record.GetChannelId());
                     resp->Record.SetEnough(false);
-                    resp->Record.SetSeqNo(ev->Get<NKqp::TEvKqpExecuter::TEvStreamData>()->Record.GetSeqNo());
                     resp->Record.SetFreeSpace(100);
                     runtime.Send(new IEventHandle(ev->Sender, sender, resp.Release()));
                     return TTestActorRuntime::EEventAction::DROP;
@@ -287,7 +285,7 @@ Y_UNIT_TEST_SUITE(KqpScan) {
         auto captureEvents = [&](TAutoPtr<IEventHandle> &ev) {
             switch (ev->GetTypeRewrite()) {
                 case NKqp::TKqpExecuterEvents::EvShardsResolveStatus: {
-                    auto* msg = ev->Get<NKqp::TEvKqpExecuter::TEvShardsResolveStatus>();
+                    auto* msg = ev->Get<NKqp::NShardResolver::TEvShardsResolveStatus>();
                     for (auto& [shardId, nodeId]: msg->ShardNodes) {
                         tabletId = shardId;
                         Cerr << (TStringBuilder() << "-- tabletId= " << tabletId << Endl);
@@ -316,9 +314,8 @@ Y_UNIT_TEST_SUITE(KqpScan) {
                     Y_ASSERT(record.GetResultSet().rows().at(0).items().size() == 1);
                     result = record.GetResultSet().rows().at(0).items().at(0).uint64_value();
 
-                    auto resp = MakeHolder<NKqp::TEvKqpExecuter::TEvStreamDataAck>();
+                    auto resp = MakeHolder<NKqp::TEvKqpExecuter::TEvStreamDataAck>(record.GetSeqNo(), record.GetChannelId());
                     resp->Record.SetEnough(false);
-                    resp->Record.SetSeqNo(ev->Get<NKqp::TEvKqpExecuter::TEvStreamData>()->Record.GetSeqNo());
                     resp->Record.SetFreeSpace(100);
 
                     runtime.Send(new IEventHandle(ev->Sender, sender, resp.Release()));
@@ -405,7 +402,7 @@ Y_UNIT_TEST_SUITE(KqpScan) {
         auto captureEvents = [&](TAutoPtr<IEventHandle> &ev) {
             switch (ev->GetTypeRewrite()) {
                 case NKqp::TKqpExecuterEvents::EvShardsResolveStatus: {
-                    auto* msg = ev->Get<NKqp::TEvKqpExecuter::TEvShardsResolveStatus>();
+                    auto* msg = ev->Get<NKqp::NShardResolver::TEvShardsResolveStatus>();
                     for (auto& [shardId, nodeId]: msg->ShardNodes) {
                         tabletId = shardId;
                         Cerr << (TStringBuilder() << "-- tabletId= " << tabletId << Endl);
@@ -434,9 +431,8 @@ Y_UNIT_TEST_SUITE(KqpScan) {
                     Y_ASSERT(record.GetResultSet().rows().at(0).items().size() == 1);
                     result = record.GetResultSet().rows().at(0).items().at(0).uint64_value();
 
-                    auto resp = MakeHolder<NKqp::TEvKqpExecuter::TEvStreamDataAck>();
+                    auto resp = MakeHolder<NKqp::TEvKqpExecuter::TEvStreamDataAck>(record.GetSeqNo(), record.GetChannelId());
                     resp->Record.SetEnough(false);
-                    resp->Record.SetSeqNo(ev->Get<NKqp::TEvKqpExecuter::TEvStreamData>()->Record.GetSeqNo());
                     resp->Record.SetFreeSpace(100);
 
                     runtime.Send(new IEventHandle(ev->Sender, sender, resp.Release()));
@@ -535,7 +531,7 @@ Y_UNIT_TEST_SUITE(KqpScan) {
         auto captureEvents = [&](TAutoPtr<IEventHandle> &ev) {
             switch (ev->GetTypeRewrite()) {
                 case NKqp::TKqpExecuterEvents::EvShardsResolveStatus: {
-                    auto* msg = ev->Get<NKqp::TEvKqpExecuter::TEvShardsResolveStatus>();
+                    auto* msg = ev->Get<NKqp::NShardResolver::TEvShardsResolveStatus>();
                     for (auto& [shardId, nodeId]: msg->ShardNodes) {
                         tabletId = shardId;
                         Cerr << (TStringBuilder() << "-- tabletId= " << tabletId << Endl);
@@ -564,9 +560,8 @@ Y_UNIT_TEST_SUITE(KqpScan) {
                     Y_ASSERT(record.GetResultSet().rows().at(0).items().size() == 1);
                     result = record.GetResultSet().rows().at(0).items().at(0).uint64_value();
 
-                    auto resp = MakeHolder<NKqp::TEvKqpExecuter::TEvStreamDataAck>();
+                    auto resp = MakeHolder<NKqp::TEvKqpExecuter::TEvStreamDataAck>(record.GetSeqNo(), record.GetChannelId());
                     resp->Record.SetEnough(false);
-                    resp->Record.SetSeqNo(ev->Get<NKqp::TEvKqpExecuter::TEvStreamData>()->Record.GetSeqNo());
                     resp->Record.SetFreeSpace(100);
 
                     runtime.Send(new IEventHandle(ev->Sender, sender, resp.Release()));
@@ -647,7 +642,7 @@ Y_UNIT_TEST_SUITE(KqpScan) {
                  * Trick executor to think that all datashard are located on node 1.
                  */
                 case NKqp::TKqpExecuterEvents::EvShardsResolveStatus: {
-                    auto* msg = ev->Get<NKqp::TEvKqpExecuter::TEvShardsResolveStatus>();
+                    auto* msg = ev->Get<NKqp::NShardResolver::TEvShardsResolveStatus>();
                     for (auto& [shardId, nodeId]: msg->ShardNodes) {
                         Cerr << "-- nodeId: " << nodeId << Endl;
                         nodeId = runtime.GetNodeId(0);
@@ -692,9 +687,8 @@ Y_UNIT_TEST_SUITE(KqpScan) {
                         }
                     }
 
-                    auto resp = MakeHolder<NKqp::TEvKqpExecuter::TEvStreamDataAck>();
+                    auto resp = MakeHolder<NKqp::TEvKqpExecuter::TEvStreamDataAck>(record.GetSeqNo(), record.GetChannelId());
                     resp->Record.SetEnough(false);
-                    resp->Record.SetSeqNo(ev->Get<NKqp::TEvKqpExecuter::TEvStreamData>()->Record.GetSeqNo());
                     resp->Record.SetFreeSpace(100);
                     runtime.Send(new IEventHandle(ev->Sender, sender, resp.Release()));
                     return TTestActorRuntime::EEventAction::DROP;
@@ -802,9 +796,8 @@ Y_UNIT_TEST_SUITE(KqpScan) {
                     Y_ASSERT(record.GetResultSet().rows().at(0).items().size() == 1);
                     result = record.GetResultSet().rows().at(0).items().at(0).uint64_value();
 
-                    auto resp = MakeHolder<NKqp::TEvKqpExecuter::TEvStreamDataAck>();
+                    auto resp = MakeHolder<NKqp::TEvKqpExecuter::TEvStreamDataAck>(record.GetSeqNo(), record.GetChannelId());
                     resp->Record.SetEnough(false);
-                    resp->Record.SetSeqNo(record.GetSeqNo());
                     resp->Record.SetFreeSpace(100);
                     ctx.Send(ev->Sender, resp.Release());
                     break;

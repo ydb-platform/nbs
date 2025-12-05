@@ -12,8 +12,6 @@ SRCS(
     concurrent_rw_hash.h
     console.cpp
     console.h
-    count_min_sketch.cpp
-    count_min_sketch.h
     counted_leaky_bucket.h
     defs.h
     event_priority_queue.h
@@ -24,6 +22,8 @@ SRCS(
     format.h
     fragmented_buffer.cpp
     fragmented_buffer.h
+    gen_step.cpp
+    gen_step.h
     hazard.cpp
     hyperlog_counter.cpp
     hyperlog_counter.h
@@ -60,12 +60,14 @@ SRCS(
     ui64id.cpp
     ui64id.h
     wildcard.h
+    wilson.h
 )
 
 PEERDIR(
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/interconnect/mock
     contrib/ydb/library/actors/util
+    contrib/ydb/library/actors/wilson
     library/cpp/containers/stack_vector
     library/cpp/html/escape
     library/cpp/ipmath

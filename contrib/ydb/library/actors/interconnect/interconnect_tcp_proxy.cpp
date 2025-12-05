@@ -59,6 +59,11 @@ namespace NActors {
     void TInterconnectProxyTCP::RequestNodeInfo(STATEFN_SIG) {
         ICPROXY_PROFILED;
 
+        if (ev->GetTypeRewrite() == TEvents::TSystem::Unsubscribe) {
+            // do not initiate new session upon receiving this event
+            return;
+        }
+
         Y_ABORT_UNLESS(!IncomingHandshakeActor && !OutgoingHandshakeActor && !PendingIncomingHandshakeEvents && !PendingSessionEvents);
         EnqueueSessionEvent(ev);
         StartConfiguring();
@@ -891,7 +896,15 @@ namespace NActors {
         stats.LastSessionDieTime = LastSessionDieTime;
         stats.TotalOutputQueueSize = Session ? Session->TotalOutputQueueSize : 0;
         stats.Connected = Session ? (bool)Session->Socket : false;
-        stats.ExternalDataChannel = Session && Session->XdcSocket;
+        if (Session) {
+            if (const auto xdcFlags = Session->GetXDCFlags()) {
+                stats.ExternalDataChannel = true;
+                stats.XDCFlags = *xdcFlags;
+            } else {
+                stats.ExternalDataChannel = false;
+                stats.XDCFlags = 0;
+            }
+        }
         stats.Host = TechnicalPeerHostName;
         stats.Port = 0;
         ui32 rep = 0;

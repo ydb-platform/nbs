@@ -452,6 +452,7 @@ TMkqlCommonCallableCompiler::TShared::TShared() {
 
         {"Just", &TProgramBuilder::NewOptional},
         {"Exists", &TProgramBuilder::Exists},
+        {"BlockExists", &TProgramBuilder::BlockExists},
 
         {"Pickle", &TProgramBuilder::Pickle},
         {"StablePickle", &TProgramBuilder::StablePickle},
@@ -753,10 +754,20 @@ TMkqlCommonCallableCompiler::TShared::TShared() {
             return MkqlBuildWideLambda(node.Tail(), ctx, keys);
         };
 
-        if (withLimit)
+        bool isStatePersistable = true;
+        // Traverse through childs skipping input and limit children
+        for (size_t i = 2U; i < node.ChildrenSize(); ++i) {
+            isStatePersistable = isStatePersistable && node.Child(i)->GetTypeAnn()->IsPersistable();
+        }
+
+        if (withLimit) {
             return ctx.ProgramBuilder.WideCombiner(flow, memLimit, keyExtractor, init, update, finish);
-        else
-            return ctx.ProgramBuilder.WideLastCombiner(flow, keyExtractor, init, update, finish);
+        }
+
+        if (isStatePersistable && RuntimeVersion >= 49U) {
+            return ctx.ProgramBuilder.WideLastCombinerWithSpilling(flow, keyExtractor, init, update, finish);
+        }
+        return ctx.ProgramBuilder.WideLastCombiner(flow, keyExtractor, init, update, finish);
     });
 
     AddCallable("WideChopper", [](const TExprNode& node, TMkqlBuildContext& ctx) {
@@ -1151,6 +1162,21 @@ TMkqlCommonCallableCompiler::TShared::TShared() {
         const auto value = FromString<i64>(node.Head(), NUdf::EDataSlot::Interval64);
         return ctx.ProgramBuilder.NewDataLiteral<NUdf::EDataSlot::Interval64>(
             NUdf::TStringRef((const char*)&value, sizeof(value)));
+    });
+
+    AddCallable("TzDate32", [](const TExprNode& node, TMkqlBuildContext& ctx) {
+        const auto& parts = CutTimezone<i32>(node.Head().Content());
+        return ctx.ProgramBuilder.NewTzDataLiteral<NUdf::TTzDate32>(parts.first, parts.second);
+    });
+
+    AddCallable("TzDatetime64", [](const TExprNode& node, TMkqlBuildContext& ctx) {
+        const auto& parts = CutTimezone<i64>(node.Head().Content());
+        return ctx.ProgramBuilder.NewTzDataLiteral<NUdf::TTzDatetime64>(parts.first, parts.second);
+    });
+
+    AddCallable("TzTimestamp64", [](const TExprNode& node, TMkqlBuildContext& ctx) {
+        const auto& parts = CutTimezone<i64>(node.Head().Content());
+        return ctx.ProgramBuilder.NewTzDataLiteral<NUdf::TTzTimestamp64>(parts.first, parts.second);
     });
 
     AddCallable("FoldMap", [](const TExprNode& node, TMkqlBuildContext& ctx) {
@@ -1677,6 +1703,7 @@ TMkqlCommonCallableCompiler::TShared::TShared() {
         });
 
         const auto returnType = BuildType(node, *node.GetTypeAnn(), ctx.ProgramBuilder);
+
         return selfJoin
             ? ctx.ProgramBuilder.GraceSelfJoin(flowLeft, joinKind, leftKeyColumns, rightKeyColumns, leftRenames, rightRenames, returnType, anyJoinSettings)
             : ctx.ProgramBuilder.GraceJoin(flowLeft, flowRight, joinKind, leftKeyColumns, rightKeyColumns, leftRenames, rightRenames, returnType, anyJoinSettings);
@@ -2243,6 +2270,8 @@ TMkqlCommonCallableCompiler::TShared::TShared() {
         "CallableTypeComponents",
         "CallableArgument",
         "CallableTypeHandle",
+        "PgTypeName",
+        "PgTypeHandle",
         "WorldCode",
         "AtomCode",
         "ListCode",
@@ -2683,12 +2712,22 @@ TMkqlCommonCallableCompiler::TShared::TShared() {
         return ctx.ProgramBuilder.PgClone(input, dependentNodes);
     });
 
-     AddCallable("PgTableContent", [](const TExprNode& node, TMkqlBuildContext& ctx) {
+    AddCallable("PgTableContent", [](const TExprNode& node, TMkqlBuildContext& ctx) {
         auto returnType = BuildType(node, *node.GetTypeAnn(), ctx.ProgramBuilder);
         return ctx.ProgramBuilder.PgTableContent(
             node.Child(0)->Content(),
             node.Child(1)->Content(),
             returnType);
+    });
+
+    AddCallable("PgToRecord", [](const TExprNode& node, TMkqlBuildContext& ctx) {
+        auto input = MkqlBuildExpr(*node.Child(0), ctx);
+        TVector<std::pair<std::string_view, std::string_view>> members;
+        for (auto child : node.Child(1)->Children()) {
+            members.push_back({child->Head().Content(), child->Tail().Content()});
+        }
+
+        return ctx.ProgramBuilder.PgToRecord(input, members);
     });
 
     AddCallable("WithContext", [](const TExprNode& node, TMkqlBuildContext& ctx) {
@@ -2712,10 +2751,24 @@ TMkqlCommonCallableCompiler::TShared::TShared() {
         return ctx.ProgramBuilder.BlockBitCast(arg, targetType);
     });
 
+    AddCallable("BlockMember", [](const TExprNode& node, TMkqlBuildContext& ctx) {
+        const auto structObj = MkqlBuildExpr(node.Head(), ctx);
+        const auto name = node.Tail().Content();
+        return ctx.ProgramBuilder.BlockMember(structObj, name);
+    });
+
     AddCallable("BlockNth", [](const TExprNode& node, TMkqlBuildContext& ctx) {
         const auto tupleObj = MkqlBuildExpr(node.Head(), ctx);
         const auto index = FromString<ui32>(node.Tail().Content());
         return ctx.ProgramBuilder.BlockNth(tupleObj, index);
+    });
+
+    AddCallable("BlockAsStruct", [](const TExprNode& node, TMkqlBuildContext& ctx) {
+        std::vector<std::pair<std::string_view, TRuntimeNode>> members;
+        for (const auto& x : node.Children()) {
+            members.emplace_back(x->Head().Content(), MkqlBuildExpr(x->Tail(), ctx));
+        }
+        return ctx.ProgramBuilder.BlockAsStruct(members);
     });
 
     AddCallable("BlockAsTuple", [](const TExprNode& node, TMkqlBuildContext& ctx) {
@@ -2910,6 +2963,10 @@ TMkqlCommonCallableCompiler::TShared::TShared() {
     });
 
     AddCallable(SkippableCallables, [](const TExprNode& node, TMkqlBuildContext& ctx) {
+        return MkqlBuildExpr(node.Head(), ctx);
+    });
+
+    AddCallable({ "AssumeStrict", "AssumeNonStrict", "Likely" }, [](const TExprNode& node, TMkqlBuildContext& ctx) {
         return MkqlBuildExpr(node.Head(), ctx);
     });
 

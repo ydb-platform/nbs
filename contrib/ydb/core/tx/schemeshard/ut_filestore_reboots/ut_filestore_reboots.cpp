@@ -1,6 +1,7 @@
 #include <contrib/ydb/core/tx/schemeshard/ut_helpers/helpers.h>
 
 #include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
+#include <contrib/ydb/core/protos/filestore_config.pb.h>
 
 #include <google/protobuf/text_format.h>
 

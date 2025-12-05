@@ -16,6 +16,8 @@
 #include <contrib/ydb/core/ymq/base/queue_path.h>
 #include <contrib/ydb/core/ymq/proto/events.pb.h>
 #include <contrib/ydb/core/ymq/proto/records.pb.h>
+#include <contrib/ydb/core/protos/http_config.pb.h>
+#include <contrib/ydb/public/api/protos/ydb_issue_message.pb.h>
 
 #include <contrib/ydb/library/actors/core/event_pb.h>
 #include <contrib/ydb/library/actors/core/event_local.h>
@@ -160,11 +162,14 @@ struct TSqsEvents {
         TString  RequestId;
         TString  UserName;
         TString  QueueName;
+        TString  FolderId;
+        bool EnableThrottling = true;
         ui64 Flags = 0;
 
         enum EFlags {
             NeedQueueLeader = 1,
             NeedQueueAttributes = NeedQueueLeader | 2, // attributes are stored in leader actor, so, when you need attributes, you need leader
+            NeedQueueTags = NeedQueueLeader | 4,       // same for tags
         };
 
         TEvGetConfiguration() = default;
@@ -173,6 +178,20 @@ struct TSqsEvents {
             : RequestId(std::move(requestId))
             , UserName(user)
             , QueueName(name)
+            , Flags(flags)
+        { }
+        TEvGetConfiguration(
+                TString requestId,
+                const TString& user,
+                const TString& name,
+                const TString& folderId,
+                bool enableThrottling,
+                ui64 flags = 0
+        )   : RequestId(std::move(requestId))
+            , UserName(user)
+            , QueueName(name)
+            , FolderId(folderId)
+            , EnableThrottling(enableThrottling)
             , Flags(flags)
         { }
     };
@@ -207,6 +226,7 @@ struct TSqsEvents {
         ui64 Shards = 1;
         bool Fifo = false;
         TMaybe<TQueueAttributes> QueueAttributes;
+        TMaybe<NJson::TJsonMap> QueueTags;
         TIntrusivePtr<TQuoterResourcesForActions> QuoterResources;
 
         // Counters
@@ -939,7 +959,7 @@ struct TSqsEvents {
         ui64 Type;
     };
 
-    struct TEvNodeTrackerSubscribeRequest 
+    struct TEvNodeTrackerSubscribeRequest
         : public NActors::TEventLocal<TEvNodeTrackerSubscribeRequest, EvNodeTrackerSubscribeRequest>
     {
         explicit TEvNodeTrackerSubscribeRequest(
@@ -958,8 +978,8 @@ struct TSqsEvents {
         bool IsFifo;
         std::optional<ui64> TabletId;
     };
-    
-    struct TEvNodeTrackerUnsubscribeRequest 
+
+    struct TEvNodeTrackerUnsubscribeRequest
         : public NActors::TEventLocal<TEvNodeTrackerUnsubscribeRequest, EvNodeTrackerUnsubscribeRequest>
     {
         TEvNodeTrackerUnsubscribeRequest(ui64 subscriptionId)
@@ -978,17 +998,17 @@ struct TSqsEvents {
         ui32 NodeId;
         bool Disconnected;
     };
-    
+
     struct TEvForceReloadState : public NActors::TEventLocal<TEvForceReloadState, EvForceReloadState> {
         explicit TEvForceReloadState(TDuration nextTryAfter = TDuration::Zero())
             : NextTryAfter(nextTryAfter)
         {}
         TDuration NextTryAfter;
     };
-    
+
     struct TEvReloadStateRequest : public NActors::TEventPB<TEvReloadStateRequest, TReloadStateRequest, EvReloadStateRequest> {
         TEvReloadStateRequest() = default;
-        
+
         TEvReloadStateRequest(const TString& user, const TString& queue) {
             Record.MutableTarget()->SetUserName(user);
             Record.MutableTarget()->SetQueueName(queue);
