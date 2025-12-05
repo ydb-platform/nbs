@@ -647,6 +647,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(NonreplAllocationPolicy,                                               \
         NProto::ENonreplAllocationPolicy,                                      \
         NProto::NONREPL_ALLOC_POLICY_NOT_SPECIFIED                            )\
+                                                                               \
+    xxx(SendLocalTabletMetricsToHiveEnabled,  bool,        false              )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 
