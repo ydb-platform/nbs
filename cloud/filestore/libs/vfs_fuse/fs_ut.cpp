@@ -2817,10 +2817,15 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // data than the cache capacity (~1_MB) and temporarily prevent write
         // requests from completion.
 
+        // Note: due to the test framework/client limitations, the number of
+        // pending requests should not exceed 128 and the size of a message
+        // should not exceed 8192 bytes
+
         constexpr ui64 NodeCount = 8;
-        constexpr ui64 TotalByteCount = 10_MB;
+        constexpr ui64 RequestCount = 150;
+        constexpr ui64 MinByteCount = 7000;
+        constexpr ui64 MaxByteCount = 7500;
         constexpr ui64 MaxOffset = 128_KB;
-        constexpr ui64 MaxByteCount = 16_KB;
         constexpr TDuration Timeout = TDuration::Seconds(15);
 
         NProto::TFileStoreFeatures features;
@@ -2831,11 +2836,15 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             CreateScheduler(),
             features);
 
+        auto writeDataPromise = NewPromise();
+
         bootstrap.Service->WriteDataHandler = [&](auto, auto)
         {
-            bootstrap.Timer->Sleep(TDuration::MilliSeconds(10));
-            NProto::TWriteDataResponse result;
-            return MakeFuture(result);
+            // The same future cannot be shared between responses
+            auto promise = NewPromise<NProto::TWriteDataResponse>();
+            writeDataPromise.GetFuture().Subscribe(
+                [promise](const auto&) mutable { promise.SetValue({}); });
+            return promise;
         };
 
         bootstrap.Start();
@@ -2844,13 +2853,14 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             bootstrap.Stop();
         };
 
-        // Fill WriteBackCache with requests
-        ui64 totalByteCount = 0;
-        while (totalByteCount < TotalByteCount) {
+        std::atomic<ui64> completedRequestCount = 0;
+
+        for (ui64 i = 0; i < RequestCount; i++) {
             ui64 nodeId = RandomNumber(NodeCount) + 123;
             ui64 handleId = nodeId + 456;
             ui64 offset = RandomNumber(MaxOffset);
-            ui64 byteCount = RandomNumber(MaxByteCount) + 1;
+            ui64 byteCount =
+                RandomNumber(MaxByteCount - MinByteCount + 1) + MinByteCount;
 
             auto reqWrite = std::make_shared<TWriteRequest>(
                 nodeId,
@@ -2859,10 +2869,23 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 CreateBuffer(byteCount, 'a'));
 
             reqWrite->In->Body.flags |= O_WRONLY;
-            bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
-
-            totalByteCount += byteCount;
+            bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite).Subscribe(
+                [&](const auto&) { completedRequestCount++; });
         }
+
+        // The requests are sent to Fuse in a thread pool - there is no reliable
+        // way to ensure that the tasks are executed, so just wait a bit
+        bootstrap.Timer->Sleep(TDuration::Seconds(1));
+
+        UNIT_ASSERT_LT_C(
+            0,
+            completedRequestCount.load(),
+            "There should exist completed requests");
+
+        UNIT_ASSERT_GT_C(
+            RequestCount,
+            completedRequestCount.load(),
+            "There should exist pending requests");
 
         auto path = TempDir.Path() / "WriteBackCache" / FileSystemId /
                     SessionId / "write_back_cache";
@@ -2870,8 +2893,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(path.Exists());
 
         auto stopFuture = bootstrap.StopAsync();
+        // Enable progression of WriteData requests - this will enable flushing
+        writeDataPromise.SetValue();
         UNIT_ASSERT(stopFuture.Wait(Timeout));
 
+        UNIT_ASSERT_VALUES_EQUAL(RequestCount, completedRequestCount.load());
         UNIT_ASSERT(!path.Exists());
     }
 }
