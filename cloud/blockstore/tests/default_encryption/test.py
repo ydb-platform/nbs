@@ -55,6 +55,10 @@ def start_nbs_daemon(ydb):
     feature.Name = 'RootKmsEncryptionForDiskRegistryBasedDisks'
     feature.Whitelist.EntityIds.append("vol0")
 
+    feature = features.Features.add()
+    feature.Name = 'EncryptionAtRestForDiskRegistryBasedDisks'
+    feature.Whitelist.EntityIds.append("vol1")
+
     cfg.files['features'] = features
 
     root_kms = TRootKmsConfig()
@@ -126,7 +130,7 @@ def start_disk_agent(ydb, nbs, agent_id):
     disk_agent.stop()
 
 
-@pytest.mark.parametrize('method', ['features', 'encryption_spec'])
+@pytest.mark.parametrize('method', ['features', 'encryption_spec', 'legacy_feature'])
 def test_create_volume_with_default_ecnryption(nbs, disk_agent, method):
 
     client = CreateTestClient(f"localhost:{nbs.port}")
@@ -134,6 +138,10 @@ def test_create_volume_with_default_ecnryption(nbs, disk_agent, method):
     # Feature RootKmsEncryptionForDiskRegistryBasedDisks is enabled for vol0
     disk_id = "vol0"
     encryption_spec = None
+
+    # Feature EncryptionAtRestForDiskRegistryBasedDisks is enabled for vol1
+    if method == 'legacy_feature':
+        disk_id = "vol1"
 
     if method == 'encryption_spec':
         disk_id = "nrd0"

@@ -28,6 +28,31 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Temporarily use *EncryptionAtRest* as it may be used in some configurations
+bool IsRootKmsEncryptionForDiskRegistryBasedDiskEnabled(
+    const TStorageConfig& config,
+    const TString& cloudId,
+    const TString& folderId,
+    const TString& diskId)
+{
+    if (config.GetRootKmsEncryptionForDiskRegistryBasedDisksEnabled() ||
+        config.GetEncryptionAtRestForDiskRegistryBasedDisksEnabled())
+    {
+        return true;
+    }
+
+    return config.IsRootKmsEncryptionForDiskRegistryBasedDisksFeatureEnabled(
+               cloudId,
+               folderId,
+               diskId) ||
+           config.IsEncryptionAtRestForDiskRegistryBasedDisksFeatureEnabled(
+               cloudId,
+               folderId,
+               diskId);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TCreateVolumeActor final
     : public TActorBootstrapped<TCreateVolumeActor>
 {
@@ -139,24 +164,30 @@ void TCreateVolumeActor::DescribeBaseVolume(const TActorContext& ctx)
 
 bool TCreateVolumeActor::ShouldCreateVolumeWithRootKmsEncryption() const
 {
+    if (!IsDiskRegistryMediaKind(GetStorageMediaKind())) {
+        return false;
+    }
+
     if (IsDiskRegistryLocalMediaKind(GetStorageMediaKind())) {
         // Root KMS encryption for local disks is not implemented (#2598)
         return false;
     }
 
-    return IsDiskRegistryMediaKind(GetStorageMediaKind()) &&
-           // Direct request for the Root KMS encryption
-           (Request.GetEncryptionSpec().GetMode() ==
-                NProto::ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY ||
-            // Client did not request encryption with the provided key
-            (Request.GetEncryptionSpec().GetMode() == NProto::NO_ENCRYPTION &&
-             // and the feature is enabled for the disk/cloud/folder
-             (Config->GetRootKmsEncryptionForDiskRegistryBasedDisksEnabled() ||
-              Config
-                  ->IsRootKmsEncryptionForDiskRegistryBasedDisksFeatureEnabled(
-                      Request.GetCloudId(),
-                      Request.GetFolderId(),
-                      Request.GetDiskId()))));
+    // Direct request for the Root KMS encryption
+    if (Request.GetEncryptionSpec().GetMode() ==
+        NProto::ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY)
+    {
+        return true;
+    }
+
+    // Client did not request encryption with the provided key
+    return Request.GetEncryptionSpec().GetMode() == NProto::NO_ENCRYPTION &&
+           // and the feature is enabled for the disk/cloud/folder
+           IsRootKmsEncryptionForDiskRegistryBasedDiskEnabled(
+               *Config,
+               Request.GetCloudId(),
+               Request.GetFolderId(),
+               Request.GetDiskId());
 }
 
 void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
