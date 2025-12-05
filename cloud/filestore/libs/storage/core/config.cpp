@@ -189,6 +189,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
             NCloud::NProto::AUTHORIZATION_IGNORE                              )\
                                                                                \
     xxx(TwoStageReadEnabled,             bool,      false                     )\
+    xxx(TwoStageReadThreshold,           ui32,      0                         )\
     xxx(TwoStageReadDisabledForHDD,      bool,      false                     )\
     xxx(ThreeStageWriteEnabled,          bool,      false                     )\
     xxx(ThreeStageWriteThreshold,        ui32,      64_KB                     )\

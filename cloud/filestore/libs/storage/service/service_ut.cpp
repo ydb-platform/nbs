@@ -2232,6 +2232,83 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         CheckTwoStageReads(NProto::STORAGE_MEDIA_SSD, false);
     }
 
+    Y_UNIT_TEST(ShouldUseTwoStageReadThreshold)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetTwoStageReadEnabled(true);
+        storageConfig.SetFlushThreshold(1); // disabling fresh blocks
+        storageConfig.SetTwoStageReadThreshold(8_KB);
+
+        TTestEnv env({}, storageConfig);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::STORAGE_MEDIA_SSD);
+
+        auto headers = service.InitSession(fs, "client");
+
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        // small write
+        auto data = TString(4_KB, 'a');
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
+        auto readDataResult =
+            service.ReadData(headers, fs, nodeId, handle, 0, data.size());
+        UNIT_ASSERT_VALUES_EQUAL(data, readDataResult->Record.GetBuffer());
+
+        // larger write
+        data = TString(8_KB, 'b');
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
+        readDataResult =
+            service.ReadData(headers, fs, nodeId, handle, 0, data.size());
+        UNIT_ASSERT_VALUES_EQUAL(data, readDataResult->Record.GetBuffer());
+
+        auto counters = env.GetCounters()
+            ->FindSubgroup("component", "service_fs")
+            ->FindSubgroup("host", "cluster")
+            ->FindSubgroup("filesystem", fs)
+            ->FindSubgroup("client", "client")
+            ->FindSubgroup("cloud", "test_cloud")
+            ->FindSubgroup("folder", "test_folder");
+        {
+            auto subgroup = counters->FindSubgroup("request", "DescribeData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "ReadData");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                2,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+        {
+            auto subgroup = counters->FindSubgroup("request", "ReadBlob");
+            UNIT_ASSERT(subgroup);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                subgroup->GetCounter("Count")->GetAtomic());
+        }
+    }
+
     Y_UNIT_TEST(ShouldFallbackToReadDataIfDescribeDataFails)
     {
         TTestEnv env;
