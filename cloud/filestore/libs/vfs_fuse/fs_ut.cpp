@@ -2952,6 +2952,41 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(0, requestInProgressSensor->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(requestCount, requestCountSensor->GetAtomic());
         UNIT_ASSERT(!path.Exists());
+
+    Y_UNIT_TEST(ShouldHandleZeroCopyReadRequest)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetZeroCopyReadEnabled(true);
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+        const ui64 size = 789;
+
+        bootstrap.Service->ReadDataHandler = [&] (auto callContext, auto request) {
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+            UNIT_ASSERT_VALUES_EQUAL(request->GetHandle(), handleId);
+
+            NProto::TReadDataResponse result;
+            result.MutableBuffer()->assign(TString(request->GetLength(), 'a'));
+
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto read = bootstrap.Fuse->SendRequest<TReadRequest>(
+            nodeId, handleId, 0, size);
+
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(read.GetValue(), size);
     }
 }
 
