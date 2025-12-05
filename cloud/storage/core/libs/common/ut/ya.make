@@ -28,6 +28,7 @@ SRCS(
     file_ring_buffer_ut.cpp
     guarded_sglist_ut.cpp
     history_ut.cpp
+    interval_ut.cpp
     lru_cache_ut.cpp
     dynamic_persistent_table_ut.cpp
     persistent_table_ut.cpp
