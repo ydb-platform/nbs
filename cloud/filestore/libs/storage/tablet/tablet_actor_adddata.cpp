@@ -1,6 +1,7 @@
 #include "tablet_actor.h"
 
 #include <cloud/filestore/libs/storage/tablet/actors/tablet_adddata.h>
+#include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 #include <cloud/filestore/libs/storage/tablet/model/split_range.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -149,6 +150,13 @@ void TIndexTabletActor::CompleteTx_AddData(
             ctx);
 
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+        FinalizeProfileLogRequestInfo(
+            std::move(args.ProfileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            args.Error,
+            ProfileLog);
     };
 
     if (HasError(args.Error)) {
@@ -200,12 +208,15 @@ void TIndexTabletActor::CompleteTx_AddData(
     auto actor = std::make_unique<TAddDataActor>(
         TraceSerializer,
         LogTag,
+        GetFileSystemId(),
         ctx.SelfID,
         args.RequestInfo,
         args.CommitId,
         std::move(blobs),
         std::move(args.UnalignedDataParts),
-        TWriteRange{args.NodeId, args.ByteRange.End()});
+        TWriteRange{args.NodeId, args.ByteRange.End()},
+        ProfileLog,
+        std::move(args.ProfileLogRequest));
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);
@@ -332,12 +343,34 @@ void TIndexTabletActor::HandleAddData(
 {
     auto* msg = ev->Get();
 
+    NProto::TProfileLogRequestInfo profileLogRequest;
+    InitTabletProfileLogRequestInfo(
+        profileLogRequest,
+        EFileStoreRequest::AddData,
+        msg->Record,
+        ctx.Now());
+
+    auto replyError = [&] (const NProto::TError& error)
+    {
+        FILESTORE_TRACK(
+            ResponseSent_Tablet,
+            msg->CallContext,
+            "AddData");
+
+        auto response =
+            std::make_unique<TEvIndexTablet::TEvAddDataResponse>(error);
+        NCloud::Reply(ctx, *ev, std::move(response));
+
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            error,
+            ProfileLog);
+    };
+
     if (auto error = IsDataOperationAllowed(); HasError(error)) {
-        NCloud::Reply(
-            ctx,
-            *ev,
-            std::make_unique<TEvIndexTablet::TEvAddDataResponse>(
-                std::move(error)));
+        replyError(error);
         return;
     }
 
@@ -345,9 +378,7 @@ void TIndexTabletActor::HandleAddData(
     if (!IsCollectBarrierAcquired(commitId)) {
         // The client has sent the AddData request too late, after
         // the lease has expired.
-        auto response = std::make_unique<TEvIndexTablet::TEvAddDataResponse>(
-            MakeError(E_REJECTED, "collect barrier expired"));
-        NCloud::Reply(ctx, *ev, std::move(response));
+        replyError(MakeError(E_REJECTED, "collect barrier expired"));
         return;
     }
     // We acquire the collect barrier for the second time in order to prolong
@@ -383,6 +414,12 @@ void TIndexTabletActor::HandleAddData(
     };
 
     if (!AcceptRequest<TEvIndexTablet::TAddDataMethod>(ev, ctx, validator)) {
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            MakeError(E_REJECTED, "not accepted"),
+            ProfileLog);
         return;
     }
 
@@ -396,22 +433,18 @@ void TIndexTabletActor::HandleAddData(
     }
 
     if (blobIds.empty()) {
-        auto response =
-            std::make_unique<TEvIndexTablet::TEvAddDataResponse>(MakeError(
-                E_ARGUMENT,
-                "empty list of blobs given in AddData request"));
-        NCloud::Reply(ctx, *ev, std::move(response));
+        replyError(MakeError(
+            E_ARGUMENT,
+            "empty list of blobs given in AddData request"));
         return;
     }
 
     TVector<TBlockBytesMeta> unalignedDataParts;
     for (auto& part: *msg->Record.MutableUnalignedDataRanges()) {
         if (part.GetContent().empty()) {
-            auto response =
-                std::make_unique<TEvIndexTablet::TEvAddDataResponse>(MakeError(
-                    E_ARGUMENT,
-                    "empty unaligned data part"));
-            NCloud::Reply(ctx, *ev, std::move(response));
+            replyError(MakeError(
+                E_ARGUMENT,
+                "empty unaligned data part"));
             return;
         }
 
@@ -419,13 +452,11 @@ void TIndexTabletActor::HandleAddData(
         const ui32 lastBlockIndex =
             (part.GetOffset() + part.GetContent().size() - 1) / GetBlockSize();
         if (blockIndex != lastBlockIndex) {
-            auto response =
-                std::make_unique<TEvIndexTablet::TEvAddDataResponse>(MakeError(
-                    E_ARGUMENT,
-                    TStringBuilder() << "unaligned part spanning more than one"
-                        << " block: " << part.GetOffset() << ":"
-                        << part.GetContent().size()));
-            NCloud::Reply(ctx, *ev, std::move(response));
+            replyError(MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "unaligned part spanning more than one"
+                    << " block: " << part.GetOffset() << ":"
+                    << part.GetContent().size()));
             return;
         }
 
@@ -487,7 +518,8 @@ void TIndexTabletActor::HandleAddData(
         range,
         std::move(blobIds),
         std::move(unalignedDataParts),
-        msg->Record.GetCommitId());
+        msg->Record.GetCommitId(),
+        std::move(profileLogRequest));
     txStarted = true;
 }
 

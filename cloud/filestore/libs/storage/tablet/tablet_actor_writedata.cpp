@@ -122,11 +122,23 @@ void TIndexTabletActor::HandleWriteData(
     };
 
     if (!AcceptRequest<TEvService::TWriteDataMethod>(ev, ctx, validator)) {
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            MakeError(E_REJECTED, "not accepted"),
+            ProfileLog);
         return;
     }
 
     // either rejected or put into queue
     if (ThrottleIfNeeded<TEvService::TWriteDataMethod>(ev, ctx)) {
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            MakeError(E_REJECTED, "throttled"),
+            ProfileLog);
         return;
     }
 
@@ -449,11 +461,14 @@ void TIndexTabletActor::CompleteTx_WriteData(
     auto actor = std::make_unique<TWriteDataActor>(
         TraceSerializer,
         LogTag,
+        GetFileSystemId(),
         ctx.SelfID,
         args.RequestInfo,
         args.CommitId,
         std::move(blobs),
-        TWriteRange{args.NodeId, args.ByteRange.End()});
+        TWriteRange{args.NodeId, args.ByteRange.End()},
+        ProfileLog,
+        std::move(args.ProfileLogRequest));
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);
