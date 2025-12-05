@@ -4,64 +4,176 @@
 
 #include <util/generic/hash.h>
 #include <util/generic/map.h>
+#include <util/stream/str.h>
 
 namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TEmptyType
+{
+};
+
 // TBlockRangeMap is a class that manages a collection of block ranges and it
 // key (ui64) with efficient overlap checking capabilities. It's designed to
 // store and query block ranges and it key, particularly useful for determining
 // if a given range overlaps with any of the stored ranges.
+template <typename TKey, typename TValue = TEmptyType>
 class TBlockRangeMap
 {
 public:
-    using TKey = ui64;
-    using TOnOverlappedFunc = std::function<void(TKey, TBlockRange64)>;
-
-    struct TKeyAndRange
+    struct TItem
     {
         TKey Key = {};
         TBlockRange64 Range;
+        TValue Value = {};
     };
+
+    enum class EEnumerateContinuation
+    {
+        Continue,
+        Stop,
+    };
+    using TEnumerateFunc =
+        std::function<EEnumerateContinuation(const TItem& item)>;
 
 private:
-    struct TBlockRange64Comparator
+    struct TRangeComparator
     {
-        bool operator()(const TKeyAndRange& lhs, const TKeyAndRange& rhs) const
+        bool operator()(const TItem& lhs, const TItem& rhs) const
         {
-            return std::tie(lhs.Range.End, lhs.Range.Start) <
-                   std::tie(rhs.Range.End, rhs.Range.Start);
+            return std::tie(lhs.Range.End, lhs.Range.Start, lhs.Key) <
+                   std::tie(rhs.Range.End, rhs.Range.Start, rhs.Key);
         }
     };
-    using TRanges = TMultiSet<TKeyAndRange, TBlockRange64Comparator>;
-    using TRangeIt = TRanges::iterator;
 
     ui64 MaxLength = 0;
-    TRanges Ranges;
-    THashMap<ui64, TRangeIt> RangeByKey;
+    TMultiSet<TItem, TRangeComparator> Ranges;
+    THashMap<TKey, decltype(Ranges.begin())> RangeByKey;
 
 public:
     // Adds a block range to the collection. Returns false if the key already
     // exists in the collection.
-    bool AddRange(TKey key, TBlockRange64 range);
+    bool AddRange(TKey key, TBlockRange64 range, TValue value = {})
+    {
+        if (RangeByKey.contains(key)) {
+            return false;
+        }
+        MaxLength = Max(MaxLength, range.Size());
+        auto it = Ranges.insert(
+            TItem{.Key = key, .Range = range, .Value = std::move(value)});
+        RangeByKey[key] = it;
+        return true;
+    }
 
-    // Removes a specific block range from the collection. Returns false if
-    // the range was not found in the collection.
-    bool RemoveRange(TKey key);
+    // Removes block range specified by Key from the collection. Returns extracted
+    // range and it value.
+    [[nodiscard]] std::optional<TItem> ExtractRange(TKey key)
+    {
+        auto it = RangeByKey.find(key);
+        if (it != RangeByKey.end()) {
+            TItem result{
+                .Key = it->second->Key,
+                .Range = it->second->Range,
+                .Value = std::move(it->second->Value)};
+            Ranges.erase(it->second);
+            RangeByKey.erase(it);
+            return result;
+        }
+
+        return std::nullopt;
+    }
+
+    // Removes block range specified by Key from the collection. Returns false
+    // if the range was not found in the collection.
+    bool RemoveRange(TKey key)
+    {
+        return ExtractRange(key).has_value();
+    }
 
     // Checks that the other range overlaps with any range in Ranges.
-    [[nodiscard]] std::optional<TKeyAndRange> Overlaps(
-        TBlockRange64 other) const;
-    // Enumerate all overlapped ranges.
-    void AllOverlaps(TBlockRange64 other, TOnOverlappedFunc onOverlap) const;
+    [[nodiscard]] const TItem* Overlaps(TBlockRange64 other) const
+    {
+        const TItem* result = nullptr;
 
-    [[nodiscard]] bool Empty() const;
-    [[nodiscard]] size_t Size() const;
+        AllOverlaps(
+            other,
+            [&](const TItem& item)
+            {
+                result = &item;
+                return EEnumerateContinuation::Stop;
+            });
+
+        return result;
+    }
+
+    // Enumerate all overlapped ranges.
+    void AllOverlaps(TBlockRange64 other, TEnumerateFunc f) const
+    {
+        // 1. Find the range x which: x.end >= other.start in the sorted list
+        // (by
+        // end of range + length).
+        // 2. Move through the list of ranges. Check overlapping x with other.
+        // 3. when x.begin >= other.end + MaxLength stop iterating.
+
+        auto left = TItem{
+            .Key = {},
+            .Range = TBlockRange64::MakeClosedInterval(0, other.Start),
+            .Value = {}};
+        const ui64 safeRight = (Max<ui64>() - MaxLength) > other.End
+                                   ? other.End + MaxLength
+                                   : Max<ui64>();
+        for (auto it = Ranges.lower_bound(left); it != Ranges.end(); ++it) {
+            if (it->Range.Overlaps(other)) {
+                if (f(*it) == EEnumerateContinuation::Stop) {
+                    break;
+                }
+            }
+            if (safeRight <= it->Range.Start) {
+                break;
+            }
+        }
+    }
+
+    void Enumerate(TEnumerateFunc f) const
+    {
+        for (const TItem& item: Ranges) {
+            if (f(item) == EEnumerateContinuation::Stop) {
+                break;
+            }
+        }
+    }
+
+    [[nodiscard]] bool Empty() const
+    {
+        return Ranges.empty();
+    }
+
+    [[nodiscard]] size_t Size() const
+    {
+        return Ranges.size();
+    }
+
+    [[nodiscard]] THashSet<TKey> GetAllKeys() const
+    {
+        THashSet<TKey> keys;
+        for (const auto& [key, _]: RangeByKey) {
+            keys.insert(key);
+        }
+        return keys;
+    }
 
     // Returns a string representation of all ranges in the collection for
     // debugging purposes.
-    [[nodiscard]] TString DebugPrint() const;
+    [[nodiscard]] TString DebugPrint() const
+    {
+        TStringStream ss;
+
+        for (const auto r: Ranges) {
+            ss << r.Key << r.Range.Print();
+        }
+        return ss.Str();
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -10,7 +10,7 @@ namespace NCloud::NBlockStore::NStorage {
 class TRequestsInFlight
 {
 private:
-    TBlockRangeMap Requests;
+    TBlockRangeMap<ui64> Requests;
 
 public:
     static constexpr ui64 InvalidRequestId = Max<ui64>();
