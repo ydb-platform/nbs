@@ -265,7 +265,7 @@ void TIndexTabletActor::HandleWriteBlob(
     const TActorContext& ctx)
 {
     NProto::TProfileLogRequestInfo profileLogRequest;
-    InitProfileLogRequestInfo(
+    InitTabletProfileLogRequestInfo(
         profileLogRequest,
         EFileStoreSystemRequest::WriteBlob,
         ctx.Now());

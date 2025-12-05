@@ -52,29 +52,29 @@ const TString& GetFileStoreSystemRequestName(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void InitProfileLogRequestInfo(
+void InitTabletProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     TInstant currentTs);
 
-void InitProfileLogRequestInfo(
+void InitTabletProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     EFileStoreRequest requestType,
     TInstant currentTs);
 
-void InitProfileLogRequestInfo(
+void InitTabletProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     EFileStoreSystemRequest requestType,
     TInstant currentTs);
 
 template <typename TProtoRequest>
-void InitProfileLogRequestInfo(
+void InitTabletProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     EFileStoreRequest requestType,
     const TProtoRequest &proto,
     TInstant currentTs)
 {
-    InitProfileLogRequestInfo(profileLogRequest, requestType, currentTs);
-    NFileStore::InitProfileLogRequestInfo(profileLogRequest, proto);
+    InitTabletProfileLogRequestInfo(profileLogRequest, requestType, currentTs);
+    InitProfileLogRequestInfo(profileLogRequest, proto);
 }
 
 void FinalizeProfileLogRequestInfo(

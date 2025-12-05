@@ -119,29 +119,29 @@ const TString& GetFileStoreSystemRequestName(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void InitProfileLogRequestInfo(
+void InitTabletProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     TInstant currentTs)
 {
     profileLogRequest.SetTimestampMcs(currentTs.MicroSeconds());
 }
 
-void InitProfileLogRequestInfo(
+void InitTabletProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     EFileStoreSystemRequest requestType,
     TInstant currentTs)
 {
     profileLogRequest.SetRequestType(static_cast<ui32>(requestType));
-    InitProfileLogRequestInfo(profileLogRequest, currentTs);
+    InitTabletProfileLogRequestInfo(profileLogRequest, currentTs);
 }
 
-void InitProfileLogRequestInfo(
+void InitTabletProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     EFileStoreRequest requestType,
     TInstant currentTs)
 {
     profileLogRequest.SetRequestType(static_cast<ui32>(requestType));
-    InitProfileLogRequestInfo(profileLogRequest, currentTs);
+    InitTabletProfileLogRequestInfo(profileLogRequest, currentTs);
 }
 
 void FinalizeProfileLogRequestInfo(

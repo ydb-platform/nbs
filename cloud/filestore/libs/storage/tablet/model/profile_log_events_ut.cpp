@@ -95,7 +95,7 @@ Y_UNIT_TEST_SUITE(TProfileLogEvent)
         const auto timestamp = TInstant::MilliSeconds(12);
 
         NProto::TProfileLogRequestInfo profileLogRequest;
-        InitProfileLogRequestInfo(profileLogRequest, timestamp);
+        InitTabletProfileLogRequestInfo(profileLogRequest, timestamp);
 
         UNIT_ASSERT_VALUES_EQUAL(
             timestamp.MicroSeconds(),
@@ -114,7 +114,7 @@ Y_UNIT_TEST_SUITE(TProfileLogEvent)
         const auto requestType = EFileStoreSystemRequest::Compaction;
 
         NProto::TProfileLogRequestInfo profileLogRequest;
-        InitProfileLogRequestInfo(profileLogRequest, requestType, timestamp);
+        InitTabletProfileLogRequestInfo(profileLogRequest, requestType, timestamp);
 
         UNIT_ASSERT_VALUES_EQUAL(
             timestamp.MicroSeconds(),

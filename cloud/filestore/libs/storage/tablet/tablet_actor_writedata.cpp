@@ -27,7 +27,7 @@ void TIndexTabletActor::HandleWriteData(
     auto* msg = ev->Get();
 
     NProto::TProfileLogRequestInfo profileLogRequest;
-    InitProfileLogRequestInfo(
+    InitTabletProfileLogRequestInfo(
         profileLogRequest,
         EFileStoreRequest::WriteData,
         msg->Record,
