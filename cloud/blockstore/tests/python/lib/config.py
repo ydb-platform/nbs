@@ -246,7 +246,7 @@ def generate_log_txt():
         b"BLOCKSTORE_SERVICE_PROXY",
         b"BLOCKSTORE_DISCOVERY",
         b"BLOCKSTORE_DISK_REGISTRY_PROXY",
-        b"BLOCKSTORE_VOLUME",
+        b"BLOCKSTORE_VOLUME"
     ]
 
     services_dbg = [
@@ -259,6 +259,7 @@ def generate_log_txt():
         b"BLOCKSTORE_EXTERNAL_ENDPOINT",
         b"BLOCKSTORE_VHOST",
         b"BLOCKSTORE_RDMA",
+        b"BLOCKSTORE_LOCAL_NVME",
     ]
 
     log_config = TLogConfig()
