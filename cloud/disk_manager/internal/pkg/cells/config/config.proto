@@ -38,4 +38,8 @@ message CellsConfig {
     optional string ClusterCapacityExpirationTimeout = 7 [default = "2160h"];
     
     optional CellSelectionPolicy CellSelectionPolicy = 8 [default = FIRST_IN_CONFIG];
+
+    optional string CollectCellsMetricsTaskScheduleInterval = 9 [default = "10m"];
+
+    optional string CellsMetricsCollectionInterval = 10 [default = "1m"];
 }
