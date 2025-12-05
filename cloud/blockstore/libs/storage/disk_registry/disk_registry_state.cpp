@@ -436,6 +436,61 @@ TDiskRegistryState::TDiskRegistryState(
 
 TDiskRegistryState::~TDiskRegistryState() = default;
 
+bool TDiskRegistryState::TDiskState::operator==(const TDiskState& rhs) const {
+    static_assert(sizeof(*this) == 328);
+    return CloudId == rhs.CloudId &&
+            FolderId == rhs.FolderId &&
+            UserId == rhs.UserId &&
+            Devices == rhs.Devices &&
+            MigrationTarget2Source == rhs.MigrationTarget2Source &&
+            MigrationSource2Target == rhs.MigrationSource2Target &&
+            FinishedMigrations == rhs.FinishedMigrations &&
+            MigrationStartTs == rhs.MigrationStartTs &&
+            AcquireInProgress == rhs.AcquireInProgress &&
+            LogicalBlockSize == rhs.LogicalBlockSize &&
+            PlacementGroupId == rhs.PlacementGroupId &&
+            PlacementPartitionIndex == rhs.PlacementPartitionIndex &&
+            State == rhs.State &&
+            StateTs == rhs.StateTs &&
+            ReplicaCount == rhs.ReplicaCount &&
+            MasterDiskId == rhs.MasterDiskId &&
+            google::protobuf::util::MessageDifferencer::ApproximatelyEquals(
+                CheckpointReplica,
+                rhs.CheckpointReplica) &&
+            LostDeviceIds == rhs.LostDeviceIds &&
+            MediaKind == rhs.MediaKind &&
+            std::ranges::equal(History, rhs.History, [](const NProto::TDiskHistoryItem& lhs, const NProto::TDiskHistoryItem& rhs){
+                return google::protobuf::util::MessageDifferencer::ApproximatelyEquals(lhs, rhs);
+            }) &&
+            OutdatedLaggingDevices == rhs.OutdatedLaggingDevices;
+}
+
+bool TDiskRegistryState::CompareMeaningfulFields(const TDiskRegistryState& rhs) const{
+    using google::protobuf::util::MessageDifferencer;
+    static_assert(sizeof(*this) == 2144);
+
+    const auto& vPlacementGroups = rhs.PlacementGroups;
+    if(PlacementGroups.size() != vPlacementGroups.size()) {
+        return false;
+    }
+    for(const auto& [k, v] : PlacementGroups) {
+        if(vPlacementGroups.find(k) == vPlacementGroups.end()) {
+            return false;
+        }
+        if(!MessageDifferencer::ApproximatelyEquals(v.Config, vPlacementGroups.at(k).Config)) {
+            return false;
+        }
+    }
+
+    return MessageDifferencer::Equals(StorageConfig->GetStorageConfigProto(), rhs.StorageConfig->GetStorageConfigProto()) &&
+            MessageDifferencer::ApproximatelyEquals(CurrentConfig, rhs.CurrentConfig) &&
+            DeviceList.CompareDevices(rhs.DeviceList) &&
+            AgentList.CompareAgents(rhs.AgentList) &&
+            BrokenDisks == rhs.BrokenDisks &&
+            NotificationSystem == rhs.NotificationSystem &&
+            AutomaticallyReplacedDeviceIds == rhs.AutomaticallyReplacedDeviceIds;
+}
+
 void TDiskRegistryState::AllowNotifications(
     const TDiskId& diskId,
     const TDiskState& disk)
