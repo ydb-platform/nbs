@@ -86,13 +86,25 @@ private:
     template <typename T>
     void SendRequestImpl(std::shared_ptr<T> request)
     {
-        TVector<char> inData(request->In->Header.len);
-        memcpy(inData.data(), reinterpret_cast<char*>(&*request->In), inData.size());
-        TVector<char> outData(request->Out->Header.len);
+        TVector<TVector<char>> inData{TVector<char>(request->In->Header.len)};
+        memcpy(
+            inData[0].data(),
+            reinterpret_cast<char*>(&*request->In),
+            inData[0].size());
+        constexpr auto headerSize = sizeof(request->Out->Header);
+        TVector<TVector<char>> outData{TVector<char>(headerSize)};
+
+        if (request->Out->Header.len > headerSize) {
+            outData.emplace_back(request->Out->Header.len - headerSize);
+        }
 
         bool result = Client->Write(inData, outData);
         if (result) {
-            memcpy(reinterpret_cast<char*>(&*request->Out), outData.data(), outData.size());
+            char* dest = reinterpret_cast<char*>(&*request->Out);
+            for (const auto& data: outData) {
+                memcpy(dest, data.data(), data.size());
+                dest += data.size();
+            }
         }
         request->OnCompletion();
     }
