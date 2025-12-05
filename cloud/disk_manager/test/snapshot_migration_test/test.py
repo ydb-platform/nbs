@@ -635,6 +635,7 @@ def test_disk_manager_dataplane_database_migration(
             new_checksum = setup.checksum_disk(config.dst_disk_id)
             assert new_checksum == config.checksum
 
+
 @pytest.mark.parametrize(
     ["use_s3_as_src", "use_s3_as_dst", "with_nemesis"],
     [
