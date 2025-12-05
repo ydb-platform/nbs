@@ -582,7 +582,7 @@ void TCommand::InitClientConfig()
 {
     NProto::TClientAppConfig appConfig;
     if (NFs::Exists(ConfigFile)) {
-        ParseFromTextFormat(ConfigFile, appConfig);
+        ParseFromTextFormat(ConfigFile, appConfig, EParseFromTextFormatOption::AllowUnknownField);
     }
 
     auto& clientConfig = *appConfig.MutableClientConfig();
