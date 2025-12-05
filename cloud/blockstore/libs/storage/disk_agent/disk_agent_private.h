@@ -215,6 +215,20 @@ struct TEvDiskAgentPrivate
     };
 
     //
+    // PathsAttached
+    //
+
+    struct TPathsAttached
+    {
+        TVector<NProto::TDeviceConfig> Configs;
+        TVector<IStoragePtr> Devices;
+        TVector<TStorageIoStatsPtr> Stats;
+
+        TVector<TString> PathsToAttach;
+        TVector<TString> AlreadyAttachedPaths;
+    };
+
+    //
     // Events declaration
     //
 
@@ -237,6 +251,7 @@ struct TEvDiskAgentPrivate
         EvMultiAgentWriteDeviceBlocksRequest,
 
         EvPathsDetached,
+        EvPathsAttached,
 
         BLOCKSTORE_DECLARE_EVENT_IDS(UpdateSessionCache)
 
@@ -257,6 +272,8 @@ struct TEvDiskAgentPrivate
         EvSecureEraseCompleted>;
 
     using TEvPathsDetached = TResponseEvent<TPathsDetached, EvPathsDetached>;
+
+    using TEvPathsAttached = TResponseEvent<TPathsAttached, EvPathsAttached>;
 
     using TEvWriteOrZeroCompleted = TResponseEvent<
         TWriteOrZeroCompleted,
