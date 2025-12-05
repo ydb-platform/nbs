@@ -81,26 +81,30 @@ Y_UNIT_TEST_SUITE(TDeviceScannerTest)
 
         TVector<std::pair<NProto::TFileDeviceArgs, ui32>> r;
 
-        auto error = FindDevices(Config, [&] (
-            auto& path,
-            auto& pool,
-            auto pathIndex,
-            auto maxDeviceCount,
-            auto blockSize,
-            auto fileSize)
-        {
-            UNIT_ASSERT_VALUES_EQUAL(def.GetMaxDeviceCount(), maxDeviceCount);
+        auto error = FindDevices(
+            Config,
+            {},
+            [&](auto& path,
+                auto& pool,
+                auto pathIndex,
+                auto maxDeviceCount,
+                auto blockSize,
+                auto fileSize)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    def.GetMaxDeviceCount(),
+                    maxDeviceCount);
 
-            NProto::TFileDeviceArgs f;
-            f.SetPath(path);
-            f.SetPoolName(pool.GetPoolName());
-            f.SetBlockSize(blockSize);
-            f.SetFileSize(fileSize);
+                NProto::TFileDeviceArgs f;
+                f.SetPath(path);
+                f.SetPoolName(pool.GetPoolName());
+                f.SetBlockSize(blockSize);
+                f.SetFileSize(fileSize);
 
-            r.emplace_back(std::move(f), pathIndex);
+                r.emplace_back(std::move(f), pathIndex);
 
-            return MakeError(S_OK);
-        });
+                return MakeError(S_OK);
+            });
 
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
         UNIT_ASSERT_VALUES_EQUAL(1, r.size());
@@ -218,26 +222,28 @@ Y_UNIT_TEST_SUITE(TDeviceScannerTest)
 
         TVector<std::pair<NProto::TFileDeviceArgs, ui32>> r;
 
-        auto error = FindDevices(Config, [&] (
-            auto& path,
-            auto& pool,
-            auto pathIndex,
-            auto maxDeviceCount,
-            auto blockSize,
-            auto fileSize)
-        {
-            UNIT_ASSERT_VALUES_EQUAL(0, maxDeviceCount);
+        auto error = FindDevices(
+            Config,
+            {},
+            [&](auto& path,
+                auto& pool,
+                auto pathIndex,
+                auto maxDeviceCount,
+                auto blockSize,
+                auto fileSize)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(0, maxDeviceCount);
 
-            NProto::TFileDeviceArgs f;
-            f.SetPath(path);
-            f.SetPoolName(pool.GetPoolName());
-            f.SetBlockSize(blockSize);
-            f.SetFileSize(fileSize);
+                NProto::TFileDeviceArgs f;
+                f.SetPath(path);
+                f.SetPoolName(pool.GetPoolName());
+                f.SetBlockSize(blockSize);
+                f.SetFileSize(fileSize);
 
-            r.emplace_back(std::move(f), pathIndex);
+                r.emplace_back(std::move(f), pathIndex);
 
-            return MakeError(S_OK);
-        });
+                return MakeError(S_OK);
+            });
 
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
 
@@ -281,26 +287,28 @@ Y_UNIT_TEST_SUITE(TDeviceScannerTest)
 
         TVector<std::pair<NProto::TFileDeviceArgs, ui32>> r;
 
-        auto error = FindDevices(Config, [&] (
-            auto& path,
-            auto& pool,
-            auto pathIndex,
-            auto maxDeviceCount,
-            auto blockSize,
-            auto fileSize)
-        {
-            UNIT_ASSERT_VALUES_EQUAL(0, maxDeviceCount);
+        auto error = FindDevices(
+            Config,
+            {},
+            [&](auto& path,
+                auto& pool,
+                auto pathIndex,
+                auto maxDeviceCount,
+                auto blockSize,
+                auto fileSize)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(0, maxDeviceCount);
 
-            NProto::TFileDeviceArgs f;
-            f.SetPath(path);
-            f.SetPoolName(pool.GetPoolName());
-            f.SetBlockSize(blockSize);
-            f.SetFileSize(fileSize);
+                NProto::TFileDeviceArgs f;
+                f.SetPath(path);
+                f.SetPoolName(pool.GetPoolName());
+                f.SetBlockSize(blockSize);
+                f.SetFileSize(fileSize);
 
-            r.emplace_back(std::move(f), pathIndex);
+                r.emplace_back(std::move(f), pathIndex);
 
-            return MakeError(S_OK);
-        });
+                return MakeError(S_OK);
+            });
 
         // NVMENBS01 was accepted because of implicit MinSize = 10Kb and
         // the unlimited MaxSize.
@@ -337,14 +345,95 @@ Y_UNIT_TEST_SUITE(TDeviceScannerTest)
 
         int success = 0;
 
-        auto error = FindDevices(Config, [&] (auto ...) {
-            ++success;
-            return MakeError(S_OK);
-        });
+        auto error = FindDevices(
+            Config,
+            {},
+            [&](auto...)
+            {
+                ++success;
+                return MakeError(S_OK);
+            });
 
         // NVMENBS01 wasn't accepted because of implicit MinSize = 10Kb
         UNIT_ASSERT_VALUES_EQUAL_C(E_NOT_FOUND, error.GetCode(), error.GetMessage());
         UNIT_ASSERT_VALUES_EQUAL(0, success);
+    }
+
+    Y_UNIT_TEST_F(ShouldApplyAllowedList, TFixture)
+    {
+        PrepareFiles({
+            { "dev/disk/by-partlabel/NVMENBS01", 1_KB },     // default
+            { "dev/disk/by-partlabel/NVMENBS02", 1_KB },     // default
+            { "dev/disk/by-partlabel/NVMENBS03", 1_KB },     // default
+            { "dev/disk/by-partlabel/NVMENBS04", 10_KB },    // v3
+        });
+
+        {
+            auto& nvme = *Config.AddPathConfigs();
+            nvme.SetPathRegExp(RootDir / "dev/disk/by-partlabel/NVMENBS([0-9]{2})");
+
+            auto& def = *nvme.AddPoolConfigs();
+            def.SetMinSize(1_KB);
+            def.SetMaxSize(1_KB + 1);
+
+            auto& v3 = *nvme.AddPoolConfigs();
+            v3.SetPoolName("v3");
+            v3.SetMinSize(10_KB);
+            v3.SetMaxSize(10_KB + 1);
+        }
+
+        const std::tuple<TString, TString, ui32> expected[] {
+            { RootDir / "dev/disk/by-partlabel/NVMENBS01", "", 1 },
+            { RootDir / "dev/disk/by-partlabel/NVMENBS04", "v3", 4 },
+        };
+
+        TVector<std::pair<NProto::TFileDeviceArgs, ui32>> r;
+
+        auto error = FindDevices(
+            Config,
+            {RootDir / "dev/disk/by-partlabel/NVMENBS01",
+             RootDir / "dev/disk/by-partlabel/NVMENBS04"},
+            [&](auto& path,
+                auto& pool,
+                auto pathIndex,
+                auto maxDeviceCount,
+                auto blockSize,
+                auto fileSize)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(0, maxDeviceCount);
+
+                NProto::TFileDeviceArgs f;
+                f.SetPath(path);
+                f.SetPoolName(pool.GetPoolName());
+                f.SetBlockSize(blockSize);
+                f.SetFileSize(fileSize);
+
+                r.emplace_back(std::move(f), pathIndex);
+
+                return MakeError(S_OK);
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
+
+        UNIT_ASSERT_VALUES_EQUAL(std::size(expected), r.size());
+        SortBy(r, [] (const auto& p) {
+            return p.first.GetPath();
+        });
+
+        for (size_t i = 0; i != r.size(); ++i) {
+            auto& [path, poolName, expectedPathIndex] = expected[i];
+            auto& [f, pathIndex] = r[i];
+            UNIT_ASSERT_VALUES_EQUAL(path, f.GetPath());
+            UNIT_ASSERT_VALUES_EQUAL_C(poolName, f.GetPoolName(), f);
+            if (poolName == "bs16K") {
+                UNIT_ASSERT_VALUES_EQUAL_C(16_KB, f.GetBlockSize(), f);
+            } else if (poolName == "raw") {
+                UNIT_ASSERT_VALUES_EQUAL_C(512, f.GetBlockSize(), f);
+            } else {
+                UNIT_ASSERT_VALUES_EQUAL_C(4_KB, f.GetBlockSize(), f);
+            }
+            UNIT_ASSERT_VALUES_EQUAL_C(expectedPathIndex, pathIndex, f);
+        }
     }
 }
 

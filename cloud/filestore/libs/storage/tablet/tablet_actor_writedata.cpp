@@ -246,8 +246,6 @@ void TIndexTabletActor::ExecuteTx_WriteData(
         return RebootTabletOnCommitOverflow(ctx, "WriteData");
     }
 
-    // XXX mark head and tail?
-
     MarkFreshBlocksDeleted(
         db,
         args.NodeId,
@@ -293,6 +291,18 @@ void TIndexTabletActor::ExecuteTx_WriteData(
     if (args.ByteRange.UnalignedTailLength()) {
         if (args.Node->Attrs.GetSize() <= args.ByteRange.End()) {
             // it's safe to write at the end of file fresh block w 0s at the end
+            MarkFreshBlocksDeleted(
+                db,
+                args.NodeId,
+                args.CommitId,
+                args.ByteRange.LastBlock(),
+                1);
+            MarkMixedBlocksDeleted(
+                db,
+                args.NodeId,
+                args.CommitId,
+                args.ByteRange.LastBlock(),
+                1);
             WriteFreshBlock(
                 db,
                 args.NodeId,
@@ -305,8 +315,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
                 args.NodeId,
                 args.CommitId,
                 args.ByteRange.UnalignedTailOffset(),
-                args.Buffer->GetUnalignedTail()
-            );
+                args.Buffer->GetUnalignedTail());
         }
     }
 

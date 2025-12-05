@@ -676,4 +676,8 @@ message TStorageConfig
     // Multiplier for MaxBytes when calculating upper bound in ClampVal
     // for BytesToPrecharge in ListNodes transaction
     optional uint32 MaxBytesMultiplier = 469;
+
+    // Allow SysViewProcessor and StatisticsAggregator tablets for compatibility
+    // with newer versions of ydb (24-2 and older)
+    optional bool AllowAdditionalSystemTablets = 470;
 }

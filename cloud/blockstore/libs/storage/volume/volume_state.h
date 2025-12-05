@@ -577,6 +577,7 @@ public:
         NProto::TError Error;
         TVector<TString> RemovedClientIds;
         bool ForceTabletRestart = false;
+        bool VolumeClientMigrationInProgress = false;
 
         TAddClientResult() = default;
 
@@ -852,11 +853,11 @@ private:
     bool CanPreemptClient(
         const TString& oldClientId,
         TInstant referenceTimestamp,
-        ui64 clientMountSeqNumber);
+        ui64 clientMountSeqNumber) const;
 
     bool CanAcceptClient(
         ui64 newFillSeqNumber,
-        ui64 proposedFillGeneration);
+        ui64 proposedFillGeneration) const;
 
     bool ShouldForceTabletRestart(const NProto::TVolumeClientInfo& info) const;
 
@@ -865,6 +866,8 @@ private:
     [[nodiscard]] bool ShouldTrackUsedBlocks() const;
 
     void UpdateLeadershipStatus();
+
+    [[nodiscard]] bool IsVolumeClientMigrationInProgress() const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
