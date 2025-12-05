@@ -219,11 +219,7 @@ func (m *migrateSnapshotDatabaseTask) checkBaseSnapshotIsMigrated(
 		return false, nil
 	}
 
-	if baseSnapshotMeta.Ready {
-		return true, nil
-	}
-
-	return false, nil
+	return baseSnapshotMeta.Ready, nil
 }
 
 func (m *migrateSnapshotDatabaseTask) updateInflightSnapshots(
