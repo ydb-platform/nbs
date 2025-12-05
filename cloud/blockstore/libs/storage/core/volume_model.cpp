@@ -519,13 +519,7 @@ void SetupChannels(
     ui32 mixedChannelCount = 0;
 
     ui32 freshChannelCount = config.GetFreshChannelCount();
-    const bool isFreshChannelEnabled =
-        config.IsAllocateFreshChannelFeatureEnabled(
-            volumeConfig.GetCloudId(),
-            volumeConfig.GetFolderId(),
-            volumeConfig.GetDiskId());
-
-    if (isFreshChannelEnabled || volumeConfig.GetTabletVersion() == 2) {
+    if (volumeConfig.GetTabletVersion() == 2) {
         freshChannelCount = 1;
     }
 
