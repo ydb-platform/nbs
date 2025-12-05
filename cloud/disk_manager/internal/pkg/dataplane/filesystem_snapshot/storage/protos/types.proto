@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package types;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem_snapshot/storage/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message DeletingFilesystemSnapshotKey {
+    google.protobuf.Timestamp DeletingAt = 1;
+    string SnapshotId = 2;
+}
