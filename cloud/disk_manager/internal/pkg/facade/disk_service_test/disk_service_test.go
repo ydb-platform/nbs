@@ -579,7 +579,7 @@ func TestDiskServiceCreateEncryptedAtRestSsdNonreplDiskFromImage(t *testing.T) {
 		262144*4096,  // diskSize
 		"folder",
 		&disk_manager.EncryptionDesc{
-			Mode: disk_manager.EncryptionMode_ENCRYPTION_AT_REST,
+			Mode: disk_manager.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY,
 		},
 		defaultZoneID,
 	)

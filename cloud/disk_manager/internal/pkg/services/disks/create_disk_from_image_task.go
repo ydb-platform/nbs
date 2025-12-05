@@ -162,7 +162,7 @@ func (t *createDiskFromImageTask) Run(
 	// encryption at rest enabled, must be mounted without the encryption option.
 	// NBS processes encryption on its side.
 	if encryption != nil {
-		if encryption.Mode == types.EncryptionMode_ENCRYPTION_AT_REST {
+		if encryption.Mode == types.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY {
 			encryption = &types.EncryptionDesc{
 				Mode: types.EncryptionMode_NO_ENCRYPTION,
 			}
