@@ -198,24 +198,19 @@ func TestDeleteNonexistingFilesystemSnapshot(t *testing.T) {
 	defer db.Close(ctx)
 
 	storage := newStorage(t, ctx, db)
-	filesystemSnapshot := FilesystemSnapshotMeta{
-		ID: "fs-snapshot",
-		Filesystem: &types.Filesystem{
-			FilesystemId: "fs",
-			ZoneId:       "zone",
-		},
-	}
+
+	filesystemSnapshotID := "fs-snapshot"
 
 	err = storage.FilesystemSnapshotDeleted(
 		ctx,
-		filesystemSnapshot.ID,
+		filesystemSnapshotID,
 		time.Now(),
 	)
 	require.NoError(t, err)
 
 	_, err = storage.DeleteFilesystemSnapshot(
 		ctx,
-		filesystemSnapshot.ID,
+		filesystemSnapshotID,
 		"delete",
 		time.Now(),
 	)
@@ -223,7 +218,7 @@ func TestDeleteNonexistingFilesystemSnapshot(t *testing.T) {
 
 	err = storage.FilesystemSnapshotCreated(
 		ctx,
-		filesystemSnapshot.ID,
+		filesystemSnapshotID,
 		time.Now(),
 		0,
 		0,
@@ -233,7 +228,7 @@ func TestDeleteNonexistingFilesystemSnapshot(t *testing.T) {
 
 	err = storage.FilesystemSnapshotDeleted(
 		ctx,
-		filesystemSnapshot.ID,
+		filesystemSnapshotID,
 		time.Now(),
 	)
 	require.NoError(t, err)
