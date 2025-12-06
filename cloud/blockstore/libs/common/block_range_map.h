@@ -10,15 +10,11 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TEmptyType
-{
-};
-
 // TBlockRangeMap is a class that manages a collection of block ranges and it
 // key (ui64) with efficient overlap checking capabilities. It's designed to
 // store and query block ranges and it key, particularly useful for determining
 // if a given range overlaps with any of the stored ranges.
-template <typename TKey, typename TValue = TEmptyType>
+template <typename TKey, typename TValue>
 class TBlockRangeMap
 {
 public:
@@ -48,7 +44,7 @@ private:
     };
 
     ui64 MaxLength = 0;
-    TMultiSet<TItem, TRangeComparator> Ranges;
+    TSet<TItem, TRangeComparator> Ranges;
     THashMap<TKey, decltype(Ranges.begin())> RangeByKey;
 
 public:
@@ -60,14 +56,15 @@ public:
             return false;
         }
         MaxLength = Max(MaxLength, range.Size());
-        auto it = Ranges.insert(
+        auto [it, inserted] = Ranges.insert(
             TItem{.Key = key, .Range = range, .Value = std::move(value)});
+        Y_DEBUG_ABORT_UNLESS(inserted);
         RangeByKey[key] = it;
         return true;
     }
 
-    // Removes block range specified by Key from the collection. Returns extracted
-    // range and it value.
+    // Removes block range specified by Key from the collection. Returns
+    // extracted range and it value.
     [[nodiscard]] std::optional<TItem> ExtractRange(TKey key)
     {
         auto it = RangeByKey.find(key);
@@ -92,11 +89,13 @@ public:
     }
 
     // Checks that the other range overlaps with any range in Ranges.
-    [[nodiscard]] const TItem* Overlaps(TBlockRange64 other) const
+    // A pointer to the item describing the range will be returned. Otherwise,
+    // nullptr will be returned.
+    [[nodiscard]] const TItem* FindFirstOverlapping(TBlockRange64 other) const
     {
         const TItem* result = nullptr;
 
-        AllOverlaps(
+        EnumerateOverlapping(
             other,
             [&](const TItem& item)
             {
@@ -108,18 +107,16 @@ public:
     }
 
     // Enumerate all overlapped ranges.
-    void AllOverlaps(TBlockRange64 other, TEnumerateFunc f) const
+    void EnumerateOverlapping(TBlockRange64 other, TEnumerateFunc f) const
     {
-        // 1. Find the range x which: x.end >= other.start in the sorted list
-        // (by
-        // end of range + length).
+        // 1. Find the range x which: x.end >= other.start in the list sorted
+        //    by end of range + length + key.
         // 2. Move through the list of ranges. Check overlapping x with other.
         // 3. when x.begin >= other.end + MaxLength stop iterating.
 
         auto left = TItem{
             .Key = {},
-            .Range = TBlockRange64::MakeClosedInterval(0, other.Start),
-            .Value = {}};
+            .Range = TBlockRange64::MakeClosedInterval(0, other.Start)};
         const ui64 safeRight = (Max<ui64>() - MaxLength) > other.End
                                    ? other.End + MaxLength
                                    : Max<ui64>();

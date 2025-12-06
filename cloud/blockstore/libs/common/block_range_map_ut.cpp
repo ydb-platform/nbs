@@ -10,7 +10,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TTestRangeMap = TBlockRangeMap<ui64>;
+struct TEmptyType
+{
+};
+
+using TTestRangeMap = TBlockRangeMap<ui64, TEmptyType>;
 
 void AddRanges(
     const std::span<const TTestRangeMap::TItem>& ranges,
@@ -73,7 +77,7 @@ void TestOverlaps(
         for (ui64 j = i; j <= rangeToCheck.End; ++j) {
             auto r = TBlockRange64::MakeClosedInterval(i, j);
             auto expectedResult = expected(r);
-            const auto* result = map.Overlaps(r);
+            const auto* result = map.FindFirstOverlapping(r);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 expectedResult.has_value(),
                 result != nullptr,
@@ -361,7 +365,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeMapTest)
         }
         {
             TSet<TString> enumerated;
-            map.AllOverlaps(
+            map.EnumerateOverlapping(
                 TBlockRange64::MakeClosedInterval(1, 1),
                 [&](const TItem& item)
                 {
@@ -372,7 +376,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeMapTest)
         }
         {
             TSet<TString> enumerated;
-            map.AllOverlaps(
+            map.EnumerateOverlapping(
                 TBlockRange64::MakeClosedInterval(2, 4),
                 [&](const TItem& item)
                 {
@@ -385,7 +389,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeMapTest)
         }
         {
             TSet<TString> enumerated;
-            map.AllOverlaps(
+            map.EnumerateOverlapping(
                 TBlockRange64::MakeClosedInterval(3, 5),
                 [&](const TItem& item)
                 {
@@ -399,7 +403,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeMapTest)
         }
         {
             TSet<TString> enumerated;
-            map.AllOverlaps(
+            map.EnumerateOverlapping(
                 TBlockRange64::MakeClosedInterval(5, 5),
                 [&](const TItem& item)
                 {
@@ -412,7 +416,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeMapTest)
         }
         {
             TSet<TString> enumerated;
-            map.AllOverlaps(
+            map.EnumerateOverlapping(
                 TBlockRange64::MakeClosedInterval(6, 6),
                 [&](const TItem& item)
                 {

@@ -8,7 +8,7 @@ TRequestsInFlight::TAddResult TRequestsInFlight::TryAddRequest(
     ui64 requestId,
     TBlockRange64 blockRange)
 {
-    if (const auto* existRange = Requests.Overlaps(blockRange)) {
+    if (const auto* existRange = Requests.FindFirstOverlapping(blockRange)) {
         return TAddResult{
             .Added = false,
             .DuplicateRequestId = existRange->Range.Contains(blockRange)
