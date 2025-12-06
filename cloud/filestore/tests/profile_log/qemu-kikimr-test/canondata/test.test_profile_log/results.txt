@@ -1,5 +1,7 @@
 NFS profile:
 CreateFileStore
+ReadData
+WriteData
 VHOST profile:
 AcquireLock
 CreateHandle

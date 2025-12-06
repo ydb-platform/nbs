@@ -60,7 +60,7 @@ bool TIndexTabletActor::PrepareTx_ZeroRange(
 {
     Y_UNUSED(tx);
 
-    InitProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
+    InitTabletProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
 
     return true;
 }

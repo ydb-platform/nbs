@@ -4,6 +4,7 @@
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/storage/tablet/actors/tablet_writedata.h>
 #include <cloud/filestore/libs/storage/tablet/model/blob_builder.h>
+#include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 #include <cloud/filestore/libs/storage/tablet/model/split_range.h>
 
 #include <util/generic/set.h>
@@ -25,6 +26,13 @@ void TIndexTabletActor::HandleWriteData(
 {
     auto* msg = ev->Get();
 
+    NProto::TProfileLogRequestInfo profileLogRequest;
+    InitTabletProfileLogRequestInfo(
+        profileLogRequest,
+        EFileStoreRequest::WriteData,
+        msg->Record,
+        ctx.Now());
+
     TString& buffer = *msg->Record.MutableBuffer();
     const TByteRange range(
         msg->Record.GetOffset(),
@@ -32,7 +40,8 @@ void TIndexTabletActor::HandleWriteData(
         GetBlockSize()
     );
 
-    auto replyError = [&] (const NProto::TError& error) {
+    auto replyError = [&] (const NProto::TError& error)
+    {
         FILESTORE_TRACK(
             ResponseSent_Tablet,
             msg->CallContext,
@@ -41,6 +50,13 @@ void TIndexTabletActor::HandleWriteData(
         auto response =
             std::make_unique<TEvService::TEvWriteDataResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
+
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            error,
+            ProfileLog);
     };
 
     if (!CompactionStateLoadStatus.Finished) {
@@ -106,11 +122,23 @@ void TIndexTabletActor::HandleWriteData(
     };
 
     if (!AcceptRequest<TEvService::TWriteDataMethod>(ev, ctx, validator)) {
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            MakeError(E_REJECTED, "not accepted"),
+            ProfileLog);
         return;
     }
 
     // either rejected or put into queue
     if (ThrottleIfNeeded<TEvService::TWriteDataMethod>(ev, ctx)) {
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            MakeError(E_REJECTED, "throttled"),
+            ProfileLog);
         return;
     }
 
@@ -140,7 +168,8 @@ void TIndexTabletActor::HandleWriteData(
         Config->GetWriteBlobThreshold(),
         msg->Record,
         range,
-        std::move(blockBuffer));
+        std::move(blockBuffer),
+        std::move(profileLogRequest));
 }
 
 void TIndexTabletActor::HandleWriteDataCompleted(
@@ -343,6 +372,13 @@ void TIndexTabletActor::CompleteTx_WriteData(
             ctx);
 
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+        FinalizeProfileLogRequestInfo(
+            std::move(args.ProfileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            args.Error,
+            ProfileLog);
     };
 
     if (FAILED(args.Error.GetCode())) {
@@ -416,11 +452,14 @@ void TIndexTabletActor::CompleteTx_WriteData(
     auto actor = std::make_unique<TWriteDataActor>(
         TraceSerializer,
         LogTag,
+        GetFileSystemId(),
         ctx.SelfID,
         args.RequestInfo,
         args.CommitId,
         std::move(blobs),
-        TWriteRange{args.NodeId, args.ByteRange.End()});
+        TWriteRange{args.NodeId, args.ByteRange.End()},
+        ProfileLog,
+        std::move(args.ProfileLogRequest));
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);

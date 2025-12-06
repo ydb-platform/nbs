@@ -245,7 +245,7 @@ void TIndexTabletActor::HandleFlush(
     const TActorContext& ctx)
 {
     NProto::TProfileLogRequestInfo profileLogRequest;
-    InitProfileLogRequestInfo(
+    InitTabletProfileLogRequestInfo(
         profileLogRequest,
         EFileStoreSystemRequest::Flush,
         ctx.Now());
