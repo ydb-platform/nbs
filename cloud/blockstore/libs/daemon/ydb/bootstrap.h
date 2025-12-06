@@ -1,3 +1,5 @@
+#pragma once
+
 #include "public.h"
 
 #include <cloud/blockstore/libs/daemon/common/bootstrap.h>

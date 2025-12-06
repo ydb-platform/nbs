@@ -1,3 +1,5 @@
+#pragma once
+
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <linux/genetlink.h>
