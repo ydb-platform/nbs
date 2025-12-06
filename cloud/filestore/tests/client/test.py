@@ -722,22 +722,24 @@ def test_profile_log_io_requests():
     with open(large_data_file, "w") as f:
         f.write("x" * 128 * 1024)
 
+    fs_id = "test_profile_log_io_requests"
+
     client.create(
-        "fs0",
+        fs_id,
         "test_cloud",
         "test_folder",
         BLOCK_SIZE,
         BLOCKS_COUNT)
 
-    client.write("fs0", "/small", "--data", small_data_file)
-    client.write("fs0", "/large", "--data", large_data_file)
-    out = __exec_ls(client, "fs0", "/").decode("utf-8")
+    client.write(fs_id, "/small", "--data", small_data_file)
+    client.write(fs_id, "/large", "--data", large_data_file)
+    out = __exec_ls(client, fs_id, "/").decode("utf-8")
     out += "\nread_size=%s\n" % len(client.read(
-        "fs0", "/small", "--length", str(4 * 1024)))
+        fs_id, "/small", "--length", str(4 * 1024)))
     out += "read_size=%s\n" % len(client.read(
-        "fs0", "/large", "--length", str(128 * 1024)))
+        fs_id, "/large", "--length", str(128 * 1024)))
 
-    client.destroy("fs0")
+    client.destroy(fs_id)
 
     # Sleep for a while to ensure that the profile log is flushed
     # before we start analyzing it
@@ -750,7 +752,7 @@ def test_profile_log_io_requests():
         "cloud/filestore/tools/analytics/profile_tool/filestore-profile-tool"
     )
     profile_log_stats = profile.analyze_profile_log(
-        profile_tool_bin_path, common.output_path("nfs-profile.log"), "fs0"
+        profile_tool_bin_path, common.output_path("nfs-profile.log"), fs_id
     )
 
     with open(results_path, "w") as results_file:

@@ -2814,7 +2814,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(data, readDataResult->Record.GetBuffer());
 
         UNIT_ASSERT_VALUES_EQUAL(
-            1,
+            2, // 1 from service, 1 from tablet
             profileLog
                 ->Requests[static_cast<ui32>(EFileStoreRequest::WriteData)]
                 .size());
