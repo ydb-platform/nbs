@@ -6,5 +6,9 @@ VhostServiceConfig {
   ServiceEndpoints {
     Name: ""
   }
+  EndpointStorageType: ENDPOINT_STORAGE_FILE
+  EndpointStorageDir: "./data/endpoints"
+  HandleOpsQueuePath: "/run/qemu/filestore-vhost"
+  WriteBackCachePath: "/run/qemu/filestore-vhost"
 }
 

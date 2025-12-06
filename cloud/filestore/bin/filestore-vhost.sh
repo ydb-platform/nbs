@@ -30,6 +30,6 @@ $BIN_DIR/filestore-vhost \
     --naming-file            $CONFIG_DIR/nfs-names.txt \
     --ic-file                $CONFIG_DIR/nfs-ic.txt \
     --storage-file           $CONFIG_DIR/nfs-storage.txt \
-    --profile-file           $LOG_DIR/filestore-vhost-profile-log.txt \
+    --profile-file           $LOG_DIR/filestore-vhost-profile-log.bin \
     --disable-local-service  \
     $@
