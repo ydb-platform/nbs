@@ -22,6 +22,7 @@
 #include <cloud/filestore/libs/vhost/server.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/file_ring_buffer.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -3023,6 +3024,14 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // and the request is stored in the persistent queue
         UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
 
+        auto path = TempDir.Path() / "WriteBackCache" / FileSystemId /
+                    sessionId / "write_back_cache";
+
+        {
+            TFileRingBuffer ringBuffer(path, WriteBackCacheCapacity);
+            UNIT_ASSERT(!ringBuffer.Empty());
+        }
+
         {
             auto bootstrap = createBootstrap(false, writeDataCalled2);
 
@@ -3053,7 +3062,27 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             // Cache is drained and disabled - new requests go directly
             // to the session
             UNIT_ASSERT_VALUES_EQUAL(2, writeDataCalled2.load());
+
+            auto suspend = bootstrap.Loop->SuspendAsync();
+            UNIT_ASSERT(suspend.Wait(WaitTimeout));
         }
+
+        {
+            TFileRingBuffer ringBuffer(path, WriteBackCacheCapacity);
+            UNIT_ASSERT(ringBuffer.Empty());
+        }
+
+        {
+            auto bootstrap = createBootstrap(false, writeDataCalled2);
+
+            bootstrap.Start();
+            Y_DEFER
+            {
+                bootstrap.Stop();
+            };
+        }
+
+        UNIT_ASSERT(!path.Exists());
     }
 }
 
