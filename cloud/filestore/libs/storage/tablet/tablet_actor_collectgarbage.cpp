@@ -365,7 +365,7 @@ void TIndexTabletActor::HandleCollectGarbage(
     const TActorContext& ctx)
 {
     NProto::TProfileLogRequestInfo profileLogRequest;
-    InitProfileLogRequestInfo(
+    InitTabletProfileLogRequestInfo(
         profileLogRequest,
         EFileStoreSystemRequest::CollectGarbage,
         ctx.Now());

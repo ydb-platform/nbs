@@ -599,7 +599,7 @@ bool TIndexTabletActor::PrepareTx_Compaction(
     TTransactionContext& tx,
     TTxIndexTablet::TCompaction& args)
 {
-    InitProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
+    InitTabletProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
 
     TIndexTabletDatabase db(tx.DB);
 
