@@ -2,6 +2,4 @@ MultiTabletForwardingEnabled: true
 LargeDeletionMarkersEnabled: true
 MaxFileBlocks: 536870912
 TwoStageReadEnabled: true
-TwoStageReadThreshold: 65536
 ThreeStageWriteEnabled: true
-BlockChecksumsInProfileLogEnabled: true

@@ -40,13 +40,6 @@ void TIndexTabletActor::HandleWriteData(
         GetBlockSize()
     );
 
-    if (Config->GetBlockChecksumsInProfileLogEnabled()) {
-        CalculateChecksums(
-            buffer,
-            GetBlockSize(),
-            profileLogRequest);
-    }
-
     auto replyError = [&] (const NProto::TError& error)
     {
         FILESTORE_TRACK(

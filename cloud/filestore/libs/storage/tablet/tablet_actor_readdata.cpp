@@ -308,8 +308,6 @@ private:
     const ITraceSerializerPtr TraceSerializer;
     const TString LogTag;
     const TString FileSystemId;
-    const bool ShouldCalculateChecksums;
-    const ui32 BlockSize;
     const TActorId Tablet;
     const TRequestInfoPtr RequestInfo;
     const ui64 CommitId;
@@ -322,14 +320,14 @@ private:
     /*const*/ TSet<ui32> MixedBlocksRanges;
     IProfileLogPtr ProfileLog;
     NProto::TProfileLogRequestInfo ProfileLogRequest;
+    IProfileLogPtr ProfileLog;
+    NProto::TProfileLogRequestInfo ProfileLogRequest;
 
 public:
     TReadDataActor(
         ITraceSerializerPtr traceSerializer,
         TString logTag,
         TString fileSystemId,
-        bool shouldCalculateChecksums,
-        ui32 blockSize,
         TActorId tablet,
         TRequestInfoPtr requestInfo,
         ui64 commitId,
@@ -339,6 +337,9 @@ public:
         TVector<TBlockDataRef> blocks,
         TVector<TBlockBytes> bytes,
         IBlockBufferPtr buffer,
+        TSet<ui32> mixedBlocksRanges,
+        IProfileLogPtr profileLog,
+        NProto::TTProfileLogRequestInfo profileLogRequest);
         TSet<ui32> mixedBlocksRanges,
         IProfileLogPtr profileLog,
         NProto::TTProfileLogRequestInfo profileLogRequest);
@@ -368,8 +369,6 @@ TReadDataActor::TReadDataActor(
         ITraceSerializerPtr traceSerializer,
         TString logTag,
         TString fileSystemId,
-        bool shouldCalculateChecksums,
-        ui32 blockSize,
         TActorId tablet,
         TRequestInfoPtr requestInfo,
         ui64 commitId,
@@ -382,11 +381,12 @@ TReadDataActor::TReadDataActor(
         TSet<ui32> mixedBlocksRanges,
         IProfileLogPtr profileLog,
         NProto::TTProfileLogRequestInfo profileLogRequest)
+        TSet<ui32> mixedBlocksRanges,
+        IProfileLogPtr profileLog,
+        NProto::TTProfileLogRequestInfo profileLogRequest)
     : TraceSerializer(std::move(traceSerializer))
     , LogTag(std::move(logTag))
     , FileSystemId(std::move(fileSystemId))
-    , ShouldCalculateChecksums(shouldCalculateChecksums)
-    , BlockSize(blockSize)
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
     , CommitId(commitId)
@@ -397,6 +397,8 @@ TReadDataActor::TReadDataActor(
     , Bytes(std::move(bytes))
     , Buffer(std::move(buffer))
     , MixedBlocksRanges(std::move(mixedBlocksRanges))
+    , ProfileLog(std::move(profileLog))
+    , ProfileLogRequest(std::move(profileLogRequest))
     , ProfileLog(std::move(profileLog))
     , ProfileLogRequest(std::move(profileLogRequest))
 {
@@ -472,6 +474,13 @@ void TReadDataActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
+    FinalizeProfileLogRequestInfo(
+        std::move(ProfileLogRequest),
+        ctx.Now(),
+        FileSystemId,
+        error,
+        ProfileLog);
+
     {
         // notify tablet
         using TCompletion = TEvIndexTabletPrivate::TEvReadDataCompleted;
@@ -590,6 +599,15 @@ void TIndexTabletActor::HandleReadData(
         msg->Record,
         ctx.Now());
 
+    auto* msg = ev->Get();
+
+    NProto::TProfileLogRequestInfo profileLogRequest;
+    InitTabletProfileLogRequestInfo(
+        profileLogRequest,
+        EFileStoreRequest::ReadData,
+        msg->Record,
+        ctx.Now());
+
     auto validator = [&] (const NProto::TReadDataRequest& request) {
         return ValidateRequest(
             request,
@@ -604,11 +622,23 @@ void TIndexTabletActor::HandleReadData(
             GetFileSystemId(),
             MakeError(E_REJECTED, "not accepted"),
             ProfileLog);
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            MakeError(E_REJECTED, "not accepted"),
+            ProfileLog);
         return;
     }
 
     // either rejected or put in the queue
     if (ThrottleIfNeeded<TEvService::TReadDataMethod>(ev, ctx)) {
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            MakeError(E_REJECTED, "throttled"),
+            ProfileLog);
         FinalizeProfileLogRequestInfo(
             std::move(profileLogRequest),
             ctx.Now(),
@@ -644,6 +674,8 @@ void TIndexTabletActor::HandleReadData(
         std::move(blockBuffer),
         false /* describeOnly */,
         std::move(profileLogRequest));
+        false /* describeOnly */,
+        std::move(profileLogRequest));
 }
 
 void TIndexTabletActor::HandleReadDataCompleted(
@@ -674,6 +706,15 @@ void TIndexTabletActor::HandleDescribeData(
         msg->Record,
         ctx.Now());
 
+    auto* msg = ev->Get();
+
+    NProto::TProfileLogRequestInfo profileLogRequest;
+    InitTabletProfileLogRequestInfo(
+        profileLogRequest,
+        EFileStoreRequest::DescribeData,
+        msg->Record,
+        ctx.Now());
+
     auto validator = [&] (const NProtoPrivate::TDescribeDataRequest& request) {
         return ValidateRequest(
             request,
@@ -688,12 +729,24 @@ void TIndexTabletActor::HandleDescribeData(
             GetFileSystemId(),
             MakeError(E_REJECTED, "not accepted"),
             ProfileLog);
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            MakeError(E_REJECTED, "not accepted"),
+            ProfileLog);
         return;
     }
 
     if (Config->GetMultipleStageRequestThrottlingEnabled() &&
         ThrottleIfNeeded<TEvIndexTablet::TDescribeDataMethod>(ev, ctx))
     {
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            MakeError(E_REJECTED, "throttled"),
+            ProfileLog);
         FinalizeProfileLogRequestInfo(
             std::move(profileLogRequest),
             ctx.Now(),
@@ -751,6 +804,13 @@ void TIndexTabletActor::HandleDescribeData(
             MakeError(S_OK),
             ProfileLog);
 
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            MakeError(S_OK),
+            ProfileLog);
+
         return;
     }
 
@@ -766,6 +826,8 @@ void TIndexTabletActor::HandleDescribeData(
         byteRange,
         alignedByteRange,
         std::move(blockBuffer),
+        true /* describeOnly */,
+        std::move(profileLogRequest));
         true /* describeOnly */,
         std::move(profileLogRequest));
 }
@@ -996,6 +1058,13 @@ void TIndexTabletActor::CompleteTx_ReadData(
             MakeError(S_OK),
             ProfileLog);
 
+        FinalizeProfileLogRequestInfo(
+            std::move(args.ProfileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            MakeError(S_OK),
+            ProfileLog);
+
         return;
     }
 
@@ -1019,6 +1088,13 @@ void TIndexTabletActor::CompleteTx_ReadData(
 
             NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
         }
+
+        FinalizeProfileLogRequestInfo(
+            std::move(args.ProfileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            args.Error,
+            ProfileLog);
 
         FinalizeProfileLogRequestInfo(
             std::move(args.ProfileLogRequest),
@@ -1067,6 +1143,14 @@ void TIndexTabletActor::CompleteTx_ReadData(
             MakeError(S_OK),
             ProfileLog);
 
+
+        FinalizeProfileLogRequestInfo(
+            std::move(args.ProfileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            MakeError(S_OK),
+            ProfileLog);
+
         return;
     }
 
@@ -1076,8 +1160,6 @@ void TIndexTabletActor::CompleteTx_ReadData(
         TraceSerializer,
         LogTag,
         GetFileSystemId(),
-        Config->GetBlockChecksumsInProfileLogEnabled(),
-        GetBlockSize(),
         ctx.SelfID,
         args.RequestInfo,
         args.CommitId,
@@ -1087,6 +1169,9 @@ void TIndexTabletActor::CompleteTx_ReadData(
         std::move(args.Blocks),
         std::move(args.Bytes),
         std::move(args.Buffer),
+        std::move(args.MixedBlocksRanges),
+        ProfileLog,
+        std::move(args.ProfileLogRequest));
         std::move(args.MixedBlocksRanges),
         ProfileLog,
         std::move(args.ProfileLogRequest));
