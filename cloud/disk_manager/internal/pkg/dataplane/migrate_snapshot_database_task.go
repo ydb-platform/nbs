@@ -193,6 +193,35 @@ func (m *migrateSnapshotDatabaseTask) migrateSnapshots(
 	}
 }
 
+func (m *migrateSnapshotDatabaseTask) checkBaseSnapshotIsMigrated(
+	ctx context.Context,
+	snapshotID string,
+) (bool, error) {
+
+	srcSnapshotMeta, err := m.srcStorage.GetSnapshotMeta(ctx, snapshotID)
+	if err != nil {
+		return false, err
+	}
+
+	if len(srcSnapshotMeta.BaseSnapshotID) == 0 {
+		return true, nil
+	}
+
+	baseSnapshotMeta, err := m.dstStorage.GetSnapshotMeta(
+		ctx,
+		srcSnapshotMeta.BaseSnapshotID,
+	)
+	if err != nil {
+		return false, err
+	}
+
+	if baseSnapshotMeta == nil {
+		return false, nil
+	}
+
+	return baseSnapshotMeta.Ready, nil
+}
+
 func (m *migrateSnapshotDatabaseTask) updateInflightSnapshots(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
@@ -211,6 +240,18 @@ func (m *migrateSnapshotDatabaseTask) updateInflightSnapshots(
 
 		if len(m.state.InflightSnapshots) >= snapshotsInflightLimit {
 			break
+		}
+
+		baseMigrated, err := m.checkBaseSnapshotIsMigrated(
+			ctx,
+			snapshotID,
+		)
+		if err != nil {
+			return err
+		}
+
+		if !baseMigrated {
+			continue
 		}
 
 		m.state.InflightSnapshots = append(
