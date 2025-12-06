@@ -342,7 +342,28 @@ struct TEvIndexTabletPrivate
     // ReadWrite completion
     //
 
-    using TReadWriteCompleted = TOperationCompleted;
+    using TReadDataCompleted = TOperationCompleted;
+
+    struct TWriteDataCompleted: TOperationCompleted
+    {
+        const bool AddingUnconfirmedBlobsRequested;
+
+        TWriteDataCompleted(
+            TSet<ui32> mixedBlocksRanges,
+            ui64 commitId,
+            ui32 requestCount,
+            ui32 requestBytes,
+            TDuration d,
+            bool addingUnconfirmedBlobsRequested)
+            : TOperationCompleted(
+                  std::move(mixedBlocksRanges),
+                  commitId,
+                  requestCount,
+                  requestBytes,
+                  d)
+            , AddingUnconfirmedBlobsRequested(addingUnconfirmedBlobsRequested)
+        {}
+    };
 
     //
     // AddData completion
@@ -961,9 +982,9 @@ struct TEvIndexTabletPrivate
         TRequestEvent<TReleaseCollectBarrier, EvReleaseCollectBarrier>;
 
     using TEvReadDataCompleted =
-        TResponseEvent<TReadWriteCompleted, EvReadDataCompleted>;
+        TResponseEvent<TReadDataCompleted, EvReadDataCompleted>;
     using TEvWriteDataCompleted =
-        TResponseEvent<TReadWriteCompleted, EvWriteDataCompleted>;
+        TResponseEvent<TWriteDataCompleted, EvWriteDataCompleted>;
     using TEvAddDataCompleted =
         TResponseEvent<TAddDataCompleted, EvAddDataCompleted>;
 

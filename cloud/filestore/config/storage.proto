@@ -680,4 +680,10 @@ message TStorageConfig
     // Allow SysViewProcessor and StatisticsAggregator tablets for compatibility
     // with newer versions of ydb (24-2 and older)
     optional bool AllowAdditionalSystemTablets = 470;
+
+    // Enable adding unconfirmed blobs for write operations
+    optional bool AddingUnconfirmedBlobsEnabled = 471;
+
+    // Limits unconfirmed (and confirmed but not added to the index) blob count.
+    optional uint32 UnconfirmedBlobCountHardLimit = 472;
 }
