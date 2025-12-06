@@ -1,3 +1,5 @@
+#pragma once
+
 #include <util/generic/maybe.h>
 #include <util/stream/input.h>
 
