@@ -59,7 +59,7 @@ enum EncryptionMode {
     ENCRYPTION_AES_XTS = 1;
 
     // Encryption with a Root KMS provided key.
-    ENCRYPTION_AT_REST = 2;
+    ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY = 2;
 }
 
 message KmsKey {

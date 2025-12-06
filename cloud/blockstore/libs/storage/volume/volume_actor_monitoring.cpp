@@ -119,7 +119,7 @@ IOutputStream& operator <<(
                 break;
             }
 
-            case NProto::ENCRYPTION_AT_REST: {
+            case NProto::ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY: {
                 const auto& key = desc.GetEncryptedDataKey();
                 DIV() { out << "Kek Id: " << key.GetKekId().Quote(); }
                 DIV() {

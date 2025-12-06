@@ -376,6 +376,11 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] bool IsRootKmsEncryptionForDiskRegistryBasedDisksFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     [[nodiscard]] bool IsLaggingDevicesForMirror2DisksFeatureEnabled(
         const TString& cloudId,
         const TString& folderId,
@@ -668,6 +673,7 @@ public:
     [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeoutSSD() const;
 
     [[nodiscard]] bool GetEncryptionAtRestForDiskRegistryBasedDisksEnabled() const;
+    [[nodiscard]] bool GetRootKmsEncryptionForDiskRegistryBasedDisksEnabled() const;
 
     [[nodiscard]] bool GetDisableFullPlacementGroupCountCalculation() const;
     [[nodiscard]] double GetDiskRegistryInitialAgentRejectionThreshold() const;

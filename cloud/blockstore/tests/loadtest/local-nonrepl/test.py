@@ -60,7 +60,7 @@ class _TestCase(object):
             storage_pool_kind=None,
             dump_block_digests=False,
             reject_late_requests_at_disk_agent=False,
-            encryption_at_rest=False):
+            root_kms_encryption=False):
         self.name = name
         self.config_path = config_path
         self.restart_interval = restart_interval
@@ -75,7 +75,7 @@ class _TestCase(object):
         self.storage_pool_kind = storage_pool_kind
         self.dump_block_digests = dump_block_digests
         self.reject_late_requests_at_disk_agent = reject_late_requests_at_disk_agent
-        self.encryption_at_rest = encryption_at_rest
+        self.root_kms_encryption = root_kms_encryption
 
 
 TESTS = [
@@ -142,9 +142,9 @@ TESTS = [
         storage_pool_kind="global",
     ),
     _TestCase(
-        "load-encryption-at-rest",
+        "load-root-kms-encryption",
         "cloud/blockstore/tests/loadtest/local-nonrepl/local-smallreqs.txt",
-        encryption_at_rest=True,
+        root_kms_encryption=True,
     )
 ]
 
@@ -260,7 +260,7 @@ def __run_test(test_case, backend, use_rdma):
         storage.NodeType = 'main'
         storage.UseNonreplicatedRdmaActor = use_rdma
         storage.UseRdma = use_rdma
-        storage.EncryptionAtRestForDiskRegistryBasedDisksEnabled = test_case.encryption_at_rest
+        storage.RootKmsEncryptionForDiskRegistryBasedDisksEnabled = test_case.root_kms_encryption
 
         if test_case.dump_block_digests:
             storage.BlockDigestsEnabled = True

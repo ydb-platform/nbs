@@ -592,6 +592,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(BlobStorageAsyncRequestTimeoutSSD,              TDuration, Seconds(0)    )\
                                                                                \
     xxx(EncryptionAtRestForDiskRegistryBasedDisksEnabled, bool,    false      )\
+    xxx(RootKmsEncryptionForDiskRegistryBasedDisksEnabled,bool,    false      )\
     xxx(DisableFullPlacementGroupCountCalculation,        bool,    false      )\
     xxx(DiskRegistryInitialAgentRejectionThreshold,       double,    50       )\
     xxx(EnableToChangeStatesFromDiskRegistryMonpage,      bool,    false      )\
@@ -680,6 +681,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(UseNonReplicatedHDDInsteadOfReplicated)                                \
     xxx(AddingUnconfirmedBlobs)                                                \
     xxx(EncryptionAtRestForDiskRegistryBasedDisks)                             \
+    xxx(RootKmsEncryptionForDiskRegistryBasedDisks)                            \
     xxx(LaggingDevicesForMirror2Disks)                                         \
     xxx(LaggingDevicesForMirror3Disks)                                         \
 

@@ -806,7 +806,7 @@ private:
             return MakeFuture<TResultOrError<IBlockStorePtr>>(Client);
         }
 
-        if (desc.GetMode() != NProto::ENCRYPTION_AT_REST) {
+        if (desc.GetMode() != NProto::ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY) {
             return MakeFuture<TResultOrError<IBlockStorePtr>>(
                 MakeError(E_ARGUMENT, "Unexpected encryption mode"));
         }

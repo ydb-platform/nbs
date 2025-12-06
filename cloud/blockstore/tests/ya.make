@@ -12,7 +12,7 @@ RECURSE(
     direct_device_acquire
     disk_agent_config
     disk_states
-    encryption_at_rest
+    default_encryption
     external_endpoint
     e2e-tests
     e2e-tests-vhost
