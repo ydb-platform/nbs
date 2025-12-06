@@ -10,7 +10,8 @@ PEERDIR(
 
 DEPENDS(
     cloud/blockstore/apps/server
-    contrib/ydb/apps/ydbd
 )
+
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/ydbd.inc)
 
 END()

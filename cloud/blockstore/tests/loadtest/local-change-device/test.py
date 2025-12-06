@@ -23,6 +23,7 @@ from cloud.blockstore.tests.python.lib.nonreplicated_setup import \
 
 import yatest.common as yatest_common
 
+import os
 from subprocess import call, check_output, run
 
 PDISK_SIZE = 32 * 1024 * 1024 * 1024
@@ -37,7 +38,7 @@ DEFAULT_BLOCK_COUNT_PER_DEVICE = 262144
 
 
 def kikimr_start():
-    kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    kikimr_binary_path = yatest_common.binary_path(os.getenv("YDBD_BINARY"))
 
     configurator = KikimrConfigGenerator(
         erasure=None,
@@ -136,7 +137,7 @@ def test_change_device():
         server_app_config=server_app_config,
         storage_config_patches=[storage],
         enable_tls=True,
-        kikimr_binary_path=yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd"),
+        kikimr_binary_path=yatest_common.binary_path(os.getenv("YDBD_BINARY")),
         disk_agent_binary_path=yatest_common.binary_path(
             disk_agent_binary_path))
 

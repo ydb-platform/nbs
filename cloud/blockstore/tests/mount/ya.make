@@ -7,8 +7,6 @@ TEST_SRCS(test.py)
 DEPENDS(
     cloud/blockstore/apps/client
     cloud/blockstore/apps/server
-
-    contrib/ydb/apps/ydbd
 )
 
 DATA(
@@ -24,5 +22,6 @@ PEERDIR(
     contrib/ydb/tests/library
 )
 
-END()
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/ydbd.inc)
 
+END()

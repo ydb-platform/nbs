@@ -8,7 +8,6 @@ DEPENDS(
     cloud/blockstore/apps/client
     cloud/blockstore/apps/disk_agent
     cloud/blockstore/apps/server
-    contrib/ydb/apps/ydbd
 )
 
 PEERDIR(
@@ -16,5 +15,6 @@ PEERDIR(
 )
 
 INCLUDE(${ARCADIA_ROOT}/cloud/blockstore/tests/recipes/fake-root-kms/recipe.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/ydbd.inc)
 
 END()

@@ -13,7 +13,6 @@ DEPENDS(
     cloud/blockstore/apps/server
     cloud/blockstore/tools/testing/fake-vhost-server
     cloud/blockstore/vhost-server
-    contrib/ydb/apps/ydbd
 )
 
 PEERDIR(
@@ -23,5 +22,7 @@ PEERDIR(
 
     library/python/retry
 )
+
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/ydbd.inc)
 
 END()

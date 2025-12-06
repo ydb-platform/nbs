@@ -1,3 +1,4 @@
+import os
 import time
 import json
 
@@ -35,7 +36,7 @@ ArchiveStatsTableName = "cloud-local-archive-perfstats"
 
 
 def kikimr_start():
-    kikimr_binary_path = common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    kikimr_binary_path = common.binary_path(os.getenv("YDBD_BINARY"))
 
     configurator = KikimrConfigGenerator(
         erasure=None,

@@ -20,7 +20,8 @@ DEPENDS(
     cloud/blockstore/apps/client
     cloud/blockstore/apps/server
     cloud/blockstore/apps/disk_agent
-    contrib/ydb/apps/ydbd
 )
+
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/ydbd.inc)
 
 END()
