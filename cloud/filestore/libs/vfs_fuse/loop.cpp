@@ -645,8 +645,9 @@ private:
     THolder<TFileLock> WriteBackCacheFileLock;
     THolder<TFileLock> DirectoryHandlesStorageFileLock;
 
+    TWriteBackCache WriteBackCache;
+
     bool HandleOpsQueueInitialized = false;
-    bool WriteBackCacheInitialized = false;
     bool DirectoryHandlesStorageInitialized = false;
 
 public:
@@ -724,75 +725,7 @@ public:
                 return;
             }
 
-            p->FuseLoop->Unmount();
-            p->FuseLoop = nullptr;
-
-            auto callContext = MakeIntrusive<TCallContext>(
-                p->Config->GetFileSystemId(),
-                CreateRequestId());
-            callContext->RequestType = EFileStoreRequest::DestroySession;
-            p->RequestStats->RequestStarted(p->Log, *callContext);
-
-            p->Session->DestroySession()
-                .Subscribe([
-                    w = std::move(w),
-                    s = std::move(s),
-                    callContext = std::move(callContext)
-                ] (const auto& f) mutable {
-                    auto p = w.lock();
-                    if (!p) {
-                        s.SetValue();
-                        return;
-                    }
-
-                    const auto& response = f.GetValue();
-                    p->RequestStats->RequestCompleted(
-                        p->Log,
-                        *callContext,
-                        response.GetError());
-
-                    p->StatsRegistry->Unregister(
-                        p->Config->GetFileSystemId(),
-                        p->Config->GetClientId());
-
-                    // We need to cleanup HandleOpsQueue file and directories
-                    if (p->HandleOpsQueueInitialized) {
-                        auto error = UnlockAndDeleteFile(
-                            TFsPath(p->Config->GetHandleOpsQueuePath()) /
-                                p->Config->GetFileSystemId() / p->SessionId,
-                            p->HandleOpsQueueFileLock);
-                        if (HasError(error)) {
-                            ReportHandleOpsQueueCreatingOrDeletingError(
-                                error.GetMessage());
-                        }
-                    }
-
-                    // We need to cleanup WriteBackCache file and directories
-                    if (p->WriteBackCacheInitialized) {
-                        auto error = UnlockAndDeleteFile(
-                            TFsPath(p->Config->GetWriteBackCachePath()) /
-                                p->Config->GetFileSystemId() / p->SessionId,
-                            p->WriteBackCacheFileLock);
-                        if (HasError(error)) {
-                            ReportWriteBackCacheCreatingOrDeletingError(
-                                error.GetMessage());
-                        }
-                    }
-
-                    if (p->DirectoryHandlesStorageInitialized) {
-                        auto error = UnlockAndDeleteFile(
-                            TFsPath(
-                                p->Config->GetDirectoryHandlesStoragePath()) /
-                                p->Config->GetFileSystemId() / p->SessionId,
-                            p->DirectoryHandlesStorageFileLock);
-                        if (HasError(error)) {
-                            ReportDirectoryHandlesStorageError(
-                                error.GetMessage());
-                        }
-                    }
-
-                    s.SetValue();
-                });
+            p->StopAsyncOnCompletionQueueStopped(std::move(s));
         };
 
         CompletionQueue->StopAsync(FUSE_ERROR).Subscribe(
@@ -991,7 +924,6 @@ private:
                 }
             }
 
-            TWriteBackCache writeBackCache;
             if (FileSystemConfig->GetServerWriteBackCacheEnabled()) {
                 if (Config->GetWriteBackCachePath()) {
                     auto path = TFsPath(Config->GetWriteBackCachePath()) /
@@ -1013,7 +945,7 @@ private:
                         return error;
                     }
 
-                    writeBackCache = TWriteBackCache(
+                    WriteBackCache = TWriteBackCache(
                         Session,
                         Scheduler,
                         Timer,
@@ -1030,7 +962,6 @@ private:
                         Config->GetWriteBackCacheFlushMaxSumWriteRequestsSize(),
                         FileSystemConfig->GetZeroCopyWriteEnabled()
                     );
-                    WriteBackCacheInitialized = true;
                 } else {
                     ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
                         "[f:%s][c:%s] Error initializing WriteBackCache: "
@@ -1078,7 +1009,7 @@ private:
                 CompletionQueue,
                 std::move(handleOpsQueue),
                 std::move(directoryHandlesStorage),
-                std::move(writeBackCache));
+                WriteBackCache);
 
             RequestStats->RegisterIncompleteRequestProvider(CompletionQueue);
 
@@ -1241,6 +1172,127 @@ private:
         }
 
         FileSystem->Init();
+    }
+
+    void StopAsyncOnCompletionQueueStopped(TPromise<void> stopCompleted)
+    {
+        if (WriteBackCache && !WriteBackCache.IsEmpty()) {
+            STORAGE_INFO(
+                "[f:%s][c:%s] WriteBackCache is not empty, starting "
+                "FlushAllData",
+                Config->GetFileSystemId().Quote().c_str(),
+                Config->GetClientId().Quote().c_str());
+
+            WriteBackCache.FlushAllData().Subscribe(
+                [w = weak_from_this(),
+                 s = std::move(stopCompleted)](const TFuture<void>& f) mutable
+                {
+                    f.GetValue();
+                    if (auto p = w.lock()) {
+                        p->StopAsyncOnWriteBackCacheFlushed(std::move(s));
+                    } else {
+                        s.SetValue();
+                    }
+                });
+        } else {
+            StopAsyncDestroySession(std::move(stopCompleted));
+        }
+    }
+
+    void StopAsyncOnWriteBackCacheFlushed(TPromise<void> stopCompleted)
+    {
+        Y_ABORT_UNLESS(
+            WriteBackCache && WriteBackCache.IsEmpty(),
+            "WriteBackCache was not emptied after FlushAllData");
+
+        STORAGE_INFO(
+            "[f:%s][c:%s] completed FlushAllData",
+            Config->GetFileSystemId().Quote().c_str(),
+            Config->GetClientId().Quote().c_str());
+
+        StopAsyncDestroySession(std::move(stopCompleted));
+    }
+
+    void StopAsyncDestroySession(TPromise<void> stopCompleted)
+    {
+        FuseLoop->Unmount();
+        FuseLoop = nullptr;
+
+        auto callContext = MakeIntrusive<TCallContext>(
+            Config->GetFileSystemId(),
+            CreateRequestId());
+        callContext->RequestType = EFileStoreRequest::DestroySession;
+        RequestStats->RequestStarted(Log, *callContext);
+
+        Session->DestroySession().Subscribe(
+            [w = weak_from_this(),
+             s = std::move(stopCompleted),
+             callContext = std::move(callContext)](const auto& f) mutable
+            {
+                auto p = w.lock();
+                if (!p) {
+                    s.SetValue();
+                    return;
+                }
+                p->StopAsyncOnSessionDestroyed(
+                    *callContext,
+                    f.GetValue(),
+                    std::move(s));
+            });
+    }
+
+    void StopAsyncOnSessionDestroyed(
+        TCallContext& callContext,
+        const NProto::TDestroySessionResponse& response,
+        TPromise<void> stopCompleted)
+    {
+        RequestStats->RequestCompleted(
+            Log,
+            callContext,
+            response.GetError());
+
+        StatsRegistry->Unregister(
+            Config->GetFileSystemId(),
+            Config->GetClientId());
+
+        // We need to cleanup HandleOpsQueue file and directories
+        if (HandleOpsQueueInitialized) {
+            auto error = UnlockAndDeleteFile(
+                TFsPath(Config->GetHandleOpsQueuePath()) /
+                    Config->GetFileSystemId() / SessionId,
+                HandleOpsQueueFileLock);
+            if (HasError(error)) {
+                ReportHandleOpsQueueCreatingOrDeletingError(error.GetMessage());
+            }
+        }
+
+        // We need to cleanup WriteBackCache file and directories
+        if (WriteBackCache) {
+            // Deleting file when it contains unflushed requests
+            // will result in data loss
+            Y_ABORT_UNLESS(WriteBackCache.IsEmpty());
+            WriteBackCache = {};
+
+            auto error = UnlockAndDeleteFile(
+                TFsPath(Config->GetWriteBackCachePath()) /
+                    Config->GetFileSystemId() / SessionId,
+                WriteBackCacheFileLock);
+            if (HasError(error)) {
+                ReportWriteBackCacheCreatingOrDeletingError(error.GetMessage());
+            }
+        }
+
+        if (DirectoryHandlesStorageInitialized) {
+            auto error = UnlockAndDeleteFile(
+                TFsPath(Config->GetDirectoryHandlesStoragePath()) /
+                    Config->GetFileSystemId() / SessionId,
+                DirectoryHandlesStorageFileLock);
+            if (HasError(error)) {
+                ReportDirectoryHandlesStorageError(error.GetMessage());
+            }
+        }
+
+        stopCompleted.SetValue();
     }
 
     void Destroy()
