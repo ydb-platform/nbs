@@ -5,5 +5,3 @@ AutomaticShardCreationEnabled: true
 AutomaticallyCreatedShardSize: 1073741824
 ThreeStageWriteEnabled: true
 UnalignedThreeStageWriteEnabled: true
-DirectoryHandlesStorageEnabled: true
-DirectoryHandlesTableSize: 10000

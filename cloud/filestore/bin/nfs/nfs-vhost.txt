@@ -10,7 +10,5 @@ VhostServiceConfig {
   EndpointStorageDir: "./data/endpoints"
   HandleOpsQueuePath: "/run/qemu/filestore-vhost"
   WriteBackCachePath: "/run/qemu/filestore-vhost"
-  DirectoryHandlesStoragePath: "/run/qemu/filestore-vhost"
-  DirectoryHandlesInitialDataSize: 10485760
 }
 
