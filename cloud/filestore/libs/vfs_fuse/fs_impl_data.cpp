@@ -353,10 +353,8 @@ void TFileSystem::Read(
     request->SetOffset(offset);
     request->SetLength(size);
 
-    const bool isZeroCopyRead =
-        Config->GetZeroCopyReadEnabled() && !WriteBackCache;
-    if (isZeroCopyRead) {
-        struct iovec* iov = NULL;
+    if (Config->GetZeroCopyReadEnabled()) {
+        struct iovec* iov = nullptr;
         int count = 0;
         int ret = fuse_out_buf(req, &iov, &count);
         if (ret == -1 || count <= 1) {
