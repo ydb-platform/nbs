@@ -2965,11 +2965,64 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         const ui64 nodeId = 123;
         const ui64 handleId = 456;
-        const ui64 size = 789;
+        const ui64 size = 30;
 
-        bootstrap.Service->ReadDataHandler = [&] (auto callContext, auto request) {
+        bootstrap.Service->ReadDataHandler = [&](auto callContext, auto request)
+        {
             UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
             UNIT_ASSERT_VALUES_EQUAL(request->GetHandle(), handleId);
+            auto& iovecs = request->GetIovecs();
+            UNIT_ASSERT_EQUAL(1, iovecs.size());
+            UNIT_ASSERT_EQUAL(request->GetLength(), iovecs[0].GetLength());
+
+            NProto::TReadDataResponse result;
+            memset(
+                reinterpret_cast<void*>(iovecs[0].GetBase()),
+                'a',
+                iovecs[0].GetLength());
+            result.SetLength(iovecs[0].GetLength());
+
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER
+        {
+            bootstrap.Stop();
+        }
+
+        auto request =
+            std::make_shared<TReadRequest>(nodeId, handleId, 0, size);
+        auto read = bootstrap.Fuse->SendRequest<TReadRequest>(request);
+
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(read.GetValue(), size);
+        UNIT_ASSERT_VALUES_EQUAL(
+            CreateBuffer(size, 'a'),
+            TString(reinterpret_cast<char*>(&request->Out->Body), size));
+    }
+
+    Y_UNIT_TEST(ShouldHandleZeroCopyReadRequestFallbackToBuffer)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetZeroCopyReadEnabled(true);
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+        const ui64 size = 105;
+
+        bootstrap.Service->ReadDataHandler = [&](auto callContext, auto request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+            UNIT_ASSERT_VALUES_EQUAL(request->GetHandle(), handleId);
+            auto& iovecs = request->GetIovecs();
+            UNIT_ASSERT_EQUAL(1, iovecs.size());
+            UNIT_ASSERT_EQUAL(request->GetLength(), iovecs[0].GetLength());
 
             NProto::TReadDataResponse result;
             result.MutableBuffer()->assign(TString(request->GetLength(), 'a'));
@@ -2978,15 +3031,20 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         };
 
         bootstrap.Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             bootstrap.Stop();
-        };
+        }
 
-        auto read = bootstrap.Fuse->SendRequest<TReadRequest>(
-            nodeId, handleId, 0, size);
+        auto request =
+            std::make_shared<TReadRequest>(nodeId, handleId, 0, size);
+        auto read = bootstrap.Fuse->SendRequest<TReadRequest>(request);
 
         UNIT_ASSERT(read.Wait(WaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(read.GetValue(), size);
+        UNIT_ASSERT_VALUES_EQUAL(
+            CreateBuffer(size, 'a'),
+            TString(reinterpret_cast<char*>(&request->Out->Body), size));
     }
 }
 
