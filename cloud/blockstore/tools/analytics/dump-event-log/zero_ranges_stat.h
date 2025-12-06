@@ -11,21 +11,34 @@ namespace NCloud::NBlockStore {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Analyzes the checksums that scrubbing writes when checking 4MiB ranges.
-// Calculates for each disk which ranges had a checksum like a blocks filled with
-// zeros and which had a different checksum. This calculates the percentage of
-// disk occupancy with data.
+// Calculates for each disk which ranges had a checksum like a blocks filled
+// with zeros and which had a different checksum. This calculates the percentage
+// of disk occupancy with data.
 class TZeroRangesStat: public IProfileLogEventHandler
 {
-    struct TVolumeRanges
+    class TZeroRanges
     {
         TDynBitMap KnownRanges;
-        TDynBitMap ZeroRanges;
+        TDynBitMap NonZeroRanges;
+
+    public:
+        void Set(ui64 rangeIndx, bool isZero);
+        [[nodiscard]] TString Print() const;
+    };
+
+    class TZeroRangesBySegmentSize
+    {
+        TMap<ui64, TZeroRanges> BySegmentSize;
+
+    public:
+        void Set(ui64 rangeIndx4MiB, bool isZero);
+        [[nodiscard]] TString Print() const;
     };
 
     const TString Filename;
     const ui32 ZeroChecksum;
 
-    TMap<TString, TVolumeRanges> Volumes;
+    TMap<TString, TZeroRangesBySegmentSize> Volumes;
 
 public:
     explicit TZeroRangesStat(const TString& filename);
