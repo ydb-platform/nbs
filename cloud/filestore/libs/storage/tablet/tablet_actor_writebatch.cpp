@@ -60,6 +60,7 @@ private:
     const TWriteRequestList WriteBatch;
     /*const*/ TVector<TMixedBlob> Blobs;
     /*const*/ TVector<TWriteRange> WriteRanges;
+    const bool ShouldAddUnconfirmedBlobs;
 
 public:
     TWriteBatchActor(
@@ -69,7 +70,8 @@ public:
         ui64 commitId,
         TWriteRequestList writeBatch,
         TVector<TMixedBlob> blobs,
-        TVector<TWriteRange> writeRanges);
+        TVector<TWriteRange> writeRanges,
+        bool ShouldAddUnconfirmedBlobs);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -104,7 +106,8 @@ TWriteBatchActor::TWriteBatchActor(
         ui64 commitId,
         TWriteRequestList writeBatch,
         TVector<TMixedBlob> blobs,
-        TVector<TWriteRange> writeRanges)
+        TVector<TWriteRange> writeRanges,
+        bool ShouldAddUnconfirmedBlobs)
     : LogTag(std::move(logTag))
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
@@ -112,6 +115,7 @@ TWriteBatchActor::TWriteBatchActor(
     , WriteBatch(std::move(writeBatch))
     , Blobs(std::move(blobs))
     , WriteRanges(std::move(writeRanges))
+    , ShouldAddUnconfirmedBlobs(ShouldAddUnconfirmedBlobs)
 {}
 
 void TWriteBatchActor::Bootstrap(const TActorContext& ctx)
@@ -186,7 +190,7 @@ void TWriteBatchActor::ReplyAndDie(
         // notify tablet
         using TCompletion = TEvIndexTabletPrivate::TEvWriteBatchCompleted;
         auto response =
-            std::make_unique<TCompletion>(error, TSet<ui32>(), CommitId);
+            std::make_unique<TCompletion>(error, TSet<ui32>(), CommitId, ShouldAddUnconfirmedBlobs);
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
@@ -613,6 +617,8 @@ void TIndexTabletActor::CompleteTx_WriteBatch(
 
     AcquireCollectBarrier(args.CommitId);
 
+    bool ShouldAddUnconfirmedBlobs = Config->GetAddingUnconfirmedBlobsEnabled();
+
     auto actor = std::make_unique<TWriteBatchActor>(
         LogTag,
         ctx.SelfID,
@@ -620,7 +626,8 @@ void TIndexTabletActor::CompleteTx_WriteBatch(
         args.CommitId,
         std::move(args.WriteBatch),
         std::move(blobs),
-        std::move(writeRanges));
+        std::move(writeRanges),
+        ShouldAddUnconfirmedBlobs);
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);
