@@ -470,6 +470,49 @@ using TExecutor = NStorage::NGrpc::
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NProto::TError AdjustIovecOffsets(
+    const TLog& Log,
+    TServerState* state,
+    google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs,
+    ui64 regionId)
+{
+    TResultOrError<TMmapRegionMetadata> region = state->GetMmapRegion(regionId);
+    if (NCloud::HasError(region.GetError())) {
+        STORAGE_DEBUG(
+            "Failed to get mmap region " << regionId << ": "
+                                         << region.GetError().GetMessage());
+        return region.GetError();
+    }
+
+    const auto& metadata = region.GetResult();
+    STORAGE_DEBUG(
+        "Adjusting iovecs for region " << regionId
+                                       << ": address=" << metadata.Address
+                                       << " size=" << metadata.Size);
+
+    // Validate and adjust iovec base addresses
+    for (auto& iovec: iovecs) {
+        ui64 offset = iovec.GetBase();
+        ui64 length = iovec.GetLength();
+
+        // Validate that iovec is within region bounds
+        if (offset + length > metadata.Size) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "Iovec out of bounds: offset=" << offset
+                                 << " length=" << length
+                                 << " region_size=" << metadata.Size);
+        }
+
+        // Adjust base address to real mmap address
+        iovec.SetBase(offset + (ui64)metadata.Address);
+    }
+
+    return {};
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 template <typename TAppContext, typename TMethod>
 class TRequestHandler final
     : public TServerRequestHandlerBase
@@ -657,6 +700,48 @@ private:
             TMethod::RequestName
             << " #" << RequestId
             << " execute request: " << DumpMessage(*Request));
+
+        // Log iovecs for WriteData/ReadData requests
+        if constexpr (
+            (std::is_same_v<TRequest, NProto::TWriteDataRequest> ||
+             std::is_same_v<TRequest, NProto::TReadDataRequest>) &&
+            std::is_same_v<TAppContext, TFileStoreContext>)
+        {
+            if (AppCtx.State && Request->IovecsSize() > 0) {
+                auto error = AdjustIovecOffsets(
+                    Log,
+                    this->AppCtx.State.get(),
+                    *Request->MutableIovecs(),
+                    Request->GetRegionId());
+                if (HasError(error)) {
+                    Response = MakeFuture(
+                        ErrorResponse<TResponse>(
+                            error.GetCode(),
+                            TString(error.GetMessage())));
+                    auto* tag = AcquireCompletionTag();
+                    Response.Subscribe(
+                        [=, this](const auto& response)
+                        {
+                            Y_UNUSED(response);
+
+                            if (AtomicCas(
+                                    &RequestState,
+                                    ExecutionCompleted,
+                                    ExecutingRequest))
+                            {
+                                // will be processed on executor thread
+                                EnqueueCompletion(
+                                    ExecCtx.CompletionQueue.get(),
+                                    tag);
+                                return;
+                            }
+
+                            ReleaseCompletionTag();
+                        });
+                    return;
+                }
+            }
+        }
 
         FILESTORE_TRACK(
             ExecuteRequest,
