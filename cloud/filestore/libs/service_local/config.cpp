@@ -136,6 +136,38 @@ FILESTORE_SERVICE_CONFIG(FILESTORE_CONFIG_GETTER)
 
 #undef FILESTORE_CONFIG_GETTER
 
+#define DURATION_FEATURE_GETTER(name)                                          \
+TDuration TLocalFileStoreConfig::Get##name(                                    \
+    const TString& cloudId,                                                    \
+    const TString& folderId,                                                   \
+    const TString& fsId) const                                                 \
+{                                                                              \
+    if (!FeaturesConfig) {                                                     \
+        return Get##name();                                                    \
+    }                                                                          \
+                                                                               \
+    auto val = FeaturesConfig->GetFeatureValue(cloudId, folderId, fsId, #name);\
+    if (!val) {                                                                \
+        return Get##name();                                                    \
+    }                                                                          \
+                                                                               \
+    TDuration res;                                                             \
+    if (!TDuration::TryParse(val, res)) {                                      \
+        return Get##name();                                                    \
+    }                                                                          \
+                                                                               \
+    return res;                                                                \
+}                                                                              \
+
+// DURATION_FEATURE_GETTER
+
+DURATION_FEATURE_GETTER(EntryTimeout)
+DURATION_FEATURE_GETTER(NegativeEntryTimeout)
+DURATION_FEATURE_GETTER(AttrTimeout)
+DURATION_FEATURE_GETTER(XAttrCacheTimeout)
+
+#undef DURATION_FEATURE_GETTER
+
 TFileIOConfig TLocalFileStoreConfig::GetFileIOConfig() const
 {
     using EFileIOConfigCase = NProto::TLocalServiceConfig::FileIOConfigCase;
@@ -201,6 +233,12 @@ void TLocalFileStoreConfig::DumpHtml(IOutputStream& out) const
     }
 
 #undef FILESTORE_CONFIG_DUMP
+}
+
+void TLocalFileStoreConfig::SetFeaturesConfig(
+    NFeatures::TFeaturesConfigPtr featuresConfig)
+{
+    FeaturesConfig = std::move(featuresConfig);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

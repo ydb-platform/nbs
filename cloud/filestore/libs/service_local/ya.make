@@ -32,6 +32,7 @@ PEERDIR(
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
+    cloud/storage/core/libs/features
 
     library/cpp/protobuf/util
 
