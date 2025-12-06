@@ -30,5 +30,5 @@ $BIN_DIR/filestore-server \
     --naming-file        $CONFIG_DIR/nfs-names.txt \
     --ic-file            $CONFIG_DIR/nfs-ic.txt \
     --storage-file       $CONFIG_DIR/nfs-storage.txt \
-    --profile-file       $LOG_DIR/filestore-server-profile-log.txt \
+    --profile-file       $LOG_DIR/filestore-server-profile-log.bin \
     $@
