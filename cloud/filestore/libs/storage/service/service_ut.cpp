@@ -2232,14 +2232,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         CheckTwoStageReads(NProto::STORAGE_MEDIA_SSD, false);
     }
 
-    void DoTestShouldUseTwoStageReadThreshold(bool setUpForTablet)
+    Y_UNIT_TEST(ShouldUseTwoStageReadThreshold)
     {
         NProto::TStorageConfig storageConfig;
+        storageConfig.SetTwoStageReadEnabled(true);
         storageConfig.SetFlushThreshold(1); // disabling fresh blocks
-        if (!setUpForTablet) {
-            storageConfig.SetTwoStageReadEnabled(true);
-            storageConfig.SetTwoStageReadThreshold(8_KB);
-        }
+        storageConfig.SetTwoStageReadThreshold(8_KB);
 
         TTestEnv env({}, storageConfig);
         env.CreateSubDomain("nfs");
@@ -2253,23 +2251,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             1000,
             DefaultBlockSize,
             NProto::STORAGE_MEDIA_SSD);
-
-        if (setUpForTablet) {
-            NProto::TStorageConfig newConfig;
-            newConfig.SetTwoStageReadEnabled(true);
-            newConfig.SetTwoStageReadThreshold(8_KB);
-            const auto response =
-                ExecuteChangeStorageConfig(std::move(newConfig), service);
-            UNIT_ASSERT_VALUES_EQUAL(
-                true,
-                response.GetStorageConfig().GetTwoStageReadEnabled());
-            UNIT_ASSERT_VALUES_EQUAL(
-                8_KB,
-                response.GetStorageConfig().GetTwoStageReadThreshold());
-
-            TDispatchOptions options;
-            env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
-        }
 
         auto headers = service.InitSession(fs, "client");
 
@@ -2326,16 +2307,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 1,
                 subgroup->GetCounter("Count")->GetAtomic());
         }
-    }
-
-    Y_UNIT_TEST(ShouldUseGlobalTwoStageReadThreshold)
-    {
-        DoTestShouldUseTwoStageReadThreshold(false /* setUpForTablet */);
-    }
-
-    Y_UNIT_TEST(ShouldUseTabletLevelTwoStageReadThreshold)
-    {
-        DoTestShouldUseTwoStageReadThreshold(true /* setUpForTablet */);
     }
 
     Y_UNIT_TEST(ShouldFallbackToReadDataIfDescribeDataFails)
