@@ -2855,7 +2855,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             CreateScheduler(),
             features,
             /* handleOpsQueueSize= */ 1000,
-            /* writeBackCacheAutomaticFlushPeriodMs= */ 1000000000,
+            /* writeBackCacheAutomaticFlushPeriodMs= */ 0,
             WriteBackCacheCapacity);
 
         auto writeDataPromise = NewPromise();
