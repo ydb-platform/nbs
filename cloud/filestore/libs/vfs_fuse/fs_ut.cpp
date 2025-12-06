@@ -2989,7 +2989,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         Y_DEFER
         {
             bootstrap.Stop();
-        }
+        };
 
         auto request =
             std::make_shared<TReadRequest>(nodeId, handleId, 0, size);
@@ -3034,7 +3034,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         Y_DEFER
         {
             bootstrap.Stop();
-        }
+        };
 
         auto request =
             std::make_shared<TReadRequest>(nodeId, handleId, 0, size);
