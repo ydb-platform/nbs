@@ -117,13 +117,12 @@ void TDirectoryHandlesStorage::LoadHandles(TDirectoryHandleMap& handles)
 {
     // Since we store data in chunks instead of a single block, in rare cases
     // a crash during the reset or removal process can lead to inconsistent
-    // chunks order. We detect this inconsistency during the load phase and fix
-    // it.
+    // chunks order. We detect this inconsistency during the load phase clean
+    // data for this handle.
     struct TUpdateVersionInfo
     {
         ui64 LargestUpdateVersion = 0;
         ui64 ChunksCount = 0;
-        bool IsFirstChunkPresented = false;
     };
 
     TMap<ui64, TUpdateVersionInfo> updateVersionInfo;
@@ -167,7 +166,6 @@ void TDirectoryHandlesStorage::LoadHandles(TDirectoryHandleMap& handles)
             // Always store the first chunk at the beginning of the list — this
             // helps us handle the reset logic correctly and efficiently.
             if (chunk->UpdateVersion == 0) {
-                updateVersionInfo[handleId].IsFirstChunkPresented = true;
                 HandleIdToIndices[handleId].insert(
                     HandleIdToIndices[handleId].begin(),
                     it.GetIndex());
@@ -178,24 +176,18 @@ void TDirectoryHandlesStorage::LoadHandles(TDirectoryHandleMap& handles)
     }
 
     for (auto [handleId, updateVersionInfo]: updateVersionInfo) {
-        if (!updateVersionInfo.IsFirstChunkPresented) {
-            ReportDirectoryHandlesStorageError(
-                TStringBuilder()
-                << "First chunk for handle " << handleId << " is missing");
-
-            RemoveHandle(handleId);
-            continue;
-        }
-
         if (updateVersionInfo.ChunksCount !=
             updateVersionInfo.LargestUpdateVersion + 1)
         {
             ReportDirectoryHandlesStorageError(
                 TStringBuilder()
-                << "Total chunks count " << updateVersionInfo.ChunksCount
+                << "Corrupted data for handle " << handleId
+                << ": total chunks count " << updateVersionInfo.ChunksCount
                 << " is not equal to largest update version "
                 << updateVersionInfo.LargestUpdateVersion << " + 1");
-            ResetHandle(handleId);
+
+            RemoveHandle(handleId);
+            handles.erase(handleId);
             continue;
         }
     }
@@ -208,6 +200,8 @@ void TDirectoryHandlesStorage::Clear()
     HandleIdToIndices.clear();
 }
 
+// TODO: We can optimize this by counting size for serialization dynamically and
+// when needed serialize it directly to the file without additional copying.
 TBuffer TDirectoryHandlesStorage::SerializeHandle(
     ui64 handleId,
     const TDirectoryHandleChunk& handleChunk) const
