@@ -2,8 +2,6 @@
 
 #include <cloud/blockstore/tools/analytics/dump-event-log/profile_log_event_handler.h>
 
-#include <library/cpp/json/writer/json_value.h>
-
 #include <util/generic/bitmap.h>
 #include <util/generic/map.h>
 #include <util/generic/string.h>
@@ -25,7 +23,7 @@ class TZeroRangesStat: public IProfileLogEventHandler
 
     public:
         void Set(ui64 rangeIndx, bool isZero);
-        [[nodiscard]] NJson::TJsonValue Dump() const;
+        [[nodiscard]] TString Print() const;
     };
 
     class TZeroRangesBySegmentSize
@@ -34,7 +32,7 @@ class TZeroRangesStat: public IProfileLogEventHandler
 
     public:
         void Set(ui64 rangeIndx4MiB, bool isZero);
-        [[nodiscard]] NJson::TJsonValue Dump() const;
+        [[nodiscard]] TString Print() const;
     };
 
     const TString Filename;
@@ -47,12 +45,12 @@ public:
     ~TZeroRangesStat() override;
 
     void ProcessRequest(
-        const TDiskInfo& diskInfo,
-        const TTimeData& timeData,
+        const TString& diskId,
+        TInstant timestamp,
         ui32 requestType,
         TBlockRange64 blockRange,
-        const TReplicaChecksums& replicaChecksums,
-        const TInflightData& inflightData) override;
+        TDuration duration,
+        const TReplicaChecksums& replicaChecksums) override;
 
 private:
     void Dump();
