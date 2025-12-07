@@ -497,7 +497,7 @@ void TNonreplicatedPartitionRdmaActor::HandleReadBlocksCompleted(
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     const auto requestId = ev->Cookie;
-    RequestsInProgress.RemoveRequest(requestId);
+    RequestsInProgress.RemoveReadRequest(requestId);
 
     if (RequestsInProgress.Empty() && Poisoner) {
         ReplyAndDie(ctx);
@@ -527,7 +527,7 @@ void TNonreplicatedPartitionRdmaActor::HandleWriteBlocksCompleted(
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     const auto requestId = ev->Cookie;
-    RequestsInProgress.RemoveRequest(requestId);
+    RequestsInProgress.RemoveWriteRequest(requestId);
     DrainActorCompanion.ProcessDrainRequests(ctx);
 
     if (RequestsInProgress.Empty() && Poisoner) {
@@ -565,7 +565,7 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWriteBlocksCompleted(
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     const auto requestId = ev->Cookie;
-    RequestsInProgress.RemoveRequest(requestId);
+    RequestsInProgress.RemoveWriteRequest(requestId);
     DrainActorCompanion.ProcessDrainRequests(ctx);
 
     if (RequestsInProgress.Empty() && Poisoner) {
@@ -593,7 +593,7 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocksCompleted(
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     const auto requestId = ev->Cookie;
-    RequestsInProgress.RemoveRequest(requestId);
+    RequestsInProgress.RemoveWriteRequest(requestId);
     DrainActorCompanion.ProcessDrainRequests(ctx);
 
     if (RequestsInProgress.Empty() && Poisoner) {
@@ -623,7 +623,7 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocksCompleted(
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     const auto requestId = ev->Cookie;
-    RequestsInProgress.RemoveRequest(requestId);
+    RequestsInProgress.RemoveReadRequest(requestId);
 
     if (RequestsInProgress.Empty() && Poisoner) {
         ReplyAndDie(ctx);
@@ -730,29 +730,37 @@ void TNonreplicatedPartitionRdmaActor::HandleAgentIsUnavailable(
 
     // Cancel all write/zero requests that intersects with the rows of the lagging
     // agent. And read requests to the lagging replica.
-    for (const auto& [_, requestInfo]: RequestsInProgress.AllRequests()) {
-        const auto& requestCtx = requestInfo.Value;
-        bool needToCancel = AnyOf(
-            requestCtx,
-            [&](const TRunningRdmaRequestInfo& item)
-            {
-                return laggingRows.contains(item.DeviceIdx) &&
-                       (requestInfo.IsWrite ||
-                        devices[item.DeviceIdx].GetAgentId() == laggingAgentId);
-            });
+    RequestsInProgress.EnumerateRequests(
+        [&](ui64 key,
+            bool isWrite,
+            TBlockRange64 range,
+            const TRequestContext& requestCtx)
+        {
+            Y_UNUSED(key);
+            Y_UNUSED(range);
 
-        if (!needToCancel) {
-            continue;
-        }
+            bool needToCancel = AnyOf(
+                requestCtx,
+                [&](const TRunningRdmaRequestInfo& item)
+                {
+                    return laggingRows.contains(item.DeviceIdx) &&
+                           (isWrite || devices[item.DeviceIdx].GetAgentId() ==
+                                           laggingAgentId);
+                });
 
-        for (const TRunningRdmaRequestInfo& item: requestCtx) {
-            Y_ABORT_UNLESS(item.DeviceIdx < static_cast<ui64>(devices.size()));
-            const auto& agentId = devices[item.DeviceIdx].GetAgentId();
+            if (!needToCancel) {
+                return;
+            }
 
-            auto& endpoint = AgentId2Endpoint[agentId];
-            endpoint->CancelRequest(item.SentRequestId);
-        }
-    }
+            for (const TRunningRdmaRequestInfo& item: requestCtx) {
+                Y_ABORT_UNLESS(
+                    item.DeviceIdx < static_cast<ui64>(devices.size()));
+                const auto& agentId = devices[item.DeviceIdx].GetAgentId();
+
+                auto& endpoint = AgentId2Endpoint[agentId];
+                endpoint->CancelRequest(item.SentRequestId);
+            }
+        });
 }
 
 void TNonreplicatedPartitionRdmaActor::HandleAgentIsBackOnline(

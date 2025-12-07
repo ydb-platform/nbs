@@ -317,7 +317,7 @@ void TNonreplicatedPartitionActor::HandleReadBlocksLocal(
         SelfId(),
         LogTitle.GetChild(GetCycleCount()));
 
-    RequestsInProgress.AddReadRequest(actorId, std::move(request));
+    RequestsInProgress.AddReadRequest(actorId, blockRange, std::move(request));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -16,13 +16,12 @@ void TMirrorPartitionResyncActor::HandleWriteOrZeroCompleted(
     const TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ctx);
+    const auto* msg = ev->Get();
 
-    const auto requestIdentityKey = ev->Get()->RequestId;
-    if (!WriteAndZeroRequestsInProgress.RemoveRequest(requestIdentityKey)) {
+    if (!WriteAndZeroRequestsInProgress.RemoveWriteRequest(msg->RequestId)) {
         ReportResyncUnexpectedWriteOrZeroCounter(
             {{"disk", PartConfig->GetName()},
-             {"requestIdentityKey", requestIdentityKey}});
+             {"requestIdentityKey", msg->RequestId}});
     }
 
     DrainActorCompanion.ProcessDrainRequests(ctx);
@@ -35,6 +34,8 @@ void TMirrorPartitionResyncActor::ForwardRequest(
     const typename TMethod::TRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
+    const auto* msg = ev->Get();
+
     auto replyError = [&] (ui32 errorCode, TString errorMessage)
     {
         auto response = std::make_unique<typename TMethod::TResponse>(
@@ -42,9 +43,7 @@ void TMirrorPartitionResyncActor::ForwardRequest(
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
-    const auto range = BuildRequestBlockRange(
-        *ev->Get(),
-        PartConfig->GetBlockSize());
+    const auto range = BuildRequestBlockRange(*msg, PartConfig->GetBlockSize());
 
     for (const auto activeRangeId: State.GetActiveResyncRangeSet()) {
         const auto resyncRange =
@@ -58,8 +57,11 @@ void TMirrorPartitionResyncActor::ForwardRequest(
     }
 
     const auto requestIdentityKey =
-        ev->Get()->Record.GetHeaders().GetVolumeRequestId();
-    WriteAndZeroRequestsInProgress.AddWriteRequest(requestIdentityKey, range);
+        msg->Record.GetHeaders().GetVolumeRequestId();
+    WriteAndZeroRequestsInProgress.AddWriteRequest(
+        requestIdentityKey,
+        range,
+        {});
 
     ForwardRequestWithNondeliveryTracking(ctx, MirrorActorId, *ev);
 }

@@ -20,14 +20,12 @@ private:
     TVector<TRequestInfoPtr> DrainRequests;
     TRequestInfoPtr WaitForInFlightWritesRequest;
     IRequestsInProgress& RequestsInProgress;
-    const IWriteRequestsTracker* WriteRequestTracker;
     const TString LoggingId;
 
 public:
     TDrainActorCompanion(
         IRequestsInProgress& requestsInProgress,
-        TString loggingId,
-        IWriteRequestsTracker* writeRequestTracker = nullptr);
+        TString loggingId);
 
     void HandleDrain(
         const NPartition::TEvPartition::TEvDrainRequest::TPtr& ev,
