@@ -1,4 +1,5 @@
 #include "service_actor.h"
+#include "rope_utils.h"
 
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
@@ -56,6 +57,7 @@ private:
     const TByteRange OriginByteRange;
     const TByteRange AlignedByteRange;
     std::unique_ptr<TString> BlockBuffer;
+    TRope TargetBuffers;
     NProtoPrivate::TDescribeDataResponse DescribeResponse;
     ui32 RemainingBlobsToRead = 0;
     bool ReadDataFallbackEnabled = false;
@@ -192,11 +194,16 @@ TReadDataActor::TReadDataActor(
 
 void TReadDataActor::Bootstrap(const TActorContext& ctx)
 {
-    // BlockBuffer should not be initialized in constructor, because creating
-    // a block buffer leads to memory allocation (and initialization) which is
-    // heavy and we would like to execute that on a separate thread (instead of
-    // this actor's parent thread)
-    BlockBuffer->ReserveAndResize(ReadRequest.GetLength());
+    if (ReadRequest.GetIovecs().empty()) {
+        // BlockBuffer should not be initialized in constructor, because
+        // creating a block buffer leads to memory allocation (and
+        // initialization) which is heavy and we would like to execute that on a
+        // separate thread (instead of this actor's parent thread)
+        BlockBuffer->ReserveAndResize(ReadRequest.GetLength());
+        TargetBuffers = CreateRope(*BlockBuffer);
+    } else {
+        TargetBuffers = CreateRope(ReadRequest.GetIovecs());
+    }
 
     // Registering InFlightRequest here for the same reason - it's quite
     // expensive so we don't want to do it in TStorageServiceActor
@@ -294,7 +301,7 @@ TString DescribeResponseDebugString(
 void ApplyFreshDataRange(
     const TActorContext& ctx,
     const NProtoPrivate::TFreshDataRange& sourceFreshData,
-    TString& targetBuffer,
+    TRope& targetBuffer,
     TByteRange targetByteRange,
     ui32 blockSize,
     ui64 offset,
@@ -334,8 +341,8 @@ void ApplyFreshDataRange(
     }
 
     const ui64 relOffset = commonRange.Offset - targetByteRange.Offset;
-    memcpy(
-        &targetBuffer[relOffset],
+    TRopeUtils::Memcpy(
+        targetBuffer.Begin() + relOffset,
         sourceFreshData.GetContent().data() +
             (commonRange.Offset - sourceByteRange.Offset),
         commonRange.Length);
@@ -598,12 +605,11 @@ void TReadDataActor::HandleReadBlobResponse(
             const auto relOffset = commonRange.Offset - OriginByteRange.Offset;
             auto dataIter = response.Buffer.begin();
             dataIter += commonRange.Offset - blobByteRange.Offset;
-            dataIter.ExtractPlainDataAndAdvance(
-                &(*BlockBuffer)[relOffset],
+            TRopeUtils::Memcpy(
+                TargetBuffers.Begin() + relOffset,
+                dataIter,
                 commonRange.Length);
-            ZeroIntervals.PunchHole(
-                relOffset,
-                relOffset + commonRange.Length);
+            ZeroIntervals.PunchHole(relOffset, relOffset + commonRange.Length);
         } else {
             LOG_WARN(
                 ctx,
@@ -715,7 +721,6 @@ void TReadDataActor::MoveBufferToIovecsIfNeeded(
     const TActorContext& ctx,
     NProto::TReadDataResponse& response)
 {
-    // TODO(#4664): replace this with proper zero-copy iovec handling
     if (ReadRequest.GetIovecs().empty()) {
         return;
     }
@@ -773,7 +778,7 @@ void TReadDataActor::ReplyTwoStageAndDie(const TActorContext& ctx)
         ApplyFreshDataRange(
             ctx,
             freshDataRange,
-            *BlockBuffer,
+            TargetBuffers,
             OriginByteRange,
             BlockSize,
             ReadRequest.GetOffset(),
@@ -791,8 +796,8 @@ void TReadDataActor::ReplyTwoStageAndDie(const TActorContext& ctx)
     }
 
     for (const auto& zeroInterval: ZeroIntervals) {
-        memset(
-            &(*BlockBuffer)[zeroInterval.Start],
+        TRopeUtils::Memset(
+            TargetBuffers.Begin() + zeroInterval.Start,
             0,
             zeroInterval.End - zeroInterval.Start);
     }
@@ -801,11 +806,14 @@ void TReadDataActor::ReplyTwoStageAndDie(const TActorContext& ctx)
     if (end <= OriginByteRange.Offset) {
         BlockBuffer->clear();
     } else {
-        BlockBuffer->ReserveAndResize(end - OriginByteRange.Offset);
-        response->Record.set_allocated_buffer(BlockBuffer.release());
+        auto length = end - OriginByteRange.Offset;
+        if (ReadRequest.GetIovecs().empty()) {
+            BlockBuffer->ReserveAndResize(length);
+            response->Record.set_allocated_buffer(BlockBuffer.release());
+        } else {
+            response->Record.SetLength(length);
+        }
     }
-
-    MoveBufferToIovecsIfNeeded(ctx, response->Record);
 
     SendResponseAndDie(ctx, std::move(response));
 }
