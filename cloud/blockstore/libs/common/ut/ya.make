@@ -9,6 +9,7 @@ ENDIF()
 SRCS(
     block_checksum_ut.cpp
     block_range_list_ut.cpp
+    block_range_map_ut.cpp
     block_range_ut.cpp
     caching_allocator_ut.cpp
     device_path_ut.cpp
