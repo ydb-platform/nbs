@@ -16,8 +16,12 @@ bool RegexpMatchItemInSet(const THashSet<TString>& set, const TString& item)
         set,
         [&](const TString& setElem)
         {
-            std::regex r{setElem.data(), setElem.size()};
-            return std::regex_match(item.data(), r);
+            try {
+                std::regex r{setElem.data(), setElem.size()};
+                return std::regex_match(item.data(), r);
+            } catch (const std::regex_error& e) {
+                return false;
+            }
         });
 }
 

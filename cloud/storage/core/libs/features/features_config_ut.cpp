@@ -211,6 +211,26 @@ Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
         UNIT_ASSERT(!config.IsFeatureEnabled({}, {}, "volume-xyz", f->GetName()));
     }
 
+    Y_UNIT_TEST(ShouldNotMatchUsingBadRegexp)
+    {
+        NProto::TFeaturesConfig fc;
+        auto* f = fc.AddFeatures();
+        f->SetName("feature");
+
+        auto* whitelist = f->MutableWhitelist();
+        whitelist->SetMatchAlgorithm(NProto::FILTER_MATCH_ALGORITHM_REGEXP);
+        *whitelist->AddCloudIds() = R"([d]e[v-\d+)"; // bad regexp
+        *whitelist->AddFolderIds() = R"(folder-[A-Z]{2})";
+        *whitelist->AddEntityIds() = R"(disk-.*)";
+
+        TFeaturesConfig config(fc);
+
+        UNIT_ASSERT(!config.IsFeatureEnabled("dev-123", {}, {}, f->GetName()));
+        UNIT_ASSERT(config.IsFeatureEnabled({}, "folder-AA", {}, f->GetName()));
+        UNIT_ASSERT(config.IsFeatureEnabled({}, {}, "disk-xyz", f->GetName()));
+
+    }
+
     Y_UNIT_TEST(ShouldRejectUsingRegexpBlacklist)
     {
         NProto::TFeaturesConfig fc;
