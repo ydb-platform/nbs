@@ -96,8 +96,8 @@ void TDirectoryHandlesStorage::ResetHandle(ui64 handleId)
 {
     TGuard guard(TableLock);
     if (HandleIdToIndices.contains(handleId)) {
-        for (auto it = std::next(HandleIdToIndices[handleId].begin(), 1);
-             it != HandleIdToIndices[handleId].end();
+        for (auto it = HandleIdToIndices[handleId].rbegin();
+             it != std::prev(HandleIdToIndices[handleId].rend(), 1);
              ++it)
         {
             if (!Table->DeleteRecord(*it)) {
@@ -117,15 +117,22 @@ void TDirectoryHandlesStorage::LoadHandles(TDirectoryHandleMap& handles)
 {
     // Since we store data in chunks instead of a single block, in rare cases
     // a crash during the reset or removal process can lead to inconsistent
-    // chunks order. We detect this inconsistency during the load phase clean
-    // data for this handle.
+    // chunks order. We detect this inconsistency during the load phase and
+    // clean data for this handle.
     struct TUpdateVersionInfo
     {
         ui64 LargestUpdateVersion = 0;
         ui64 ChunksCount = 0;
     };
 
+    struct TChunkInfo
+    {
+        ui64 UpdateVersion = 0;
+        ui64 StorageIndex = 0;
+    };
+
     TMap<ui64, TUpdateVersionInfo> updateVersionInfo;
+    TMap<ui64, TVector<TChunkInfo>> chunksInfo;
 
     {
         TGuard guard(TableLock);
@@ -163,15 +170,25 @@ void TDirectoryHandlesStorage::LoadHandles(TDirectoryHandleMap& handles)
                     chunk->UpdateVersion;
             }
 
-            // Always store the first chunk at the beginning of the list — this
-            // helps us handle the reset logic correctly and efficiently.
-            if (chunk->UpdateVersion == 0) {
-                HandleIdToIndices[handleId].insert(
-                    HandleIdToIndices[handleId].begin(),
-                    it.GetIndex());
-            } else {
-                HandleIdToIndices[handleId].push_back(it.GetIndex());
-            }
+            chunksInfo[handleId].push_back(
+                TChunkInfo{chunk->UpdateVersion, it.GetIndex()});
+        }
+    }
+
+    // When resetting a handle, we must remove chunks in reverse order
+    // of their update version to avoid corruption if we crash mid-reset.
+    // Therefore, after loading handles, we must keep chunks sorted
+    // by update version.
+    for (auto& [handleId, chunks]: chunksInfo) {
+        std::sort(
+            chunks.begin(),
+            chunks.end(),
+            [](const TChunkInfo& a, const TChunkInfo& b)
+            { return a.UpdateVersion < b.UpdateVersion; });
+
+        HandleIdToIndices[handleId].reserve(chunks.size());
+        for (const auto& chunkInfo: chunks) {
+            HandleIdToIndices[handleId].push_back(chunkInfo.StorageIndex);
         }
     }
 
