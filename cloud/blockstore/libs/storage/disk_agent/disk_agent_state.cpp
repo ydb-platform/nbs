@@ -329,6 +329,45 @@ NProto::TError CompareConfigs(
     return {};
 }
 
+void ProcessConfigsAfterInitialization(
+    TPromise<TResultOrError<TDiskAgentState::TAttachPathResult>> promise,
+    TDiskAgentState::TAttachPathResult resultTemplate,
+    TVector<NProto::TDeviceConfig> deviceConfigs,
+    TFuture<TInitializeStorageResult> future)
+{
+    future.Subscribe(
+        [promise = std::move(promise),
+         resultTemplate = std::move(resultTemplate),
+         deviceConfigs = std::move(deviceConfigs)](auto future) mutable
+        {
+            auto initializationResult = future.GetValue();
+
+            if (initializationResult.ConfigMismatchErrors) {
+                auto error = MakeError(
+                    E_ARGUMENT,
+                    Sprintf(
+                        "Config mismatch: %s",
+                        initializationResult.ConfigMismatchErrors.front()
+                            .c_str()));
+                promise.SetValue(std::move(error));
+                return;
+            }
+
+            if (auto error =
+                    CompareConfigs(deviceConfigs, initializationResult.Configs);
+                HasError(error))
+            {
+                promise.SetValue(std::move(error));
+                return;
+            }
+
+            resultTemplate.Configs = std::move(initializationResult.Configs);
+            resultTemplate.Stats = std::move(initializationResult.Stats);
+            resultTemplate.Devices = std::move(initializationResult.Devices);
+            promise.SetValue(std::move(resultTemplate));
+        });
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1298,7 +1337,7 @@ TFuture<void> TDiskAgentState::DetachPaths(const TVector<TString>& paths)
 }
 
 auto TDiskAgentState::AttachPaths(const TVector<TString>& pathsToAttach)
-    -> TFuture<TResultOrError<TAttachPathResult>>
+        -> TFuture<TResultOrError<TAttachPathResult>>
 {
     TAttachPathResult result;
 
@@ -1319,10 +1358,16 @@ auto TDiskAgentState::AttachPaths(const TVector<TString>& pathsToAttach)
         return MakeFuture(TResultOrError<TAttachPathResult>(std::move(result)));
     }
 
+    return AttachPathsImpl(std::move(result));
+}
+
+auto TDiskAgentState::AttachPathsImpl(TAttachPathResult result)
+    -> NThreading::TFuture<TResultOrError<TAttachPathResult>>
+{
     THashSet<TString> pathsSet(
         result.PathsToAttach.begin(),
         result.PathsToAttach.end());
-    TVector<NProto::TDeviceConfig> devices = GetDevicesByPath(pathsSet);
+    auto devices = GetDevicesByPath(pathsSet);
 
     auto promise = NewPromise<TResultOrError<TAttachPathResult>>();
     auto future = promise.GetFuture();
@@ -1345,40 +1390,11 @@ auto TDiskAgentState::AttachPaths(const TVector<TString>& pathsToAttach)
                 nvmeManager,
                 result.PathsToAttach);
 
-            future.Subscribe(
-                [promise = std::move(promise),
-                 result = std::move(result),
-                 devices = std::move(devices)](
-                    TFuture<TInitializeStorageResult> future) mutable
-                {
-                    auto initializationResult = future.ExtractValue();
-
-                    if (initializationResult.ConfigMismatchErrors) {
-                        auto error = MakeError(
-                            E_ARGUMENT,
-                            Sprintf(
-                                "Config mismatch: %s",
-                                initializationResult.ConfigMismatchErrors
-                                    .front()
-                                    .c_str()));
-                        promise.SetValue(std::move(error));
-                        return;
-                    }
-
-                    if (auto error = CompareConfigs(
-                            devices,
-                            initializationResult.Configs);
-                        HasError(error))
-                    {
-                        promise.SetValue(std::move(error));
-                        return;
-                    }
-
-                    result.Configs = std::move(initializationResult.Configs);
-                    result.Stats = std::move(initializationResult.Stats);
-                    result.Devices = std::move(initializationResult.Devices);
-                    promise.SetValue(std::move(result));
-                });
+            ProcessConfigsAfterInitialization(
+                std::move(promise),
+                std::move(result),
+                std::move(devices),
+                std::move(future));
         });
 
     return future;
