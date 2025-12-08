@@ -31,6 +31,10 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         const auto& folderId = Store.GetFolderId();
         const auto& fsId = Store.GetFileSystemId();
 
+        const auto& cloudId = Store.GetCloudId();
+        const auto& folderId = Store.GetFolderId();
+        const auto& fsId = Store.GetFileSystemId();
+
         auto* features = response.MutableFileStore()->MutableFeatures();
         features->SetDirectIoEnabled(Config->GetDirectIoEnabled());
         features->SetDirectIoAlign(Config->GetDirectIoAlign());
@@ -60,8 +64,6 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
         features->SetXAttrCacheTimeout(
             Config->GetXAttrCacheTimeout(cloudId, folderId, fsId)
                 .MilliSeconds());
-        const bool directoryHandlesStorageEnabled =
-            Config->GetDirectoryHandlesStorageEnabled(cloudId, folderId, fsId);
         features->SetDirectoryHandlesStorageEnabled(
             directoryHandlesStorageEnabled);
         if (directoryHandlesStorageEnabled) {
