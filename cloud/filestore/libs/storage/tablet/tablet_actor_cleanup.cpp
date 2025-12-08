@@ -92,7 +92,7 @@ bool TIndexTabletActor::PrepareTx_Cleanup(
     TTransactionContext& tx,
     TTxIndexTablet::TCleanup& args)
 {
-    InitProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
+    InitTabletProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
 
     TIndexTabletDatabase db(tx.DB);
 

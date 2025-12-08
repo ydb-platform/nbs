@@ -681,7 +681,11 @@ message TStorageConfig
     // with newer versions of ydb (24-2 and older)
     optional bool AllowAdditionalSystemTablets = 470;
 
+    // If TwoStageReadEnabled is true, reads that exceed this threshold will use
+    // the two-stage read path.
+    optional uint32 TwoStageReadThreshold = 471;
+
     // MaxShardCount used to be hardcoded and equal to 254.
     // Now it is configurable with the default == 254
-    optional uint32 MaxShardCount = 471;
+    optional uint32 MaxShardCount = 472;
 }

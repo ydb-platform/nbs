@@ -330,10 +330,6 @@ public:
         const TString& cloudId,
         const TString& folderId,
         const TString& diskId) const;
-    bool IsAllocateFreshChannelFeatureEnabled(
-        const TString& cloudId,
-        const TString& folderId,
-        const TString& diskId) const;
     bool IsFreshChannelWriteRequestsFeatureEnabled(
         const TString& cloudId,
         const TString& folderId,
@@ -372,6 +368,11 @@ public:
         const TString& diskId) const;
 
     [[nodiscard]] bool IsEncryptionAtRestForDiskRegistryBasedDisksFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
+    [[nodiscard]] bool IsRootKmsEncryptionForDiskRegistryBasedDisksFeatureEnabled(
         const TString& cloudId,
         const TString& folderId,
         const TString& diskId) const;
@@ -668,6 +669,7 @@ public:
     [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeoutSSD() const;
 
     [[nodiscard]] bool GetEncryptionAtRestForDiskRegistryBasedDisksEnabled() const;
+    [[nodiscard]] bool GetRootKmsEncryptionForDiskRegistryBasedDisksEnabled() const;
 
     [[nodiscard]] bool GetDisableFullPlacementGroupCountCalculation() const;
     [[nodiscard]] double GetDiskRegistryInitialAgentRejectionThreshold() const;

@@ -60,6 +60,7 @@ private:
     IProfileLogPtr ProfileLog;
     std::optional<TInFlightRequest> InFlightRequest;
     const NCloud::NProto::EStorageMediaKind MediaKind;
+    const bool UseTwoStageRead;
 
 public:
     TReadDataActor(
@@ -69,7 +70,8 @@ public:
         ui32 blockSize,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
-        NCloud::NProto::EStorageMediaKind mediaKind);
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        bool useTwoStageRead);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -115,7 +117,8 @@ TReadDataActor::TReadDataActor(
         ui32 blockSize,
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
-        NCloud::NProto::EStorageMediaKind mediaKind)
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        bool useTwoStageRead)
     : RequestInfo(std::move(requestInfo))
     , ReadRequest(std::move(readRequest))
     , LogTag(std::move(logTag))
@@ -130,6 +133,7 @@ TReadDataActor::TReadDataActor(
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
     , MediaKind(mediaKind)
+    , UseTwoStageRead(useTwoStageRead)
 {
 }
 
@@ -141,7 +145,11 @@ void TReadDataActor::Bootstrap(const TActorContext& ctx)
     // this actor's parent thread)
     BlockBuffer->ReserveAndResize(AlignedByteRange.Length);
 
-    DescribeData(ctx);
+    if (UseTwoStageRead) {
+        DescribeData(ctx);
+    } else {
+        ReadData(ctx, {} /* fallbackReason */);
+    }
     Become(&TThis::StateWork);
 }
 
@@ -512,17 +520,19 @@ void TReadDataActor::ReadData(
 {
     ReadDataFallbackEnabled = true;
 
-    LOG_WARN(
-        ctx,
-        TFileStoreComponents::SERVICE,
-        "%s falling back to ReadData: "
-        "node: %lu, handle: %lu, offset: %lu, length: %lu. Message: %s",
-        LogTag.c_str(),
-        ReadRequest.GetNodeId(),
-        ReadRequest.GetHandle(),
-        ReadRequest.GetOffset(),
-        ReadRequest.GetLength(),
-        fallbackReason.Quote().c_str());
+    if (fallbackReason) {
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "%s falling back to ReadData: "
+            "node: %lu, handle: %lu, offset: %lu, length: %lu. Message: %s",
+            LogTag.c_str(),
+            ReadRequest.GetNodeId(),
+            ReadRequest.GetHandle(),
+            ReadRequest.GetOffset(),
+            ReadRequest.GetLength(),
+            fallbackReason.Quote().c_str());
+    }
 
     auto request = std::make_unique<TEvService::TEvReadDataRequest>();
     request->Record = std::move(ReadRequest);
@@ -765,15 +775,8 @@ void TStorageServiceActor::HandleReadData(
         }
     }
 
-    // Iovecs are supported only in two-stage read mode for the sake of
-    // simplicity
-    // TODO(#4664): consider supporting iovecs in single-stage read mode as well
-    if (!IsTwoStageReadEnabled(filestore) && msg->Record.IovecsSize() == 0) {
-        // If two-stage read is disabled, forward the request to the tablet in
-        // the same way as all other requests.
-        ForwardRequest<TEvService::TReadDataMethod>(ctx, ev);
-        return;
-    }
+    const bool useTwoStageRead = IsTwoStageReadEnabled(filestore)
+        && msg->Record.GetLength() >= StorageConfig->GetTwoStageReadThreshold();
 
     LOG_DEBUG(
         ctx,
@@ -798,7 +801,8 @@ void TStorageServiceActor::HandleReadData(
         filestore.GetBlockSize(),
         session->RequestStats,
         ProfileLog,
-        session->MediaKind);
+        session->MediaKind,
+        useTwoStageRead);
 
     NCloud::Register(ctx, std::move(actor));
 }

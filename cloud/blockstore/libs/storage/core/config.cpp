@@ -371,7 +371,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(ChannelFreeSpaceThreshold,                      ui32,   25            )\
     xxx(ChannelMinFreeSpace,                            ui32,   10            )\
     xxx(MinChannelCount,                                ui32,   4             )\
-    xxx(FreshChannelCount,                              ui32,   0             )\
+    xxx(FreshChannelCount,                              ui32,   1             )\
                                                                                \
     xxx(ZoneBlockCount,                            ui32,   32 * MaxBlocksCount)\
     xxx(HotZoneRequestCountFactor,                 ui32,   10                 )\
@@ -592,6 +592,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(BlobStorageAsyncRequestTimeoutSSD,              TDuration, Seconds(0)    )\
                                                                                \
     xxx(EncryptionAtRestForDiskRegistryBasedDisksEnabled, bool,    false      )\
+    xxx(RootKmsEncryptionForDiskRegistryBasedDisksEnabled,bool,    false      )\
     xxx(DisableFullPlacementGroupCountCalculation,        bool,    false      )\
     xxx(DiskRegistryInitialAgentRejectionThreshold,       double,    50       )\
     xxx(EnableToChangeStatesFromDiskRegistryMonpage,      bool,    false      )\
@@ -669,7 +670,6 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(Balancer)                                                              \
     xxx(IncrementalCompaction)                                                 \
     xxx(MultipartitionVolumes)                                                 \
-    xxx(AllocateFreshChannel)                                                  \
     xxx(FreshChannelWriteRequests)                                             \
     xxx(MixedIndexCacheV1)                                                     \
     xxx(BatchCompaction)                                                       \
@@ -680,6 +680,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(UseNonReplicatedHDDInsteadOfReplicated)                                \
     xxx(AddingUnconfirmedBlobs)                                                \
     xxx(EncryptionAtRestForDiskRegistryBasedDisks)                             \
+    xxx(RootKmsEncryptionForDiskRegistryBasedDisks)                            \
     xxx(LaggingDevicesForMirror2Disks)                                         \
     xxx(LaggingDevicesForMirror3Disks)                                         \
 

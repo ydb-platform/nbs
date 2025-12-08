@@ -1392,7 +1392,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                 volume.SetBlockSize(BlockSize);
 
                 NProto::TEncryptionDesc& desc = *volume.MutableEncryptionDesc();
-                desc.SetMode(NProto::ENCRYPTION_AT_REST);
+                desc.SetMode(NProto::ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY);
                 desc.MutableEncryptionKey()->SetKekId(KekId);
                 desc.MutableEncryptionKey()->SetEncryptedDEK(
                     Base64Encode(EncryptionKey));

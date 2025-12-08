@@ -1,7 +1,9 @@
 import json
 import os
 import re
+import time
 
+import cloud.filestore.tools.testing.profile_log.common as profile
 import yatest.common as common
 
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient
@@ -708,6 +710,66 @@ def test_forced_compaction():
 
     with open(results_path, "w") as results_file:
         results_file.write(result)
+
+    ret = common.canonical_file(results_path, local=True)
+    return ret
+
+
+def test_profile_log_io_requests():
+    client, results_path = __init_test()
+
+    small_data_file = os.path.join(common.output_path(), "small_data.txt")
+    with open(small_data_file, "w") as f:
+        f.write("some data")
+
+    large_data_file = os.path.join(common.output_path(), "large_data.txt")
+    with open(large_data_file, "w") as f:
+        f.write("x" * 128 * 1024)
+
+    fs_id = "test_profile_log_io_requests"
+
+    client.create(
+        fs_id,
+        "test_cloud",
+        "test_folder",
+        BLOCK_SIZE,
+        BLOCKS_COUNT)
+
+    client.write(fs_id, "/small", "--data", small_data_file)
+    client.write(fs_id, "/large", "--data", large_data_file)
+    out = __exec_ls(client, fs_id, "/").decode("utf-8")
+    out += "\nread_size=%s\n" % len(client.read(
+        fs_id, "/small", "--length", str(4 * 1024)))
+    out += "read_size=%s\n" % len(client.read(
+        fs_id, "/large", "--length", str(128 * 1024)))
+
+    client.destroy(fs_id)
+
+    # Sleep for a while to ensure that the profile log is flushed
+    # before we start analyzing it
+    # The default value of ProfileLogTimeThreshold for tests is 100ms
+    # TODO(#568) - here and in other similar places - introduce and use a
+    # private api method which would force profile-log flush
+    time.sleep(2)
+
+    profile_tool_bin_path = common.binary_path(
+        "cloud/filestore/tools/analytics/profile_tool/filestore-profile-tool"
+    )
+    profile_log_stats = profile.analyze_profile_log(
+        profile_tool_bin_path, common.output_path("nfs-profile.log"), fs_id
+    )
+
+    with open(results_path, "w") as results_file:
+        results_file.write(out)
+
+        def output_stat(req_type):
+            results_file.write(
+                "%s=%s\n" % (req_type, profile_log_stats.get(req_type, 0)))
+
+        output_stat("ReadData")
+        output_stat("DescribeData")
+        output_stat("WriteData")
+        output_stat("AddData")
 
     ret = common.canonical_file(results_path, local=True)
     return ret
