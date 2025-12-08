@@ -162,9 +162,9 @@ class NbsLauncher:
             kms_config.Insecure = True
 
         features_config_patch = TFeaturesConfig()
-        encryption_at_rest = features_config_patch.Features.add()
-        encryption_at_rest.Name = 'EncryptionAtRestForDiskRegistryBasedDisks'
-        encryption_at_rest.Whitelist.FolderIds.append("encrypted-folder")
+        root_kms_encryption = features_config_patch.Features.add()
+        root_kms_encryption.Name = 'RootKmsEncryptionForDiskRegistryBasedDisksEnabled'
+        root_kms_encryption.Whitelist.FolderIds.append("encrypted-folder")
 
         self.__nbs = LocalNbs(
             ydb_port,

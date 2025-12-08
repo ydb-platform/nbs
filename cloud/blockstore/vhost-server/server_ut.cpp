@@ -29,22 +29,14 @@ IOutputStream& operator<<(
     IOutputStream& out,
     NCloud::NBlockStore::NProto::EEncryptionMode mode)
 {
-    switch (mode) {
-        case NCloud::NBlockStore::NProto::NO_ENCRYPTION:
-            out << "NO_ENCRYPTION";
-            return out;
-        case NCloud::NBlockStore::NProto::ENCRYPTION_AES_XTS:
-            out << "ENCRYPTION_AES_XTS";
-            return out;
-        case NCloud::NBlockStore::NProto::ENCRYPTION_AT_REST:
-            out << "ENCRYPTION_AT_REST";
-            return out;
-        default:
-            break;
-    }
-    Y_DEBUG_ABORT_UNLESS(false);
+    const auto& s = NCloud::NBlockStore::NProto::EEncryptionMode_Name(mode);
+    Y_DEBUG_ABORT_UNLESS(s);
+    out << s;
+
     return out;
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 namespace NCloud::NBlockStore::NVHostServer {
 
