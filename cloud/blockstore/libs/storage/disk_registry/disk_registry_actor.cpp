@@ -843,6 +843,10 @@ STFUNC(TDiskRegistryActor::StateReadOnly)
         HFunc(
             TEvDiskRegistry::TEvGetClusterCapacityRequest,
             HandleGetClusterCapacity);
+        
+        HFunc(
+            TEvDiskRegistry::TEvCompareDiskRegistryStateRequest,
+            HandleCompareDiskRegistryState);
 
         IgnoreFunc(
             TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyResponse);

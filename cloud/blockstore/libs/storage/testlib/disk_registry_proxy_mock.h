@@ -84,7 +84,9 @@ private:
             HFunc(
                 TEvDiskRegistry::TEvChangeAgentStateRequest,
                 HandleChangeAgentState);
-
+            HFunc(
+                TEvDiskRegistry::TEvCompareDiskRegistryStateRequest,
+                HandleCompareState);
             // placement groups
             HFunc(
                 TEvService::TEvCreatePlacementGroupRequest,
@@ -640,6 +642,19 @@ private:
 
         auto response = std::make_unique<TEvDiskRegistry::TEvChangeAgentStateResponse>();
         NCloud::Reply(ctx, *ev, std::move(response));
+    }
+
+    void HandleCompareStates(
+        const TEvDiskRegistry::TEvCompareDiskRegistryStateRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        const auto* msg = ev->Get();
+
+        // auto response = std::make_unique<TEvDiskRegistry::TEvCompareDiskRegistryStateResponse>(
+        //     MakeError(E_NOT_IMPLEMENTED, "not implemented")
+        // );
+
+        // NCloud::Reply(ctx, *ev, std::move(response));
     }
 
     void HandleDestroyPlacementGroup(

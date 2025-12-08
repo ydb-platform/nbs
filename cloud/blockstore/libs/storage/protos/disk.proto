@@ -1865,3 +1865,18 @@ message TDetachPathsResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// CompareDiskRegistryState request/response.
+
+message TCompareDiskRegistryStateRequest
+{
+    uint32 State1 = 1;
+    uint32 State2 = 2;
+}
+
+message TCompareDiskRegistryStateResponse
+{
+    NCloud.NProto.TError Error = 1;
+    bool Equal = 2;
+}
