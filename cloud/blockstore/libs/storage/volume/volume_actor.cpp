@@ -680,12 +680,13 @@ void TVolumeActor::HandleUpdateCounters(
 
     // if we use pull scheme we must send request to the partitions
     // to collect statistics
-    if (Config->GetUsePullSchemeForVolumeStatistics() &&
-        State && !State->IsDiskRegistryMediaKind() &&
+    if (Config->GetUsePullSchemeForVolumeStatistics() && State &&
         GetVolumeStatus() != EStatus::STATUS_INACTIVE)
     {
         ScheduleRegularUpdates(ctx);
-        SendStatisticRequests(ctx);
+        State->IsDiskRegistryMediaKind()
+            ? SendStatisticRequestForDiskRegistryBasedPartition(ctx)
+            : SendStatisticRequests(ctx);
         return;
     }
 
@@ -1136,6 +1137,11 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(
             TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished,
             HandleDiskRegistryDeviceOperationFinished);
+            
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvGetDiskRegistryBasedPartCountersResponse,
+            HandleGetDiskRegistryBasedPartCountersResponse);
 
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
 
@@ -1205,6 +1211,8 @@ STFUNC(TVolumeActor::StateZombie)
         IgnoreFunc(TEvPartitionCommonPrivate::TEvPartCountersCombined);
 
         IgnoreFunc(TEvService::TEvDestroyVolumeResponse);
+        IgnoreFunc(TEvNonreplPartitionPrivate::
+                       TEvGetDiskRegistryBasedPartCountersResponse);
 
         IgnoreFunc(TEvVolumePrivate::TEvDiskRegistryDeviceOperationStarted);
         IgnoreFunc(TEvVolumePrivate::TEvDiskRegistryDeviceOperationFinished);
