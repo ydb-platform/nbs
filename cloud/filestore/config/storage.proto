@@ -680,4 +680,8 @@ message TStorageConfig
     // Allow SysViewProcessor and StatisticsAggregator tablets for compatibility
     // with newer versions of ydb (24-2 and older)
     optional bool AllowAdditionalSystemTablets = 470;
+
+    // MaxShardCount used to be hardcoded and equal to 254.
+    // Now it is configurable with the default == 254
+    optional uint32 MaxShardCount = 471;
 }

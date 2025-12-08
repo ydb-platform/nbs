@@ -765,6 +765,8 @@ message TGetFileSystemTopologyResponse
     bool DirectoryCreationInShardsEnabled = 4;
 
     bool StrictFileSystemSizeEnforcementEnabled = 5;
+
+    uint32 MaxShardCount = 6;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -21,13 +21,16 @@ struct TMultiShardFileStoreConfig
 ui32 ComputeShardCount(
     const ui64 blocksCount,
     const ui32 blockSize,
-    const ui64 shardAllocationUnit);
+    const ui64 shardAllocationUnit,
+    const ui32 maxShardCount);
 
 TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
     const TStorageConfig& config,
     const NKikimrFileStore::TConfig& fileStore,
     const NProto::TFileStorePerformanceProfile& clientProfile,
-    ui32 explicitShardCount);
+    const ui32 explicitShardCount,
+    const ui32 maxShardCount
+);
 
 void SetupFileStorePerformanceAndChannels(
     bool allocateMixed0Channel,

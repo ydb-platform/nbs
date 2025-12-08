@@ -49,6 +49,7 @@ private:
     const ui32 ExplicitShardCount;
 
     NKikimrFileStore::TConfig TargetConfig;
+    NKikimrFileStore::TConfig MainFileStoreOriginalConfig;
 
     TMultiShardFileStoreConfig FileStoreConfig;
 
@@ -57,6 +58,7 @@ private:
     ui32 ShardsToConfigure = 0;
     ui32 ShardsToAlter = 0;
     ui32 ShardsToDescribe = 0;
+    ui32 MaxShardCount = 0;
     // These flags are set by HandleGetFileSystemTopologyResponse.
     bool DirectoryCreationInShardsEnabled = false;
     bool StrictFileSystemSizeEnforcementEnabled = false;
@@ -90,6 +92,8 @@ private:
     void CreateShards(const TActorContext& ctx);
     void ConfigureShards(const TActorContext& ctx);
     void ConfigureMainFileStore(const TActorContext& ctx);
+
+    void FillMultiShardFileStoreConfig(const TActorContext& ctx);
 
     void HandleDescribeFileStoreForAlterResponse(
         const TEvSSProxy::TEvDescribeFileStoreResponse::TPtr& ev,
@@ -292,6 +296,15 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
         return;
     }
 
+    MainFileStoreOriginalConfig = currentConfig;
+
+    GetFileSystemTopology(ctx);
+}
+
+void TAlterFileStoreActor::FillMultiShardFileStoreConfig(const TActorContext& ctx)
+{
+    NKikimrFileStore::TConfig currentConfig = MainFileStoreOriginalConfig;
+
     // Allocate legacy mixed0 channel in case it was already present
     Y_ABORT_UNLESS(currentConfig.ExplicitChannelProfilesSize() >= 4);
     const auto thirdChannelDataKind = static_cast<EChannelDataKind>(
@@ -322,7 +335,8 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
             *StorageConfig,
             currentConfig,
             PerformanceProfile,
-            ExplicitShardCount);
+            ExplicitShardCount,
+            MaxShardCount);
     } else {
         SetupFileStorePerformanceAndChannels(
             allocateMixed0,
@@ -336,8 +350,6 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
     if (const auto version = TargetConfig.GetVersion()) {
         FileStoreConfig.MainFileSystemConfig.SetVersion(version);
     }
-
-    GetFileSystemTopology(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -446,6 +458,9 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
     StrictFileSystemSizeEnforcementEnabled =
         EnableStrictFileSystemSizeEnforcement ||
         msg->Record.GetStrictFileSystemSizeEnforcementEnabled();
+    MaxShardCount = msg->Record.GetMaxShardCount();
+
+    FillMultiShardFileStoreConfig(ctx);
 
     for (auto& shardId: *msg->Record.MutableShardFileSystemIds()) {
         ExistingShardIds.push_back(std::move(shardId));
@@ -467,7 +482,8 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
                 *StorageConfig,
                 FileStoreConfig.MainFileSystemConfig,
                 PerformanceProfile,
-                ExistingShardIds.size());
+                ExistingShardIds.size(),
+                MaxShardCount);
         }
     }
 

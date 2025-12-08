@@ -353,6 +353,8 @@ public:
     bool GetGuestHandleKillPrivV2Enabled() const;
 
     [[nodiscard]] bool GetAllowAdditionalSystemTablets() const;
+
+    ui32 GetMaxShardCount() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

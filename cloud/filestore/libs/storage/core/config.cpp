@@ -301,6 +301,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(DirectoryHandlesTableSize,         ui64,      100'000                 )\
     xxx(GuestHandleKillPrivV2Enabled,      bool,      false                   )\
     xxx(AllowAdditionalSystemTablets,      bool,      false                   )\
+                                                                               \
+    xxx(MaxShardCount,                     ui32,      254                     )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
