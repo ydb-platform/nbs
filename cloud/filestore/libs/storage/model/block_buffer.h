@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include "range.h"
+#include <cloud/storage/core/libs/common/byte_range.h>
 
 #include <util/generic/strbuf.h>
 #include <util/generic/string.h>

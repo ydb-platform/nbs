@@ -6,7 +6,6 @@
 #include "tablet_state.h"
 #include "tablet_state_cache.h"
 
-#include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/model/block_list.h>
 #include <cloud/filestore/libs/storage/tablet/model/channels.h>
 #include <cloud/filestore/libs/storage/tablet/model/compaction_map.h>
@@ -24,6 +23,8 @@
 #include <cloud/filestore/libs/storage/tablet/model/throttling_policy.h>
 #include <cloud/filestore/libs/storage/tablet/model/truncate_queue.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
+
+#include <cloud/storage/core/libs/common/byte_range.h>
 
 namespace NCloud::NFileStore::NStorage {
 

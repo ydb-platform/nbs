@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include <cloud/filestore/libs/storage/model/range.h>
+#include <cloud/storage/core/libs/common/byte_range.h>
 
 #include <util/generic/hash_set.h>
 #include <util/generic/vector.h>
