@@ -3563,11 +3563,22 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             auto response =
                 volume.RecvCheckRangeResponse(TDuration::Seconds(1));
             const auto& record = response->Record;
-            UNIT_ASSERT_VALUES_EQUAL(false, HasError(record.error()));
-            UNIT_ASSERT_VALUES_EQUAL(false, HasError(record.status()));
-            UNIT_ASSERT_VALUES_EQUAL(
+
+            std::string extended_msg =
+                "startIndex: " + std::to_string(startIndex) +
+                ", size: " + std::to_string(size);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                false,
+                HasError(record.error()),
+                extended_msg);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                false,
+                HasError(record.status()),
+                extended_msg);
+            UNIT_ASSERT_VALUES_EQUAL_C(
                 size,
-                record.GetChecksums().size());
+                record.GetChecksums().size(),
+                extended_msg);
         };
 
         checkRange(0, 1);
@@ -3623,14 +3634,24 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-        const auto checkRange = [&](ui32 idx, ui32 size)
+        const auto checkRange = [&](ui32 startIndex, ui32 size)
         {
-            volume.SendCheckRangeRequest("disk-id", idx, size);
+            volume.SendCheckRangeRequest("disk-id", startIndex, size);
             auto response =
                 volume.RecvCheckRangeResponse(TDuration::Seconds(1));
             const auto& record = response->Record;
-            UNIT_ASSERT_VALUES_EQUAL(E_IO, record.GetStatus().code());
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+            std::string extended_msg =
+                "startIndex: " + std::to_string(startIndex) +
+                ", size: " + std::to_string(size);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_IO,
+                record.GetStatus().code(),
+                extended_msg);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                extended_msg);
         };
 
         checkRange(0, 1024);
