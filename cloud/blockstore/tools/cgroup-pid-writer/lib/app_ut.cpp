@@ -1,5 +1,4 @@
-#include "cgroups_helpers.h"
-
+#include "app.h"
 #include "util/stream/file.h"
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -12,23 +11,23 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TCgroupsHelpersTest)
+Y_UNIT_TEST_SUITE(TCgroupPudWriterTest)
 {
-    Y_UNIT_TEST(IsPrefixTest)
+    Y_UNIT_TEST(ShouldCheckThatCgroupFilesInSpecifiedFolder)
     {
         TTempDir tempDir;
 
         {
             (tempDir.Path() / "folder").MkDir();
-            TFile f{
-                tempDir.Path() / "folder" / "file",
-                EOpenModeFlag::CreateAlways | EOpenModeFlag::WrOnly};
+            (tempDir.Path() / "folder" / "cgroup.procs").Touch();
         }
 
-        UNIT_ASSERT(
-            IsPrefix(tempDir.Path(), tempDir.Path() / "folder" / "file"));
-
-        UNIT_ASSERT(!IsPrefix(tempDir.Path(), "some_other_path"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            AppMain({100, {tempDir.Path() / "folder"}, "some_other_path"}));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            AppMain({100, {tempDir.Path() / "folder"}, tempDir.Path()}));
     }
 
     Y_UNIT_TEST(AddToCgroupTest)
@@ -39,13 +38,15 @@ Y_UNIT_TEST_SUITE(TCgroupsHelpersTest)
         firstCgroup.MkDir();
         TFsPath secondCgroup = tempDir.Path() / "second_cgroup";
         secondCgroup.MkDir();
-        UNIT_ASSERT_EXCEPTION(
-            AddToCGroups(100, {firstCgroup, secondCgroup}),
-            std::exception);
+        UNIT_ASSERT_EQUAL(
+            1,
+            AppMain({100, {firstCgroup, secondCgroup}, tempDir.Path()}));
         (firstCgroup / "cgroup.procs").Touch();
         (secondCgroup / "cgroup.procs").Touch();
 
-        AddToCGroups(100, {firstCgroup, secondCgroup});
+        UNIT_ASSERT_EQUAL(
+            0,
+            AppMain({100, {firstCgroup, secondCgroup}, tempDir.Path()}));
         UNIT_ASSERT_VALUES_EQUAL(
             "100\n",
             TFileInput(firstCgroup / "cgroup.procs").ReadAll());
@@ -53,7 +54,9 @@ Y_UNIT_TEST_SUITE(TCgroupsHelpersTest)
             "100\n",
             TFileInput(secondCgroup / "cgroup.procs").ReadAll());
 
-        AddToCGroups(150, {firstCgroup, secondCgroup});
+        UNIT_ASSERT_EQUAL(
+            0,
+            AppMain({150, {firstCgroup, secondCgroup}, tempDir.Path()}));
         UNIT_ASSERT_VALUES_EQUAL(
             "100\n150\n",
             TFileInput(firstCgroup / "cgroup.procs").ReadAll());

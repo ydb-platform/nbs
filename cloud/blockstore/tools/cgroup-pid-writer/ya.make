@@ -1,13 +1,4 @@
-PROGRAM(blockstore-cgroup-pid-writer)
-
-SRCS(
-    main.cpp
+RECURSE(
+    bin
+    lib
 )
-
-PEERDIR(
-    cloud/blockstore/libs/common
-
-    library/cpp/getopt
-)
-
-END()

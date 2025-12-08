@@ -3,7 +3,6 @@
 #include "cont_io_with_timeout.h"
 #include "external_endpoint_stats.h"
 
-#include <cloud/blockstore/libs/common/cgroups_helpers.h>
 #include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/common/device_path.h>
 #include <cloud/blockstore/libs/common/public.h>
@@ -548,6 +547,15 @@ void AddToCGroupsWithExternalExecutable(
     }
 }
 
+void AppendToFile(const TFsPath& path, TStringBuf line)
+{
+    const auto flags = EOpenModeFlag::OpenExisting | EOpenModeFlag::WrOnly |
+                       EOpenModeFlag::ForAppend;
+
+    TFile file{path / "cgroup.procs", flags};
+    file.Write(line.data(), line.size());
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TVector<TString> AppendPidArg(TVector<TString> args)
@@ -761,7 +769,10 @@ private:
                 Cgroups);
             return;
         }
-        ::NCloud::NBlockStore::AddToCGroups(pid, Cgroups);
+        const TString line = ToString(pid) + '\n';
+        for (const auto& cgroup: Cgroups) {
+            AppendToFile(cgroup, line);
+        }
     }
 };
 
