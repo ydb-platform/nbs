@@ -84,11 +84,6 @@ outputs:
     description: >-
       Resulting VM preset of the created runner.
     value: ${{ steps.create-vm.outputs.vm-preset || inputs.vm_preset }}
-  RUNNER_FLAVOR:
-    value: ${{ steps.result.outputs.RUNNER_FLAVOR }}
-    description: "runner flavor"
-
-
 
 runs:
   using: composite
