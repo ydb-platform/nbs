@@ -2,8 +2,9 @@
 
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/filestore/libs/service/request.h>
-#include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
+
+#include <cloud/storage/core/libs/common/byte_range.h>
 
 namespace NCloud::NFileStore {
 
@@ -248,7 +249,7 @@ class TRequestFilterByRange
 private:
     const IRequestFilterPtr NextFilter;
 
-    const NStorage::TByteRange ByteRange;
+    const TByteRange ByteRange;
 
 public:
     TRequestFilterByRange(
@@ -274,7 +275,7 @@ public:
             }
 
             for (const auto& range: profileLogRequest.GetRanges()) {
-                const NStorage::TByteRange reqRange(
+                const TByteRange reqRange(
                     range.GetOffset(),
                     range.GetBytes(),
                     ByteRange.BlockSize);

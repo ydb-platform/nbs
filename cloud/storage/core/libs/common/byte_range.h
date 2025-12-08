@@ -4,7 +4,7 @@
 #include <util/string/builder.h>
 #include <util/system/align.h>
 
-namespace NCloud::NFileStore::NStorage {
+namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -175,4 +175,4 @@ struct TByteRange
     }
 };
 
-}   // namespace NCloud::NFileStore::NStorage
+}   // namespace NCloud

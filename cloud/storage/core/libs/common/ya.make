@@ -11,6 +11,7 @@ SRCS(
     backoff_delay_provider.cpp
     block_buffer.cpp
     block_data_ref.cpp
+    byte_range.cpp
     byte_vector.cpp
     compressed_bitmap.cpp
     concurrent_queue.cpp
