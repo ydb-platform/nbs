@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
+#include <cloud/blockstore/libs/storage/core/disk_registry_based_part_counters.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
@@ -187,6 +188,9 @@ private:
 
     TBackoffDelayProvider BackoffProvider;
 
+    TRequestInfoPtr StatisticRequestInfo;
+    ui64 StatisticSeqNo = 0;
+
 protected:
     // Derived class that wishes to handle wakeup messages should make its own
     // enum which starts with `WR_REASON_COUNT` value.
@@ -300,6 +304,13 @@ private:
 
     void OnMigrationNonRetriableError(const NActors::TActorContext& ctx);
 
+    void UpdateCounters(
+        const NActors::TActorContext& ctx,
+        const NActors::TActorId& sender,
+        TPartNonreplCountersData partCountersData);
+
+    TPartNonreplCountersData ExtractPartCounters();
+
 private:
     STFUNC(StateWork);
     STFUNC(StateZombie);
@@ -334,6 +345,16 @@ private:
 
     void HandlePoisonPill(
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleGetDiskRegistryBasedPartCounters(
+        const TEvNonreplPartitionPrivate::
+            TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDiskRegistryBasedPartCountersCombined(
+        const TEvNonreplPartitionPrivate::
+            TEvDiskRegistryBasedPartCountersCombined::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     template <typename TMethod>

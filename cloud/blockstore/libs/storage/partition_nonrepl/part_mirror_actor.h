@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
+#include <cloud/blockstore/libs/storage/core/disk_registry_based_part_counters.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/model/request_bounds_tracker.h>
@@ -127,6 +128,9 @@ private:
     const size_t MultiAgentWriteRequestSizeThreshold = 0;
     size_t MultiAgentWriteRoundRobinSeed = 0;
 
+    TRequestInfoPtr StatisticRequestInfo;
+    ui64 StatisticSeqNo = 0;
+
 public:
     TMirrorPartitionActor(
         TStorageConfigPtr config,
@@ -168,6 +172,12 @@ private:
         const NActors::TActorContext& ctx,
         const TEvVolume::TEvCheckRangeRequest::TPtr& ev,
         NProto::TError&& error);
+    TPartNonreplCountersData ExtractPartCounters(
+        const NActors::TActorContext& ctx);
+    void UpdateCounters(
+        const NActors::TActorContext& ctx,
+        const NActors::TActorId& sender,
+        TPartNonreplCountersData partCountersData);
 
 private:
     STFUNC(StateWork);
@@ -248,6 +258,15 @@ private:
 
     void HandleCheckRangeResponse(
         const TEvVolume::TEvCheckRangeResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+    void HandleGetDiskRegistryBasedPartCounters(
+        const TEvNonreplPartitionPrivate::
+            TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDiskRegistryBasedPartCountersCombined(
+        const TEvNonreplPartitionPrivate::
+            TEvDiskRegistryBasedPartCountersCombined::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     template <typename TMethod>
