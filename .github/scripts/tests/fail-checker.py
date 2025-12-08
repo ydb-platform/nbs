@@ -24,10 +24,10 @@ def print_with_secret_masked(
     print(f"{msg}: {key}={value} ({filename})")
 
 
-# we are writing to GITHUB_ENV to propagate env variables to next steps
-# and to FAIL_CHECKER_TEMP_FILE to get variable out of subshell
+# we are writing to FAIL_CHECKER_TEMP_FILE to get variable out of subshell
+# and then in test action we are reading it and writing to GITHUB_ENV because
+# writing to GITHUB_ENV requires root privileges
 def write_to_env(key: str, value: str, is_secret: bool = False):
-    write_to_file_from_env(key, value, "GITHUB_ENV", is_secret)
     write_to_file_from_env(key, value, "FAIL_CHECKER_TEMP_FILE", is_secret)
 
 
