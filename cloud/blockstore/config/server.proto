@@ -239,7 +239,11 @@ message TServerConfig
     // Use fake RDMA client (over Interconnect). For use in tests.
     optional bool UseFakeRdmaClient = 120;
 
-    // Enable Discard/ZeroBlocks features for vhost devices
+    // Enable Discard/ZeroBlocks features for vhost devices. Works for
+    // network-ssd and network-hdd disks. If this flag is on, then discards
+    // will be enabled for all network-ssd/network-hdd disks. Otherwize discards
+    // will be enabled only for disks with enabled VhostDiscardEnabled flag in
+    // volume config in Schemeshard.
     optional bool VhostDiscardEnabled = 121;
 
     // Maximum request size in bytes for ZeroBlocks.

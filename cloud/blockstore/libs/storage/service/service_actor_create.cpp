@@ -267,6 +267,13 @@ void TCreateVolumeActor::CreateVolumeImpl(
     config.SetBaseDiskCheckpointId(Request.GetBaseDiskCheckpointId());
     config.SetIsSystem(Request.GetIsSystem());
     config.SetFillGeneration(Request.GetFillGeneration());
+    config.SetVhostDiscardEnabled(
+        (Config->GetEnableVhostDiscardForNewVolumes() ||
+         Config->IsEnableVhostDiscardForNewVolumesFeatureEnabled(
+             Request.GetCloudId(),
+             Request.GetFolderId(),
+             Request.GetDiskId())) &&
+        !IsDiskRegistryMediaKind(GetStorageMediaKind()));
     config.SetTagsStr(Request.GetTagsStr());
 
     const TVolumeParams volumeParams = ComputeVolumeParams(

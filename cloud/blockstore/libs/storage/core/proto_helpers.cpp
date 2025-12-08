@@ -213,6 +213,7 @@ void VolumeConfigToVolume(
     volume.SetIsSystem(volumeConfig.GetIsSystem());
     volume.SetIsFillFinished(volumeConfig.GetIsFillFinished());
     volume.SetPrincipalDiskId(principalDiskId);
+    volume.SetVhostDiscardEnabled(volumeConfig.GetVhostDiscardEnabled());
     const auto tags = ParseTags(volumeConfig.GetTagsStr());
     for (const auto& [key, value]: tags) {
         volume.MutableTags()->insert({key, value});
