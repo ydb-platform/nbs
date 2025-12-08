@@ -61,6 +61,7 @@ namespace {
 
 constexpr TDuration WaitTimeout = TDuration::Seconds(5);
 constexpr TDuration ExceptionWaitTimeout = TDuration::Seconds(1);
+constexpr ui64 WriteBackCacheCapacity = 1024 * 1024 + 1024;
 
 static const TString FileSystemId = "fs1";
 static const TString SessionId = CreateGuidAsString();
@@ -70,6 +71,20 @@ static const TTempDir TempDir;
 TString CreateBuffer(size_t len, char fill = 0)
 {
     return TString(len, fill);
+}
+
+template <class F>
+bool WaitForCondition(TDuration timeout, F&& predicate)
+{
+    TSpinWait sw;
+    auto deadline = TInstant::Now() + timeout;
+    while (!predicate()) {
+        if (TInstant::Now() > deadline) {
+            return false;
+        }
+        sw.Sleep();
+    }
+    return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -101,7 +116,7 @@ struct TBootstrap
             const NProto::TFileStoreFeatures& featuresConfig = {},
             ui32 handleOpsQueueSize = 1000,
             ui32 writeBackCacheAutomaticFlushPeriodMs = 1000,
-            ui64 writeBackCacheCapacity = 1024 * 1024 + 1024)
+            ui64 writeBackCacheCapacity = WriteBackCacheCapacity)
         : Logging(CreateLoggingService("console", { TLOG_RESOURCES }))
         , Scheduler{std::move(scheduler)}
         , Timer{std::move(timer)}
@@ -2807,6 +2822,136 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     {
         TestShouldSupportZeroCopyWriteByWriteBackCache(false);
         TestShouldSupportZeroCopyWriteByWriteBackCache(true);
+    }
+
+    Y_UNIT_TEST(ShouldFlushAllRequestsBeforeSessionIsDestroyed)
+    {
+        // The idea is to fill WriteBackCache with requests and to stop session.
+        // It should flush both cached and pending requests before session is
+        // destroyed. To ensure that there are pending requests, we write more
+        // data than the cache capacity (~1_MB) and temporarily prevent write
+        // requests from completion.
+
+        // Note: due to the test framework/client limitations, the number of
+        // pending requests should not exceed 128 and the size of a message
+        // should not exceed 8192 bytes
+
+        constexpr ui64 NodeCount = 8;
+        // ThreadPool limitation
+        constexpr i64 MaxPendingRequestCount = 4;
+        constexpr i64 MaxRequestCount = 1000;
+        // Queue buffer limitation
+        constexpr ui64 MinByteCount = 7000;
+        constexpr ui64 MaxByteCount = 7500;
+        constexpr ui64 MaxOffset = 128_KB;
+        constexpr TDuration Timeout = TDuration::Seconds(15);
+
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        // Disable automatic flush
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features,
+            /* handleOpsQueueSize= */ 1000,
+            /* writeBackCacheAutomaticFlushPeriodMs= */ 1000000000,
+            WriteBackCacheCapacity);
+
+        auto writeDataPromise = NewPromise();
+        std::atomic<int> writeDataCalledCount = 0;
+
+        bootstrap.Service->WriteDataHandler = [&](auto, auto)
+        {
+            writeDataCalledCount++;
+            // The same future cannot be shared between responses
+            auto promise = NewPromise<NProto::TWriteDataResponse>();
+            writeDataPromise.GetFuture().Subscribe(
+                [promise](const auto&) mutable { promise.SetValue({}); });
+            return promise;
+        };
+
+        bootstrap.Start();
+        Y_DEFER
+        {
+            bootstrap.Stop();
+        };
+
+        auto counters = bootstrap.Counters
+            ->FindSubgroup("component", "fs_ut_fs")
+            ->FindSubgroup("host", "cluster")
+            ->FindSubgroup("filesystem", FileSystemId)
+            ->FindSubgroup("client", "")
+            ->FindSubgroup("cloud", "")
+            ->FindSubgroup("folder", "")
+            ->FindSubgroup("request", "WriteData");
+
+        auto requestCountSensor = counters->GetCounter("Count");
+        auto requestInProgressSensor = counters->GetCounter("InProgress");
+        i64 requestCount = 0;
+
+        while (requestInProgressSensor->GetAtomic() < MaxPendingRequestCount) {
+            UNIT_ASSERT_GT(MaxRequestCount, requestCount);
+
+            ui64 nodeId = RandomNumber(NodeCount) + 123;
+            ui64 handleId = nodeId + 456;
+            ui64 offset = RandomNumber(MaxOffset);
+            ui64 byteCount =
+                RandomNumber(MaxByteCount - MinByteCount + 1) + MinByteCount;
+
+            auto reqWrite = std::make_shared<TWriteRequest>(
+                nodeId,
+                handleId,
+                offset,
+                CreateBuffer(byteCount, 'a'));
+
+            reqWrite->In->Body.flags |= O_WRONLY;
+            bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
+
+            requestCount++;
+
+            UNIT_ASSERT(WaitForCondition(
+                WaitTimeout,
+                [&]()
+                {
+                    const bool requestIsProcessed =
+                        requestCount == requestInProgressSensor->GetAtomic() +
+                                            requestCountSensor->GetAtomic();
+
+                    // A pending request will eventually become completed if the
+                    // cache is not full. We don't want to count these requests
+                    // as pending and will wait instead.
+
+                    // Cache fullness can be detected by non-zero WriteData
+                    // attempts from Flush that is triggered when there is no
+                    // space to store the request
+
+                    const bool nonZeroPendingIsExpected =
+                        requestInProgressSensor->GetAtomic() == 0 ||
+                        writeDataCalledCount > 0;
+
+                    return requestIsProcessed && nonZeroPendingIsExpected;
+                }));
+        }
+
+        auto path = TempDir.Path() / "WriteBackCache" / FileSystemId /
+                    SessionId / "write_back_cache";
+
+        UNIT_ASSERT(path.Exists());
+
+        auto stopFuture = bootstrap.StopAsync();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            MaxPendingRequestCount,
+            requestInProgressSensor->GetAtomic());
+
+        // Enable progression of WriteData requests - this will enable flushing
+        writeDataPromise.SetValue();
+        UNIT_ASSERT(stopFuture.Wait(Timeout));
+
+        UNIT_ASSERT_VALUES_EQUAL(0, requestInProgressSensor->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(requestCount, requestCountSensor->GetAtomic());
+        UNIT_ASSERT(!path.Exists());
     }
 }
 
