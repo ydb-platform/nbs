@@ -340,7 +340,7 @@ void ProcessConfigsAfterInitialization(
          resultTemplate = std::move(resultTemplate),
          deviceConfigs = std::move(deviceConfigs)](auto future) mutable
         {
-            auto initializationResult = future.GetValue();
+            auto initializationResult = future.ExtractValue();
 
             if (initializationResult.ConfigMismatchErrors) {
                 auto error = MakeError(
