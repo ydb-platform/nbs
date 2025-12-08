@@ -240,6 +240,9 @@ private:
         const THashSet<TString>& lostDevicesIds) const;
 
     void CheckIfDeviceIsDisabled(const TString& uuid, const TString& clientId);
+
+    NThreading::TFuture<TResultOrError<TAttachPathResult>> AttachPathsImpl(
+        TAttachPathResult result);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

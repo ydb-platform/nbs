@@ -196,9 +196,9 @@ void TDiskAgentActor::HandlePathsAttached(
     auto deviceConfigs = State->GetDevicesByPath(paths);
 
     auto response = std::make_unique<TEvDiskAgent::TEvAttachPathsResponse>();
-    for (auto& deviceConfig: deviceConfigs) {
-        *response->Record.AddAttachedDevices() = std::move(deviceConfig);
-    }
+    response->Record.MutableAttachedDevices()->Assign(
+        std::make_move_iterator(deviceConfigs.begin()),
+        std::make_move_iterator(deviceConfigs.end()));
 
     LOG_INFO(
         ctx,

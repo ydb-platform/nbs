@@ -33,6 +33,7 @@ enum ECheckpointState
 
 ////////////////////////////////////////////////////////////////////////////////
 // Mean time between failures.
+
 message TMeanTimeBetweenFailures
 {
     // Work time in seconds.
@@ -591,17 +592,6 @@ message TRegisterAgentResponse
 
     // List of device IDs to which Disk Agent should disable IO operations.
     repeated string DevicesToDisableIO = 2;
-
-    // Monotonously increasing counters needed to order attach/detach
-    // paths requests from one generation of DR tablet.
-    uint64 DiskAgentGeneration = 3;
-
-    // Disk Registry Tablet generation needed to order attach/detach path
-    // requests sent from two different DR generations.
-    uint32 DiskRegistryGeneration = 4;
-
-    // Devices that should be attached to the agent.
-    repeated string PathsToAttach = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
