@@ -536,7 +536,7 @@ void AddToCGroupsWithExternalExecutable(
     const TVector<TString>& cgroups)
 {
     TVector<TString> args;
-    args.emplace_back(ToString(pid));
+    args.emplace_back("--pid=" + ToString(pid));
     args.insert(args.end(), cgroups.begin(), cgroups.end());
     auto child = SpawnChild(path, std::move(args));
     auto error = child.Wait();
