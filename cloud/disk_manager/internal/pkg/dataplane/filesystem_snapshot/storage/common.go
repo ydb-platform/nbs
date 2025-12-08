@@ -113,7 +113,7 @@ func scanFilesystemSnapshotState(res persistence.Result) (state filesystemSnapsh
 	)
 	if err != nil {
 		return state, errors.NewNonRetriableErrorf(
-			"scanFilesystemSnapshotStates: failed to parse row: %w",
+			"scanFilesystemSnapshotState: failed to parse row: %w",
 			err,
 		)
 	}

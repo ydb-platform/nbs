@@ -368,7 +368,7 @@ func (s *storageYDB) lockFilesystemSnapshot(
 			return true, nil
 		}
 
-		logging.Info(ctx, "Another lock %v was found for filesystem snapshot %v", lockTaskID, snapshotID)
+		logging.Info(ctx, "Filesystem snapshot %v already has lock %v, cannot acquire lock %v", snapshotID, state.lockTaskID, lockTaskID)
 		return false, task_errors.NewInterruptExecutionError()
 	}
 
@@ -584,9 +584,8 @@ func (s *storageYDB) getFilesystemSnapshot(
 
 	if len(states) != 0 {
 		return &states[0], nil
-	} else {
-		return nil, nil
 	}
+	return nil, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
