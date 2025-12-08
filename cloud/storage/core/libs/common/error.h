@@ -460,6 +460,14 @@ T ExtractResponse(NThreading::TFuture<T>& future)
 }
 
 template <typename T>
+TResultOrError<T> ResultOrError(const NThreading::TFuture<T>& future)
+{
+    return SafeExecute<TResultOrError<T>>([&] {
+        return future.GetValue();
+    });
+}
+
+template <typename T>
 TResultOrError<T> ResultOrError(NThreading::TFuture<T>& future)
 {
     return SafeExecute<TResultOrError<T>>([&] {
@@ -467,12 +475,18 @@ TResultOrError<T> ResultOrError(NThreading::TFuture<T>& future)
     });
 }
 
-inline TResultOrError<void> ResultOrError(NThreading::TFuture<void>& future)
+inline TResultOrError<void> ResultOrError(
+    const NThreading::TFuture<void>& future)
 {
     return SafeExecute<TResultOrError<void>>([&] {
         future.TryRethrow();
         return NProto::TError();
     });
+}
+
+inline TResultOrError<void> ResultOrError(NThreading::TFuture<void>& future)
+{
+    return ResultOrError(std::as_const(future));
 }
 
 NProto::TError MakeTabletIsDeadError(
