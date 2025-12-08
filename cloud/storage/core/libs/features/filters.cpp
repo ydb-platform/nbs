@@ -29,7 +29,7 @@ bool RegexpMatchItemInSet(const THashSet<TString>& set, const TString& item)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TFilters::TFilters(NProto::TFilters config)
+TFilters::TFilters(const NProto::TFilters& config)
 {
     for (const auto& cloudId: config.GetCloudIds()) {
         CloudIds.emplace(cloudId);

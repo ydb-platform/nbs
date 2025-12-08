@@ -4,7 +4,6 @@
 
 #include <util/generic/hash_set.h>
 #include <util/generic/string.h>
-#include <util/generic/vector.h>
 
 namespace NCloud::NFeatures {
 
@@ -19,7 +18,7 @@ private:
     NProto::EFilterMatchAlgorithm MatchAlgorithm;
 
 public:
-    explicit TFilters(NProto::TFilters config);
+    explicit TFilters(const NProto::TFilters& config);
 
     bool Contains(
         const TString& cloudId,

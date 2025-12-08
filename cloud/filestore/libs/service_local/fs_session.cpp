@@ -27,9 +27,9 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
 
         *response.MutableFileStore() = Store;
 
-        auto& cloudId = Store.GetCloudId();
-        auto& folderId = Store.GetFolderId();
-        auto& fsId = Store.GetFileSystemId();
+        const auto& cloudId = Store.GetCloudId();
+        const auto& folderId = Store.GetFolderId();
+        const auto& fsId = Store.GetFileSystemId();
 
         auto* features = response.MutableFileStore()->MutableFeatures();
         features->SetDirectIoEnabled(Config->GetDirectIoEnabled());
