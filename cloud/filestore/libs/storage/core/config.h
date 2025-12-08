@@ -356,6 +356,8 @@ public:
     [[nodiscard]] bool GetAllowAdditionalSystemTablets() const;
 
     bool GetZeroCopyReadEnabled() const;
+
+    [[nodiscard]] bool GetBlockChecksumsInProfileLogEnabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

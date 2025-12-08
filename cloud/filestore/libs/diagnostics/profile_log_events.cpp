@@ -1,5 +1,6 @@
 #include "profile_log_events.h"
 
+#include "critical_events.h"
 #include "profile_log.h"
 
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
@@ -16,6 +17,10 @@
 #include <cloud/filestore/public/api/protos/node.pb.h>
 #include <cloud/filestore/public/api/protos/ping.pb.h>
 #include <cloud/filestore/public/api/protos/session.pb.h>
+
+#include <cloud/storage/core/libs/common/byte_range.h>
+
+#include <library/cpp/digest/crc32c/crc32c.h>
 
 namespace NCloud::NFileStore {
 
@@ -45,6 +50,37 @@ void InitProfileLogLockRequestInfo(
         lockInfo->SetType(request.GetLockType());
     }
     lockInfo->SetPid(request.GetPid());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+ui32 CalculateChecksum(TStringBuf buf)
+{
+    ui64 len = buf.size();
+    while (len > 0) {
+        constexpr auto WordSize = sizeof(ui64);
+        if (len % WordSize == 0 && len >= WordSize) {
+            ui64 word = 0;
+            memcpy(&word, buf.data() + len - WordSize, WordSize);
+            if (word != 0) {
+                break;
+            }
+
+            len -= WordSize;
+        } else {
+            if (buf[len - 1] != 0) {
+                break;
+            }
+
+            --len;
+        }
+    }
+
+    if (len) {
+        return Crc32c(buf.data(), len);
+    }
+
+    return 0;
 }
 
 } // namespace
@@ -668,6 +704,66 @@ void FinalizeProfileLogRequestInfo(
     }
     auto* rangeInfo = profileLogRequest.MutableRanges(0);
     rangeInfo->SetActualBytes(response.BytesRead);
+}
+
+void CalculateChecksums(
+    const TStringBuf buffer,
+    ui32 blockSize,
+    NProto::TProfileLogRequestInfo& profileLogRequest)
+{
+    auto& profileLogRanges = *profileLogRequest.MutableRanges();
+    if (profileLogRanges.empty()) {
+        return;
+    }
+
+    ui64 minRangeOffset = Max<ui64>();
+    for (const auto& profileLogRange: profileLogRanges) {
+        if (profileLogRange.GetOffset() < minRangeOffset) {
+            minRangeOffset = profileLogRange.GetOffset();
+        }
+    }
+
+    for (auto& profileLogRange: profileLogRanges) {
+        const ui64 len =
+            Max(profileLogRange.GetBytes(), profileLogRange.GetActualBytes());
+        TByteRange range(profileLogRange.GetOffset(), len, blockSize);
+
+        if (range.End() - minRangeOffset > buffer.size()) {
+            ReportCalculateChecksumsBufferOverflow();
+            return;
+        }
+
+        //
+        // Processing all blocks except the tail
+        //
+
+        if (range.UnalignedHeadLength()) {
+            profileLogRange.AddBlockChecksums(CalculateChecksum(TStringBuf(
+                buffer.data() + (range.Offset - minRangeOffset),
+                range.UnalignedHeadLength())));
+        }
+
+        for (ui64 i = 0; i < range.AlignedBlockCount(); ++i) {
+            const ui64 offsetInBuffer =
+                (range.FirstAlignedBlock() + i) * blockSize - minRangeOffset;
+            profileLogRange.AddBlockChecksums(CalculateChecksum(TStringBuf(
+                buffer.data() + offsetInBuffer, blockSize)));
+        }
+
+        //
+        // Tail is processed a bit differently - we calculate the checksum only
+        // up to the last non-zero byte, i.e. we discard zero suffixes. This is
+        // needed to simplify checksum comparisons between unaligned appends
+        // coming from the client and full block writes for the same block
+        // coming from the tablet's internal logic.
+        //
+
+        if (range.UnalignedTailLength()) {
+            profileLogRange.AddBlockChecksums(CalculateChecksum(buffer.substr(
+                range.UnalignedTailOffset() - minRangeOffset,
+                range.UnalignedTailLength())));
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore

@@ -1042,6 +1042,13 @@ void TIndexTabletActor::CompleteTx_ReadData(
             *args.Buffer,
             response->Record.MutableBuffer());
 
+        if (Config->GetBlockChecksumsInProfileLogEnabled()) {
+            CalculateChecksums(
+                response->Record.GetBuffer(),
+                GetBlockSize(),
+                args.ProfileLogRequest);
+        }
+
         CompleteResponse<TEvService::TReadDataMethod>(
             response->Record,
             args.RequestInfo->CallContext,
