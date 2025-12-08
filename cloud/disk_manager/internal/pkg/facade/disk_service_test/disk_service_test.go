@@ -567,7 +567,21 @@ func TestDiskServiceCreateEncryptedSsdNonreplDiskFromPooledImage(t *testing.T) {
 		},
 	)
 }
-*/
+
+func TestDiskServiceCreateEncryptedAtRestSsdNonreplDiskFromImage(t *testing.T) {
+	testCreateDiskFromImageWithZoneID(
+		t,
+		disk_manager.DiskKind_DISK_KIND_SSD_NONREPLICATED,
+		32*1024*4096, // imageSize
+		false,        // pooled
+		262144*4096,  // diskSize
+		"folder",
+		&disk_manager.EncryptionDesc{
+			Mode: disk_manager.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY,
+		},
+		defaultZoneID,
+	)
+}
 
 func TestDiskServiceCreateEncryptedSsdNonreplDiskFromImage(t *testing.T) {
 	testCreateDiskFromImageWithZoneID(
@@ -1122,7 +1136,7 @@ func TestDiskServiceCreateEncryptedDiskFromImage(t *testing.T) {
 	testcommon.CheckConsistency(t, ctx)
 }
 
-func testCreateSsdNonreplWithEncryptionAtRest(
+func testCreateSsdNonreplWithRootKmsEncryption(
 	t *testing.T,
 	folderID string,
 	encryptionDesc *disk_manager.EncryptionDesc,
@@ -1167,7 +1181,7 @@ func testCreateSsdNonreplWithEncryptionAtRest(
 	require.NoError(t, err)
 
 	require.NotEmpty(t, encryption)
-	require.Equal(t, types.EncryptionMode_ENCRYPTION_AT_REST, encryption.Mode)
+	require.Equal(t, types.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY, encryption.Mode)
 
 	key := encryption.Key.(*types.EncryptionDesc_KmsKey)
 	require.NotEmpty(t, key)
@@ -1181,22 +1195,22 @@ func testCreateSsdNonreplWithEncryptionAtRest(
 	testcommon.CheckConsistency(t, ctx)
 }
 
-func TestDiskServiceShouldCreateSsdNonreplWithEncryptionAtRestByEncryptionDesc(
+func TestDiskServiceShouldCreateSsdNonreplWithRootKmsEncryptionByEncryptionDesc(
 	t *testing.T,
 ) {
-	testCreateSsdNonreplWithEncryptionAtRest(
+	testCreateSsdNonreplWithRootKmsEncryption(
 		t,
 		"folder",
 		&disk_manager.EncryptionDesc{
-			Mode: disk_manager.EncryptionMode_ENCRYPTION_AT_REST,
+			Mode: disk_manager.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY,
 		},
 	)
 }
 
-func TestDiskServiceShouldCreateSsdNonreplWithEncryptionAtRestByFolderID(
+func TestDiskServiceShouldCreateSsdNonreplWithRootKmsEncryptionByFolderID(
 	t *testing.T,
 ) {
-	testCreateSsdNonreplWithEncryptionAtRest(
+	testCreateSsdNonreplWithRootKmsEncryption(
 		t,
 		"encrypted-folder",
 		nil, // encryptionDesc

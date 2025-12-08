@@ -158,6 +158,16 @@ func (t *createDiskFromImageTask) Run(
 	}
 
 	var taskID string
+	// Disks created with the encryption at rest option, or within a folder with
+	// encryption at rest enabled, must be mounted without the encryption option.
+	// NBS processes encryption on its side.
+	if encryption != nil {
+		if encryption.Mode == types.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY {
+			encryption = &types.EncryptionDesc{
+				Mode: types.EncryptionMode_NO_ENCRYPTION,
+			}
+		}
+	}
 
 	// Old images without metadata we consider as not dataplane.
 	if imageMeta != nil && imageMeta.UseDataplaneTasks {

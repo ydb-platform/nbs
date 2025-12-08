@@ -2003,7 +2003,7 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         {
             auto state = makeState(
                 NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-                NProto::ENCRYPTION_AT_REST);
+                NProto::ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY);
 
             UNIT_ASSERT(!state.GetTrackUsedBlocks());
         }
