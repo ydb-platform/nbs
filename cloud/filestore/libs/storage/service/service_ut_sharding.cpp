@@ -6021,6 +6021,71 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             service.DestroyHandle(headers, fsConfig.FsId, nodes[i], handles[i]);
         }
     }
+
+    void DoShouldReportStrictFileSystemSizeEnforcementMetrics(
+        NProto::TStorageConfig& config,
+        bool strictFileSystemSizeEnforcementEnabled,
+        bool directoryCreationInShardsEnabled)
+    {
+        config.SetStrictFileSystemSizeEnforcementEnabled(
+            strictFileSystemSizeEnforcementEnabled);
+        config.SetDirectoryCreationInShardsEnabled(
+            directoryCreationInShardsEnabled);
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        auto registry = env.GetRegistry();
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(16));
+        NActors::TDispatchOptions options;
+        options.FinalEvents.emplace_back(
+            TDispatchOptions::TFinalEventCondition(
+                TEvIndexTabletPrivate::EvUpdateCounters,
+                3));
+        env.GetRuntime().DispatchEvents(options);
+
+        TTestRegistryVisitor visitor;
+        registry->Visit(TInstant::Zero(), visitor);
+
+        const auto directoryCreationInShardsEnabledMetrics =
+            directoryCreationInShardsEnabled ? 1 : 0;
+        const auto strictFileSystemSizeEnforcementEnabledMetrics =
+            strictFileSystemSizeEnforcementEnabled ? 1 : 0;
+        visitor.ValidateExpectedCounters({
+            {{{"sensor", "StrictFileSystemSizeEnforcementEnabled"},
+              {"filesystem", "test"}},
+             strictFileSystemSizeEnforcementEnabledMetrics},
+            {{{"sensor", "StrictFileSystemSizeEnforcementEnabled"},
+              {"filesystem", "test_s1"}},
+             strictFileSystemSizeEnforcementEnabledMetrics},
+            {{{"sensor", "StrictFileSystemSizeEnforcementEnabled"},
+              {"filesystem", "test_s2"}},
+             strictFileSystemSizeEnforcementEnabledMetrics},
+            {{{"sensor", "DirectoryCreationInShardsEnabled"},
+              {"filesystem", "test"}},
+             directoryCreationInShardsEnabledMetrics},
+            {{{"sensor", "DirectoryCreationInShardsEnabled"},
+              {"filesystem", "test_s1"}},
+             directoryCreationInShardsEnabledMetrics},
+            {{{"sensor", "DirectoryCreationInShardsEnabled"},
+              {"filesystem", "test_s2"}},
+             directoryCreationInShardsEnabledMetrics},
+        });
+    }
+
+    SERVICE_TEST_SIMPLE(ShouldReportStrictFileSystemSizeEnforcementMetrics)
+    {
+        DoShouldReportStrictFileSystemSizeEnforcementMetrics(
+            config,
+            true,
+            false);
+        DoShouldReportStrictFileSystemSizeEnforcementMetrics(
+            config,
+            false,
+            true);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -637,7 +637,7 @@ bool TIndexTabletActor::PrepareTx_FlushBytes(
 {
     TIndexTabletDatabase db(tx.DB);
 
-    InitProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
+    InitTabletProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
 
     bool ready = true;
     for (const auto& bytes: args.Bytes) {
@@ -930,7 +930,7 @@ bool TIndexTabletActor::PrepareTx_TrimBytes(
 {
     Y_UNUSED(tx);
 
-    InitProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
+    InitTabletProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
 
     return true;
 }

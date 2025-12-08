@@ -12,7 +12,6 @@
 #include <cloud/filestore/libs/storage/core/request_info.h>
 #include <cloud/filestore/libs/storage/model/block_buffer.h>
 #include <cloud/filestore/libs/storage/model/public.h>
-#include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
@@ -20,6 +19,7 @@
 
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
+#include <cloud/storage/core/libs/common/byte_range.h>
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <util/folder/pathsplit.h>
@@ -198,6 +198,11 @@ struct TProfileAware
     explicit TProfileAware(EFileStoreSystemRequest requestType) noexcept
     {
         ProfileLogRequest.SetRequestType(static_cast<ui32>(requestType));
+    }
+
+    explicit TProfileAware(NProto::TProfileLogRequestInfo profileLogRequest) noexcept
+        : ProfileLogRequest(std::move(profileLogRequest))
+    {
     }
 
 protected:
@@ -1627,6 +1632,7 @@ struct TTxIndexTablet
     struct TReadData
         : TTxIndexTabletBase
         , TSessionAware
+        , TProfileAware
         , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
@@ -1656,8 +1662,10 @@ struct TTxIndexTablet
                 TByteRange originByteRange,
                 TByteRange alignedByteRange,
                 IBlockBufferPtr buffer,
-                bool describeOnly)
+                bool describeOnly,
+                NProto::TProfileLogRequestInfo profileLogRequest)
             : TSessionAware(request)
+            , TProfileAware(std::move(profileLogRequest))
             , RequestInfo(std::move(requestInfo))
             , Handle(request.GetHandle())
             , OriginByteRange(originByteRange)
@@ -1681,6 +1689,8 @@ struct TTxIndexTablet
 
             std::fill(Blocks.begin(), Blocks.end(), TBlockDataRef());
             std::fill(Bytes.begin(), Bytes.end(), TBlockBytes());
+
+            // deliberately not calling TProfileAware::Clear()
         }
 
         const TByteRange& ActualRange() const
@@ -1696,6 +1706,7 @@ struct TTxIndexTablet
     struct TWriteData
         : TTxIndexTabletBase
         , TSessionAware
+        , TProfileAware
         , TIndexStateNodeUpdates
     {
         const TRequestInfoPtr RequestInfo;
@@ -1716,8 +1727,10 @@ struct TTxIndexTablet
                 const ui32 writeBlobThreshold,
                 const NProto::TWriteDataRequest& request,
                 TByteRange byteRange,
-                IBlockBufferPtr buffer)
+                IBlockBufferPtr buffer,
+                NProto::TProfileLogRequestInfo profileLogRequest)
             : TSessionAware(request)
+            , TProfileAware(std::move(profileLogRequest))
             , RequestInfo(std::move(requestInfo))
             , WriteBlobThreshold(writeBlobThreshold)
             , Handle(request.GetHandle())
@@ -1732,6 +1745,8 @@ struct TTxIndexTablet
             CommitId = InvalidCommitId;
             NodeId = InvalidNodeId;
             Node.Clear();
+
+            // deliberately not calling TProfileAware::Clear()
         }
 
         bool ShouldWriteBlob() const
@@ -1749,6 +1764,7 @@ struct TTxIndexTablet
     struct TAddData
         : TTxIndexTabletBase
         , TSessionAware
+        , TProfileAware
     {
         const TRequestInfoPtr RequestInfo;
         const ui64 Handle;
@@ -1769,8 +1785,10 @@ struct TTxIndexTablet
                 TByteRange byteRange,
                 TVector<NKikimr::TLogoBlobID> blobIds,
                 TVector<TBlockBytesMeta> unalignedDataParts,
-                ui64 commitId)
+                ui64 commitId,
+                NProto::TProfileLogRequestInfo profileLogRequest)
             : TSessionAware(request)
+            , TProfileAware(std::move(profileLogRequest))
             , RequestInfo(std::move(requestInfo))
             , Handle(request.GetHandle())
             , ByteRange(byteRange)
@@ -1784,6 +1802,8 @@ struct TTxIndexTablet
         {
             NodeId = InvalidNodeId;
             Node.Clear();
+
+            // deliberately not calling TProfileAware::Clear()
         }
     };
 

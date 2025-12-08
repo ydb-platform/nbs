@@ -1646,12 +1646,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
     {
         TTestEnv env(1, 2);
         auto unmountClientsTimeout = TDuration::Seconds(10);
-        ui32 nodeIdx1 = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
-        ui32 nodeIdx2 = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
+        ui32 nodeIdx1 =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
+        ui32 nodeIdx2 =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
 
         auto& runtime = env.GetRuntime();
 
@@ -1682,7 +1680,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         service_source.UnmountVolume(DefaultDiskId, sessionId);
 
-        response= service_target.MountVolume(
+        response = service_target.MountVolume(
             DefaultDiskId,
             TString(),
             TString(),
@@ -5766,6 +5764,130 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "Disk-1-copy",
             response->Record.GetVolume().GetPrincipalDiskId());
+    }
+
+    Y_UNIT_TEST(ShouldMountRWLocalAsRWRemoteIfAlreadyHaveLocalRO)
+    {
+        TTestEnv env(1, 2);
+        ui32 nodeIdx1 = SetupTestEnv(env);
+        ui32 nodeIdx2 = SetupTestEnv(env);
+
+        TServiceClient service1(env.GetRuntime(), nodeIdx1);
+        service1.CreateVolume();
+        service1.AssignVolume(DefaultDiskId, "foo", "bar");
+        service1.MountVolume(
+            DefaultDiskId,
+            "foo",
+            "bar",
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            NProto::VOLUME_MOUNT_LOCAL);
+
+        for (ui32 nodeIdx: {nodeIdx1, nodeIdx2}) {
+            TServiceClient service2(env.GetRuntime(), nodeIdx);
+            auto response = service2.MountVolume(
+                DefaultDiskId,
+                "foo",
+                "bar",
+                NProto::IPC_GRPC,
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL);
+            auto sessionId = response->Record.GetSessionId();
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+
+            service2.UnmountVolume(DefaultDiskId, sessionId);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldHandleLocalMigrationScenarioWithLRO)
+    {
+        TTestEnv env;
+        auto unmountClientsTimeout = TDuration::Seconds(10);
+        ui32 nodeIdx =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service_source(runtime, nodeIdx);
+        TServiceClient service_target(runtime, nodeIdx);
+        service_source.CreateVolume();
+
+        auto response = service_source.MountVolume();
+        TString sessionId = response->Record.GetSessionId();
+        UNIT_ASSERT(response->GetStatus() == S_OK);
+
+        response = service_target.MountVolume(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0,
+            1);
+        UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == DefaultBlocksCount);
+
+        response = service_target.MountVolume(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0,
+            2);
+        UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == DefaultBlocksCount);
+
+        service_source.UnmountVolume(DefaultDiskId, sessionId);
+    }
+
+    Y_UNIT_TEST(ShouldHandleInterNodeMigrationScenarioWithLRO)
+    {
+        TTestEnv env(1, 2);
+        auto unmountClientsTimeout = TDuration::Seconds(10);
+        ui32 nodeIdx1 =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
+        ui32 nodeIdx2 =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service_source(runtime, nodeIdx1);
+        TServiceClient service_target(runtime, nodeIdx2);
+        service_source.CreateVolume();
+
+        auto response = service_source.MountVolume();
+        TString sessionId = response->Record.GetSessionId();
+        UNIT_ASSERT(response->GetStatus() == S_OK);
+        UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == DefaultBlocksCount);
+
+        response = service_target.MountVolume(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0,
+            1);
+        UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == DefaultBlocksCount);
+
+        response= service_target.MountVolume(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0,
+            2);
+        UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == DefaultBlocksCount);
+
+        service_source.UnmountVolume(DefaultDiskId, sessionId);
     }
 }
 

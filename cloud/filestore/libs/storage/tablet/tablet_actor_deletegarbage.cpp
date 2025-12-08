@@ -70,7 +70,7 @@ bool TIndexTabletActor::PrepareTx_DeleteGarbage(
 {
     Y_UNUSED(tx);
 
-    InitProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
+    InitTabletProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
 
     return true;
 }

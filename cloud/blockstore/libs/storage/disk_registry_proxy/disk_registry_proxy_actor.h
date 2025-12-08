@@ -1,3 +1,5 @@
+#pragma once
+
 #include "public.h"
 
 #include "disk_registry_proxy_private.h"
@@ -9,9 +11,8 @@
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 
 #include <contrib/ydb/core/base/tablet_pipe.h>
-
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>

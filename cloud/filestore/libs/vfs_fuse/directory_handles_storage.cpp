@@ -96,8 +96,8 @@ void TDirectoryHandlesStorage::ResetHandle(ui64 handleId)
 {
     TGuard guard(TableLock);
     if (HandleIdToIndices.contains(handleId)) {
-        for (auto it = std::next(HandleIdToIndices[handleId].begin(), 1);
-             it != HandleIdToIndices[handleId].end();
+        for (auto it = HandleIdToIndices[handleId].rbegin();
+             it != std::prev(HandleIdToIndices[handleId].rend(), 1);
              ++it)
         {
             if (!Table->DeleteRecord(*it)) {
@@ -117,16 +117,22 @@ void TDirectoryHandlesStorage::LoadHandles(TDirectoryHandleMap& handles)
 {
     // Since we store data in chunks instead of a single block, in rare cases
     // a crash during the reset or removal process can lead to inconsistent
-    // chunks order. We detect this inconsistency during the load phase and fix
-    // it.
+    // chunks order. We detect this inconsistency during the load phase and
+    // clean data for this handle.
     struct TUpdateVersionInfo
     {
         ui64 LargestUpdateVersion = 0;
         ui64 ChunksCount = 0;
-        bool IsFirstChunkPresented = false;
+    };
+
+    struct TChunkInfo
+    {
+        ui64 UpdateVersion = 0;
+        ui64 StorageIndex = 0;
     };
 
     TMap<ui64, TUpdateVersionInfo> updateVersionInfo;
+    TMap<ui64, TVector<TChunkInfo>> chunksInfo;
 
     {
         TGuard guard(TableLock);
@@ -164,38 +170,41 @@ void TDirectoryHandlesStorage::LoadHandles(TDirectoryHandleMap& handles)
                     chunk->UpdateVersion;
             }
 
-            // Always store the first chunk at the beginning of the list — this
-            // helps us handle the reset logic correctly and efficiently.
-            if (chunk->UpdateVersion == 0) {
-                updateVersionInfo[handleId].IsFirstChunkPresented = true;
-                HandleIdToIndices[handleId].insert(
-                    HandleIdToIndices[handleId].begin(),
-                    it.GetIndex());
-            } else {
-                HandleIdToIndices[handleId].push_back(it.GetIndex());
-            }
+            chunksInfo[handleId].push_back(
+                TChunkInfo{chunk->UpdateVersion, it.GetIndex()});
+        }
+    }
+
+    // When resetting a handle, we must remove chunks in reverse order
+    // of their update version to avoid corruption if we crash mid-reset.
+    // Therefore, after loading handles, we must keep chunks sorted
+    // by update version.
+    for (auto& [handleId, chunks]: chunksInfo) {
+        std::sort(
+            chunks.begin(),
+            chunks.end(),
+            [](const TChunkInfo& a, const TChunkInfo& b)
+            { return a.UpdateVersion < b.UpdateVersion; });
+
+        HandleIdToIndices[handleId].reserve(chunks.size());
+        for (const auto& chunkInfo: chunks) {
+            HandleIdToIndices[handleId].push_back(chunkInfo.StorageIndex);
         }
     }
 
     for (auto [handleId, updateVersionInfo]: updateVersionInfo) {
-        if (!updateVersionInfo.IsFirstChunkPresented) {
-            ReportDirectoryHandlesStorageError(
-                TStringBuilder()
-                << "First chunk for handle " << handleId << " is missing");
-
-            RemoveHandle(handleId);
-            continue;
-        }
-
         if (updateVersionInfo.ChunksCount !=
             updateVersionInfo.LargestUpdateVersion + 1)
         {
             ReportDirectoryHandlesStorageError(
                 TStringBuilder()
-                << "Total chunks count " << updateVersionInfo.ChunksCount
+                << "Corrupted data for handle " << handleId
+                << ": total chunks count " << updateVersionInfo.ChunksCount
                 << " is not equal to largest update version "
                 << updateVersionInfo.LargestUpdateVersion << " + 1");
-            ResetHandle(handleId);
+
+            RemoveHandle(handleId);
+            handles.erase(handleId);
             continue;
         }
     }
@@ -208,6 +217,8 @@ void TDirectoryHandlesStorage::Clear()
     HandleIdToIndices.clear();
 }
 
+// TODO: We can optimize this by counting size for serialization dynamically and
+// when needed serialize it directly to the file without additional copying.
 TBuffer TDirectoryHandlesStorage::SerializeHandle(
     ui64 handleId,
     const TDirectoryHandleChunk& handleChunk) const

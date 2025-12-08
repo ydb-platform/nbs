@@ -474,7 +474,7 @@ bool TIndexTabletActor::PrepareTx_AddBlob(
     TTransactionContext& tx,
     TTxIndexTablet::TAddBlob& args)
 {
-    InitProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
+    InitTabletProfileLogRequestInfo(args.ProfileLogRequest, ctx.Now());
 
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 

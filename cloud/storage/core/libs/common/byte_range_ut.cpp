@@ -1,10 +1,10 @@
-#include "range.h"
+#include "byte_range.h"
 
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/size_literals.h>
 
-namespace NCloud::NFileStore::NStorage {
+namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -97,4 +97,4 @@ Y_UNIT_TEST_SUITE(TByteRangeTest)
     }
 }
 
-}   // namespace NCloud::NFileStore::NStorage
+}   // namespace NCloud

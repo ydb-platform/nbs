@@ -1123,7 +1123,7 @@ message TStorageServiceConfig
     // agents devices and suspend local devices.
     optional bool DiskRegistryCleanupConfigOnRemoveHost = 392;
 
-    // Enables the encryption at rest for Disk Registry based disks.
+    // Enables the encryption at rest for Disk Registry based disks. Currently not implemented.
     optional bool EncryptionAtRestForDiskRegistryBasedDisksEnabled = 393;
 
     // Enabling direct copying of data between disk agents.
@@ -1379,4 +1379,10 @@ message TStorageServiceConfig
 
     // Policy for allocating nonreplicated disks.
     optional ENonreplAllocationPolicy NonreplAllocationPolicy = 469;
+
+    // Enable to send metrics from local tablets to hive.
+    optional bool SendLocalTabletMetricsToHiveEnabled = 470;
+
+    // Enables encryption with DEK provided by the Root KMS for Disk Registry based disks.
+    optional bool RootKmsEncryptionForDiskRegistryBasedDisksEnabled = 471;
 }

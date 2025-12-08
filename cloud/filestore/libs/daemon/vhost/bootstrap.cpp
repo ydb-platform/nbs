@@ -344,6 +344,7 @@ void TBootstrapVhost::InitEndpoints()
     if (localServiceConfig) {
         auto serviceConfig = std::make_shared<TLocalFileStoreConfig>(
             *localServiceConfig);
+        serviceConfig->SetFeaturesConfig(Configs->FeaturesConfig);
         ThreadPool = CreateThreadPool("svc", serviceConfig->GetNumThreads());
         FileIOService = CreateFileIOService(*serviceConfig);
         LocalService = CreateLocalFileStore(

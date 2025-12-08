@@ -189,6 +189,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
             NCloud::NProto::AUTHORIZATION_IGNORE                              )\
                                                                                \
     xxx(TwoStageReadEnabled,             bool,      false                     )\
+    xxx(TwoStageReadThreshold,           ui32,      0                         )\
     xxx(TwoStageReadDisabledForHDD,      bool,      false                     )\
     xxx(ThreeStageWriteEnabled,          bool,      false                     )\
     xxx(ThreeStageWriteThreshold,        ui32,      64_KB                     )\
@@ -300,6 +301,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(DirectoryHandlesStorageEnabled,    bool,      false                   )\
     xxx(DirectoryHandlesTableSize,         ui64,      100'000                 )\
     xxx(GuestHandleKillPrivV2Enabled,      bool,      false                   )\
+    xxx(AllowAdditionalSystemTablets,      bool,      false                   )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

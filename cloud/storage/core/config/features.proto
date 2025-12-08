@@ -6,6 +6,12 @@ option go_package = "github.com/ydb-platform/nbs/cloud/storage/core/config";
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum EFilterMatchAlgorithm
+{
+    FILTER_MATCH_ALGORITHM_STRING = 0;
+    FILTER_MATCH_ALGORITHM_REGEXP = 1;
+}
+
 message TFilters
 {
     repeated string CloudIds = 1;
@@ -13,6 +19,9 @@ message TFilters
 
     // DiskId for blockstore or FsId for filestore.
     repeated string EntityIds = 3;
+
+    // Algorithm used to match ids
+    optional EFilterMatchAlgorithm MatchAlgorithm = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

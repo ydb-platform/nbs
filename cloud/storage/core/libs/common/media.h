@@ -1,3 +1,5 @@
+#pragma once
+
 #include "public.h"
 
 #include <cloud/storage/core/protos/media.pb.h>
