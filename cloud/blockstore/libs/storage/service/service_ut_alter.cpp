@@ -866,8 +866,6 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
             NProto::TStorageServiceConfig config;
             config.SetFreshChannelCount(0);
 
-            NProto::TFeaturesConfig featuresConfig;
-
             nodeIdx1 = SetupTestEnv(env, config, {});
             nodeIdx2 = SetupTestEnv(env);
         }
