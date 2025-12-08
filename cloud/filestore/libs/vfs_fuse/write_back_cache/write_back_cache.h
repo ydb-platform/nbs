@@ -61,9 +61,31 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
-    NThreading::TFuture<void> FlushNodeData(ui64 nodeId);
+    // The method returns a future that is fulfilled when all WriteData requests
+    // associated with the node and started before the call are flushed - this
+    // affects both cached and pending requests.
+    // An error is returned if any of the WriteData requests is failed to flush.
+    // (this does not lead to data loss, retry attempts will go in background)
+    NThreading::TFuture<NProto::TError> FlushNodeData(ui64 nodeId);
 
-    NThreading::TFuture<void> FlushAllData();
+    // The method returns a future that is fulfilled when all WriteData requests
+    // started before the call are flushed - this affects both cached and
+    // pending requests.
+    NThreading::TFuture<NProto::TError> FlushAllData();
+
+    // Ensures that the handle is safe to be destroyed.
+    // The method returns a future that is fulfilled when there are no cached or
+    // pending WriteData requests associated with the handle.
+    // An error is returned if:
+    // - all handles are to be released
+    // - flush has failed
+    // In this case:
+    // - the cached data is dropped
+    // - pending WriteData requests are failed
+    // Note: the method doesn't call Session::DestroyHandle
+    NThreading::TFuture<NProto::TError> ReleaseHandle(
+        ui64 nodeId,
+        ui64 handle);
 
     bool IsEmpty() const;
 
