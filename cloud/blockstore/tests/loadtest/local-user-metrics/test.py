@@ -1,4 +1,3 @@
-import os
 import time
 import requests
 
@@ -29,7 +28,7 @@ STORAGE_POOL = [
 
 
 def kikimr_start():
-    kikimr_binary_path = common.binary_path(os.getenv("YDBD_BINARY"))
+    kikimr_binary_path = common.binary_path("contrib/ydb/apps/ydbd/ydbd")
 
     configurator = KikimrConfigGenerator(
         erasure=None,
