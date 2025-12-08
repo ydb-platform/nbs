@@ -314,7 +314,7 @@ def __validate_counters(counters, mode_name, should_have_requests, should_have_c
 
 
 def __run_test(test_case):
-    kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    kikimr_binary_path = yatest_common.binary_path(os.getenv("YDBD_BINARY"))
 
     configurator = KikimrConfigGenerator(
         erasure=None,

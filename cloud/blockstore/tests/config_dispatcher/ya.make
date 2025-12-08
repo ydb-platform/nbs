@@ -19,12 +19,13 @@ DEPENDS(
     cloud/blockstore/apps/client
     cloud/blockstore/apps/server
     cloud/blockstore/apps/disk_agent
-    contrib/ydb/apps/ydbd
 )
 
 DATA(
     arcadia/cloud/blockstore/tests/certs/server.crt
     arcadia/cloud/blockstore/tests/certs/server.key
 )
+
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/ydbd.inc)
 
 END()
