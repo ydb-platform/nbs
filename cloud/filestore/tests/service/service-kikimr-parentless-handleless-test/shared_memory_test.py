@@ -90,9 +90,9 @@ def test_mmap_unmmap():
     logger = logging.getLogger("test")
     port = os.getenv("NFS_SERVER_PORT")
 
-    with CreateClient(str("localhost:%s" % port), log=logger) as nfs_client:
+    with CreateClient(f"localhost:{port}", log=logger) as nfs_client:
         region_id, file_path = create_mmap_region(nfs_client, "testfile", 4096)
-        logger.info("Successfully mmaped file with region ID: %d", region_id)
+        logger.info(f"Successfully mmaped file with region ID: {region_id}")
 
         regions = nfs_client.list_mmap_regions()
         assert len(regions.Regions) == 1
@@ -104,7 +104,7 @@ def test_mmap_unmmap():
             nfs_client.munmap(mmap_id=region_id + 1)
 
         nfs_client.munmap(mmap_id=region_id)
-        logger.info("Successfully unmapped region: %d", region_id)
+        logger.info(f"Successfully unmapped region: {region_id}")
 
         regions = nfs_client.list_mmap_regions()
         assert len(regions.Regions) == 0
@@ -121,14 +121,14 @@ def test_memory_mapped_io(shard_count):
     logger = logging.getLogger("test")
     port = os.getenv("NFS_SERVER_PORT")
 
-    with CreateClient(str("localhost:%s" % port), log=logger) as nfs_client:
+    with CreateClient(f"localhost:{port}", log=logger) as nfs_client:
         region_id, file_path = create_mmap_region(
             nfs_client, "testfile", SHARED_MEMORY_SIZE
         )
-        logger.info("Created mmap region with ID: %d", region_id)
+        logger.info(f"Created mmap region with ID: {region_id}")
 
         session_id, node = setup_test_filestore(nfs_client, "fs", shard_count)
-        logger.info("Created session: %s, node: %s", session_id, node)
+        logger.info(f"Created session: {session_id}, node: {node}")
 
         def read_from_shared_memory(offset, length):
             with open(file_path, "rb") as f:
@@ -141,7 +141,7 @@ def test_memory_mapped_io(shard_count):
                 f.write(data)
 
         seed = int(time.time())
-        logger.info("Seeding random with: %f", seed)
+        logger.info(f"Seeding random with: {seed}")
         random.seed(seed)
 
         LENGTHS = [
@@ -205,9 +205,7 @@ def test_memory_mapped_io(shard_count):
                     read_data, target_data, length, offset, common.output_path()
                 )
                 logger.info(
-                    "Data verified successfully for size %d at offset %d",
-                    length,
-                    offset,
+                    f"Data verified successfully for size {length} at offset {offset}"
                 )
 
             if operation == Operation.WRITE:
@@ -234,14 +232,14 @@ def test_memory_mapped_io(shard_count):
                 )
                 target_file_content[offset : offset + length] = data
 
-                logger.info("Wrote data of size: %d", len(data))
+                logger.info(f"Wrote data of size: {len(data)}")
 
 
 def test_invalid_region_id():
     logger = logging.getLogger("test")
     port = os.getenv("NFS_SERVER_PORT")
 
-    with CreateClient(str("localhost:%s" % port), log=logger) as nfs_client:
+    with CreateClient(f"localhost:{port}", log=logger) as nfs_client:
         region_id, _ = create_mmap_region(
             nfs_client, "testfile_invalid", SHARED_MEMORY_SIZE
         )
@@ -283,7 +281,7 @@ def test_iovec_bounds_validation():
     logger = logging.getLogger("test")
     port = os.getenv("NFS_SERVER_PORT")
 
-    with CreateClient(str("localhost:%s" % port), log=logger) as nfs_client:
+    with CreateClient(f"localhost:{port}", log=logger) as nfs_client:
         region_id, _ = create_mmap_region(
             nfs_client, "testfile_bounds", SHARED_MEMORY_SIZE
         )

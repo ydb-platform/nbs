@@ -470,7 +470,7 @@ using TExecutor = NStorage::NGrpc::
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError AdjustIovecOffsets(
+NProto::TError TryAdjustIovecOffsets(
     const TLog& Log,
     TServerState* state,
     google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs,
@@ -490,12 +490,10 @@ NProto::TError AdjustIovecOffsets(
                                        << ": address=" << metadata.Address
                                        << " size=" << metadata.Size);
 
-    // Validate and adjust iovec base addresses
     for (auto& iovec: iovecs) {
         ui64 offset = iovec.GetBase();
         ui64 length = iovec.GetLength();
 
-        // Validate that iovec is within region bounds
         if (offset + length > metadata.Size) {
             return MakeError(
                 E_ARGUMENT,
@@ -504,8 +502,7 @@ NProto::TError AdjustIovecOffsets(
                                  << " region_size=" << metadata.Size);
         }
 
-        // Adjust base address to real mmap address
-        iovec.SetBase(offset + (ui64)metadata.Address);
+        iovec.SetBase(offset + reinterpret_cast<ui64>(metadata.Address));
     }
 
     return {};
@@ -708,7 +705,7 @@ private:
             std::is_same_v<TAppContext, TFileStoreContext>)
         {
             if (AppCtx.State && Request->IovecsSize() > 0) {
-                auto error = AdjustIovecOffsets(
+                auto error = TryAdjustIovecOffsets(
                     Log,
                     this->AppCtx.State.get(),
                     *Request->MutableIovecs(),
