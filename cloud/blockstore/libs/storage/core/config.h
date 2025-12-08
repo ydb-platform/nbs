@@ -330,10 +330,6 @@ public:
         const TString& cloudId,
         const TString& folderId,
         const TString& diskId) const;
-    bool IsAllocateFreshChannelFeatureEnabled(
-        const TString& cloudId,
-        const TString& folderId,
-        const TString& diskId) const;
     bool IsFreshChannelWriteRequestsFeatureEnabled(
         const TString& cloudId,
         const TString& folderId,
