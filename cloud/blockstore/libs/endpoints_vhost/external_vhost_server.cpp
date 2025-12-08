@@ -566,10 +566,9 @@ private:
     const ILoggingServicePtr Logging;
     const TExecutorPtr Executor;
     const TString ClientId;
-    const TString BinaryPath;
+    const TServerAppConfigPtr ServerConfig;
     const TVector<TString> Args;
     const TVector<TString> Cgroups;
-    const TString ExternalCgroupsPidWriterBinaryPath;
 
     TLog Log;
 
@@ -591,18 +590,15 @@ public:
             ILoggingServicePtr logging,
             TExecutorPtr executor,
             TEndpointStats stats,
-            TString binaryPath,
+            TServerAppConfigPtr serverConfig,
             TVector<TString> args,
-            TVector<TString> cgroups,
-            TString externalCgroupsPidWriterBinaryPath)
+            TVector<TString> cgroups)
         : Logging{std::move(logging)}
         , Executor{std::move(executor)}
         , ClientId{std::move(clientId)}
-        , BinaryPath{std::move(binaryPath)}
+        , ServerConfig{std::move(serverConfig)}
         , Args{std::move(args)}
         , Cgroups{std::move(cgroups)}
-        , ExternalCgroupsPidWriterBinaryPath{std::move(
-              externalCgroupsPidWriterBinaryPath)}
         , Log{Logging->CreateLog("BLOCKSTORE_EXTERNAL_ENDPOINT")}
         , Stats{std::move(stats)}
         , LogPrefix{
@@ -618,7 +614,8 @@ public:
     void PrepareToStart() override
     {
         const auto startAt = TInstant::Now();
-        const bool succ = PrefetchBinaryToCache(BinaryPath);
+        const bool succ =
+            PrefetchBinaryToCache(ServerConfig->GetVhostServerPath());
         const auto logPriority = succ ? TLOG_INFO : TLOG_ERR;
 
         STORAGE_LOG(
@@ -690,7 +687,8 @@ private:
 
     TIntrusivePtr<TEndpointProcess> StartProcess()
     {
-        auto process = SpawnChild(BinaryPath, AppendPidArg(Args));
+        auto process =
+            SpawnChild(ServerConfig->GetVhostServerPath(), AppendPidArg(Args));
 
         STORAGE_INFO(
             LogPrefix << "Endpoint process has been started, PID:"
@@ -703,14 +701,7 @@ private:
         };
 
         try {
-            if (ExternalCgroupsPidWriterBinaryPath) {
-                AddToCGroupsWithExternalExecutable(
-                    ExternalCgroupsPidWriterBinaryPath,
-                    process.Pid,
-                    Cgroups);
-            } else {
-                AddToCGroups(process.Pid, Cgroups);
-            }
+            AddToCGroups(process.Pid);
         } catch (...) {
             ShouldStop = true;
             throw;
@@ -759,6 +750,18 @@ private:
         }
 
         return nullptr;
+    }
+
+    void AddToCGroups(pid_t pid)
+    {
+        if (ServerConfig->GetExternalCgroupsPidWriterBinaryPath()) {
+            AddToCGroupsWithExternalExecutable(
+                ServerConfig->GetExternalCgroupsPidWriterBinaryPath(),
+                pid,
+                Cgroups);
+            return;
+        }
+        ::NCloud::NBlockStore::AddToCGroups(pid, Cgroups);
     }
 };
 
@@ -1277,26 +1280,22 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     bool isAlignedDataEnabled,
     IEndpointListenerPtr fallbackListener)
 {
-    auto defaultFactory = [=] (
-        const TString& clientId,
-        const TString& diskId,
-        TVector<TString> args,
-        TVector<TString> cgroups)
+    auto defaultFactory = [=](const TString& clientId,
+                              const TString& diskId,
+                              TVector<TString> args,
+                              TVector<TString> cgroups)
     {
         return std::make_shared<TEndpoint>(
             clientId,
             logging,
             executor,
-            TEndpointStats {
+            TEndpointStats{
                 .ClientId = clientId,
                 .DiskId = diskId,
-                .ServerStats = serverStats
-            },
-            serverConfig->GetVhostServerPath(),
+                .ServerStats = serverStats},
+            serverConfig,
             std::move(args),
-            std::move(cgroups),
-            serverConfig->GetExternalCgroupsPidWriterBinaryPath()
-        );
+            std::move(cgroups));
     };
 
     return std::make_shared<TExternalVhostEndpointListener>(

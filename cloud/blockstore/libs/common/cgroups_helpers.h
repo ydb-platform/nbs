@@ -7,7 +7,7 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool IsPrefix(const TFsPath& path, const TFsPath& prefix);
+bool IsPrefix(const TFsPath& prefix, const TFsPath& path);
 
 void AddToCGroups(pid_t pid, const TVector<TString>& cgroups);
 

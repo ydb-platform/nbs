@@ -26,9 +26,9 @@ Y_UNIT_TEST_SUITE(TCgroupsHelpersTest)
         }
 
         UNIT_ASSERT(
-            IsPrefix(tempDir.Path() / "folder" / "file", tempDir.Path()));
+            IsPrefix(tempDir.Path(), tempDir.Path() / "folder" / "file"));
 
-        UNIT_ASSERT(!IsPrefix("some_other_path", tempDir.Path()));
+        UNIT_ASSERT(!IsPrefix(tempDir.Path(), "some_other_path"));
     }
 
     Y_UNIT_TEST(AddToCgroupTest)

@@ -8,9 +8,17 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool IsPrefix(const TFsPath& path, const TFsPath& prefix)
+bool IsPrefix(const TFsPath& prefix, const TFsPath& path)
 {
-    auto pathSplit = path.PathSplit();
+    TFsPath realPath;
+    try {
+        realPath = path.RealPath();
+    } catch (...) {
+        return false;
+    }
+
+    TPathSplit pathSplit = realPath.PathSplit();
+
     auto prefixSplit = prefix.PathSplit();
 
     if (prefixSplit.size() > pathSplit.size()) {
