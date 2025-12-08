@@ -15,9 +15,10 @@ private:
     THashSet<TString> CloudIds;
     THashSet<TString> FolderIds;
     THashSet<TString> EntityIds;   // DiskIds or FsIds
+    NProto::EFilterMatchAlgorithm MatchAlgorithm;
 
 public:
-    explicit TFilters(NProto::TFilters config);
+    explicit TFilters(const NProto::TFilters& config);
 
     bool Contains(
         const TString& cloudId,
