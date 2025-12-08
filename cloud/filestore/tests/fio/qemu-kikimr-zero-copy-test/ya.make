@@ -21,7 +21,7 @@ TEST_SRCS(
 
 SET(
     NFS_STORAGE_CONFIG_PATCH
-    cloud/filestore/tests/fio/qemu-kikimr-zero-copy-write-test/nfs-patch.txt
+    cloud/filestore/tests/fio/qemu-kikimr-zero-copy-test/nfs-patch.txt
 )
 
 SET(QEMU_VIRTIO fs)
