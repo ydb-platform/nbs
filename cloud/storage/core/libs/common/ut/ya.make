@@ -20,6 +20,7 @@ SRCS(
     backoff_delay_provider_ut.cpp
     block_buffer_ut.cpp
     block_data_ref_ut.cpp
+    byte_range_ut.cpp
     concurrent_queue_ut.cpp
     context_ut.cpp
     disjoint_interval_map_ut.cpp
