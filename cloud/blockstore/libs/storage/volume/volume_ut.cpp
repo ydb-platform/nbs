@@ -3772,6 +3772,8 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_UNEQUAL(differentChecksums, 0);
     }
 
+    ///////
+
     void DoTestShouldThrottleSomeOps(
         NCloud::NProto::EStorageMediaKind mediaKind,
         bool diskSpaceScoreThrottlingEnabled)
