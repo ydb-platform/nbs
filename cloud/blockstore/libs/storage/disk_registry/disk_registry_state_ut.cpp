@@ -10327,7 +10327,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
         }
     }
 
-    Y_UNIT_TEST(StateEqualityCheck)
+    Y_UNIT_TEST(ShouldComparePlacementGroup)
     {
         TTestExecutor executor;
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
