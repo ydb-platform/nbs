@@ -139,15 +139,13 @@ void TCheckRangeActor::HandleReadBlocksResponse(
             status->MutableMessage()->append(builder);
         }
     } else {
-        if (Request.GetCalculateChecksums()) {
-            TBlockChecksum blockChecksum;
-            for (ui64 offset = 0, i = 0; i < Request.GetBlocksCount();
-                 offset += BlockSize, ++i)
-            {
-                auto* data = Buffer.Get().data() + offset;
-                const auto checksum = blockChecksum.Extend(data, BlockSize);
-                response->Record.MutableChecksums()->Add(checksum);
-            }
+        TBlockChecksum blockChecksum;
+        for (ui64 offset = 0, i = 0; i < Request.GetBlocksCount();
+                offset += BlockSize, ++i)
+        {
+            auto* data = Buffer.Get().data() + offset;
+            const auto checksum = blockChecksum.Extend(data, BlockSize);
+            response->Record.MutableChecksums()->Add(checksum);
         }
     }
 
