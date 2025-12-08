@@ -9,7 +9,6 @@ DEPENDS(
     cloud/blockstore/apps/server
     cloud/blockstore/tools/testing/loadtest/bin
     cloud/storage/core/tools/testing/unstable-process
-    contrib/ydb/apps/ydbd
 )
 
 DATA(
@@ -25,5 +24,7 @@ PEERDIR(
     contrib/ydb/core/protos
     contrib/ydb/tests/library
 )
+
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/ydbd.inc)
 
 END()
