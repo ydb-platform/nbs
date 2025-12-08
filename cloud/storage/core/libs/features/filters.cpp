@@ -1,10 +1,35 @@
 #include "filters.h"
 
+#include <util/generic/algorithm.h>
+
+#include <regex>
+
 namespace NCloud::NFeatures {
+
+namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TFilters::TFilters(NProto::TFilters config)
+bool RegexpMatchItemInSet(const THashSet<TString>& set, const TString& item)
+{
+    return AnyOf(
+        set,
+        [&](const TString& setElem)
+        {
+            try {
+                std::regex r{setElem.data(), setElem.size()};
+                return std::regex_match(item.data(), r);
+            } catch (const std::regex_error& e) {
+                return false;
+            }
+        });
+}
+
+}  // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+TFilters::TFilters(const NProto::TFilters& config)
 {
     for (const auto& cloudId: config.GetCloudIds()) {
         CloudIds.emplace(cloudId);
@@ -15,6 +40,8 @@ TFilters::TFilters(NProto::TFilters config)
     for (const auto& entityId: config.GetEntityIds()) {
         EntityIds.emplace(entityId);
     }
+
+    MatchAlgorithm = config.GetMatchAlgorithm();
 }
 
 bool TFilters::Contains(
@@ -22,8 +49,16 @@ bool TFilters::Contains(
     const TString& folderId,
     const TString& entityId) const
 {
-    return CloudIds.contains(cloudId) || FolderIds.contains(folderId) ||
-        EntityIds.contains(entityId);
+    switch (MatchAlgorithm) {
+        case NProto::FILTER_MATCH_ALGORITHM_STRING:
+            return CloudIds.contains(cloudId) || FolderIds.contains(folderId) ||
+                   EntityIds.contains(entityId);
+
+        case NProto::FILTER_MATCH_ALGORITHM_REGEXP:
+            return RegexpMatchItemInSet(CloudIds, cloudId) ||
+                   RegexpMatchItemInSet(FolderIds, folderId) ||
+                   RegexpMatchItemInSet(EntityIds, entityId);
+    }
 }
 
 }   // namespace NCloud::NFeatures
