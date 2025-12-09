@@ -5,10 +5,10 @@
 #include <contrib/ydb/core/kqp/common/kqp_yql.h>
 #include <contrib/ydb/core/tx/datashard/range_ops.h>
 #include <contrib/ydb/core/tx/program/program.h>
-#include <contrib/ydb/core/tx/columnshard/engines/scheme/indexes/abstract/program.h>
+#include <contrib/ydb/core/tx/program/resolver.h>
 #include <contrib/ydb/core/tx/schemeshard/olap/schema/schema.h>
 
-#include <contrib/ydb/library/yql/core/yql_expr_optimize.h>
+#include <yql/essentials/core/yql_expr_optimize.h>
 #include <contrib/ydb/library/yql/dq/runtime/dq_arrow_helpers.h>
 
 #include <contrib/ydb/library/actors/core/log.h>
@@ -52,31 +52,32 @@ std::pair<TString, TString> SerializeKqpTasksParametersForOlap(const TStageInfo&
     const NKqpProto::TKqpPhyStage& stage = stageInfo.Meta.GetStage(stageInfo.Id);
     std::vector<std::shared_ptr<arrow::Field>> columns;
     std::vector<std::shared_ptr<arrow::Array>> data;
-    auto& parameterNames = task.Meta.ReadInfo.OlapProgram.ParameterNames;
 
-    columns.reserve(parameterNames.size());
-    data.reserve(parameterNames.size());
+    if (const auto& parameterNames = task.Meta.ReadInfo.OlapProgram.ParameterNames; !parameterNames.empty()) {
+        columns.reserve(parameterNames.size());
+        data.reserve(parameterNames.size());
 
-    for (auto& name : stage.GetProgramParameters()) {
-        if (!parameterNames.contains(name)) {
-            continue;
+        for (const auto& name : stage.GetProgramParameters()) {
+            if (!parameterNames.contains(name)) {
+                continue;
+            }
+
+            const auto [type, value] = stageInfo.Meta.Tx.Params->GetParameterUnboxedValue(name);
+            YQL_ENSURE(NYql::NArrow::IsArrowCompatible(type), "Incompatible parameter type. Can't convert to arrow");
+
+            std::unique_ptr<arrow::ArrayBuilder> builder = NYql::NArrow::MakeArrowBuilder(type);
+            NYql::NArrow::AppendElement(value, builder.get(), type);
+
+            std::shared_ptr<arrow::Array> array;
+            const auto status = builder->Finish(&array);
+
+            YQL_ENSURE(status.ok(), "Failed to build arrow array of variables.");
+
+            auto field = std::make_shared<arrow::Field>(name, array->type());
+
+            columns.emplace_back(std::move(field));
+            data.emplace_back(std::move(array));
         }
-
-        auto [type, value] = stageInfo.Meta.Tx.Params->GetParameterUnboxedValue(name);
-        YQL_ENSURE(NYql::NArrow::IsArrowCompatible(type), "Incompatible parameter type. Can't convert to arrow");
-
-        std::unique_ptr<arrow::ArrayBuilder> builder = NYql::NArrow::MakeArrowBuilder(type);
-        NYql::NArrow::AppendElement(value, builder.get(), type);
-
-        std::shared_ptr<arrow::Array> array;
-        auto status = builder->Finish(&array);
-
-        YQL_ENSURE(status.ok(), "Failed to build arrow array of variables.");
-
-        auto field = std::make_shared<arrow::Field>(name, array->type());
-
-        columns.emplace_back(std::move(field));
-        data.emplace_back(std::move(array));
     }
 
     auto schema = std::make_shared<arrow::Schema>(std::move(columns));
@@ -122,6 +123,26 @@ void FillKqpTasksGraphStages(TKqpTasksGraph& tasksGraph, const TVector<IKqpGatew
                     meta.TableId = MakeTableId(input.GetSequencer().GetTable());
                     meta.TablePath = input.GetSequencer().GetTable().GetPath();
                     meta.TableConstInfo = tx.Body->GetTableConstInfoById()->Map.at(meta.TableId);
+                }
+            }
+
+            for (auto& sink : stage.GetSinks()) {
+                if (sink.GetTypeCase() == NKqpProto::TKqpSink::kInternalSink && sink.GetInternalSink().GetSettings().Is<NKikimrKqp::TKqpTableSinkSettings>()) {
+                    NKikimrKqp::TKqpTableSinkSettings settings;
+                    YQL_ENSURE(sink.GetInternalSink().GetSettings().UnpackTo(&settings), "Failed to unpack settings");
+                    YQL_ENSURE(sink.GetOutputIndex() == 0);
+                    YQL_ENSURE(stage.SinksSize() == 1);
+                    meta.TablePath = settings.GetTable().GetPath();
+                    if (settings.GetType() == NKikimrKqp::TKqpTableSinkSettings::MODE_DELETE) {
+                        meta.ShardOperations.insert(TKeyDesc::ERowOperation::Erase);
+                    } else {
+                        meta.ShardOperations.insert(TKeyDesc::ERowOperation::Update);
+                    }
+
+                    if (settings.GetType() != NKikimrKqp::TKqpTableSinkSettings::MODE_FILL) {
+                        meta.TableId = MakeTableId(settings.GetTable());
+                        meta.TableConstInfo = tx.Body->GetTableConstInfoById()->Map.at(meta.TableId);
+                    }
                 }
             }
 
@@ -309,7 +330,10 @@ void BuildSequencerChannels(TKqpTasksGraph& graph, const TStageInfo& stageInfo, 
         if (aic != autoIncrementColumns.end()) {
             auto sequenceIt = tableInfo->Sequences.find(column);
             if (sequenceIt != tableInfo->Sequences.end()) {
-                columnProto->SetDefaultFromSequence(sequenceIt->second);
+                auto sequencePath = sequenceIt->second.first;
+                auto sequencePathId = sequenceIt->second.second;
+                columnProto->SetDefaultFromSequence(sequencePath);
+                sequencePathId.ToMessage(columnProto->MutableDefaultFromSequencePathId());
                 columnProto->SetDefaultKind(
                     NKikimrKqp::TKqpColumnMetadataProto::DEFAULT_KIND_SEQUENCE);
             } else {
@@ -361,21 +385,26 @@ void BuildStreamLookupChannels(TKqpTasksGraph& graph, const TStageInfo& stageInf
 
     settings->MutableTable()->CopyFrom(streamLookup.GetTable());
 
+    auto columnToProto = [] (TString columnName,
+        TMap<TString, NSharding::IShardingBase::TColumn>::const_iterator columnIt,
+        ::NKikimrKqp::TKqpColumnMetadataProto* columnProto)
+    {
+        columnProto->SetName(columnName);
+        columnProto->SetId(columnIt->second.Id);
+        columnProto->SetTypeId(columnIt->second.Type.GetTypeId());
+
+        if (NScheme::NTypeIds::IsParametrizedType(columnIt->second.Type.GetTypeId())) {
+            ProtoFromTypeInfo(columnIt->second.Type, columnIt->second.TypeMod, *columnProto->MutableTypeInfo());
+        }
+    };
+
     const auto& tableInfo = stageInfo.Meta.TableConstInfo;
     for (const auto& keyColumn : tableInfo->KeyColumns) {
         auto columnIt = tableInfo->Columns.find(keyColumn);
         YQL_ENSURE(columnIt != tableInfo->Columns.end(), "Unknown column: " << keyColumn);
 
         auto* keyColumnProto = settings->AddKeyColumns();
-        keyColumnProto->SetName(keyColumn);
-        keyColumnProto->SetId(columnIt->second.Id);
-        keyColumnProto->SetTypeId(columnIt->second.Type.GetTypeId());
-
-        if (columnIt->second.Type.GetTypeId() == NScheme::NTypeIds::Pg) {
-            auto& typeInfo = *keyColumnProto->MutableTypeInfo();
-            typeInfo.SetPgTypeId(NPg::PgTypeIdFromTypeDesc(columnIt->second.Type.GetTypeDesc()));
-            typeInfo.SetPgTypeMod(columnIt->second.TypeMod);
-        }
+        columnToProto(keyColumn, columnIt, keyColumnProto);
     }
 
     for (const auto& keyColumn : streamLookup.GetKeyColumns()) {
@@ -389,18 +418,12 @@ void BuildStreamLookupChannels(TKqpTasksGraph& graph, const TStageInfo& stageInf
         YQL_ENSURE(columnIt != tableInfo->Columns.end(), "Unknown column: " << column);
 
         auto* columnProto = settings->AddColumns();
-        columnProto->SetName(column);
-        columnProto->SetId(columnIt->second.Id);
-        columnProto->SetTypeId(columnIt->second.Type.GetTypeId());
-
-        if (columnIt->second.Type.GetTypeId() == NScheme::NTypeIds::Pg) {
-            auto& typeInfo = *columnProto->MutableTypeInfo();
-            typeInfo.SetPgTypeId(NPg::PgTypeIdFromTypeDesc(columnIt->second.Type.GetTypeDesc()));
-            typeInfo.SetPgTypeMod(columnIt->second.TypeMod);
-        }
+        columnToProto(column, columnIt, columnProto);
     }
 
     settings->SetLookupStrategy(streamLookup.GetLookupStrategy());
+    settings->SetKeepRowsOrder(streamLookup.GetKeepRowsOrder());
+    settings->SetAllowNullKeysPrefixSize(streamLookup.GetAllowNullKeysPrefixSize());
 
     TTransform streamLookupTransform;
     streamLookupTransform.Type = "StreamLookupInputTransformer";
@@ -431,12 +454,12 @@ void BuildStreamLookupChannels(TKqpTasksGraph& graph, const TStageInfo& stageInf
     }
 }
 
-void BuildKqpStageChannels(TKqpTasksGraph& tasksGraph, const TStageInfo& stageInfo,
-    ui64 txId, bool enableSpilling)
+void BuildKqpStageChannels(TKqpTasksGraph& tasksGraph, TStageInfo& stageInfo,
+    ui64 txId, bool enableSpilling, bool enableShuffleElimination)
 {
     auto& stage = stageInfo.Meta.GetStage(stageInfo.Id);
 
-    if (stage.GetIsEffectsStage()) {
+    if (stage.GetIsEffectsStage() && stage.GetSinks().empty()) {
         YQL_ENSURE(stageInfo.OutputsCount == 1);
 
         for (auto& taskId : stageInfo.Tasks) {
@@ -453,19 +476,132 @@ void BuildKqpStageChannels(TKqpTasksGraph& tasksGraph, const TStageInfo& stageIn
             << (spilling ? " with spilling" : " without spilling"));
     };
 
-    for (const auto& input : stage.GetInputs()) {
+    bool hasMap = false;
+    auto& columnShardHashV1Params = stageInfo.Meta.ColumnShardHashV1Params;
+    bool isFusedWithScanStage = (stageInfo.Meta.TableConstInfo != nullptr);
+    if (enableShuffleElimination && !isFusedWithScanStage) { // taskIdHash can be already set if it is a fused stage, so hashpartition will derive columnv1 parameters from there
+        for (ui32 inputIndex = 0; inputIndex < stage.InputsSize(); ++inputIndex) {
+            const auto& input = stage.GetInputs(inputIndex);
+            auto& originStageInfo = tasksGraph.GetStageInfo(NYql::NDq::TStageId(stageInfo.Id.TxId, input.GetStageIndex()));
+            ui32 outputIdx = input.GetOutputIndex();
+            columnShardHashV1Params = originStageInfo.Meta.GetColumnShardHashV1Params(outputIdx);
+            if (input.GetTypeCase() == NKqpProto::TKqpPhyConnection::kMap || inputIndex == stage.InputsSize() - 1) { // this branch is only for logging purposes
+                LOG_DEBUG_S(
+                    *TlsActivationContext,
+                    NKikimrServices::KQP_EXECUTER,
+                    "Chosed "
+                    << "[" << originStageInfo.Id.TxId << ":" << originStageInfo.Id.StageId << "]"
+                    << " outputIdx: " << outputIdx << " to propogate through inputs stages of the stage "
+                    << "[" << stageInfo.Id.TxId << ":" << stageInfo.Id.StageId << "]" << ": "
+                    << columnShardHashV1Params.KeyTypesToString();
+                );
+            }
+            if (input.GetTypeCase() == NKqpProto::TKqpPhyConnection::kMap) {
+                // We want to enforce sourceShardCount from map connection, cause it can be at most one map connection
+                // and ColumnShardHash in Shuffle will use this parameter to shuffle on this map (same with taskIndexByHash mapping)
+                hasMap = true;
+                break;
+            }
+        }
+    }
+
+    // if it is stage, where we don't inherit parallelism.
+    if (enableShuffleElimination && !hasMap && !isFusedWithScanStage && stageInfo.Tasks.size() > 0 && stage.InputsSize() > 0) {
+        columnShardHashV1Params.SourceShardCount = stageInfo.Tasks.size();
+        columnShardHashV1Params.TaskIndexByHash = std::make_shared<TVector<ui64>>(columnShardHashV1Params.SourceShardCount);
+        for (std::size_t i = 0; i < columnShardHashV1Params.SourceShardCount; ++i) {
+            (*columnShardHashV1Params.TaskIndexByHash)[i] = i;
+        }
+
+        for (auto& input : stage.GetInputs()) {
+            if (input.GetTypeCase() != NKqpProto::TKqpPhyConnection::kHashShuffle) {
+                continue;
+            }
+
+            const auto& hashShuffle = input.GetHashShuffle();
+            if (hashShuffle.GetHashKindCase() != NKqpProto::TKqpPhyCnHashShuffle::kColumnShardHashV1) {
+                continue;
+            }
+
+            Y_ENSURE(enableShuffleElimination, "OptShuffleElimination wasn't turned on, but ColumnShardHashV1 detected!");
+            // ^ if the flag if false, and kColumnShardHashV1 detected - then the data which would be returned - would be incorrect,
+            // because we didn't save partitioning in the BuildScanTasksFromShards.
+
+            auto columnShardHashV1 = hashShuffle.GetColumnShardHashV1();
+            columnShardHashV1Params.SourceTableKeyColumnTypes = std::make_shared<TVector<NScheme::TTypeInfo>>();
+            columnShardHashV1Params.SourceTableKeyColumnTypes->reserve(columnShardHashV1.KeyColumnTypesSize());
+            for (const auto& keyColumnType: columnShardHashV1.GetKeyColumnTypes()) {
+                auto typeId = static_cast<NScheme::TTypeId>(keyColumnType);
+                auto typeInfo =
+                    typeId == NScheme::NTypeIds::Decimal? NScheme::TTypeInfo(NKikimr::NScheme::TDecimalType::Default()): NScheme::TTypeInfo(typeId);
+                columnShardHashV1Params.SourceTableKeyColumnTypes->push_back(typeInfo);
+            }
+            break;
+        }
+    }
+
+    for (auto& input : stage.GetInputs()) {
         ui32 inputIdx = input.GetInputIndex();
-        const auto& inputStageInfo = tasksGraph.GetStageInfo(TStageId(stageInfo.Id.TxId, input.GetStageIndex()));
+        auto& inputStageInfo = tasksGraph.GetStageInfo(TStageId(stageInfo.Id.TxId, input.GetStageIndex()));
         const auto& outputIdx = input.GetOutputIndex();
 
         switch (input.GetTypeCase()) {
             case NKqpProto::TKqpPhyConnection::kUnionAll:
                 BuildUnionAllChannels(tasksGraph, stageInfo, inputIdx, inputStageInfo, outputIdx, enableSpilling, log);
                 break;
-            case NKqpProto::TKqpPhyConnection::kHashShuffle:
-                BuildHashShuffleChannels(tasksGraph, stageInfo, inputIdx, inputStageInfo, outputIdx,
-                    input.GetHashShuffle().GetKeyColumns(), enableSpilling, log);
+            case NKqpProto::TKqpPhyConnection::kHashShuffle: {
+                std::optional<EHashShuffleFuncType> hashKind;
+                auto forceSpilling = input.GetHashShuffle().GetUseSpilling();
+                switch (input.GetHashShuffle().GetHashKindCase()) {
+                    case NKqpProto::TKqpPhyCnHashShuffle::kHashV1: {
+                        hashKind = EHashShuffleFuncType::HashV1;
+                        break;
+                    }
+                    case NKqpProto::TKqpPhyCnHashShuffle::kColumnShardHashV1: {
+                        Y_ENSURE(enableShuffleElimination, "OptShuffleElimination wasn't turned on, but ColumnShardHashV1 detected!");
+
+                        LOG_DEBUG_S(
+                            *TlsActivationContext,
+                            NKikimrServices::KQP_EXECUTER,
+                            "Propogating columnhashv1 pararms to stage"
+                            << "[" << inputStageInfo.Id.TxId << ":" << inputStageInfo.Id.StageId << "]" << " which is input of stage "
+                            << "[" << stageInfo.Id.TxId << ":" << stageInfo.Id.StageId << "]" << ": "
+                            << columnShardHashV1Params.KeyTypesToString() << " "
+                            << "[" << JoinSeq(",", input.GetHashShuffle().GetKeyColumns()) << "]";
+                        );
+
+                        Y_ENSURE(
+                            columnShardHashV1Params.SourceTableKeyColumnTypes->size() == input.GetHashShuffle().KeyColumnsSize(),
+                            TStringBuilder{}
+                                << "Hashshuffle keycolumns and keytypes args count mismatch during executer stage, types: "
+                                << columnShardHashV1Params.KeyTypesToString() << " for the columns: "
+                                << "[" << JoinSeq(",", input.GetHashShuffle().GetKeyColumns()) << "]"
+                        );
+
+                        inputStageInfo.Meta.HashParamsByOutput[outputIdx] = columnShardHashV1Params;
+                        hashKind = EHashShuffleFuncType::ColumnShardHashV1;
+                        break;
+                    }
+                    default: {
+                        Y_ENSURE(false, "undefined type of hash for shuffle");
+                    }
+                }
+
+                Y_ENSURE(hashKind.has_value(), "HashKind wasn't set!");
+                BuildHashShuffleChannels(
+                    tasksGraph,
+                    stageInfo,
+                    inputIdx,
+                    inputStageInfo,
+                    outputIdx,
+                    input.GetHashShuffle().GetKeyColumns(),
+                    enableSpilling,
+                    log,
+                    hashKind.value(),
+                    forceSpilling
+                );
                 break;
+            }
             case NKqpProto::TKqpPhyConnection::kBroadcast:
                 BuildBroadcastChannels(tasksGraph, stageInfo, inputIdx, inputStageInfo, outputIdx, enableSpilling, log);
                 break;
@@ -522,7 +658,8 @@ bool IsCrossShardChannel(const TKqpTasksGraph& tasksGraph, const TChannel& chann
         return false;
     }
 
-    return targetShard != tasksGraph.GetTask(channel.SrcTask).Meta.ShardId;
+    ui64 srcShard = tasksGraph.GetTask(channel.SrcTask).Meta.ShardId;
+    return srcShard && targetShard != srcShard;
 }
 
 void TShardKeyRanges::AddPoint(TSerializedCellVec&& point) {
@@ -661,6 +798,18 @@ TString TShardKeyRanges::ToString(const TVector<NScheme::TTypeInfo>& keyTypes, c
     return sb;
 }
 
+bool TShardKeyRanges::HasRanges() const {
+    if (IsFullRange()) {
+        return true;
+    }
+    for (const auto& range : Ranges) {
+        if (std::holds_alternative<TSerializedTableRange>(range)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void TShardKeyRanges::SerializeTo(NKikimrTxDataShard::TKqpTransaction_TDataTaskMeta_TKeyRange* proto) const {
     if (IsFullRange()) {
         auto& protoRange = *proto->MutableFullRange();
@@ -703,12 +852,12 @@ void TShardKeyRanges::SerializeTo(NKikimrTxDataShard::TKqpTransaction_TScanTaskM
     }
 }
 
-void TShardKeyRanges::SerializeTo(NKikimrTxDataShard::TKqpReadRangesSourceSettings* proto) const {
+void TShardKeyRanges::SerializeTo(NKikimrTxDataShard::TKqpReadRangesSourceSettings* proto, bool allowPoints) const {
     if (IsFullRange()) {
         auto& protoRange = *proto->MutableRanges()->AddKeyRanges();
         FullRange->Serialize(protoRange);
     } else {
-        bool usePoints = true;
+        bool usePoints = allowPoints;
         for (auto& range : Ranges) {
             if (std::holds_alternative<TSerializedTableRange>(range)) {
                 usePoints = false;
@@ -826,7 +975,7 @@ void FillTaskMeta(const TStageInfo& stageInfo, const TTask& task, NYql::NDqProto
                     protoColumn->SetName(column.Name);
                 }
                 protoReadMeta->SetItemsLimit(task.Meta.ReadInfo.ItemsLimit);
-                protoReadMeta->SetReverse(task.Meta.ReadInfo.Reverse);
+                protoReadMeta->SetReverse(task.Meta.ReadInfo.IsReverse());
             }
         }
         if (task.Meta.Writes) {
@@ -864,9 +1013,9 @@ void FillTaskMeta(const TStageInfo& stageInfo, const TTask& task, NYql::NDqProto
             const auto& keyColumn = tableInfo->Columns.at(keyColumnName);
             auto columnType = NScheme::ProtoColumnTypeFromTypeInfoMod(keyColumn.Type, keyColumn.TypeMod);
             protoTaskMeta.AddKeyColumnTypes(columnType.TypeId);
-            if (columnType.TypeInfo) {
-                *protoTaskMeta.AddKeyColumnTypeInfos() = *columnType.TypeInfo;
-            }
+            *protoTaskMeta.AddKeyColumnTypeInfos() = columnType.TypeInfo ?
+                *columnType.TypeInfo :
+                NKikimrProto::TTypeInfo();
         }
 
         for (bool skipNullKey : stageInfo.Meta.SkipNullKeys) {
@@ -897,7 +1046,8 @@ void FillTaskMeta(const TStageInfo& stageInfo, const TTask& task, NYql::NDqProto
         YQL_ENSURE(!task.Meta.Writes);
 
         if (!task.Meta.Reads->empty()) {
-            protoTaskMeta.SetReverse(task.Meta.ReadInfo.Reverse);
+            protoTaskMeta.SetReverse(task.Meta.ReadInfo.IsReverse());
+            protoTaskMeta.SetOptionalSorting((ui32)task.Meta.ReadInfo.GetSorting());
             protoTaskMeta.SetItemsLimit(task.Meta.ReadInfo.ItemsLimit);
             if (task.Meta.HasEnableShardsSequentialScan()) {
                 protoTaskMeta.SetEnableShardsSequentialScan(task.Meta.GetEnableShardsSequentialScanUnsafe());
@@ -926,28 +1076,6 @@ void FillTaskMeta(const TStageInfo& stageInfo, const TTask& task, NYql::NDqProto
 
                 olapProgram->SetParametersSchema(schema);
                 olapProgram->SetParameters(parameters);
-
-                if (!!stageInfo.Meta.ColumnTableInfoPtr) {
-                    std::shared_ptr<NSchemeShard::TOlapSchema> olapSchema = std::make_shared<NSchemeShard::TOlapSchema>();
-                    olapSchema->ParseFromLocalDB(stageInfo.Meta.ColumnTableInfoPtr->Description.GetSchema());
-                    if (olapSchema->GetIndexes().GetIndexes().size()) {
-                        NOlap::TProgramContainer container;
-                        NOlap::TSchemaResolverColumnsOnly resolver(olapSchema);
-                        TString error;
-                        YQL_ENSURE(container.Init(resolver, *olapProgram, error), "" << error);
-                        auto data = NOlap::NIndexes::NRequest::TDataForIndexesCheckers::Build(container);
-                        if (data) {
-                            for (auto&& [indexId, i] : olapSchema->GetIndexes().GetIndexes()) {
-                                AFL_VERIFY(!!i.GetIndexMeta());
-                                i.GetIndexMeta()->FillIndexCheckers(data, *olapSchema);
-                            }
-                            auto checker = data->GetCoverChecker();
-                            if (!!checker) {
-                                checker.SerializeToProto(*olapProgram->MutableIndexChecker());
-                            }
-                        }
-                    }
-                }
             } else {
                 YQL_ENSURE(task.Meta.ReadInfo.OlapProgram.Program.empty());
             }
@@ -981,7 +1109,14 @@ void FillTaskMeta(const TStageInfo& stageInfo, const TTask& task, NYql::NDqProto
     }
 }
 
-void FillOutputDesc(const TKqpTasksGraph& tasksGraph, NYql::NDqProto::TTaskOutput& outputDesc, const TTaskOutput& output, bool enableSpilling) {
+void FillOutputDesc(
+    const TKqpTasksGraph& tasksGraph,
+    NYql::NDqProto::TTaskOutput& outputDesc,
+    const TTaskOutput& output,
+    ui32 outputIdx,
+    bool enableSpilling,
+    const TStageInfo& stageInfo
+) {
     switch (output.Type) {
         case TTaskOutputType::Map:
             YQL_ENSURE(output.Channels.size() == 1);
@@ -994,6 +1129,52 @@ void FillOutputDesc(const TKqpTasksGraph& tasksGraph, NYql::NDqProto::TTaskOutpu
                 hashPartitionDesc.AddKeyColumns(column);
             }
             hashPartitionDesc.SetPartitionsCount(output.PartitionsCount);
+
+            Y_ENSURE(output.HashKind.has_value(), "HashKind wasn't set before the FillOutputDesc!");
+
+            switch (output.HashKind.value()) {
+                using enum EHashShuffleFuncType;
+                case HashV1: {
+                    hashPartitionDesc.MutableHashV1();
+                    break;
+                }
+                case ColumnShardHashV1: {
+                    auto& columnShardHashV1Params = stageInfo.Meta.GetColumnShardHashV1Params(outputIdx);
+                    LOG_DEBUG_S(
+                        *TlsActivationContext,
+                        NKikimrServices::KQP_EXECUTER,
+                        "Filling columnshardhashv1 params for sending it to runtime "
+                        << "[" << stageInfo.Id.TxId << ":" << stageInfo.Id.StageId << "]"
+                        << ": " << columnShardHashV1Params.KeyTypesToString()
+                        << " for the columns: " << "[" << JoinSeq(",", output.KeyColumns) << "]"
+                    );
+                    Y_ENSURE(columnShardHashV1Params.SourceShardCount != 0, "ShardCount for ColumnShardHashV1 Shuffle can't be equal to 0");
+                    Y_ENSURE(columnShardHashV1Params.TaskIndexByHash != nullptr, "TaskIndexByHash for ColumnShardHashV1 wasn't propogated to this stage");
+                    Y_ENSURE(columnShardHashV1Params.SourceTableKeyColumnTypes != nullptr, "SourceTableKeyColumnTypes for ColumnShardHashV1 wasn't propogated to this stage");
+
+                    Y_ENSURE(
+                        columnShardHashV1Params.SourceTableKeyColumnTypes->size() == output.KeyColumns.size(),
+                        TStringBuilder{}
+                            << "Hashshuffle keycolumns and keytypes args count mismatch during executer FillOutputDesc stage, types: "
+                            << columnShardHashV1Params.KeyTypesToString() << " for the columns: "
+                            << "[" << JoinSeq(",", output.KeyColumns) << "]"
+                    );
+
+                    auto& columnShardHashV1 = *hashPartitionDesc.MutableColumnShardHashV1();
+                    columnShardHashV1.SetShardCount(columnShardHashV1Params.SourceShardCount);
+
+                    auto* columnTypes = columnShardHashV1.MutableKeyColumnTypes();
+                    for (const auto& type: *columnShardHashV1Params.SourceTableKeyColumnTypes) {
+                        columnTypes->Add(type.GetTypeId());
+                    }
+
+                    auto* taskIndexByHash = columnShardHashV1.MutableTaskIndexByHash();
+                    for (std::size_t taskID: *columnShardHashV1Params.TaskIndexByHash) {
+                        taskIndexByHash->Add(taskID);
+                    }
+                    break;
+                }
+            }
             break;
         }
 
@@ -1045,7 +1226,7 @@ void FillOutputDesc(const TKqpTasksGraph& tasksGraph, NYql::NDqProto::TTaskOutpu
     }
 }
 
-void FillInputDesc(const TKqpTasksGraph& tasksGraph, NYql::NDqProto::TTaskInput& inputDesc, const TTaskInput& input, bool serializeAsyncIoSettings) {
+void FillInputDesc(const TKqpTasksGraph& tasksGraph, NYql::NDqProto::TTaskInput& inputDesc, const TTaskInput& input, bool serializeAsyncIoSettings, bool& enableMetering) {
     const auto& snapshot = tasksGraph.GetMeta().Snapshot;
     const auto& lockTxId = tasksGraph.GetMeta().LockTxId;
 
@@ -1054,6 +1235,7 @@ void FillInputDesc(const TKqpTasksGraph& tasksGraph, NYql::NDqProto::TTaskInput&
             inputDesc.MutableSource()->SetType(input.SourceType);
             inputDesc.MutableSource()->SetWatermarksMode(input.WatermarksMode);
             if (Y_LIKELY(input.Meta.SourceSettings)) {
+                enableMetering = true;
                 if (snapshot.IsValid()) {
                     input.Meta.SourceSettings->MutableSnapshot()->SetStep(snapshot.Step);
                     input.Meta.SourceSettings->MutableSnapshot()->SetTxId(snapshot.TxId);
@@ -1102,12 +1284,22 @@ void FillInputDesc(const TKqpTasksGraph& tasksGraph, NYql::NDqProto::TTaskInput&
         transformProto->SetInputType(input.Transform->InputType);
         transformProto->SetOutputType(input.Transform->OutputType);
         if (input.Meta.StreamLookupSettings) {
+            enableMetering = true;
             YQL_ENSURE(input.Meta.StreamLookupSettings);
-            YQL_ENSURE(snapshot.IsValid(), "stream lookup cannot be performed without the snapshot.");
-            input.Meta.StreamLookupSettings->MutableSnapshot()->SetStep(snapshot.Step);
-            input.Meta.StreamLookupSettings->MutableSnapshot()->SetTxId(snapshot.TxId);
+            if (snapshot.IsValid()) {
+                input.Meta.StreamLookupSettings->MutableSnapshot()->SetStep(snapshot.Step);
+                input.Meta.StreamLookupSettings->MutableSnapshot()->SetTxId(snapshot.TxId);
+            } else {
+                YQL_ENSURE(tasksGraph.GetMeta().AllowInconsistentReads, "Expected valid snapshot or enabled inconsistent read mode");
+                input.Meta.StreamLookupSettings->SetAllowInconsistentReads(true);
+            }
+
             if (lockTxId) {
                 input.Meta.StreamLookupSettings->SetLockTxId(*lockTxId);
+                input.Meta.StreamLookupSettings->SetLockNodeId(tasksGraph.GetMeta().LockNodeId);
+            }
+            if (tasksGraph.GetMeta().LockMode) {
+                input.Meta.StreamLookupSettings->SetLockMode(*tasksGraph.GetMeta().LockMode);
             }
             transformProto->MutableSettings()->PackFrom(*input.Meta.StreamLookupSettings);
         } else if (input.Meta.SequencerSettings) {
@@ -1116,15 +1308,21 @@ void FillInputDesc(const TKqpTasksGraph& tasksGraph, NYql::NDqProto::TTaskInput&
     }
 }
 
-void SerializeTaskToProto(const TKqpTasksGraph& tasksGraph, const TTask& task, NYql::NDqProto::TDqTask* result, bool serializeAsyncIoSettings) {
+void SerializeTaskToProto(
+        const TKqpTasksGraph& tasksGraph,
+        const TTask& task,
+        NYql::NDqProto::TDqTask* result,
+        bool serializeAsyncIoSettings) {
     auto& stageInfo = tasksGraph.GetStageInfo(task.StageId);
     ActorIdToProto(task.Meta.ExecuterId, result->MutableExecuter()->MutableActorId());
     result->SetId(task.Id);
     result->SetStageId(stageInfo.Id.StageId);
     result->SetUseLlvm(task.GetUseLlvm());
+    result->SetEnableSpilling(false); // TODO: enable spilling
     if (task.HasMetaId()) {
         result->SetMetaId(task.GetMetaIdUnsafe());
     }
+    bool enableMetering = false;
 
     for (const auto& [paramName, paramValue] : task.Meta.TaskParams) {
         (*result->MutableTaskParams())[paramName] = paramValue;
@@ -1139,19 +1337,21 @@ void SerializeTaskToProto(const TKqpTasksGraph& tasksGraph, const TTask& task, N
     }
 
     for (const auto& input : task.Inputs) {
-        FillInputDesc(tasksGraph, *result->AddInputs(), input, serializeAsyncIoSettings);
+        FillInputDesc(tasksGraph, *result->AddInputs(), input, serializeAsyncIoSettings, enableMetering);
     }
 
     bool enableSpilling = false;
     if (task.Outputs.size() > 1) {
-        enableSpilling = AppData()->EnableKqpSpilling;
+        enableSpilling = tasksGraph.GetMeta().AllowWithSpilling;
     }
-    for (const auto& output : task.Outputs) {
-        FillOutputDesc(tasksGraph, *result->AddOutputs(), output, enableSpilling);
+    for (ui32 outputIdx = 0; outputIdx < task.Outputs.size(); ++outputIdx) {
+        const auto& output = task.Outputs[outputIdx];
+        FillOutputDesc(tasksGraph, *result->AddOutputs(), output, outputIdx, enableSpilling, stageInfo);
     }
 
     const NKqpProto::TKqpPhyStage& stage = stageInfo.Meta.GetStage(stageInfo.Id);
     result->MutableProgram()->CopyFrom(stage.GetProgram());
+
     for (auto& paramName : stage.GetProgramParameters()) {
         auto& dqParams = *result->MutableParameters();
         if (task.Meta.ShardId) {
@@ -1163,6 +1363,7 @@ void SerializeTaskToProto(const TKqpTasksGraph& tasksGraph, const TTask& task, N
 
     SerializeCtxToMap(*tasksGraph.GetMeta().UserRequestContext, *result->MutableRequestContext());
 
+    result->SetDisableMetering(!enableMetering);
     FillTaskMeta(stageInfo, task, *result);
 }
 

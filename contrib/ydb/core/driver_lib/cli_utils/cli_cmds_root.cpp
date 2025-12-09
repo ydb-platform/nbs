@@ -1,5 +1,6 @@
 #include "cli.h"
 #include "cli_cmds.h"
+#include <contrib/ydb/public/lib/ydb_cli/commands/ydb_service_discovery.h> // for NConsoleClient::TCommandWhoAmI
 #include <contrib/ydb/core/driver_lib/run/factories.h>
 #include <util/folder/path.h>
 #include <util/folder/dirut.h>
@@ -23,14 +24,14 @@ public:
         AddCommand(std::make_unique<TClientCommandAdmin>());
         AddCommand(std::make_unique<TClientCommandDb>());
         AddCommand(std::make_unique<TClientCommandCms>());
-        AddCommand(std::make_unique<TClientCommandWhoAmI>());
+        AddCommand(std::make_unique<TCommandWhoAmI>());
         AddCommand(std::make_unique<TClientCommandDiscovery>());
         AddClientCommandServer(*this, std::move(factories));
+        AddCommand(std::make_unique<TClientCommandConfig>());
     }
 
     void Config(TConfig& config) override {
         NLastGetopt::TOpts& opts = *config.Opts;
-        MsgBusClientConfig.ConfigureLastGetopt(opts, "mb-");
         HideOptions(*config.Opts);
         opts.AddLongOption('k', "token", "security token").RequiredArgument("TOKEN").StoreResult(&Token);
         opts.AddLongOption('s', "server", "server address to connect")
@@ -55,23 +56,18 @@ public:
             config.EnableSsl = endpoint.EnableSsl.GetRef();
         }
         ParseCaCerts(config);
+        ParseClientCert(config);
 
-        switch (endpoint.ServerType) {
-        case TCommandConfig::EServerType::GRpc:
-            CommandConfig.ClientConfig = NYdbGrpc::TGRpcClientConfig(endpoint.Address);
-            if (config.EnableSsl) {
-                CommandConfig.ClientConfig.EnableSsl = config.EnableSsl;
-                CommandConfig.ClientConfig.SslCredentials.pem_root_certs = config.CaCerts;
+        CommandConfig.ClientConfig = NYdbGrpc::TGRpcClientConfig(endpoint.Address);
+        if (config.EnableSsl) {
+            CommandConfig.ClientConfig.EnableSsl = config.EnableSsl;
+            CommandConfig.ClientConfig.SslCredentials.pem_root_certs = config.CaCerts;
+            if (config.ClientCert) {
+                CommandConfig.ClientConfig.SslCredentials.pem_cert_chain = config.ClientCert;
+                CommandConfig.ClientConfig.SslCredentials.pem_private_key = config.ClientCertPrivateKey;
             }
-            break;
-        case TCommandConfig::EServerType::MessageBus:
-            Y_ABORT("MessageBus is no longer supported");
-            break;
         }
     }
-
-private:
-    NMsgBusProxy::TMsgBusClientConfig MsgBusClientConfig;
 };
 
 int NewClient(int argc, char** argv, std::shared_ptr<TModuleFactories> factories) {

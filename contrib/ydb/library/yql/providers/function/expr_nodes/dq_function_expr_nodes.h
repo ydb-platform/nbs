@@ -1,8 +1,8 @@
 #pragma once
 
 #include <contrib/ydb/library/yql/providers/function/expr_nodes/dq_function_expr_nodes.gen.h>
-#include <contrib/ydb/library/yql/core/expr_nodes/yql_expr_nodes.h>
-#include <contrib/ydb/library/yql/providers/common/provider/yql_provider_names.h>
+#include <yql/essentials/core/expr_nodes/yql_expr_nodes.h>
+#include <yql/essentials/providers/common/provider/yql_provider_names.h>
 
 namespace NYql {
 namespace NNodes {

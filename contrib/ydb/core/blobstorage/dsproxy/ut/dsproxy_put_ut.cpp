@@ -1,17 +1,20 @@
 #include "defs.h"
-#include "dsproxy_vdisk_mock_ut.h"
 #include "dsproxy_env_mock_ut.h"
+#include "dsproxy_test_state_ut.h"
 
 #include <contrib/ydb/core/blobstorage/dsproxy/dsproxy_put_impl.h>
+#include <contrib/ydb/core/blobstorage/dsproxy/dsproxy_request_reporting.h>
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_events.h>
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>
 #include <contrib/ydb/core/testlib/actor_helpers.h>
 
 #include <library/cpp/containers/stack_vector/stack_vec.h>
-#include <library/cpp/testing/unittest/registar.h>
 
 namespace NKikimr {
+
+extern const char* GetZeroDataAddrForTestOnly();
+
 namespace NDSProxyPutTest {
 
 Y_UNIT_TEST_SUITE(TDSProxyPutTest) {
@@ -25,7 +28,50 @@ TString AlphaData(ui32 size) {
     return data;
 }
 
-void TestPutMaxPartCountOnHandoff(TErasureType::EErasureSpecies erasureSpecies) {
+class TRcBufCustomBackend : public IContiguousChunk {
+    TString Buffer;
+public:
+    TRcBufCustomBackend(size_t sz)
+    {
+        Buffer.resize(sz);
+    }
+
+    TContiguousSpan GetData() const override {
+        return {Buffer.data(), Buffer.size()};
+    }
+
+    TMutableContiguousSpan UnsafeGetDataMut() override {
+        return {const_cast<char*>(Buffer.data()), Buffer.size()};
+    }
+
+    size_t GetOccupiedMemorySize() const override {
+        return Buffer.capacity();
+    }
+
+    IContiguousChunk::TPtr Clone() override {
+        return this;
+    }
+
+    EInnerType GetInnerType() const noexcept override {
+        return RDMA_MEM_REG;
+    }
+};
+
+class TRcBufTestAllocator final : public IRcBufAllocator {
+public:
+    TRcBuf AllocRcBuf(size_t size, size_t headRoom, size_t tailRoom) noexcept {
+        auto region = MakeIntrusive<TRcBufCustomBackend>(size + headRoom + tailRoom);
+        return TRcBuf(IContiguousChunk::TPtr(region));
+    }
+
+    TRcBuf AllocPageAlignedRcBuf(size_t size, size_t tailRoom) noexcept {
+        return AllocRcBuf(size, 0, tailRoom);
+    }
+};
+
+void TestPutMaxPartCountOnHandoff(TErasureType::EErasureSpecies erasureSpecies, bool zeroPages) {
+    TRcBufTestAllocator rcBufAllocator;
+
     TActorSystemStub actorSystemStub;
     i32 size = 786;
     TLogoBlobID blobId(72075186224047637, 1, 863, 1, size, 24576);
@@ -35,7 +81,7 @@ void TestPutMaxPartCountOnHandoff(TErasureType::EErasureSpecies erasureSpecies) 
     TBlobStorageGroupType groupType(erasureSpecies);
     const ui32 domainCount = groupType.BlobSubgroupSize();;
 
-    TGroupMock group(groupId, erasureSpecies, domainCount, 1);
+    TGroupMock group(groupId, erasureSpecies, 1, domainCount, 1);
     TIntrusivePtr<TGroupQueues> groupQueues = group.MakeGroupQueues();
 
     TIntrusivePtr<::NMonitoring::TDynamicCounters> counters(new ::NMonitoring::TDynamicCounters());
@@ -55,18 +101,23 @@ void TestPutMaxPartCountOnHandoff(TErasureType::EErasureSpecies erasureSpecies) 
     TBlobStorageGroupInfo::TVDiskIds vDisksId;
     group.GetInfo()->PickSubgroup(hash, &vDisksId, &vDisksSvc);
 
-    TString encryptedData = data;
-    char *dataBytes = encryptedData.Detach();
+    TRcBuf encryptedData = rcBufAllocator.AllocRcBuf(data.size(), 0, 0);
+    UNIT_ASSERT_VALUES_EQUAL(encryptedData.GetContiguousSpanMut().size(), data.size());
+    UNIT_ASSERT_VALUES_EQUAL(encryptedData.GetContiguousSpanMut().size(), encryptedData.size());
+
+    memcpy(encryptedData.GetContiguousSpanMut().data(), data.data(), data.size());
+    char *dataBytes = encryptedData.GetContiguousSpanMut().data();
     Encrypt(dataBytes, dataBytes, 0, encryptedData.size(), blobId, *group.GetInfo());
 
     TBatchedVec<TStackVec<TRope, TypicalPartsInBlob>> partSetSingleton(1);
     partSetSingleton[0].resize(totalParts);
-    ErasureSplit((TErasureType::ECrcMode)blobId.CrcMode(), group.GetInfo()->Type, TRope(encryptedData), partSetSingleton[0]);
+    ErasureSplit((TErasureType::ECrcMode)blobId.CrcMode(), group.GetInfo()->Type, TRope(encryptedData), partSetSingleton[0], nullptr,
+        zeroPages ? GetDefaultRcBufAllocator() : &rcBufAllocator);
 
-    TEvBlobStorage::TEvPut ev(blobId, data, TInstant::Max(), NKikimrBlobStorage::TabletLog,
+    TEvBlobStorage::TEvPut ev(blobId, std::move(data), TInstant::Max(), NKikimrBlobStorage::TabletLog,
             TEvBlobStorage::TEvPut::TacticDefault);
 
-    TPutImpl putImpl(group.GetInfo(), groupQueues, &ev, mon, false, TActorId(), 0, NWilson::TTraceId());
+    TPutImpl putImpl(group.GetInfo(), groupQueues, &ev, mon, false, TActorId(), 0, NWilson::TTraceId(), TAccelerationParams{});
 
     for (ui32 idx = 0; idx < domainCount; ++idx) {
         group.SetPredictedDelayNs(idx, 1);
@@ -82,11 +133,32 @@ void TestPutMaxPartCountOnHandoff(TErasureType::EErasureSpecies erasureSpecies) 
 
     TVector<ui32> diskSequence = {0, 7, 7, 7, 7, 6, 3, 4, 5, 1, 2};
     TVector<ui32> slowDiskSequence = {3, 4, 5, 6, 1, 2};
+    const char* const zero = GetZeroDataAddrForTestOnly();
+    ui32 zeroPageCount = 0;
 
     for (ui32 vPutIdx = 0; vPutIdx < vPuts.size(); ++vPutIdx) {
         ui32 nextVPut = vPutIdx;
         ui32 diskPos = (ui32)-1;
         for (ui32 i = vPutIdx; i < vPuts.size(); ++i) {
+            auto rope = std::get<0>(vPuts[i])->GetBuffer();
+            if (!zeroPages) {
+                for (auto it = rope.Begin(); it != rope.End(); ++it) {
+                    const TRcBuf& chunk = it.GetChunk();
+                    UNIT_ASSERT(chunk.data() != zero);
+                    std::optional<IContiguousChunk::TPtr> underlying = chunk.ExtractFullUnderlyingContainer<IContiguousChunk::TPtr>();
+                    UNIT_ASSERT(underlying);
+                    UNIT_ASSERT(*underlying);
+                    UNIT_ASSERT(underlying->Get()->GetInnerType() == IContiguousChunk::EInnerType::RDMA_MEM_REG);
+                }
+            } else {
+                for (auto it = rope.Begin(); it != rope.End(); ++it) {
+                    const TRcBuf& chunk = it.GetChunk();
+                    const char* data = chunk.Data();
+                    if (data == zero) {
+                        zeroPageCount++;
+                    }
+                }
+            }
             auto& record = std::get<0>(vPuts[i])->Record;
             TVDiskID vDiskId = VDiskIDFromVDiskID(record.GetVDiskID());
             ui32 diskIdx = group.VDiskIdx(vDiskId);
@@ -98,6 +170,9 @@ void TestPutMaxPartCountOnHandoff(TErasureType::EErasureSpecies erasureSpecies) 
                     diskPos = pos;
                 }
             }
+        }
+        if (zeroPages) {
+            UNIT_ASSERT(zeroPageCount > 0);
         }
         CTEST << "vdisk exp# " << (diskSequence.size() ? diskSequence.front() : -1) << " get# " << group.VDiskIdx(VDiskIDFromVDiskID(std::get<0>(vPuts[nextVPut])->Record.GetVDiskID())) << Endl;
         if (diskPos != (ui32)-1) {
@@ -136,7 +211,11 @@ void TestPutMaxPartCountOnHandoff(TErasureType::EErasureSpecies erasureSpecies) 
 }
 
 Y_UNIT_TEST(TestBlock42MaxPartCountOnHandoff) {
-    TestPutMaxPartCountOnHandoff(TErasureType::Erasure4Plus2Block);
+    TestPutMaxPartCountOnHandoff(TErasureType::Erasure4Plus2Block, false);
+}
+
+Y_UNIT_TEST(TestBlock42MaxPartCountOnHandoffWithZeropages) {
+    TestPutMaxPartCountOnHandoff(TErasureType::Erasure4Plus2Block, true);
 }
 
 enum ETestPutAllOkMode {
@@ -175,7 +254,7 @@ struct TTestPutAllOk {
 
     TTestPutAllOk()
         : GroupType(ErasureSpecies)
-        , Group(GroupId, ErasureSpecies, GroupType.BlobSubgroupSize(), 1)
+        , Group(GroupId, ErasureSpecies, 1, GroupType.BlobSubgroupSize(), 1)
         , GroupQueues(Group.MakeGroupQueues())
         , BlobIds({TLogoBlobID(743284823, 10, 12345, 0, DataSize, 0), TLogoBlobID(743284823, 9, 12346, 0, DataSize, 0)})
         , Data(AlphaData(DataSize))
@@ -204,7 +283,8 @@ struct TTestPutAllOk {
             Encrypt(dataBytes, dataBytes, 0, encryptedData.size(), blobId, *Group.GetInfo());
 
             PartSets[blobIdx].resize(totalParts);
-            ErasureSplit((TErasureType::ECrcMode)blobId.CrcMode(), Group.GetInfo()->Type, TRope(encryptedData), PartSets[blobIdx]);
+            ErasureSplit((TErasureType::ECrcMode)blobId.CrcMode(), Group.GetInfo()->Type, TRope(encryptedData), PartSets[blobIdx],
+                nullptr, GetDefaultRcBufAllocator());
         }
     }
 
@@ -302,10 +382,11 @@ struct TTestPutAllOk {
             TMaybe<TPutImpl> putImpl;
             TPutImpl::TPutResultVec putResults;
             if constexpr (IsVPut) {
-                putImpl.ConstructInPlace(Group.GetInfo(), GroupQueues, events[0]->Get(), Mon, false, TActorId(), 0, NWilson::TTraceId());
+                putImpl.ConstructInPlace(Group.GetInfo(), GroupQueues, events[0]->Get(), Mon, false, TActorId(), 0, NWilson::TTraceId(),
+                        TAccelerationParams{});
             } else {
                 putImpl.ConstructInPlace(Group.GetInfo(), GroupQueues, events, Mon,
-                        NKikimrBlobStorage::TabletLog, TEvBlobStorage::TEvPut::TacticDefault, false);
+                        NKikimrBlobStorage::TabletLog, TEvBlobStorage::TEvPut::TacticDefault, false, TAccelerationParams{});
             }
 
             putImpl->GenerateInitialRequests(LogCtx, PartSets);
@@ -352,7 +433,7 @@ Y_UNIT_TEST(TestMirror3dcWith3x3MinLatencyMod) {
     TString data = AlphaData(size);
     TEvBlobStorage::TEvPut ev(blobId, data, TInstant::Max(), NKikimrBlobStorage::TabletLog,
             TEvBlobStorage::TEvPut::TacticMinLatency);
-    TPutImpl putImpl(env.Info, env.GroupQueues, &ev, env.Mon, true, TActorId(), 0, NWilson::TTraceId());
+    TPutImpl putImpl(env.Info, env.GroupQueues, &ev, env.Mon, true, TActorId(), 0, NWilson::TTraceId(), TAccelerationParams{});
 
     TLogContext logCtx(NKikimrServices::BS_PROXY_PUT, false);
     logCtx.LogAcc.IsLogEnabled = false;
@@ -364,7 +445,8 @@ Y_UNIT_TEST(TestMirror3dcWith3x3MinLatencyMod) {
     TString encryptedData = data;
     char *dataBytes = encryptedData.Detach();
     Encrypt(dataBytes, dataBytes, 0, encryptedData.size(), blobId, *env.Info);
-    ErasureSplit((TErasureType::ECrcMode)blobId.CrcMode(), env.Info->Type, TRope(encryptedData), partSetSingleton[0]);
+    ErasureSplit((TErasureType::ECrcMode)blobId.CrcMode(), env.Info->Type, TRope(encryptedData), partSetSingleton[0],
+        nullptr, GetDefaultRcBufAllocator());
     putImpl.GenerateInitialRequests(logCtx, partSetSingleton);
     TPutImpl::TPutResultVec putResults;
     putImpl.Step(logCtx, putResults, &env.Info->GetTopology(), false);
@@ -383,6 +465,180 @@ Y_UNIT_TEST(TestMirror3dcWith3x3MinLatencyMod) {
         auto it = vDiskIds.find(vDiskId.ConvertToTuple());
         UNIT_ASSERT(it != vDiskIds.end());
     }
+}
+
+void TestPutResultWithVDiskResults(TBlobStorageGroupType type, TMap<TVDiskID, NKikimrProto::EReplyStatus> vdiskStatuses, uint expectedVdiskRequests, NKikimrProto::EReplyStatus resultStatus) {
+    TTestBasicRuntime runtime(1, false);
+    runtime.SetDispatchTimeout(TDuration::Seconds(1));
+    runtime.SetLogPriority(NKikimrServices::BS_PROXY_PUT, NLog::PRI_DEBUG);
+    SetupRuntime(runtime);
+    TDSProxyEnv env;
+    env.Configure(runtime, type, 0, 0);
+    TTestState testState(runtime, type, env.Info);
+
+    TLogoBlobID blobId(72075186224047637, 1, 863, 1, 786, 24576);
+    TStringBuilder dataBuilder;
+    for (size_t i = 0; i < blobId.BlobSize(); ++i) {
+        dataBuilder << 'a';
+    }
+    TBlobTestSet::TBlob blob(blobId, dataBuilder);
+
+    TGroupMock &groupMock = testState.GetGroupMock();
+    for (const auto& status : vdiskStatuses) {
+        groupMock.SetError(status.first, status.second);
+    }
+
+
+    TEvBlobStorage::TEvPut::ETactic tactic = TEvBlobStorage::TEvPut::TacticDefault;
+    NKikimrBlobStorage::EPutHandleClass handleClass = NKikimrBlobStorage::TabletLog;
+
+    TEvBlobStorage::TEvPut::TPtr ev = testState.CreatePutRequest(blob, tactic, handleClass);
+    auto putActor = env.CreatePutRequestActor(ev);
+    runtime.Register(putActor.release());
+
+    auto reportActor = std::unique_ptr<IActor>(CreateRequestReportingThrottler(1, 60000, 1));
+    runtime.Register(reportActor.release());
+
+    for (ui64 idx = 0; idx < expectedVdiskRequests; ++idx) {
+        TEvBlobStorage::TEvVPut::TPtr ev = testState.GrabEventPtr<TEvBlobStorage::TEvVPut>();
+        TVDiskID vDiskId = VDiskIDFromVDiskID(ev->Get()->Record.GetVDiskID());
+        NKikimrProto::EReplyStatus status = groupMock.OnVPut(*ev->Get());
+        TEvBlobStorage::TEvVPutResult::TPtr result = testState.CreateEventResultPtr(ev, status, vDiskId);
+        runtime.Send(result.Release());
+    }
+
+    TMap<TLogoBlobID, NKikimrProto::EReplyStatus> expectedStatus {
+        {blobId, resultStatus}
+    };
+    testState.ReceivePutResults(1, expectedStatus);
+}
+
+Y_UNIT_TEST(TestBlock42PutStatusOkWith_0_0_VdiskErrors) {
+    TestPutResultWithVDiskResults({TErasureType::Erasure4Plus2Block}, {}, 6, NKikimrProto::OK);
+}
+
+Y_UNIT_TEST(TestBlock42PutStatusOkWith_1_0_VdiskErrors) {
+    TMap<TVDiskID, NKikimrProto::EReplyStatus> vdiskStatuses {
+        {TVDiskID(0, 1, 0, 0, 0), NKikimrProto::ERROR},
+    };
+    TestPutResultWithVDiskResults({TErasureType::Erasure4Plus2Block}, vdiskStatuses, 7, NKikimrProto::OK);
+}
+
+Y_UNIT_TEST(TestBlock42PutStatusOkWith_1_1_VdiskErrors) {
+    TMap<TVDiskID, NKikimrProto::EReplyStatus> vdiskStatuses {
+        {TVDiskID(0, 1, 0, 0, 0), NKikimrProto::ERROR},
+        {TVDiskID(0, 1, 0, 6, 0), NKikimrProto::ERROR},
+    };
+    TestPutResultWithVDiskResults({TErasureType::Erasure4Plus2Block}, vdiskStatuses, 8, NKikimrProto::OK);
+}
+
+Y_UNIT_TEST(TestBlock42PutStatusOkWith_2_0_VdiskErrors) {
+    TMap<TVDiskID, NKikimrProto::EReplyStatus> vdiskStatuses {
+        {TVDiskID(0, 1, 0, 0, 0), NKikimrProto::ERROR},
+        {TVDiskID(0, 1, 0, 1, 0), NKikimrProto::ERROR},
+    };
+    TestPutResultWithVDiskResults({TErasureType::Erasure4Plus2Block}, vdiskStatuses, 8, NKikimrProto::OK);
+}
+
+Y_UNIT_TEST(TestBlock42PutStatusErrorWith_2_1_VdiskErrors) {
+    TMap<TVDiskID, NKikimrProto::EReplyStatus> vdiskStatuses {
+        {TVDiskID(0, 1, 0, 0, 0), NKikimrProto::ERROR},
+        {TVDiskID(0, 1, 0, 1, 0), NKikimrProto::ERROR},
+        {TVDiskID(0, 1, 0, 6, 0), NKikimrProto::ERROR},
+    };
+    TestPutResultWithVDiskResults({TErasureType::Erasure4Plus2Block}, vdiskStatuses, 8, NKikimrProto::ERROR);
+}
+
+Y_UNIT_TEST(TestBlock42PutStatusErrorWith_3_0_VdiskErrors) {
+    TMap<TVDiskID, NKikimrProto::EReplyStatus> vdiskStatuses {
+        {TVDiskID(0, 1, 0, 0, 0), NKikimrProto::ERROR},
+        {TVDiskID(0, 1, 0, 1, 0), NKikimrProto::ERROR},
+        {TVDiskID(0, 1, 0, 2, 0), NKikimrProto::ERROR},
+    };
+    TestPutResultWithVDiskResults({TErasureType::Erasure4Plus2Block}, vdiskStatuses, 6, NKikimrProto::ERROR);
+}
+
+Y_UNIT_TEST(TestBlock42PutStatusErrorWith_1_2_VdiskErrors) {
+    TMap<TVDiskID, NKikimrProto::EReplyStatus> vdiskStatuses {
+        {TVDiskID(0, 1, 0, 0, 0), NKikimrProto::ERROR},
+        {TVDiskID(0, 1, 0, 6, 0), NKikimrProto::ERROR},
+        {TVDiskID(0, 1, 0, 7, 0), NKikimrProto::ERROR},
+    };
+    TestPutResultWithVDiskResults({TErasureType::Erasure4Plus2Block}, vdiskStatuses, 8, NKikimrProto::ERROR);
+}
+
+Y_UNIT_TEST(TestMirror3dcPutStatusOkWith_0_0_0_VdiskErrors) {
+    TestPutResultWithVDiskResults({TErasureType::ErasureMirror3dc}, {}, 3, NKikimrProto::OK);
+}
+
+Y_UNIT_TEST(TestMirror3dcPutStatusOkWith_1_0_0_VdiskErrors) {
+    TMap<TVDiskID, NKikimrProto::EReplyStatus> vdiskStatuses {
+        {TVDiskID(0, 1, 0, 1, 0), NKikimrProto::ERROR},
+    };
+    TestPutResultWithVDiskResults({TErasureType::ErasureMirror3dc}, vdiskStatuses, 4, NKikimrProto::OK);
+}
+
+Y_UNIT_TEST(TestMirror3dcPutStatusOkWith_2_0_0_VdiskErrors) {
+    TMap<TVDiskID, NKikimrProto::EReplyStatus> vdiskStatuses {
+        {TVDiskID(0, 1, 0, 1, 0), NKikimrProto::ERROR},
+        {TVDiskID(0, 1, 0, 2, 0), NKikimrProto::ERROR},
+    };
+    TestPutResultWithVDiskResults({TErasureType::ErasureMirror3dc}, vdiskStatuses, 5, NKikimrProto::OK);
+}
+
+Y_UNIT_TEST(TestMirror3dcPutStatusOkWith_3_0_0_VdiskErrors) {
+    TMap<TVDiskID, NKikimrProto::EReplyStatus> vdiskStatuses {
+        {TVDiskID(0, 1, 0, 1, 0), NKikimrProto::ERROR},
+        {TVDiskID(0, 1, 0, 2, 0), NKikimrProto::ERROR},
+        {TVDiskID(0, 1, 0, 0, 0), NKikimrProto::ERROR},
+    };
+    TestPutResultWithVDiskResults({TErasureType::ErasureMirror3dc}, vdiskStatuses, 7, NKikimrProto::OK);
+}
+
+Y_UNIT_TEST(TestMirror3dcPutStatusOkWith_1_1_0_VdiskErrors) {
+    TMap<TVDiskID, NKikimrProto::EReplyStatus> vdiskStatuses {
+        {TVDiskID(0, 1, 0, 1, 0), NKikimrProto::ERROR},
+        {TVDiskID(0, 1, 1, 1, 0), NKikimrProto::ERROR},
+    };
+    TestPutResultWithVDiskResults({TErasureType::ErasureMirror3dc}, vdiskStatuses, 5, NKikimrProto::OK);
+}
+
+Y_UNIT_TEST(TestMirror3dcPutStatusOkWith_2_1_0_VdiskErrors) {
+    TMap<TVDiskID, NKikimrProto::EReplyStatus> vdiskStatuses {
+        {TVDiskID(0, 1, 0, 1, 0), NKikimrProto::ERROR},
+        {TVDiskID(0, 1, 0, 2, 0), NKikimrProto::ERROR},
+        {TVDiskID(0, 1, 1, 1, 0), NKikimrProto::ERROR},
+    };
+    TestPutResultWithVDiskResults({TErasureType::ErasureMirror3dc}, vdiskStatuses, 6, NKikimrProto::OK);
+}
+
+Y_UNIT_TEST(TestMirror3dcPutStatusErrorWith_1_1_1_VdiskErrors) {
+    TMap<TVDiskID, NKikimrProto::EReplyStatus> vdiskStatuses {
+        {TVDiskID(0, 1, 0, 1, 0), NKikimrProto::ERROR},
+        {TVDiskID(0, 1, 1, 1, 0), NKikimrProto::ERROR},
+        {TVDiskID(0, 1, 2, 1, 0), NKikimrProto::ERROR},
+    };
+    TestPutResultWithVDiskResults({TErasureType::ErasureMirror3dc}, vdiskStatuses, 3, NKikimrProto::ERROR);
+}
+
+Y_UNIT_TEST(TestMirror3dcPutStatusErrorWith_2_2_0_VdiskErrors) {
+    TMap<TVDiskID, NKikimrProto::EReplyStatus> vdiskStatuses {
+        {TVDiskID(0, 1, 0, 1, 0), NKikimrProto::ERROR},
+        {TVDiskID(0, 1, 0, 2, 0), NKikimrProto::ERROR},
+        {TVDiskID(0, 1, 1, 1, 0), NKikimrProto::ERROR},
+        {TVDiskID(0, 1, 1, 2, 0), NKikimrProto::ERROR},
+    };
+    TestPutResultWithVDiskResults({TErasureType::ErasureMirror3dc}, vdiskStatuses, 5, NKikimrProto::ERROR);
+}
+
+Y_UNIT_TEST(TestMirror3dcPutStatusOkWith_3_1_0_VdiskErrors) {
+    TMap<TVDiskID, NKikimrProto::EReplyStatus> vdiskStatuses {
+        {TVDiskID(0, 1, 0, 0, 0), NKikimrProto::ERROR},
+        {TVDiskID(0, 1, 0, 1, 0), NKikimrProto::ERROR},
+        {TVDiskID(0, 1, 0, 2, 0), NKikimrProto::ERROR},
+        {TVDiskID(0, 1, 1, 1, 0), NKikimrProto::ERROR},
+    };
+    TestPutResultWithVDiskResults({TErasureType::ErasureMirror3dc}, vdiskStatuses, 8, NKikimrProto::OK);
 }
 
 } // Y_UNIT_TEST_SUITE TDSProxyPutTest

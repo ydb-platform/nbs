@@ -3,6 +3,7 @@
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/mind/dynamic_nameserver.h>
 #include <contrib/ydb/library/actors/dnsresolver/dnsresolver.h>
+#include <contrib/ydb/library/actors/interconnect/rdma/mem_pool.h>
 #include <contrib/ydb/library/actors/interconnect/interconnect.h>
 #include <contrib/ydb/library/actors/interconnect/interconnect_tcp_server.h>
 #include <util/generic/xrange.h>
@@ -17,6 +18,7 @@ namespace NActors {
     void TTestBasicRuntime::Initialize(TEgg egg)
     {
         AddICStuff();
+        AddAuditLogStuff();
 
         TTestActorRuntime::Initialize(std::move(egg));
     }
@@ -73,6 +75,23 @@ namespace NActors {
                 auto listener = new TInterconnectListenerTCP(nameNode.first, nameNode.second, common);
                 AddLocalService({}, TActorSetupCmd(listener, TMailboxType::Simple, InterconnectPoolId()), num);
                 AddLocalService(MakePollerActorId(), TActorSetupCmd(CreatePollerActor(), TMailboxType::Simple, 0), num);
+            }
+        }
+    }
+
+    void TTestBasicRuntime::AddAuditLogStuff()
+    {
+        if (AuditLogBackends) {
+            for (ui32 nodeIndex = 0; nodeIndex < GetNodeCount(); ++nodeIndex) {
+                AddLocalService(
+                    NKikimr::NAudit::MakeAuditServiceID(),
+                    TActorSetupCmd(
+                        NKikimr::NAudit::CreateAuditWriter(std::move(AuditLogBackends)),
+                        TMailboxType::HTSwap,
+                        0
+                    ),
+                    nodeIndex
+                );
             }
         }
     }

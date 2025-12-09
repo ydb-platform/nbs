@@ -80,22 +80,34 @@ namespace NKikimr {
 
         STFUNC(StateFunc) {
             switch (ev->GetTypeRewrite()) {
-                HFunc(TEvMediatorTimecast::TEvRegisterTablet, Handle);
+                hFunc(TEvMediatorTimecast::TEvRegisterTablet, Handle);
+                hFunc(TEvMediatorTimecast::TEvSubscribeReadStep, Handle);
             }
         }
 
-        void Handle(TEvMediatorTimecast::TEvRegisterTablet::TPtr &ev, const TActorContext &ctx) {
+        void Handle(TEvMediatorTimecast::TEvRegisterTablet::TPtr& ev) {
             const ui64 tabletId = ev->Get()->TabletId;
             auto& entry = Entries[tabletId];
             if (!entry) {
-                entry = new TMediatorTimecastEntry();
+                entry = new TMediatorTimecastSharedEntry();
             }
 
-            ctx.Send(ev->Sender, new TEvMediatorTimecast::TEvRegisterTabletResult(tabletId, entry));
+            Send(ev->Sender, new TEvMediatorTimecast::TEvRegisterTabletResult(tabletId, new TMediatorTimecastEntry(entry, entry)));
+        }
+
+        void Handle(TEvMediatorTimecast::TEvSubscribeReadStep::TPtr& ev) {
+            const ui64 coordinatorId = ev->Get()->CoordinatorId;
+            auto& entry = ReadSteps[coordinatorId];
+            if (!entry) {
+                entry = new TMediatorTimecastReadStep();
+            }
+
+            Send(ev->Sender, new TEvMediatorTimecast::TEvSubscribeReadStepResult(coordinatorId, 0, entry->Get(), entry));
         }
 
     private:
-        THashMap<ui64, TIntrusivePtr<TMediatorTimecastEntry>> Entries;
+        THashMap<ui64, TIntrusivePtr<TMediatorTimecastSharedEntry>> Entries;
+        THashMap<ui64, TIntrusivePtr<TMediatorTimecastReadStep>> ReadSteps;
     };
 
     void SetupMediatorTimecastProxy(TTestActorRuntime& runtime, ui32 nodeIndex, bool useFake = false)
@@ -133,15 +145,12 @@ namespace NKikimr {
             }
 
             const auto& domainsInfo = app->Domains;
-            if (!domainsInfo || domainsInfo->Domains.size() == 0) {
+            if (!domainsInfo || !domainsInfo->Domain) {
                 return;
             }
 
-            Y_ABORT_UNLESS(domainsInfo->Domains.size() == 1);
-            for (const auto &xpair : domainsInfo->Domains) {
-                const TDomainsInfo::TDomain *domain = xpair.second.Get();
-                UseFakeTimeCast |= domain->Mediators.size() == 0;
-            }
+            const TDomainsInfo::TDomain *domain = domainsInfo->GetDomain();
+            UseFakeTimeCast |= domain->Mediators.size() == 0;
         }
 
         void Birth(ui32 node) noexcept override
@@ -631,13 +640,14 @@ namespace NKikimr {
     }
 
     void SetupTabletServices(TTestActorRuntime &runtime, TAppPrepare *app, bool mockDisk, NFake::TStorage storage,
-                            NFake::TCaches caches, bool forceFollowers) {
+                            const NSharedCache::TSharedCacheConfig* sharedCacheConfig, bool forceFollowers,
+                            TVector<TIntrusivePtr<NFake::TProxyDS>> dsProxies) {
         TAutoPtr<TAppPrepare> dummy;
         if (app == nullptr) {
             dummy = app = new TAppPrepare;
         }
         TUltimateNodes nodes(runtime, app);
-        SetupBasicServices(runtime, *app, mockDisk, &nodes, storage, caches, forceFollowers);
+        SetupBasicServices(runtime, *app, mockDisk, &nodes, storage, sharedCacheConfig, forceFollowers, dsProxies);
     }
 
     TDomainsInfo::TDomain::TStoragePoolKinds DefaultPoolKinds(ui32 count) {
@@ -670,9 +680,8 @@ namespace NKikimr {
         return prev;
     }
 
-    void SetupChannelProfiles(TAppPrepare &app, ui32 domainId, ui32 nchannels) {
-        Y_ABORT_UNLESS(app.Domains && app.Domains->Domains.contains(domainId));
-        auto& poolKinds = app.Domains->GetDomain(domainId).StoragePoolTypes;
+    void SetupChannelProfiles(TAppPrepare &app, ui32 nchannels) {
+        auto& poolKinds = app.Domains->GetDomain()->StoragePoolTypes;
         Y_ABORT_UNLESS(!poolKinds.empty());
 
         TIntrusivePtr<TChannelProfiles> channelProfiles = new TChannelProfiles;
@@ -717,7 +726,7 @@ namespace NKikimr {
         app.SetChannels(std::move(channelProfiles));
     }
 
-    void SetupBoxAndStoragePool(TTestActorRuntime &runtime, const TActorId& sender, ui32 domainId, ui32 nGroups) {
+    void SetupBoxAndStoragePool(TTestActorRuntime &runtime, const TActorId& sender, ui32 nGroups) {
         NTabletPipe::TClientConfig pipeConfig;
         pipeConfig.RetryPolicy = NTabletPipe::TClientRetryPolicy::WithRetries();
 
@@ -747,13 +756,13 @@ namespace NKikimr {
         host.SetHostConfigId(hostConfig.GetHostConfigId());
         bsConfigureRequest->Record.MutableRequest()->AddCommand()->MutableDefineBox()->CopyFrom(boxConfig);
 
-        for (const auto& [kind, pool] : runtime.GetAppData().DomainsInfo->Domains[domainId]->StoragePoolTypes) {
+        for (const auto& [kind, pool] : runtime.GetAppData().DomainsInfo->GetDomain()->StoragePoolTypes) {
             NKikimrBlobStorage::TDefineStoragePool storagePool(pool);
             storagePool.SetNumGroups(nGroups);
             bsConfigureRequest->Record.MutableRequest()->AddCommand()->MutableDefineStoragePool()->CopyFrom(storagePool);
         }
 
-        runtime.SendToPipe(MakeBSControllerID(domainId), sender, bsConfigureRequest.Release(), 0, GetPipeConfigWithRetries());
+        runtime.SendToPipe(MakeBSControllerID(), sender, bsConfigureRequest.Release(), 0, GetPipeConfigWithRetries());
 
         TAutoPtr<IEventHandle> handleConfigureResponse;
         auto configureResponse = runtime.GrabEdgeEventRethrow<TEvBlobStorage::TEvControllerConfigResponse>(handleConfigureResponse);
@@ -1142,6 +1151,7 @@ namespace NKikimr {
                 HFunc(TEvHive::TEvAdoptTablet, Handle);
                 HFunc(TEvHive::TEvDeleteTablet, Handle);
                 HFunc(TEvHive::TEvDeleteOwnerTablets, Handle);
+                HFunc(TEvHive::TEvStopTablet, Handle);
                 HFunc(TEvHive::TEvRequestHiveInfo, Handle);
                 HFunc(TEvHive::TEvInitiateTabletExternalBoot, Handle);
                 HFunc(TEvHive::TEvUpdateTabletsObject, Handle);
@@ -1170,7 +1180,7 @@ namespace NKikimr {
 
         void Handle(TEvHive::TEvCreateTablet::TPtr& ev, const TActorContext& ctx) {
             LOG_INFO_S(ctx, NKikimrServices::HIVE, "[" << TabletID() << "] TEvCreateTablet, msg: " << ev->Get()->Record.ShortDebugString());
-            Cout << "FAKEHIVE " << TabletID() << " TEvCreateTablet " << ev->Get()->Record.ShortDebugString() << Endl;
+            Cerr << "FAKEHIVE " << TabletID() << " TEvCreateTablet " << ev->Get()->Record.ShortDebugString() << Endl;
             NKikimrProto::EReplyStatus status = NKikimrProto::OK;
             const std::pair<ui64, ui64> key(ev->Get()->Record.GetOwner(), ev->Get()->Record.GetOwnerIdx());
             const auto type = ev->Get()->Record.GetTabletType();
@@ -1247,6 +1257,9 @@ namespace NKikimr {
                 auto& boundChannels = ev->Get()->Record.GetBindedChannels();
                 it->second.BoundChannels.assign(boundChannels.begin(), boundChannels.end());
                 it->second.ChannelsProfile = ev->Get()->Record.GetChannelsProfile();
+
+                it->second.State = ETabletState::ReadyToWork;
+                it->second.ObjectDomain = TSubDomainKey(ev->Get()->Record.GetObjectDomain());
             }
 
             ctx.Send(ev->Sender, new TEvHive::TEvCreateTabletReply(status, key.first,
@@ -1346,7 +1359,7 @@ namespace NKikimr {
         void Handle(TEvHive::TEvDeleteTablet::TPtr &ev, const TActorContext &ctx) {
             LOG_INFO_S(ctx, NKikimrServices::HIVE, "[" << TabletID() << "] TEvDeleteTablet, msg: " << ev->Get()->Record.ShortDebugString());
             NKikimrHive::TEvDeleteTablet& rec = ev->Get()->Record;
-            Cout << "FAKEHIVE " << TabletID() << " TEvDeleteTablet " << rec.ShortDebugString() << Endl;
+            Cerr << "FAKEHIVE " << TabletID() << " TEvDeleteTablet " << rec.ShortDebugString() << Endl;
             TVector<ui64> deletedIdx;
             for (size_t i = 0; i < rec.ShardLocalIdxSize(); ++i) {
                 auto id = std::make_pair<ui64, ui64>(rec.GetShardOwnerId(), rec.GetShardLocalIdx(i));
@@ -1359,7 +1372,7 @@ namespace NKikimr {
         void Handle(TEvHive::TEvDeleteOwnerTablets::TPtr &ev, const TActorContext &ctx) {
             LOG_INFO_S(ctx, NKikimrServices::HIVE, "[" << TabletID() << "] TEvDeleteOwnerTablets, msg: " << ev->Get()->Record);
             NKikimrHive::TEvDeleteOwnerTablets& rec = ev->Get()->Record;
-            Cout << "FAKEHIVE " << TabletID() << " TEvDeleteOwnerTablets " << rec.ShortDebugString() << Endl;
+            Cerr << "FAKEHIVE " << TabletID() << " TEvDeleteOwnerTablets " << rec.ShortDebugString() << Endl;
             auto ownerId = rec.GetOwner();
             TVector<ui64> toDelete;
 
@@ -1389,6 +1402,34 @@ namespace NKikimr {
             }
 
             ctx.Send(ev->Sender, new TEvHive::TEvDeleteOwnerTabletsReply(NKikimrProto::OK, TabletID(), ownerId, rec.GetTxId()));
+        }
+
+        void StopTablet(const ui64& tabletId, const TActorContext &ctx) {
+            auto ownerIt = State->TabletIdToOwner.find(tabletId);
+            if (ownerIt == State->TabletIdToOwner.end()) {
+                return;
+            }
+            auto it = State->Tablets.find(ownerIt->second);
+            if (it == State->Tablets.end()) {
+                return;
+            }
+
+            TFakeHiveTabletInfo& tabletInfo = it->second;
+
+            // Very similar to DeleteTablet but don't actually removes tablet
+            // Kill the tablet and don't restart it
+            TActorId bootstrapperActorId = tabletInfo.BootstrapperActorId;
+            ctx.Send(bootstrapperActorId, new TEvBootstrapper::TEvStandBy());
+
+            tabletInfo.State = ETabletState::Stopped;
+        }
+
+        void Handle(TEvHive::TEvStopTablet::TPtr &ev, const TActorContext &ctx) {
+            LOG_INFO_S(ctx, NKikimrServices::HIVE, "[" << TabletID() << "] TEvStopTablet, msg: " << ev->Get()->Record.ShortDebugString());
+            NKikimrHive::TEvStopTablet& rec = ev->Get()->Record;
+            Cerr << "FAKEHIVE " << TabletID() << " TEvStopTablet " << rec.ShortDebugString() << Endl;
+            StopTablet(rec.GetTabletID(), ctx);
+            ctx.Send(ev->Sender, new TEvHive::TEvStopTabletResult(NKikimrProto::OK, rec.GetTabletID()));
         }
 
         void Handle(TEvHive::TEvRequestHiveInfo::TPtr &ev, const TActorContext &ctx) {
@@ -1442,7 +1483,7 @@ namespace NKikimr {
 
         void Handle(TEvHive::TEvUpdateDomain::TPtr &ev, const TActorContext &ctx) {
             LOG_INFO_S(ctx, NKikimrServices::HIVE, "[" << TabletID() << "] TEvUpdateDomain, msg: " << ev->Get()->Record.ShortDebugString());
-            
+
             const TSubDomainKey subdomainKey(ev->Get()->Record.GetDomainKey());
             NHive::TDomainInfo& domainInfo = State->Domains[subdomainKey];
             if (ev->Get()->Record.HasServerlessComputeResourcesMode()) {
@@ -1450,7 +1491,7 @@ namespace NKikimr {
             } else {
                 domainInfo.ServerlessComputeResourcesMode.Clear();
             }
-            
+
             auto response = std::make_unique<TEvHive::TEvUpdateDomainReply>();
             response->Record.SetTxId(ev->Get()->Record.GetTxId());
             response->Record.SetOrigin(TabletID());
@@ -1493,7 +1534,7 @@ namespace NKikimr {
             TBlobStorageGroupType::EErasureSpecies erasure) {
             TIntrusivePtr<TBootstrapperInfo> bi(new TBootstrapperInfo(new TTabletSetupInfo(op, TMailboxType::Simple, 0,
                 TMailboxType::Simple, 0)));
-            return ctx.ExecutorThread.RegisterActor(CreateBootstrapper(
+            return ctx.Register(CreateBootstrapper(
                 CreateTestTabletInfo(State->NextTabletId, tabletType, erasure), bi.Get()));
         }
 
@@ -1502,7 +1543,8 @@ namespace NKikimr {
             tabletInfo.SetTabletID(tabletId);
             if (info) {
                 tabletInfo.SetTabletType(info->Type);
-                tabletInfo.SetState(200); // THive::ReadyToWork
+                tabletInfo.SetState(ui32(info->State)); // THive::ETabletState::*
+                tabletInfo.MutableObjectDomain()->CopyFrom(info->ObjectDomain);
 
                 // TODO: fill other fields when needed
             }

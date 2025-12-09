@@ -1,14 +1,14 @@
 #pragma once
 
 #include "datashard.h"
-#include "datashard_locks.h"
+#include <contrib/ydb/core/tx/locks/locks.h>
 #include "datashard__engine_host.h"
 #include "operation.h"
 
 #include <contrib/ydb/core/tx/tx_processing.h>
 #include <contrib/ydb/core/tablet_flat/flat_cxx_database.h>
 
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue.h>
 
 namespace NKikimr {
 
@@ -23,6 +23,7 @@ using NTabletFlatExecutor::TTransactionContext;
 using NTabletFlatExecutor::TTableSnapshotContext;
 
 class TDataShard;
+class TDataShardUserDb;
 class TSysLocks;
 struct TReadSetKey;
 class TActiveTransaction;
@@ -53,6 +54,8 @@ struct TSchemaOperation {
         ETypeAlterCdcStream = 14,
         ETypeDropCdcStream = 15,
         ETypeMoveIndex = 16,
+        ETypeCreateIncrementalRestoreSrc = 17,
+        ETypeCreateIncrementalBackupSrc = 18,
 
         ETypeUnknown = Max<ui32>()
     };
@@ -108,12 +111,14 @@ struct TSchemaOperation {
     bool IsCreateCdcStream() const { return Type == ETypeCreateCdcStream; }
     bool IsAlterCdcStream() const { return Type == ETypeAlterCdcStream; }
     bool IsDropCdcStream() const { return Type == ETypeDropCdcStream; }
+    bool IsCreateIncrementalRestoreSrc() const { return Type == ETypeCreateIncrementalRestoreSrc; }
+    bool IsCreateIncrementalBackupSrc() const { return Type == ETypeCreateIncrementalBackupSrc; }
 
     bool IsReadOnly() const { return ReadOnly; }
 };
 
 /// @note This class incapsulates Engine stuff for minor needs. Do not return TEngine out of it.
-class TValidatedDataTx : TNonCopyable {
+class TValidatedDataTx : TNonCopyable, public TValidatedTx {
 public:
     using TPtr = std::shared_ptr<TValidatedDataTx>;
 
@@ -123,9 +128,12 @@ public:
                      const TStepOrder &stepTxId,
                      TInstant receivedAt,
                      const TString &txBody,
-                     bool usesMvccSnapshot);
+                     bool usesMvccSnapshot,
+                     bool isPropose = false);
 
     ~TValidatedDataTx();
+
+    EType GetType() const override { return EType::DataTx; };
 
     static constexpr ui64 MaxReorderTxKeys() { return 100; }
 
@@ -133,7 +141,7 @@ public:
     const TString GetErrors() const { return ErrStr; }
 
     TStepOrder StepTxId() const { return StepTxId_; }
-    ui64 TxId() const { return StepTxId_.TxId; }
+    ui64 GetTxId() const override { return StepTxId_.TxId; }
     const TString& Body() const { return TxBody; }
 
     ui64 LockTxId() const { return Tx.GetLockTxId(); }
@@ -149,7 +157,6 @@ public:
 
     bool Ready() const { return ErrCode == NKikimrTxDataShard::TError::OK; }
     bool RequirePrepare() const { return ErrCode == NKikimrTxDataShard::TError::SNAPSHOT_NOT_READY_YET; }
-    bool RequireWrites() const { return TxInfo().HasWrites() || !Immediate(); }
     bool HasWrites() const { return TxInfo().HasWrites(); }
     bool HasLockedWrites() const { return HasWrites() && LockTxId(); }
     bool HasDynamicWrites() const { return TxInfo().DynKeysCount != 0; }
@@ -173,16 +180,14 @@ public:
     const NMiniKQL::TEngineHostCounters& GetCounters() { return EngineBay.GetCounters(); }
     void ResetCounters() { EngineBay.ResetCounters(); }
 
+    TDataShardUserDb& GetUserDb();
+    const TDataShardUserDb& GetUserDb() const;
+
     bool CanCancel();
     bool CheckCancelled(ui64 tabletId);
 
-    void SetWriteVersion(TRowVersion writeVersion) { EngineBay.SetWriteVersion(writeVersion); }
-    void SetReadVersion(TRowVersion readVersion) { EngineBay.SetReadVersion(readVersion); }
+    void SetMvccVersion(TRowVersion mvccVersion) { EngineBay.SetMvccVersion(mvccVersion); }
     void SetVolatileTxId(ui64 txId) { EngineBay.SetVolatileTxId(txId); }
-
-    void CommitChanges(const TTableId& tableId, ui64 lockId, const TRowVersion& writeVersion) {
-        EngineBay.CommitChanges(tableId, lockId, writeVersion);
-    }
 
     TVector<IDataShardChangeCollector::TChange> GetCollectedChanges() const { return EngineBay.GetCollectedChanges(); }
     void ResetCollectedChanges() { EngineBay.ResetCollectedChanges(); }
@@ -191,11 +196,9 @@ public:
     const absl::flat_hash_set<ui64>& GetVolatileDependencies() const { return EngineBay.GetVolatileDependencies(); }
     std::optional<ui64> GetVolatileChangeGroup() const { return EngineBay.GetVolatileChangeGroup(); }
     bool GetVolatileCommitOrdered() const { return EngineBay.GetVolatileCommitOrdered(); }
+    bool GetPerformedUserReads() const { return EngineBay.GetPerformedUserReads(); }
 
-    TActorId Source() const { return Source_; }
-    void SetSource(const TActorId& actorId) { Source_ = actorId; }
     void SetStep(ui64 step) { StepTxId_.Step = step; }
-    bool IsProposed() const { return Source_ != TActorId(); }
 
     bool IsTableRead() const { return Tx.HasReadTableTransaction(); }
 
@@ -268,16 +271,16 @@ public:
     const NKikimrTxDataShard::TReadTableTransaction &GetReadTableTransaction() const { return Tx.GetReadTableTransaction(); }
 
     ui32 ExtractKeys(bool allowErrors);
-    bool ReValidateKeys();
+    bool ReValidateKeys(const NTable::TScheme& scheme);
 
     ui64 GetTxSize() const { return TxSize; }
     ui32 KeysCount() const { return TxInfo().ReadsCount + TxInfo().WritesCount; }
-
-    void SetTxCacheUsage(ui64 val) { TxCacheUsage = val; }
-    ui64 GetTxCacheUsage() const { return TxCacheUsage; }
+    ui64 GetMemoryConsumption() const override {
+        return GetTxSize() + GetMemoryAllocated();
+    }
 
     void ReleaseTxData();
-    bool IsTxDataReleased() const { return IsReleased; }
+    bool GetIsReleased() const { return IsReleased; }
 
     bool IsTxInfoLoaded() const { return TxInfo().Loaded; }
 
@@ -291,13 +294,11 @@ public:
 private:
     TStepOrder StepTxId_;
     TString TxBody;
-    TActorId Source_;
     TEngineBay EngineBay;
     NKikimrTxDataShard::TDataTransaction Tx;
     NKikimrTxDataShard::TError::EKind ErrCode;
     TString ErrStr;
     ui64 TxSize;
-    ui64 TxCacheUsage;
     bool IsReleased;
     bool BuiltTaskRunner;
     TMaybe<ui64> PerShardKeysSizeLimitBytes_;
@@ -309,12 +310,6 @@ private:
 
     void ComputeTxSize();
     void ComputeDeadline();
-};
-
-enum class ERestoreDataStatus {
-    Ok,
-    Restart,
-    Error,
 };
 
 ///
@@ -437,7 +432,7 @@ public:
     const TValidatedDataTx::TPtr& GetDataTx() const { return DataTx; }
     TValidatedDataTx::TPtr BuildDataTx(TDataShard *self,
                                        TTransactionContext &txc,
-                                       const TActorContext &ctx);
+                                       const TActorContext &ctx, bool isPropose = false);
     void ClearDataTx() { DataTx = nullptr; }
 
     const NKikimrTxDataShard::TFlatSchemeTransaction &GetSchemeTx() const
@@ -478,9 +473,9 @@ public:
         return 0;
     }
 
-    bool ReValidateKeys() {
+    bool ReValidateKeys(const NTable::TScheme& scheme) {
         if (DataTx && (DataTx->ProgramSize() || DataTx->IsKqpDataTx()))
-            return DataTx->ReValidateKeys();
+            return DataTx->ReValidateKeys(scheme);
         return true;
     }
 
@@ -604,6 +599,7 @@ public:
     }
 
     bool OnStopping(TDataShard& self, const TActorContext& ctx) override;
+    void OnCleanup(TDataShard& self, std::vector<std::unique_ptr<IEventHandle>>& replies) override;
 
 private:
     void TrackMemory() const;

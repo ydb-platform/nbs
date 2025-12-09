@@ -54,6 +54,7 @@ public:
         }
         TNodeInfo* node = Self->FindNode(nodeId);
         if (node != nullptr) {
+            node->UpdateResourceMaximum(record.GetResourceMaximum());
             node->UpdateResourceTotalUsage(record);
             node->Statistics.SetLastAliveTimestamp(now.MilliSeconds());
             node->ActualizeNodeStatistics(now);
@@ -63,6 +64,10 @@ public:
                        << ResourceRawValuesFromMetrics(record.GetTotalResourceUsage())
                        << " accumulated to "
                        << node->ResourceTotalValues);
+            if (Self->NotEnoughResources && !node->IsOverloaded() && node->IsAllowedToRunTablet() && node->IsAbleToScheduleTablet()) {
+                Self->NotEnoughResources = false;
+                Self->ProcessWaitQueue();
+            }
             db.Table<Schema::Node>().Key(nodeId).Update<Schema::Node::Statistics>(node->Statistics);
         }
         return true;

@@ -1,23 +1,24 @@
 #pragma once
 
-#include "actorsystem.h"
 #include "event.h"
-#include "executor_thread.h"
+#include "mailbox.h"
 #include "monotonic.h"
-#include "thread_context.h"
 
 #include <contrib/ydb/library/actors/actor_type/indexes.h>
+#include <contrib/ydb/library/actors/util/datetime.h>
 #include <contrib/ydb/library/actors/util/local_process_key.h>
 
 #include <util/system/tls.h>
 #include <util/generic/noncopyable.h>
 
+#include <library/cpp/containers/absl_flat_hash/flat_hash_set.h>
+
 namespace NActors {
     class TActorSystem;
     class TMailboxTable;
-    struct TMailboxHeader;
+    class TMailbox;
 
-    class TGenericExecutorThread;
+    class TExecutorThread;
     class IActor;
     class ISchedulerCookie;
     class IExecutorPool;
@@ -44,12 +45,12 @@ namespace NActors {
 
     struct TActivationContext {
     public:
-        TMailboxHeader& Mailbox;
-        TGenericExecutorThread& ExecutorThread;
+        TMailbox& Mailbox;
+        TExecutorThread& ExecutorThread;
         const NHPTimer::STime EventStart;
 
     protected:
-        explicit TActivationContext(TMailboxHeader& mailbox, TGenericExecutorThread& executorThread, NHPTimer::STime eventStart)
+        explicit TActivationContext(TMailbox& mailbox, TExecutorThread& executorThread, NHPTimer::STime eventStart)
             : Mailbox(mailbox)
             , ExecutorThread(executorThread)
             , EventStart(eventStart)
@@ -62,6 +63,8 @@ namespace NActors {
 
         template <ESendingType SendingType = ESendingType::Common>
         static bool Send(std::unique_ptr<IEventHandle> &&ev);
+
+        static bool Send(const TActorId& recipient, std::unique_ptr<IEventBase> ev, ui32 flags = 0, ui64 cookie = 0);
 
         template <ESendingType SendingType = ESendingType::Common>
         static bool Forward(TAutoPtr<IEventHandle>& ev, const TActorId& recipient);
@@ -128,12 +131,19 @@ namespace NActors {
 
         static i64 GetCurrentEventTicks();
         static double GetCurrentEventTicksAsSeconds();
+
+        static void EnableMailboxStats();
+
+        static ui32 GetOverwrittenEventsPerMailbox();
+        static void SetOverwrittenEventsPerMailbox(ui32 value);
+        static ui64 GetOverwrittenTimePerMailboxTs();
+        static void SetOverwrittenTimePerMailboxTs(ui64 value);
     };
 
     struct TActorContext: public TActivationContext {
         const TActorId SelfID;
         using TEventFlags = IEventHandle::TEventFlags;
-        explicit TActorContext(TMailboxHeader& mailbox, TGenericExecutorThread& executorThread, NHPTimer::STime eventStart, const TActorId& selfID)
+        explicit TActorContext(TMailbox& mailbox, TExecutorThread& executorThread, NHPTimer::STime eventStart, const TActorId& selfID)
             : TActivationContext(mailbox, executorThread, eventStart)
             , SelfID(selfID)
         {
@@ -267,6 +277,9 @@ namespace NActors {
 
         virtual TActorId Register(IActor*, TMailboxType::EType mailboxType = TMailboxType::HTSwap, ui32 poolId = Max<ui32>()) const noexcept = 0;
         virtual TActorId RegisterWithSameMailbox(IActor*) const noexcept = 0;
+
+        virtual TActorId RegisterAlias() noexcept = 0;
+        virtual void UnregisterAlias(const TActorId& actorId) noexcept = 0;
     };
 
     class TDecorator;
@@ -315,34 +328,63 @@ namespace NActors {
 
     };
 
-    template<bool>
-    struct TActorUsageImpl {
-        void OnEnqueueEvent(ui64 /*time*/) {} // called asynchronously when event is put in the mailbox
-        void OnDequeueEvent() {} // called when processed by Executor
-        double GetUsage(ui64 /*time*/) { return 0; } // called from collector thread
-        void DoActorInit() {}
-    };
 
-    template<>
-    struct TActorUsageImpl<true> {
-        static constexpr int TimestampBits = 40;
-        static constexpr int CountBits = 24;
-        static constexpr ui64 TimestampMask = ((ui64)1 << TimestampBits) - 1;
-        static constexpr ui64 CountMask = ((ui64)1 << CountBits) - 1;
+    class TActorActivityType {
+    public:
+        TActorActivityType()
+            : TActorActivityType(FromEnum(EInternalActorType::OTHER))
+        {}
 
-        std::atomic_uint64_t QueueSizeAndTimestamp = 0;
-        std::atomic_uint64_t UsedTime = 0; // how much time did we consume since last GetUsage() call
-        ui64 LastUsageTimestamp = 0; // when GetUsage() was called the last time
+        template <typename EEnum>
+        static TActorActivityType FromEnum(EEnum activityType) requires (std::is_enum_v<EEnum>) {
+            return FromIndex(TEnumProcessKey<TActorActivityTag, EEnum>::GetIndex(activityType));
+        }
 
-        void OnEnqueueEvent(ui64 time);
-        void OnDequeueEvent();
-        double GetUsage(ui64 time);
-        void DoActorInit() { LastUsageTimestamp = GetCycleCountFast(); }
+        static TActorActivityType FromName(TStringBuf activityName) {
+            return FromIndex(TLocalProcessKeyState<TActorActivityTag>::GetInstance().Register(activityName));
+        }
+
+        template <const char* Name>
+        static TActorActivityType FromStaticName() {
+            return FromIndex(TLocalProcessKey<TActorActivityTag, Name>::GetIndex());
+        }
+
+        template <typename T>
+        static TActorActivityType FromTypeName() {
+            // 200 characters is limit for solomon metric tag length
+            return FromIndex(TLocalProcessExtKey<TActorActivityTag, T, 200>::GetIndex());
+        }
+
+        static constexpr TActorActivityType FromIndex(size_t index) {
+            return TActorActivityType(index);
+        }
+
+        constexpr ui32 GetIndex() const {
+            return Index;
+        }
+
+        TStringBuf GetName() const {
+            return TLocalProcessKeyState<TActorActivityTag>::GetInstance().GetNameByIndex(Index);
+        }
+
+        friend constexpr bool operator==(TActorActivityType a, TActorActivityType b) = default;
+
+        template <typename EEnum>
+        friend bool operator==(TActorActivityType a, EEnum b) requires (std::is_enum_v<EEnum>) {
+            return a == FromEnum(b);
+        }
+
+    private:
+        explicit constexpr TActorActivityType(ui32 index)
+            : Index(index)
+        {}
+
+    private:
+        ui32 Index;
     };
 
     class IActor
         : protected IActorOps
-        , public TActorUsageImpl<ActorLibCollectUsageStats>
     {
     private:
         TActorIdentity SelfActorId;
@@ -350,18 +392,16 @@ namespace NActors {
         friend void DoActorInit(TActorSystem*, IActor*, const TActorId&, const TActorId&);
         friend class TDecorator;
 
+    private:
+        // actor aliases
+        absl::flat_hash_set<ui64> Aliases;
+        friend class TMailbox;
+
     private: // stuck actor monitoring
         TMonotonic LastReceiveTimestamp;
         size_t StuckIndex = Max<size_t>();
         friend class TExecutorPoolBaseMailboxed;
-        friend class TGenericExecutorThread;
-
-        IActor(const ui32 activityType)
-            : SelfActorId(TActorId())
-            , ElapsedTicks(0)
-            , ActivityType(activityType)
-            , HandledEvents(0) {
-        }
+        friend class TExecutorThread;
 
     protected:
         TActorCallbackBehaviour CImpl;
@@ -371,29 +411,34 @@ namespace NActors {
         /// @sa services.proto NKikimrServices::TActivity::EType
         using EActorActivity = EInternalActorType;
         using EActivityType = EActorActivity;
-        ui32 ActivityType;
+        TActorActivityType ActivityType;
 
     protected:
         ui64 HandledEvents;
 
-        template <typename EEnum = EActivityType, typename std::enable_if<std::is_enum<EEnum>::value, bool>::type v = true>
-        IActor(const EEnum activityEnumType = EActivityType::OTHER)
-            : IActor(TEnumProcessKey<TActorActivityTag, EEnum>::GetIndex(activityEnumType)) {
-        }
+        IActor(TActorActivityType activityType = {})
+            : SelfActorId(TActorId())
+            , ElapsedTicks(0)
+            , ActivityType(activityType)
+            , HandledEvents(0)
+        {}
 
-        IActor(TActorCallbackBehaviour&& cImpl, const ui32 activityType)
+        IActor(TActorCallbackBehaviour&& cImpl, TActorActivityType activityType = {})
             : SelfActorId(TActorId())
             , ElapsedTicks(0)
             , CImpl(std::move(cImpl))
             , ActivityType(activityType)
             , HandledEvents(0)
-        {
-        }
+        {}
 
-        template <typename EEnum = EActivityType, typename std::enable_if<std::is_enum<EEnum>::value, bool>::type v = true>
-        IActor(TActorCallbackBehaviour&& cImpl, const EEnum activityEnumType = EActivityType::OTHER)
-            : IActor(std::move(cImpl), TEnumProcessKey<TActorActivityTag, EEnum>::GetIndex(activityEnumType)) {
-        }
+        template <typename EEnum>
+        IActor(TActorCallbackBehaviour&& cImpl, EEnum activityType) requires (std::is_enum_v<EEnum>)
+            : IActor(std::move(cImpl), TActorActivityType::FromEnum(activityType))
+        {}
+
+        IActor(TActorCallbackBehaviour&& cImpl, TStringBuf activityName)
+            : IActor(std::move(cImpl), TActorActivityType::FromName(activityName))
+        {}
 
     public:
         template <class TEventBase>
@@ -445,8 +490,17 @@ namespace NActors {
         virtual void PassAway();
 
     protected:
-        void SetActivityType(ui32 activityType) {
+        void SetActivityType(TActorActivityType activityType) {
             ActivityType = activityType;
+        }
+
+        template <typename EEnum>
+        void SetActivityType(EEnum activityType) requires (std::is_enum_v<EEnum>) {
+            ActivityType = TActorActivityType::FromEnum(activityType);
+        }
+
+        void SetActivityType(TStringBuf activityName) {
+            ActivityType = TActorActivityType::FromName(activityName);
         }
 
     public:
@@ -513,7 +567,7 @@ namespace NActors {
         void AddElapsedTicks(i64 ticks) {
             ElapsedTicks += ticks;
         }
-        ui32 GetActivityType() const {
+        TActorActivityType GetActivityType() const {
             return ActivityType;
         }
         ui64 GetHandledEvents() const {
@@ -524,6 +578,11 @@ namespace NActors {
         }
 
         void Receive(TAutoPtr<IEventHandle>& ev) {
+#ifndef NDEBUG
+            if (ev->Flags & IEventHandle::FlagDebugTrackReceive) {
+                YaDebugBreak();
+            }
+#endif
             ++HandledEvents;
             LastReceiveTimestamp = TActivationContext::Monotonic();
             if (CImpl.Initialized()) {
@@ -538,11 +597,7 @@ namespace NActors {
         }
 
     protected:
-        void SetEnoughCpu(bool isEnough) {
-            if (TlsThreadContext) {
-                TlsThreadContext->IsEnoughCpu = isEnough;
-            }
-        }
+        void SetEnoughCpu(bool isEnough);
 
         void Describe(IOutputStream&) const noexcept override;
         bool Send(TAutoPtr<IEventHandle> ev) const noexcept;
@@ -601,6 +656,9 @@ namespace NActors {
         // some memory.
         TActorId RegisterWithSameMailbox(IActor* actor) const noexcept final;
 
+        TActorId RegisterAlias() noexcept final;
+        void UnregisterAlias(const TActorId& actorId) noexcept final;
+
         std::pair<ui32, ui32> CountMailboxEvents(ui32 maxTraverse = Max<ui32>()) const;
 
     private:
@@ -617,18 +675,20 @@ namespace NActors {
         return TLocalProcessKeyState<TActorActivityTag>::GetInstance().GetNameByIndex(index);
     }
 
+    inline TStringBuf GetActivityTypeName(TActorActivityType activityType) {
+        return activityType.GetName();
+    }
+
     class IActorCallback: public IActor {
     protected:
-        template <class TEnum = IActor::EActivityType>
-        IActorCallback(TReceiveFunc stateFunc, const TEnum activityType = IActor::EActivityType::OTHER)
-            : IActor(TActorCallbackBehaviour(stateFunc), activityType) {
+        IActorCallback(TReceiveFunc stateFunc)
+            : IActor(TActorCallbackBehaviour(stateFunc))
+        {}
 
-        }
-
-        IActorCallback(TReceiveFunc stateFunc, const ui32 activityType)
-            : IActor(TActorCallbackBehaviour(stateFunc), activityType) {
-
-        }
+        template <typename T>
+        IActorCallback(TReceiveFunc stateFunc, T&& activityType)
+            : IActor(TActorCallbackBehaviour(stateFunc), std::forward<T>(activityType))
+        {}
 
     public:
         template <typename T>
@@ -657,31 +717,18 @@ namespace NActors {
     private:
         using TDerivedReceiveFunc = void (TDerived::*)(TAutoPtr<IEventHandle>& ev);
 
-        template <typename T, typename = const char*>
-        struct HasActorName: std::false_type {};
-        template <typename T>
-        struct HasActorName<T, decltype((void)T::ActorName, (const char*)nullptr)>: std::true_type {};
-
-        template <typename T, typename = const char*>
-        struct HasActorActivityType: std::false_type {};
-        template <typename T>
-        struct HasActorActivityType<T, decltype((void)T::ActorActivityType, (const char*)nullptr)>: std::true_type {};
-
-        static ui32 GetActivityTypeIndexImpl() {
-            if constexpr(HasActorName<TDerived>::value) {
-                return TLocalProcessKey<TActorActivityTag, TDerived::ActorName>::GetIndex();
-            } else if constexpr (HasActorActivityType<TDerived>::value) {
-                using TActorActivity = decltype(((TDerived*)nullptr)->ActorActivityType());
-                static_assert(std::is_enum<TActorActivity>::value);
-                return TEnumProcessKey<TActorActivityTag, TActorActivity>::GetIndex(TDerived::ActorActivityType());
+        static TActorActivityType GetDefaultActivityTypeImpl() {
+            if constexpr (requires { TDerived::ActorName; }) {
+                return TActorActivityType::FromStaticName<TDerived::ActorName>();
+            } else if constexpr (requires { TDerived::ActorActivityType; }) {
+                return TActorActivityType::FromEnum(TDerived::ActorActivityType());
             } else {
-                // 200 characters is limit for solomon metric tag length
-                return TLocalProcessExtKey<TActorActivityTag, TDerived, 200>::GetIndex();
+                return TActorActivityType::FromTypeName<TDerived>();
             }
         }
 
-        static ui32 GetActivityTypeIndex() {
-            static const ui32 result = GetActivityTypeIndexImpl();
+        static TActorActivityType GetDefaultActivityType() {
+            static const TActorActivityType result = GetDefaultActivityTypeImpl();
             return result;
         }
 
@@ -689,17 +736,13 @@ namespace NActors {
         // static constexpr char ActorName[] = "UNNAMED";
 
         TActor(TDerivedReceiveFunc func)
-            : IActorCallback(static_cast<TReceiveFunc>(func), GetActivityTypeIndex()) {
-        }
+            : IActorCallback(static_cast<TReceiveFunc>(func), GetDefaultActivityType())
+        {}
 
-        template <class TEnum = EActivityType>
-        TActor(TDerivedReceiveFunc func, const TEnum activityEnumType = EActivityType::OTHER)
-            : IActorCallback(static_cast<TReceiveFunc>(func), activityEnumType) {
-        }
-
-        TActor(TDerivedReceiveFunc func, const TString& actorName)
-            : IActorCallback(static_cast<TReceiveFunc>(func), TLocalProcessKeyState<TActorActivityTag>::GetInstance().Register(actorName)) {
-        }
+        template <typename T>
+        TActor(TDerivedReceiveFunc func, T&& activityType)
+            : IActorCallback(static_cast<TReceiveFunc>(func), std::forward<T>(activityType))
+        {}
 
     public:
         typedef TDerived TThis;
@@ -837,154 +880,6 @@ namespace NActors {
             return true;
         }
     };
-
-
-    template <ESendingType SendingType>
-    bool TGenericExecutorThread::Send(TAutoPtr<IEventHandle> ev) {
-#ifdef USE_ACTOR_CALLSTACK
-        do {
-            (ev)->Callstack = TCallstack::GetTlsCallstack();
-            (ev)->Callstack.Trace();
-        } while (false)
-#endif
-        Ctx.IncrementSentEvents();
-        return ActorSystem->Send<SendingType>(ev);
-    }
-
-    template <ESendingType SendingType>
-    TActorId TGenericExecutorThread::RegisterActor(IActor* actor, TMailboxType::EType mailboxType, ui32 poolId,
-            TActorId parentId)
-    {
-        if (!parentId) {
-            parentId = CurrentRecipient;
-        }
-        if (poolId == Max<ui32>()) {
-            if constexpr (SendingType == ESendingType::Common) {
-                return Ctx.Executor->Register(actor, mailboxType, ++RevolvingWriteCounter, parentId);
-            } else if (!TlsThreadContext) {
-                return Ctx.Executor->Register(actor, mailboxType, ++RevolvingWriteCounter, parentId);
-            } else {
-                ESendingType previousType = std::exchange(TlsThreadContext->SendingType, SendingType);
-                TActorId id = Ctx.Executor->Register(actor, mailboxType, ++RevolvingWriteCounter, parentId);
-                TlsThreadContext->SendingType = previousType;
-                return id;
-            }
-        } else {
-            return ActorSystem->Register<SendingType>(actor, mailboxType, poolId, ++RevolvingWriteCounter, parentId);
-        }
-    }
-
-    template <ESendingType SendingType>
-    TActorId TGenericExecutorThread::RegisterActor(IActor* actor, TMailboxHeader* mailbox, ui32 hint, TActorId parentId) {
-        if (!parentId) {
-            parentId = CurrentRecipient;
-        }
-        if constexpr (SendingType == ESendingType::Common) {
-            return Ctx.Executor->Register(actor, mailbox, hint, parentId);
-        } else if (!TlsActivationContext) {
-            return Ctx.Executor->Register(actor, mailbox, hint, parentId);
-        } else {
-            ESendingType previousType = std::exchange(TlsThreadContext->SendingType, SendingType);
-            TActorId id = Ctx.Executor->Register(actor, mailbox, hint, parentId);
-            TlsThreadContext->SendingType = previousType;
-            return id;
-        }
-    }
-
-
-    template <ESendingType SendingType>
-    bool TActivationContext::Send(TAutoPtr<IEventHandle> ev) {
-        return TlsActivationContext->ExecutorThread.Send<SendingType>(ev);
-    }
-
-    template <ESendingType SendingType>
-    bool TActivationContext::Send(std::unique_ptr<IEventHandle> &&ev) {
-        return TlsActivationContext->ExecutorThread.Send<SendingType>(ev.release());
-    }
-
-    template <ESendingType SendingType>
-    bool TActivationContext::Forward(TAutoPtr<IEventHandle>& ev, const TActorId& recipient) {
-        return Send(IEventHandle::Forward(ev, recipient));
-    }
-
-    template <ESendingType SendingType>
-    bool TActivationContext::Forward(THolder<IEventHandle>& ev, const TActorId& recipient) {
-        return Send(IEventHandle::Forward(ev, recipient));
-    }
-
-    template <ESendingType SendingType>
-    bool TActorContext::Send(const TActorId& recipient, IEventBase* ev, TEventFlags flags, ui64 cookie, NWilson::TTraceId traceId) const {
-        return Send<SendingType>(new IEventHandle(recipient, SelfID, ev, flags, cookie, nullptr, std::move(traceId)));
-    }
-
-    template <ESendingType SendingType>
-    bool TActorContext::Send(TAutoPtr<IEventHandle> ev) const {
-        return ExecutorThread.Send<SendingType>(ev);
-    }
-
-    template <ESendingType SendingType>
-    bool TActorContext::Forward(TAutoPtr<IEventHandle>& ev, const TActorId& recipient) const {
-        return ExecutorThread.Send<SendingType>(IEventHandle::Forward(ev, recipient));
-    }
-
-    template <ESendingType SendingType>
-    bool TActorContext::Forward(THolder<IEventHandle>& ev, const TActorId& recipient) const {
-        return ExecutorThread.Send<SendingType>(IEventHandle::Forward(ev, recipient));
-    }
-
-    template <ESendingType SendingType>
-    TActorId TActivationContext::Register(IActor* actor, TActorId parentId, TMailboxType::EType mailboxType, ui32 poolId) {
-        return TlsActivationContext->ExecutorThread.RegisterActor<SendingType>(actor, mailboxType, poolId, parentId);
-    }
-
-    template <ESendingType SendingType>
-    TActorId TActorContext::Register(IActor* actor, TMailboxType::EType mailboxType, ui32 poolId) const {
-        return ExecutorThread.RegisterActor<SendingType>(actor, mailboxType, poolId, SelfID);
-    }
-
-    template <ESendingType SendingType>
-    bool TActorIdentity::Send(const TActorId& recipient, IEventBase* ev, TEventFlags flags, ui64 cookie, NWilson::TTraceId traceId) const {
-        return TActivationContext::Send<SendingType>(new IEventHandle(recipient, *this, ev, flags, cookie, nullptr, std::move(traceId)));
-    }
-
-    template <ESendingType SendingType>
-    bool IActor::Send(const TActorId& recipient, IEventBase* ev, TEventFlags flags, ui64 cookie, NWilson::TTraceId traceId) const {
-        return SelfActorId.Send<SendingType>(recipient, ev, flags, cookie, std::move(traceId));
-    }
-
-    template <ESendingType SendingType>
-    TActorId IActor::Register(IActor* actor, TMailboxType::EType mailboxType, ui32 poolId) const noexcept {
-        Y_ABORT_UNLESS(actor);
-        return TlsActivationContext->ExecutorThread.RegisterActor<SendingType>(actor, mailboxType, poolId, SelfActorId);
-    }
-
-
-    template <ESendingType SendingType>
-    TActorId TActorSystem::Register(IActor* actor, TMailboxType::EType mailboxType, ui32 executorPool,
-                        ui64 revolvingCounter, const TActorId& parentId) {
-        Y_ABORT_UNLESS(actor);
-        Y_ABORT_UNLESS(executorPool < ExecutorPoolCount, "executorPool# %" PRIu32 ", ExecutorPoolCount# %" PRIu32,
-                (ui32)executorPool, (ui32)ExecutorPoolCount);
-        if constexpr (SendingType == ESendingType::Common) {
-            return CpuManager->GetExecutorPool(executorPool)->Register(actor, mailboxType, revolvingCounter, parentId);
-        } else if (!TlsThreadContext) {
-            return CpuManager->GetExecutorPool(executorPool)->Register(actor, mailboxType, revolvingCounter, parentId);
-        } else {
-            ESendingType previousType = std::exchange(TlsThreadContext->SendingType, SendingType);
-            TActorId id = CpuManager->GetExecutorPool(executorPool)->Register(actor, mailboxType, revolvingCounter, parentId);
-            TlsThreadContext->SendingType = previousType;
-            return id;
-        }
-    }
-
-    template <ESendingType SendingType>
-    bool TActorSystem::Send(TAutoPtr<IEventHandle> ev) const {
-        if constexpr (SendingType == ESendingType::Common) {
-            return this->GenericSend< &IExecutorPool::Send>(ev);
-        } else {
-            return this->SpecificSend(ev, SendingType);
-        }
-    }
 
 }
 
