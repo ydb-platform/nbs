@@ -27,6 +27,7 @@ public:
 
     TDuration GetLockRetryTimeout() const;
     TDuration GetEntryTimeout() const;
+    TDuration GetRegularFileEntryTimeout() const;
     TDuration GetNegativeEntryTimeout() const;
     TDuration GetAttrTimeout() const;
 

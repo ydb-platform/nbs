@@ -202,6 +202,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ReadAheadCacheMaxHandlesPerNode,        ui32,      128                )\
     xxx(NodeIndexCacheMaxNodes,                 ui32,        0                )\
     xxx(EntryTimeout,                    TDuration, TDuration::Zero()         )\
+    xxx(RegularFileEntryTimeout,         TDuration, TDuration::Zero()         )\
     xxx(NegativeEntryTimeout,            TDuration, TDuration::Zero()         )\
     xxx(AttrTimeout,                     TDuration, TDuration::Zero()         )\
     xxx(MaxOutOfOrderCompactionMapLoadRequestsInQueue,  ui32,      5          )\

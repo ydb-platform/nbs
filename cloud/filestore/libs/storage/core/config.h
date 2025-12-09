@@ -206,6 +206,7 @@ public:
     ui32 GetThreeStageWriteThreshold() const;
     bool GetUnalignedThreeStageWriteEnabled() const;
     TDuration GetEntryTimeout() const;
+    TDuration GetRegularFileEntryTimeout() const;
     TDuration GetNegativeEntryTimeout() const;
     TDuration GetAttrTimeout() const;
     ui32 GetPreferredBlockSizeMultiplier() const;

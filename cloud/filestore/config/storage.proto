@@ -266,6 +266,7 @@ message TStorageConfig
     // Params that are passed to filestore-vhost via TCreateSessionResponse via
     // TFilestore::Features. They do not have any effect on the tablet itself.
     optional uint32 EntryTimeout = 335;
+    optional uint32 RegularFileEntryTimeout = 570;
     optional uint32 NegativeEntryTimeout = 336;
     optional uint32 AttrTimeout = 337;
 
