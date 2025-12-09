@@ -354,6 +354,7 @@ void TFileSystem::Read(
     request->SetLength(size);
 
     if (Config->GetZeroCopyReadEnabled()) {
+        // TODO(issue-4800): Support ZeroCopyReadEnabled for local filestore
         struct iovec* iov = nullptr;
         int count = 0;
         int ret = fuse_out_buf(req, &iov, &count);
@@ -417,6 +418,9 @@ void TFileSystem::Read(
 
         const auto& response = future.GetValue();
         if (CheckResponse(self, *callContext, req, response)) {
+            // Depending on the configuration of the filestore, data may still
+            // be returned as a Buffer even when I/O vectors are provided in the
+            // request.
             const auto& buffer = response.GetBuffer();
             if (buffer.empty()) {
                 self->ReplyBuf(
