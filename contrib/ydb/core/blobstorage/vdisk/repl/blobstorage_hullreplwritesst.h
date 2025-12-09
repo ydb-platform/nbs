@@ -38,6 +38,27 @@ namespace NKikimr {
             ERROR,                 // something gone wrong, further operation impossible
         };
 
+        static TString StateToString(EState state) {
+            switch (state) {
+            case EState::INVALID:
+                return "INVALID";
+            case EState::STOPPED:
+                return "STOPPED";
+            case EState::PDISK_MESSAGE_PENDING:
+                return "PDISK_MESSAGE_PENDING";
+            case EState::NOT_READY:
+                return "NOT_READY";
+            case EState::COLLECT:
+                return "COLLECT";
+            case EState::COMMIT_PENDING:
+                return "COMMIT_PENDING";
+            case EState::WAITING_FOR_COMMIT:
+                return "WAITING_FOR_COMMIT";
+            case EState::ERROR:
+                return "ERROR";
+            }
+        }
+
         enum class EOutputState {
             INVALID,
             INTERMEDIATE_CHUNK,
@@ -53,6 +74,7 @@ namespace NKikimr {
             , HullDs(std::move(hullDs))
             , State(EState::STOPPED)
             , MinReservedChunksCount(ReplCtx->VDiskCfg->HullSstSizeInChunksFresh)
+            , Merger(ReplCtx->VCtx->Top->GType, ReplCtx->GetAddHeader())
             , Arena(&TRopeArenaBackend::Allocate)
         {}
 
@@ -137,7 +159,7 @@ namespace NKikimr {
             Writer = std::make_unique<TWriter>(ReplCtx->VCtx, EWriterDataType::Replication, 1, ReplCtx->PDiskCtx->Dsk->Owner,
                 ReplCtx->PDiskCtx->Dsk->OwnerRound, ReplCtx->PDiskCtx->Dsk->ChunkSize,
                 ReplCtx->PDiskCtx->Dsk->AppendBlockSize, ReplCtx->PDiskCtx->Dsk->BulkWriteBlockSize,
-                HullDs->LogoBlobs->AllocSstId(), true, ReservedChunks, Arena);
+                HullDs->LogoBlobs->AllocSstId(), true, ReservedChunks, Arena, ReplCtx->GetAddHeader());
 
             // start collecting blobs
             State = EState::COLLECT;
@@ -148,19 +170,21 @@ namespace NKikimr {
             Y_ABORT_UNLESS(record.Id > PrevID);
             Y_ABORT_UNLESS(!record.Id.PartId());
 
-            // generate merged ingress for all locally recovered parts
-            TIngress ingress = TIngress::CreateFromRepl(ReplCtx->VCtx->Top.get(), ReplCtx->VCtx->ShortSelfVDisk,
-                                                        record.Id, record.LocalParts);
+            TMemRecLogoBlob memRec(TIngress::CreateFromRepl(ReplCtx->VCtx->Top.get(), ReplCtx->VCtx->ShortSelfVDisk,
+                record.Id, record.LocalParts));
 
-            // add disk blob to merger (in order to write it to SSTable)
-            Merger.AddBlob(TDiskBlob(&record.Data, record.LocalParts, ReplCtx->VCtx->Top->GType, record.Id));
+            // set merger state to match generated blob
+            memRec.SetType(TBlobType::DiskBlob);
+            memRec.SetDiskBlob(TDiskPart(0, 0, record.Data.GetSize()));
+            Merger.FinishFromBlob();
 
-            // create memory record for disk blob with correct length
-            TMemRecLogoBlob memRec(ingress);
-            memRec.SetDiskBlob(TDiskPart(0, 0, Merger.GetDiskBlobRawSize()));
-
-            const bool success = Writer->Push(record.Id, memRec, &Merger);
+            TDiskPart preallocatedLocation;
+            const bool success = Writer->PushIndexOnly(record.Id, memRec, &Merger, &preallocatedLocation);
             if (success) {
+                Y_DEBUG_ABORT_UNLESS(Merger.GetCollectTask().Reads.empty());
+                const TDiskPart writtenLocation = Writer->PushDataOnly(std::move(record.Data));
+                Y_ABORT_UNLESS(writtenLocation == preallocatedLocation);
+
                 if (auto msg = Writer->GetPendingMessage()) {
                     IssueWriteCmd(std::move(msg), EOutputState::INTERMEDIATE_CHUNK);
                 }

@@ -1,4 +1,5 @@
 #include "const.h"
+#include "datashard_impl.h"
 #include "datashard_pipeline.h"
 #include "execution_unit_ctors.h"
 
@@ -45,9 +46,10 @@ EExecutionStatus TStoreDataTxUnit::Execute(TOperation::TPtr op,
 
     TActiveTransaction *tx = dynamic_cast<TActiveTransaction*>(op.Get());
     Y_VERIFY_S(tx, "cannot cast operation of kind " << op->GetKind());
-    Y_ABORT_UNLESS(tx->GetDataTx());
+    auto dataTx = tx->GetDataTx();
+    Y_ABORT_UNLESS(dataTx);
 
-    bool cached = Pipeline.SaveForPropose(tx->GetDataTx());
+    bool cached = Pipeline.SaveForPropose(dataTx);
     if (cached) {
         Pipeline.RegisterDistributedWrites(op, txc.DB);
     }

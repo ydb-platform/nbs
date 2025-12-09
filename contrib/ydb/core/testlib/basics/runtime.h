@@ -1,5 +1,6 @@
 #pragma once
 
+#include <contrib/ydb/core/audit/audit_log_service.h>
 #include <contrib/ydb/core/testlib/actors/test_runtime.h>
 #include <contrib/ydb/library/actors/interconnect/interconnect.h>
 
@@ -12,9 +13,13 @@ namespace NActors {
         using TNodeLocationCallback = std::function<TNodeLocation(ui32)>;
         TNodeLocationCallback LocationCallback;
 
+        NKikimr::NAudit::TAuditLogBackends AuditLogBackends;
+
         ~TTestBasicRuntime();
 
         void Initialize(TEgg) override;
+
         void AddICStuff();
+        void AddAuditLogStuff();
     };
 }

@@ -2,7 +2,7 @@
 
 #include "defs.h"
 
-#include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/appdata_fwd.h>
 #include <contrib/ydb/core/base/blobstorage.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>

@@ -20,6 +20,7 @@ PEERDIR(
     library/cpp/lwtrace
     library/cpp/protobuf/interop
     contrib/ydb/core/base
+    contrib/ydb/core/external_sources
     contrib/ydb/core/fq/libs/actors/logging
     contrib/ydb/core/fq/libs/common
     contrib/ydb/core/fq/libs/config
@@ -33,13 +34,16 @@ PEERDIR(
     contrib/ydb/core/fq/libs/shared_resources
     contrib/ydb/core/fq/libs/ydb
     contrib/ydb/core/mon
+    contrib/ydb/library/db_pool
     contrib/ydb/library/security
+    contrib/ydb/library/yql/providers/s3/path_generator
+    yql/essentials/public/issue
     contrib/ydb/public/api/protos
-    contrib/ydb/public/sdk/cpp/client/ydb_scheme
-    contrib/ydb/public/sdk/cpp/client/ydb_table
+    contrib/ydb/public/sdk/cpp/adapters/issue
+    contrib/ydb/public/sdk/cpp/src/client/scheme
+    contrib/ydb/public/sdk/cpp/src/client/table
     contrib/ydb/library/db_pool
     contrib/ydb/library/yql/providers/s3/path_generator
-    contrib/ydb/library/yql/public/issue
 )
 
 YQL_LAST_ABI_VERSION()
@@ -49,5 +53,4 @@ END()
 RECURSE(
     events
     internal
-    proto
 )

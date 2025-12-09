@@ -6,13 +6,20 @@ SIZE(SMALL)
 
 PEERDIR(
     contrib/ydb/library/actors/testlib
-    contrib/ydb/library/yql/public/udf/service/stub
-    contrib/ydb/library/yql/sql/pg_dummy
+    yql/essentials/public/udf/service/stub
+    yql/essentials/sql/pg_dummy
     contrib/ydb/library/yql/providers/dq/actors/yt
     contrib/ydb/library/yql/providers/dq/actors
     contrib/ydb/library/yql/dq/actors/compute
-    contrib/ydb/library/yql/minikql/computation/llvm14
-    contrib/ydb/library/yql/minikql/comp_nodes/llvm14
+    yql/essentials/minikql/computation/llvm16
+    yql/essentials/minikql/comp_nodes/llvm16
+
+    yql/essentials/core/dq_integration/transform
+    contrib/ydb/library/yql/dq/comp_nodes
+    yql/essentials/providers/common/comp_nodes
+    yql/essentials/minikql/comp_nodes
+    contrib/ydb/library/yql/dq/transform
+    contrib/ydb/library/yql/providers/dq/task_runner    
 )
 
 SRCS(

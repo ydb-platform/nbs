@@ -1,6 +1,7 @@
 #include "sys_view.h"
 #include "group_geometry_info.h"
 #include "storage_stats_calculator.h"
+#include "group_layout_checker.h"
 
 #include <contrib/ydb/core/base/feature_flags.h>
 #include <contrib/ydb/core/blobstorage/base/utility.h>
@@ -29,11 +30,11 @@ void FillKey(NKikimrSysView::TVSlotKey* key, const TVSlotId& id) {
 }
 
 TGroupId TransformKey(const NKikimrSysView::TGroupKey& key) {
-    return key.GetGroupId();
+    return TGroupId::FromProto(&key, &NKikimrSysView::TGroupKey::GetGroupId);
 }
 
 void FillKey(NKikimrSysView::TGroupKey* key, const TGroupId& id) {
-    key->SetGroupId(id);
+    key->SetGroupId(id.GetRawId());
 }
 
 TBoxStoragePoolId TransformKey(const NKikimrSysView::TStoragePoolKey& key) {
@@ -312,6 +313,7 @@ void CopyInfo(NKikimrSysView::TPDiskInfo* info, const THolder<TBlobStorageContro
     }
     info->SetAvailableSize(pDiskInfo->Metrics.GetAvailableSize());
     info->SetTotalSize(pDiskInfo->Metrics.GetTotalSize());
+    info->SetState(NKikimrBlobStorage::TPDiskState::E_Name(pDiskInfo->Metrics.GetState()));
     info->SetStatusV2(NKikimrBlobStorage::EDriveStatus_Name(pDiskInfo->Status));
     if (pDiskInfo->StatusTimestamp != TInstant::Zero()) {
         info->SetStatusChangeTimestamp(pDiskInfo->StatusTimestamp.GetValue());
@@ -325,8 +327,10 @@ void CopyInfo(NKikimrSysView::TPDiskInfo* info, const THolder<TBlobStorageContro
 }
 
 void SerializeVSlotInfo(NKikimrSysView::TVSlotInfo *pb, const TVDiskID& vdiskId, const NKikimrBlobStorage::TVDiskMetrics& m,
-        NKikimrBlobStorage::EVDiskStatus status, NKikimrBlobStorage::TVDiskKind::EVDiskKind kind, bool isBeingDeleted) {
-    pb->SetGroupId(vdiskId.GroupID);
+        std::optional<NKikimrBlobStorage::EVDiskStatus> status, NKikimrBlobStorage::TVDiskKind::EVDiskKind kind,
+        bool isBeingDeleted)
+{
+    pb->SetGroupId(vdiskId.GroupID.GetRawId());
     pb->SetGroupGeneration(vdiskId.GroupGeneration);
     pb->SetFailRealm(vdiskId.FailRealm);
     pb->SetFailDomain(vdiskId.FailDomain);
@@ -337,7 +341,24 @@ void SerializeVSlotInfo(NKikimrSysView::TVSlotInfo *pb, const TVDiskID& vdiskId,
     if (m.HasAvailableSize()) {
         pb->SetAvailableSize(m.GetAvailableSize());
     }
-    pb->SetStatusV2(NKikimrBlobStorage::EVDiskStatus_Name(status));
+    if (status) {
+        pb->SetStatusV2(NKikimrBlobStorage::EVDiskStatus_Name(*status));
+    }
+    if (m.HasState()) {
+        pb->SetState(NKikimrWhiteboard::EVDiskState_Name(m.GetState()));
+    }
+    if (m.HasReplicated()) {
+        pb->SetReplicated(m.GetReplicated());
+    }
+    if (m.HasDiskSpace()) {
+        pb->SetDiskSpace(NKikimrWhiteboard::EFlag_Name(m.GetDiskSpace()));
+    }
+    if (m.HasIsThrottling()) {
+        pb->SetIsThrottling(m.GetIsThrottling());
+    }
+    if (m.GetThrottlingRate()) {
+        pb->SetThrottlingRate(m.GetThrottlingRate());
+    }
     pb->SetKind(NKikimrBlobStorage::TVDiskKind::EVDiskKind_Name(kind));
     if (isBeingDeleted) {
         pb->SetIsBeingDeleted(true);
@@ -345,8 +366,8 @@ void SerializeVSlotInfo(NKikimrSysView::TVSlotInfo *pb, const TVDiskID& vdiskId,
 }
 
 void CopyInfo(NKikimrSysView::TVSlotInfo* info, const THolder<TBlobStorageController::TVSlotInfo>& vSlotInfo) {
-    SerializeVSlotInfo(info, vSlotInfo->GetVDiskId(), vSlotInfo->Metrics, vSlotInfo->Status, vSlotInfo->Kind,
-        vSlotInfo->IsBeingDeleted());
+    SerializeVSlotInfo(info, vSlotInfo->GetVDiskId(), vSlotInfo->Metrics, vSlotInfo->VDiskStatus,
+        vSlotInfo->Kind, vSlotInfo->IsBeingDeleted());
 }
 
 void CopyInfo(NKikimrSysView::TGroupInfo* info, const THolder<TBlobStorageController::TGroupInfo>& groupInfo) {
@@ -378,6 +399,8 @@ void CopyInfo(NKikimrSysView::TGroupInfo* info, const THolder<TBlobStorageContro
     if (latencyStats.GetFast) {
         info->SetGetFastLatency(latencyStats.GetFast->MicroSeconds());
     }
+
+    info->SetLayoutCorrect(groupInfo->LayoutCorrect);
 }
 
 void CopyInfo(NKikimrSysView::TStoragePoolInfo* info, const TBlobStorageController::TStoragePoolInfo& poolInfo) {
@@ -422,6 +445,21 @@ void TBlobStorageController::UpdateSystemViews() {
         return;
     }
 
+    const TMonotonic now = TActivationContext::Monotonic();
+    const TDuration expiration = TDuration::Seconds(15);
+    for (auto& [key, value] : VSlots) {
+        if (!value->VDiskStatus && value->VDiskStatusTimestamp + expiration <= now) {
+            value->VDiskStatus = NKikimrBlobStorage::ERROR;
+            SysViewChangedVSlots.insert(key);
+        }
+    }
+    for (auto& [key, value] : StaticVSlots) {
+        if (!value.VDiskStatus && value.VDiskStatusTimestamp + expiration <= now) {
+            value.VDiskStatus = NKikimrBlobStorage::ERROR;
+            SysViewChangedVSlots.insert(key);
+        }
+    }
+
     if (!SysViewChangedPDisks.empty() || !SysViewChangedVSlots.empty() || !SysViewChangedGroups.empty() ||
             !SysViewChangedStoragePools.empty() || SysViewChangedSettings) {
         auto update = MakeHolder<TEvControllerUpdateSystemViews>();
@@ -448,6 +486,7 @@ void TBlobStorageController::UpdateSystemViews() {
                 if (pdisk.PDiskMetrics) {
                     pb->SetAvailableSize(pdisk.PDiskMetrics->GetAvailableSize());
                     pb->SetTotalSize(pdisk.PDiskMetrics->GetTotalSize());
+                    pb->SetState(NKikimrBlobStorage::TPDiskState::E_Name(pdisk.PDiskMetrics->GetState()));
                     if (pdisk.PDiskMetrics->HasEnforcedDynamicSlotSize()) {
                         pb->SetEnforcedDynamicSlotSize(pdisk.PDiskMetrics->GetEnforcedDynamicSlotSize());
                     }
@@ -469,10 +508,10 @@ void TBlobStorageController::UpdateSystemViews() {
             if (const auto& bsConfig = StorageConfig.GetBlobStorageConfig(); bsConfig.HasServiceSet()) {
                 const auto& ss = bsConfig.GetServiceSet();
                 for (const auto& group : ss.GetGroups()) {
-                    if (!SysViewChangedGroups.count(group.GetGroupID())) {
+                    if (!SysViewChangedGroups.count(TGroupId::FromProto(&group, &NKikimrBlobStorage::TGroupInfo::GetGroupID))) {
                         continue;
                     }
-                    auto *pb = &state.Groups[group.GetGroupID()];
+                    auto *pb = &state.Groups[TGroupId::FromProto(&group, &NKikimrBlobStorage::TGroupInfo::GetGroupID)];
                     pb->SetGeneration(group.GetGroupGeneration());
                     pb->SetEncryptionMode(group.GetEncryptionMode());
                     pb->SetLifeCyclePhase(group.GetLifeCyclePhase());
@@ -481,6 +520,7 @@ void TBlobStorageController::UpdateSystemViews() {
 
                     const NKikimrBlobStorage::TVDiskMetrics zero;
                     std::vector<TGroupDiskInfo> disks;
+                    std::vector<TPDiskId> pdiskIds;
                     for (const auto& realm : group.GetRings()) {
                         for (const auto& domain : realm.GetFailDomains()) {
                             for (const auto& location : domain.GetVDiskLocations()) {
@@ -496,10 +536,28 @@ void TBlobStorageController::UpdateSystemViews() {
                                 if (disk.VDiskMetrics && disk.PDiskMetrics) {
                                     disks.push_back(std::move(disk));
                                 }
+                                pdiskIds.emplace_back(location.GetNodeID(), location.GetPDiskID());
                             }
                         }
                     }
                     CalculateGroupUsageStats(pb, disks, (TBlobStorageGroupType::EErasureSpecies)group.GetErasureSpecies());
+
+                    if (auto groupInfo = TBlobStorageGroupInfo::Parse(group, nullptr, nullptr)) {
+                        NLayoutChecker::TGroupLayout layout(groupInfo->GetTopology());
+                        NLayoutChecker::TDomainMapper mapper;
+                        TGroupGeometryInfo geom(groupInfo->Type, SelfManagementEnabled
+                            ? StorageConfig.GetSelfManagementConfig().GetGeometry()
+                            : NKikimrBlobStorage::TGroupGeometry());
+
+                        Y_DEBUG_ABORT_UNLESS(pdiskIds.size() == groupInfo->GetTotalVDisksNum());
+
+                        for (size_t i = 0; i < pdiskIds.size(); ++i) {
+                            const TPDiskId pdiskId = pdiskIds[i];
+                            layout.AddDisk({mapper, HostRecords->GetLocation(pdiskId.NodeId), pdiskId, geom}, i);
+                        }
+
+                        pb->SetLayoutCorrect(layout.IsCorrect());
+                    }
                 }
             }
         }

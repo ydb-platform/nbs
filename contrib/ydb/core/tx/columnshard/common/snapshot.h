@@ -1,6 +1,6 @@
 #pragma once
 #include <contrib/ydb/library/conclusion/status.h>
-
+#include <contrib/ydb/library/accessor/positive_integer.h>
 #include <util/stream/output.h>
 #include <util/string/cast.h>
 #include <util/datetime/base.h>
@@ -8,6 +8,10 @@
 namespace NKikimrColumnShardProto {
 class TSnapshot;
 }
+
+namespace NJson {
+class TJsonValue;
+};
 
 namespace NKikimr::NOlap {
 
@@ -21,6 +25,13 @@ public:
         : PlanStep(planStep)
         , TxId(txId) {
     }
+
+    constexpr TSnapshot(const TPositiveIncreasingControlInteger planStep, const ui64 txId) noexcept
+        : PlanStep(planStep.Val())
+        , TxId(txId) {
+    }
+
+    NJson::TJsonValue SerializeToJson() const;
 
     constexpr TInstant GetPlanInstant() const noexcept {
         return TInstant::MilliSeconds(PlanStep);
@@ -50,6 +61,12 @@ public:
         return TSnapshot(-1ll, -1ll);
     }
 
+    static TSnapshot MaxForPlanInstant(const TInstant planInstant) noexcept;
+
+    static TSnapshot MaxForPlanStep(const ui64 planStep) noexcept;
+
+    static TSnapshot MaxForPlanStep(const TPositiveIncreasingControlInteger planStep) noexcept;
+
     constexpr bool operator==(const TSnapshot&) const noexcept = default;
 
     constexpr auto operator<=>(const TSnapshot&) const noexcept = default;
@@ -71,15 +88,24 @@ public:
         PlanStep = proto.GetPlanStep();
         TxId = proto.GetTxId();
         if (!PlanStep) {
-            return TConclusionStatus::Fail("incorrect planStep in proto");
+            return TConclusionStatus::Fail("incorrect planStep in proto for snapshot");
         }
         if (!TxId) {
-            return TConclusionStatus::Fail("incorrect txId in proto");
+            return TConclusionStatus::Fail("incorrect txId in proto for snapshot");
         }
         return TConclusionStatus::Success();
     }
 
+    TConclusionStatus DeserializeFromString(const TString& data);
+
+    TString SerializeToString() const;
+
     TString DebugString() const;
+    NJson::TJsonValue DebugJson() const;
+
+    explicit operator size_t() const {
+        return CombineHashes(PlanStep, TxId);
+    }
 };
 
 } // namespace NKikimr::NOlap

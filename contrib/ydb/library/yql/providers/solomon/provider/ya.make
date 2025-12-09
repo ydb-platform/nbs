@@ -11,6 +11,8 @@ SRCS(
     yql_solomon_dq_integration.cpp
     yql_solomon_io_discovery.cpp
     yql_solomon_load_meta.cpp
+    yql_solomon_logical_optimize.cpp
+    yql_solomon_mkql_compiler.cpp
     yql_solomon_physical_optimize.cpp
     yql_solomon_provider.cpp
 )
@@ -18,16 +20,22 @@ SRCS(
 PEERDIR(
     contrib/ydb/library/actors/protos
     contrib/ydb/library/yql/dq/expr_nodes
-    contrib/ydb/library/yql/dq/integration
-    contrib/ydb/library/yql/providers/common/config
-    contrib/ydb/library/yql/providers/common/proto
-    contrib/ydb/library/yql/providers/common/provider
-    contrib/ydb/library/yql/providers/common/transform
+    contrib/ydb/library/yql/dq/opt
+    contrib/ydb/library/yql/providers/common/token_accessor/client
     contrib/ydb/library/yql/providers/dq/expr_nodes
-    contrib/ydb/library/yql/providers/result/expr_nodes
+    contrib/ydb/library/yql/providers/solomon/actors
+    contrib/ydb/library/yql/providers/solomon/common
     contrib/ydb/library/yql/providers/solomon/expr_nodes
     contrib/ydb/library/yql/providers/solomon/proto
-    contrib/ydb/library/yql/dq/opt
+    contrib/ydb/library/yql/providers/solomon/scheme
+    contrib/ydb/library/yql/providers/solomon/solomon_accessor/client
+    contrib/ydb/public/sdk/cpp/src/client/types/credentials
+    yql/essentials/core/dq_integration
+    yql/essentials/providers/common/config
+    yql/essentials/providers/common/proto
+    yql/essentials/providers/common/provider
+    yql/essentials/providers/common/transform
+    yql/essentials/providers/result/expr_nodes
 )
 
 YQL_LAST_ABI_VERSION()

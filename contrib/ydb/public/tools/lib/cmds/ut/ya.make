@@ -1,0 +1,12 @@
+PY3TEST()
+
+PEERDIR(
+    contrib/ydb/public/tools/lib/cmds
+    yql/essentials/providers/common/proto
+)
+
+TEST_SRCS(
+    test.py
+)
+
+END()

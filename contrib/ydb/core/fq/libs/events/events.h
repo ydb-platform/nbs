@@ -1,15 +1,15 @@
 #pragma once
 #include "event_ids.h"
 
-#include <contrib/ydb/library/yql/core/facade/yql_facade.h>
+#include <yql/essentials/core/facade/yql_facade.h>
 #include <contrib/ydb/library/yql/providers/common/db_id_async_resolver/db_async_resolver.h>
 #include <contrib/ydb/library/yql/providers/common/db_id_async_resolver/mdb_endpoint_generator.h>
 #include <contrib/ydb/library/yql/providers/dq/provider/yql_dq_gateway.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue.h>
 
 #include <contrib/ydb/core/fq/libs/graph_params/proto/graph_params.pb.h>
 #include <contrib/ydb/core/fq/libs/protos/fq_private.pb.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
+#include <ydb-cpp-sdk/client/table/table.h>
 
 #include <contrib/ydb/library/actors/core/events.h>
 
@@ -249,6 +249,8 @@ struct TEvents {
         const bool FatalError;
     };
 };
+
+NActors::TActorId MakeYqPrivateProxyId();
 
 } // namespace NFq
 

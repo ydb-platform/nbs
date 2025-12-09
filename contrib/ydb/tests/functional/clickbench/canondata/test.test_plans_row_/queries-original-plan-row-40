@@ -1,0 +1,204 @@
+{
+    "meta": {
+        "type": "script",
+        "version": "0.2"
+    },
+    "queries": [
+        {
+            "Plan": {
+                "Node Type": "Query",
+                "PlanNodeType": "Query",
+                "Plans": [
+                    {
+                        "Node Type": "ResultSet",
+                        "PlanNodeId": 8,
+                        "PlanNodeType": "ResultSet",
+                        "Plans": [
+                            {
+                                "Node Type": "Limit-Offset",
+                                "Operators": [
+                                    {
+                                        "Inputs": [
+                                            {
+                                                "InternalOperatorId": 1
+                                            }
+                                        ],
+                                        "Limit": "10",
+                                        "Name": "Limit"
+                                    },
+                                    {
+                                        "Inputs": [
+                                            {
+                                                "ExternalPlanNodeId": 6
+                                            }
+                                        ],
+                                        "Name": "Offset",
+                                        "Offset": "100"
+                                    }
+                                ],
+                                "PlanNodeId": 7,
+                                "Plans": [
+                                    {
+                                        "Node Type": "UnionAll",
+                                        "PlanNodeId": 6,
+                                        "PlanNodeType": "Connection",
+                                        "Plans": [
+                                            {
+                                                "Node Type": "Limit",
+                                                "Operators": [
+                                                    {
+                                                        "Inputs": [
+                                                            {
+                                                                "ExternalPlanNodeId": 4
+                                                            }
+                                                        ],
+                                                        "Limit": "Min(If,SUM(10,100))",
+                                                        "Name": "Limit"
+                                                    }
+                                                ],
+                                                "PlanNodeId": 5,
+                                                "Plans": [
+                                                    {
+                                                        "Node Type": "Merge",
+                                                        "PlanNodeId": 4,
+                                                        "PlanNodeType": "Connection",
+                                                        "Plans": [
+                                                            {
+                                                                "Node Type": "TopSort-Aggregate",
+                                                                "Operators": [
+                                                                    {
+                                                                        "Inputs": [
+                                                                            {
+                                                                                "InternalOperatorId": 1
+                                                                            }
+                                                                        ],
+                                                                        "Limit": "SUM(10,100)",
+                                                                        "Name": "TopSort",
+                                                                        "TopSortBy": "argument.Count0"
+                                                                    },
+                                                                    {
+                                                                        "Inputs": [
+                                                                            {
+                                                                                "ExternalPlanNodeId": 2
+                                                                            }
+                                                                        ],
+                                                                        "Name": "Aggregate",
+                                                                        "Phase": "Final"
+                                                                    }
+                                                                ],
+                                                                "PlanNodeId": 3,
+                                                                "Plans": [
+                                                                    {
+                                                                        "HashFunc": "HashV1",
+                                                                        "KeyColumns": [
+                                                                            "EventDate",
+                                                                            "URLHash"
+                                                                        ],
+                                                                        "Node Type": "HashShuffle",
+                                                                        "PlanNodeId": 2,
+                                                                        "PlanNodeType": "Connection",
+                                                                        "Plans": [
+                                                                            {
+                                                                                "Node Type": "Aggregate-Filter-TableRangeScan",
+                                                                                "Operators": [
+                                                                                    {
+                                                                                        "Aggregation": "{SUM(1)}",
+                                                                                        "GroupBy": "[item.EventDate,item.URLHash]",
+                                                                                        "Inputs": [
+                                                                                            {
+                                                                                                "InternalOperatorId": 1
+                                                                                            },
+                                                                                            {
+                                                                                                "InternalOperatorId": 1
+                                                                                            }
+                                                                                        ],
+                                                                                        "Name": "Aggregate",
+                                                                                        "Phase": "Intermediate"
+                                                                                    },
+                                                                                    {
+                                                                                        "Inputs": [
+                                                                                            {
+                                                                                                "InternalOperatorId": 2
+                                                                                            }
+                                                                                        ],
+                                                                                        "Name": "Filter",
+                                                                                        "Predicate": "item.IsRefresh == 0 AND If AND item.RefererHash == 3594120000172545465"
+                                                                                    },
+                                                                                    {
+                                                                                        "Inputs": [],
+                                                                                        "Name": "TableRangeScan",
+                                                                                        "Path": "/local/clickbench/plans/row/hits",
+                                                                                        "ReadColumns": [
+                                                                                            "EventDate",
+                                                                                            "IsRefresh",
+                                                                                            "RefererHash",
+                                                                                            "TraficSourceID",
+                                                                                            "URLHash"
+                                                                                        ],
+                                                                                        "ReadRange": [
+                                                                                            "CounterID (62)",
+                                                                                            "EventDate [15887, 15917]",
+                                                                                            "UserID (-\u221e, +\u221e)",
+                                                                                            "EventTime (-\u221e, +\u221e)",
+                                                                                            "WatchID (-\u221e, +\u221e)"
+                                                                                        ],
+                                                                                        "Scan": "Parallel",
+                                                                                        "Table": "clickbench/plans/row/hits"
+                                                                                    }
+                                                                                ],
+                                                                                "PlanNodeId": 1,
+                                                                                "Tables": [
+                                                                                    "clickbench/plans/row/hits"
+                                                                                ]
+                                                                            }
+                                                                        ]
+                                                                    }
+                                                                ]
+                                                            }
+                                                        ],
+                                                        "SortColumns": [
+                                                            "Count0 (Desc)"
+                                                        ]
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ],
+                "Stats": {
+                    "ResourcePoolId": "default"
+                }
+            },
+            "tables": [
+                {
+                    "name": "/local/clickbench/plans/row/hits",
+                    "reads": [
+                        {
+                            "columns": [
+                                "EventDate",
+                                "IsRefresh",
+                                "RefererHash",
+                                "TraficSourceID",
+                                "URLHash"
+                            ],
+                            "lookup_by": [
+                                "CounterID (62)"
+                            ],
+                            "scan_by": [
+                                "EventDate [15887, 15917]",
+                                "UserID (-\u221e, +\u221e)",
+                                "EventTime (-\u221e, +\u221e)",
+                                "WatchID (-\u221e, +\u221e)"
+                            ],
+                            "type": "Scan"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

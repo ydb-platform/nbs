@@ -4,13 +4,16 @@
 #include <contrib/ydb/core/scheme/scheme_pathid.h>
 #include <contrib/ydb/core/base/tx_processing.h>
 #include <contrib/ydb/core/base/subdomain.h>
+#include <contrib/ydb/core/persqueue/utils.h>
+#include <contrib/ydb/core/persqueue/writer/partition_chooser.h>
 #include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
 #include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
 #include <contrib/ydb/core/protos/subdomains.pb.h>
 #include <contrib/ydb/core/scheme/scheme_tabledefs.h>
 #include <contrib/ydb/core/scheme_types/scheme_type_registry.h>
-#include <contrib/ydb/core/tx/datashard/sys_tables.h>
+#include <contrib/ydb/core/tx/locks/sys_tables.h>
 #include <contrib/ydb/library/aclib/aclib.h>
+#include <contrib/ydb/library/login/protos/login.pb.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
@@ -46,6 +49,19 @@ struct TSchemeCacheConfig : public TThrRefBase {
 struct TDomainInfo : public TAtomicRefCount<TDomainInfo> {
     using TPtr = TIntrusivePtr<TDomainInfo>;
 
+    struct TUser {
+        TString Sid;
+
+        TString ToString() const;
+    };
+
+    struct TGroup {
+        TString Sid;
+        TVector<TString> Members;
+
+        TString ToString() const;
+    };
+
     explicit TDomainInfo(const TPathId& domainKey, const TPathId& resourcesDomainKey)
         : DomainKey(domainKey)
         , ResourcesDomainKey(resourcesDomainKey)
@@ -66,6 +82,27 @@ struct TDomainInfo : public TAtomicRefCount<TDomainInfo> {
         if (descr.HasServerlessComputeResourcesMode()) {
             ServerlessComputeResourcesMode = descr.GetServerlessComputeResourcesMode();
         }
+
+        if (descr.HasSharedHive()) {
+            SharedHiveId = descr.GetSharedHive();
+        }
+
+        if (descr.HasSecurityState()) {
+            for (const auto& sid : descr.GetSecurityState().GetSids()) {
+                switch (sid.GetType()) {
+                case NLoginProto::ESidType_SidType_USER:
+                    Users.emplace_back(sid.GetName());
+                    break;
+                case NLoginProto::ESidType_SidType_GROUP: {
+                    TVector<TString> members(sid.GetMembers().begin(), sid.GetMembers().end());
+                    Groups.emplace_back(sid.GetName(), std::move(members));
+                    break;
+                }
+                default:
+                    break;
+                }
+            }
+        }
     }
 
     inline ui64 GetVersion() const {
@@ -80,6 +117,14 @@ struct TDomainInfo : public TAtomicRefCount<TDomainInfo> {
         }
     }
 
+    inline ui64 ExtractHive() const {
+        if (IsServerless()) {
+            return SharedHiveId;
+        } else {
+            return Params.GetHive();
+        }
+    }
+
     inline bool IsServerless() const {
         return DomainKey != ResourcesDomainKey;
     }
@@ -89,6 +134,9 @@ struct TDomainInfo : public TAtomicRefCount<TDomainInfo> {
     NKikimrSubDomains::TProcessingParams Params;
     TCoordinators Coordinators;
     TMaybeServerlessComputeResourcesMode ServerlessComputeResourcesMode;
+    ui64 SharedHiveId = 0;
+    TVector<TUser> Users;
+    TVector<TGroup> Groups;
 
     TString ToString() const;
 
@@ -98,6 +146,14 @@ private:
     }
 
 }; // TDomainInfo
+
+enum class ETableKind {
+    KindUnknown = 0,
+    KindRegularTable = 1,
+    KindSyncIndexTable = 2,
+    KindAsyncIndexTable = 3,
+    KindVectorIndexTable = 4,
+};
 
 struct TSchemeCacheNavigate {
     enum class EStatus {
@@ -143,6 +199,9 @@ struct TSchemeCacheNavigate {
         KindBlockStoreVolume = 19,
         KindFileStore = 20,
         KindView = 21,
+        KindResourcePool = 22,
+        KindBackupCollection = 23,
+        KindTransfer = 24,
     };
 
     struct TListNodeEntry : public TAtomicRefCount<TListNodeEntry> {
@@ -176,6 +235,10 @@ struct TSchemeCacheNavigate {
     struct TPQGroupInfo : public TAtomicRefCount<TPQGroupInfo> {
         EKind Kind = KindUnknown;
         NKikimrSchemeOp::TPersQueueGroupDescription Description;
+        TVector<NScheme::TTypeInfo> Schema;
+        TVector<NKikimr::TKeyDesc::TPartitionInfo> Partitioning;
+        std::shared_ptr<NPQ::IPartitionChooser> PartitionChooser;
+        std::shared_ptr<NPQ::TPartitionGraph> PartitionGraph;
     };
 
     struct TRtmrVolumeInfo : public TAtomicRefCount<TRtmrVolumeInfo> {
@@ -250,6 +313,16 @@ struct TSchemeCacheNavigate {
         NKikimrSchemeOp::TViewDescription Description;
     };
 
+    struct TResourcePoolInfo : public TAtomicRefCount<TResourcePoolInfo> {
+        EKind Kind = KindUnknown;
+        NKikimrSchemeOp::TResourcePoolDescription Description;
+    };
+
+    struct TBackupCollectionInfo : public TAtomicRefCount<TBackupCollectionInfo> {
+        EKind Kind = KindUnknown;
+        NKikimrSchemeOp::TBackupCollectionDescription Description;
+    };
+
     struct TEntry {
         enum class ERequestType : ui8 {
             ByPath,
@@ -283,6 +356,8 @@ struct TSchemeCacheNavigate {
         THashSet<TString> NotNullColumns;
         TVector<NKikimrSchemeOp::TIndexDescription> Indexes;
         TVector<NKikimrSchemeOp::TCdcStreamDescription> CdcStreams;
+        TVector<NKikimrSchemeOp::TSequenceDescription> Sequences;
+        ETableKind TableKind = ETableKind::KindUnknown;
 
         // other
         TIntrusiveConstPtr<TDomainDescription> DomainDescription;
@@ -301,6 +376,8 @@ struct TSchemeCacheNavigate {
         TIntrusiveConstPtr<TBlockStoreVolumeInfo> BlockStoreVolumeInfo;
         TIntrusiveConstPtr<TFileStoreInfo> FileStoreInfo;
         TIntrusiveConstPtr<TViewInfo> ViewInfo;
+        TIntrusiveConstPtr<TResourcePoolInfo> ResourcePoolInfo;
+        TIntrusiveConstPtr<TBackupCollectionInfo> BackupCollectionInfo;
 
         TString ToString() const;
         TString ToString(const NScheme::TTypeRegistry& typeRegistry) const;
@@ -348,13 +425,6 @@ struct TSchemeCacheRequest {
         OpScheme = 1 << 3,
     };
 
-    enum EKind {
-        KindUnknown = 0,
-        KindRegularTable = 1,
-        KindSyncIndexTable = 2,
-        KindAsyncIndexTable= 3,
-    };
-
     struct TEntry {
         // in
         THolder<TKeyDesc> KeyDescription;
@@ -364,7 +434,7 @@ struct TSchemeCacheRequest {
 
         // out
         EStatus Status = EStatus::Unknown;
-        EKind Kind = EKind::KindUnknown;
+        ETableKind Kind = ETableKind::KindUnknown;
         TIntrusivePtr<TDomainInfo> DomainInfo;
         ui64 GeneralVersion = 0;
 

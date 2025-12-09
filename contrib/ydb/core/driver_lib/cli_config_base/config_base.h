@@ -1,9 +1,17 @@
 #pragma once
 
-#include <contrib/ydb/library/yql/minikql/mkql_function_registry.h>
+#include <yql/essentials/minikql/mkql_function_registry.h>
 #include <contrib/ydb/public/lib/deprecated/client/msgbus_client.h>
 #include <contrib/ydb/public/lib/deprecated/client/grpc_client.h>
 #include <contrib/ydb/core/util/pb.h>
+#include <contrib/ydb/core/protos/blobstorage_vdisk_config.pb.h>
+#include <contrib/ydb/core/protos/drivemodel.pb.h>
+#include <contrib/ydb/core/protos/feature_flags.pb.h>
+#include <contrib/ydb/core/protos/pqconfig.pb.h>
+#include <contrib/ydb/core/protos/netclassifier.pb.h>
+#include <contrib/ydb/core/protos/auth.pb.h>
+#include <contrib/ydb/core/protos/key.pb.h>
+#include <contrib/ydb/core/fq/libs/config/protos/fq_config.pb.h>
 
 #include <google/protobuf/text_format.h>
 
