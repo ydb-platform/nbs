@@ -2952,6 +2952,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(0, requestInProgressSensor->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(requestCount, requestCountSensor->GetAtomic());
         UNIT_ASSERT(!path.Exists());
+    }
 
     Y_UNIT_TEST(ShouldHandleZeroCopyReadRequest)
     {
