@@ -73,6 +73,15 @@ TString CreateBuffer(size_t len, char fill = 0)
     return TString(len, fill);
 }
 
+TString GenerateValidateData(ui32 size, ui32 seed = 0)
+{
+    TString data(size, 0);
+    for (ui32 i = 0; i < size; ++i) {
+        data[i] = 'A' + ((i + seed) % ('Z' - 'A' + 1));
+    }
+    return data;
+}
+
 template <class F>
 bool WaitForCondition(TDuration timeout, F&& predicate)
 {
@@ -2967,6 +2976,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         const ui64 nodeId = 123;
         const ui64 handleId = 456;
         const ui64 size = 30;
+        const auto data = GenerateValidateData(size, 2);
 
         bootstrap.Service->ReadDataHandler = [&](auto callContext, auto request)
         {
@@ -2977,9 +2987,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             UNIT_ASSERT_EQUAL(request->GetLength(), iovecs[0].GetLength());
 
             NProto::TReadDataResponse result;
-            memset(
+            memcpy(
                 reinterpret_cast<void*>(iovecs[0].GetBase()),
-                'a',
+                data.data(),
                 iovecs[0].GetLength());
             result.SetLength(iovecs[0].GetLength());
 
@@ -2999,7 +3009,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(read.Wait(WaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(read.GetValue(), size);
         UNIT_ASSERT_VALUES_EQUAL(
-            CreateBuffer(size, 'a'),
+            data,
             TString(reinterpret_cast<char*>(&request->Out->Body), size));
     }
 
@@ -3016,6 +3026,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         const ui64 nodeId = 123;
         const ui64 handleId = 456;
         const ui64 size = 105;
+        const auto data = GenerateValidateData(size, 1);
 
         bootstrap.Service->ReadDataHandler = [&](auto callContext, auto request)
         {
@@ -3026,7 +3037,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             UNIT_ASSERT_EQUAL(request->GetLength(), iovecs[0].GetLength());
 
             NProto::TReadDataResponse result;
-            result.MutableBuffer()->assign(TString(request->GetLength(), 'a'));
+            result.MutableBuffer()->assign(data);
 
             return MakeFuture(result);
         };
@@ -3044,7 +3055,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(read.Wait(WaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(read.GetValue(), size);
         UNIT_ASSERT_VALUES_EQUAL(
-            CreateBuffer(size, 'a'),
+            data,
             TString(reinterpret_cast<char*>(&request->Out->Body), size));
     }
 }
