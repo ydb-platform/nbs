@@ -2,7 +2,7 @@
 
 #include "defs.h"
 #include "datashard.h"
-#include "datashard_locks.h"
+#include <contrib/ydb/core/tx/locks/locks.h>
 #include "datashard_outreadset.h"
 #include "datashard_snapshots.h"
 #include "execution_unit_kind.h"
@@ -27,6 +27,12 @@ namespace NDataShard {
 using NTabletFlatExecutor::TTableSnapshotContext;
 
 class TDataShard;
+
+enum class ERestoreDataStatus {
+    Ok,
+    Restart,
+    Error,
+};
 
 enum class ETxOrder {
     Unknown,
@@ -411,6 +417,9 @@ public:
     bool IsProposeResultSentEarly() const { return ProposeResultSentEarly_; }
     void SetProposeResultSentEarly(bool value = true) { ProposeResultSentEarly_ = value; }
 
+    bool GetPerformedUserReads() const { return PerformedUserReads_; }
+    void SetPerformedUserReads(bool value = true) { PerformedUserReads_ = value; }
+
     ///////////////////////////////////
     //     DEBUG AND MONITORING      //
     ///////////////////////////////////
@@ -437,6 +446,7 @@ private:
     // Runtime flags
     ui8 MvccSnapshotRepeatable_ : 1 = 0;
     ui8 ProposeResultSentEarly_ : 1 = 0;
+    ui8 PerformedUserReads_ : 1 = 0;
 };
 
 struct TRSData {
@@ -510,6 +520,33 @@ struct TExecutionProfile {
     TInstant CompletedAt;
     TInstant StartUnitAt;
     THashMap<EExecutionUnitKind, TUnitProfile> UnitProfiles;
+};
+
+class TValidatedDataTx;
+class TValidatedWriteTx;
+
+class TValidatedTx {
+public:
+    using TPtr = std::shared_ptr<TValidatedTx>;
+
+    virtual ~TValidatedTx() = default;
+
+    enum class EType { 
+        DataTx,
+        WriteTx 
+    };
+
+public:
+    virtual EType GetType() const = 0;
+    virtual ui64 GetTxId() const = 0;
+    virtual ui64 GetMemoryConsumption() const = 0;
+
+    bool IsProposed() const {
+        return GetSource() != TActorId();
+    }
+
+    YDB_ACCESSOR_DEF(TActorId, Source);
+    YDB_ACCESSOR_DEF(ui64, TxCacheUsage);
 };
 
 struct TOperationAllListTag {};
@@ -836,6 +873,22 @@ public:
      */
     virtual bool OnStopping(TDataShard& self, const TActorContext& ctx);
 
+    /**
+     * Called when operation is aborted on cleanup
+     *
+     * Distributed transaction is cleaned up when deadline is reached, and
+     * it hasn't been planned yet. Additionally volatile transactions are
+     * cleaned when shard is waiting for transaction queue to drain, and
+     * the given operation wasn't planned yet.
+     */
+    virtual void OnCleanup(TDataShard& self, std::vector<std::unique_ptr<IEventHandle>>& replies);
+
+
+    // CommittingOps book keeping
+    const std::optional<TRowVersion>& GetCommittingOpsVersion() const { return CommittingOpsVersion; }
+    void SetCommittingOpsVersion(const TRowVersion& version) { CommittingOpsVersion = version; }
+    void ResetCommittingOpsVersion() { CommittingOpsVersion.reset(); }
+
 protected:
     TOperation()
         : TOperation(TBasicOpInfo())
@@ -909,8 +962,10 @@ private:
 
     static NMiniKQL::IEngineFlat::TValidationInfo EmptyKeysInfo;
 
+    std::optional<TRowVersion> CommittingOpsVersion;
+
 public:
-    std::optional<TRowVersion> MvccReadWriteVersion;
+    std::optional<TRowVersion> CachedMvccVersion;
 
 public:
     // Orbit used for tracking operation progress

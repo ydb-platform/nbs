@@ -2,7 +2,7 @@
 
 #include "defs.h"
 #include <contrib/ydb/core/util/activeactors.h>
-#include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/appdata_fwd.h>
 #include <contrib/ydb/core/base/blobstorage.h>
 
 namespace NKikimr {
@@ -62,7 +62,11 @@ namespace NKikimr {
             } else {
                 str << " ";
             }
-            item.Output(str);
+            if constexpr (requires { item.Output(str); }) {
+                item.Output(str);
+            } else {
+                str << item;
+            }
         }
         str << "]";
     }

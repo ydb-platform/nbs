@@ -1,5 +1,9 @@
 LIBRARY(transfer_workload)
 
+ADDINCL(
+    contrib/ydb/public/sdk/cpp
+)
+
 SRCS(
     transfer_workload.cpp
     transfer_workload_topic_to_table.cpp
@@ -10,20 +14,20 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/library/yql/public/issue
-    contrib/ydb/library/yql/public/issue/protos
+    yql/essentials/public/issue
+    yql/essentials/public/issue/protos
     contrib/ydb/public/api/grpc
     contrib/ydb/public/api/protos
     contrib/ydb/public/api/protos/annotations
-    contrib/ydb/public/lib/operation_id
-    contrib/ydb/public/lib/operation_id/protos
-    contrib/ydb/public/sdk/cpp/client/draft
-    contrib/ydb/public/sdk/cpp/client/ydb_driver
-    contrib/ydb/public/sdk/cpp/client/ydb_proto
-    contrib/ydb/public/sdk/cpp/client/ydb_table
-    contrib/ydb/public/sdk/cpp/client/ydb_topic
-    contrib/ydb/public/sdk/cpp/client/ydb_types/operation
-    contrib/ydb/public/sdk/cpp/client/ydb_types/status    
+    contrib/ydb/public/sdk/cpp/src/library/operation_id
+    contrib/ydb/public/sdk/cpp/src/library/operation_id
+    contrib/ydb/public/sdk/cpp/src/client/draft
+    contrib/ydb/public/sdk/cpp/src/client/driver
+    contrib/ydb/public/sdk/cpp/src/client/proto
+    contrib/ydb/public/sdk/cpp/src/client/table
+    contrib/ydb/public/sdk/cpp/src/client/topic
+    contrib/ydb/public/sdk/cpp/src/client/types/operation
+    contrib/ydb/public/sdk/cpp/src/client/types/status    
 )
 
 END()

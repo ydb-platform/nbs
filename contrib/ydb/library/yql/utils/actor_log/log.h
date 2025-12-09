@@ -1,6 +1,6 @@
 #pragma once
-#include <contrib/ydb/library/yql/utils/log/log.h>
-#include <contrib/ydb/library/yql/utils/log/tls_backend.h>
+#include <yql/essentials/utils/log/log.h>
+#include <yql/essentials/utils/log/tls_backend.h>
 
 #include <contrib/ydb/library/services/services.pb.h>
 

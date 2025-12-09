@@ -3,7 +3,7 @@
 #include "datashard.h"
 #include "datashard_user_table.h"
 #include "datashard_active_transaction.h"
-#include "range_treap.h"
+#include <contrib/ydb/core/tx/locks/range_treap.h>
 
 #include <library/cpp/containers/absl_flat_hash/flat_hash_map.h>
 
@@ -63,14 +63,6 @@ private:
 
         // Removes operation from the tracker, no future operations may conflict with it
         virtual void RemoveOperation(const TOperation::TPtr& op) const noexcept = 0;
-    };
-
-    struct TDefaultDependencyTrackingLogic : public TDependencyTrackingLogic {
-        explicit TDefaultDependencyTrackingLogic(TDependencyTracker& parent)
-            : TDependencyTrackingLogic(parent) {}
-
-        void AddOperation(const TOperation::TPtr& op) const noexcept override;
-        void RemoveOperation(const TOperation::TPtr& op) const noexcept override;
     };
 
     struct TMvccDependencyTrackingLogic : public TDependencyTrackingLogic {
@@ -164,7 +156,6 @@ private:
     TIntrusiveList<TOperation, TOperationDelayedWriteListTag> DelayedPlannedWrites;
     TIntrusiveList<TOperation, TOperationDelayedWriteListTag> DelayedImmediateWrites;
 
-    const TDefaultDependencyTrackingLogic DefaultLogic{ *this };
     const TMvccDependencyTrackingLogic MvccLogic{ *this };
     const TFollowerDependencyTrackingLogic FollowerLogic{ *this };
 };

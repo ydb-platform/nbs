@@ -7,11 +7,15 @@
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/base/counters.h>
 #include <contrib/ydb/core/base/hive.h>
+#include <contrib/ydb/core/base/blobstorage_common.h>
 #include <contrib/ydb/core/base/group_stat.h>
 #include <contrib/ydb/core/base/services/blobstorage_service_id.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
+#include <contrib/ydb/core/blobstorage/base/blobstorage_console_events.h>
+#include <contrib/ydb/core/blobstorage/base/blobstorage_shred_events.h>
 #include <contrib/ydb/core/blobstorage/base/blobstorage_vdiskid.h>
+#include <contrib/ydb/core/blobstorage/base/utility.h>
 #include <contrib/ydb/core/blobstorage/groupinfo/blobstorage_groupinfo.h>
 #include <contrib/ydb/core/blobstorage/groupinfo/blobstorage_groupinfo_blobmap.h>
 #include <contrib/ydb/core/blobstorage/groupinfo/blobstorage_groupinfo_sets.h>
@@ -19,6 +23,8 @@
 #include <contrib/ydb/core/driver_lib/version/version.h>
 #include <contrib/ydb/core/engine/minikql/flat_local_tx_factory.h>
 #include <contrib/ydb/core/mind/table_adapter.h>
+#include <contrib/ydb/core/mind/bscontroller/yaml_config_helpers.h>
+#include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
 #include <contrib/ydb/core/protos/blobstorage_config.pb.h>
 #include <contrib/ydb/core/protos/blobstorage_distributed_config.pb.h>
 #include <contrib/ydb/core/protos/blobstorage.pb.h>
@@ -35,6 +41,7 @@
 #include <contrib/ydb/core/tx/schemeshard/schemeshard.h>
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 #include <contrib/ydb/core/util/pb.h>
+#include <contrib/ydb/core/util/backoff.h>
 #include <contrib/ydb/core/util/format.h>
 #include <contrib/ydb/core/util/stlog.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -46,6 +53,7 @@
 #include <contrib/ydb/library/actors/core/interconnect.h>
 #include <contrib/ydb/library/actors/core/log.h>
 #include <contrib/ydb/library/actors/interconnect/interconnect.h>
+#include <contrib/ydb/library/aclib/aclib.h>
 #include <library/cpp/monlib/service/pages/templates.h>
 #include <type_traits>
 #include <util/generic/algorithm.h>

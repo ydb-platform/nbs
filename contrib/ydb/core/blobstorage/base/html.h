@@ -1,7 +1,7 @@
 #pragma once
 
 #include "defs.h"
-#include <contrib/ydb/core/protos/node_whiteboard.pb.h>
+#include <contrib/ydb/core/protos/whiteboard_flags.pb.h>
 
 namespace NKikimr {
 

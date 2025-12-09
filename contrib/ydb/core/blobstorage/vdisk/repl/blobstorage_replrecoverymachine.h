@@ -4,6 +4,8 @@
 #include "blobstorage_hullreplwritesst.h"
 #include "blobstorage_repl.h"
 
+#include <bit>
+
 namespace NKikimr {
 
     namespace NRepl {
@@ -17,6 +19,7 @@ namespace NKikimr {
             COMMIT,
             OTHER,
             PHANTOM,
+            OUT_OF_SPACE_DELAY,
             COUNT
         };
 
@@ -44,6 +47,7 @@ namespace NKikimr {
                 replInfo.CommitDuration = Durations[static_cast<ui32>(ETimeState::COMMIT)];
                 replInfo.OtherDuration = Durations[static_cast<ui32>(ETimeState::OTHER)];
                 replInfo.PhantomDuration = Durations[static_cast<ui32>(ETimeState::PHANTOM)];
+                replInfo.OutOfSpaceDelayDuration = Durations[static_cast<ui32>(ETimeState::OUT_OF_SPACE_DELAY)];
             }
 
         private:
@@ -158,7 +162,7 @@ namespace NKikimr {
                 }
 
                 Y_DEBUG_ABORT_UNLESS((item.PartsMask >> groupType.TotalPartCount()) == 0);
-                const ui32 presentParts = PopCount(item.PartsMask);
+                const ui32 presentParts = std::popcount(item.PartsMask);
                 bool canRestore = presentParts >= groupType.MinimalRestorablePartCount();
 
                 // first of all, count present parts and recover only if there are enough of these parts
@@ -204,9 +208,9 @@ namespace NKikimr {
                             partsSize += partSize;
                             TRope& data = item.Parts[i];
                             Y_ABORT_UNLESS(data.GetSize() == partSize);
-                            if (ReplCtx->HugeBlobCtx->IsHugeBlob(groupType, id)) {
-                                AddBlobToQueue(partId, TDiskBlob::Create(id.BlobSize(), i + 1,
-                                    groupType.TotalPartCount(), std::move(data), Arena), {}, true, rbq);
+                            if (ReplCtx->HugeBlobCtx->IsHugeBlob(groupType, id, ReplCtx->MinHugeBlobInBytes)) {
+                                AddBlobToQueue(partId, TDiskBlob::Create(id.BlobSize(), i + 1, groupType.TotalPartCount(),
+                                    std::move(data), Arena, ReplCtx->GetAddHeader()), {}, true, rbq);
                                 ++numHuge;
                             } else {
                                 partData[numSmallParts++] = std::move(data);
@@ -217,7 +221,7 @@ namespace NKikimr {
                         if (numSmallParts) {
                             // fill in disk blob buffer
                             AddBlobToQueue(id, TDiskBlob::CreateFromDistinctParts(&partData[0], &partData[numSmallParts],
-                                small, id.BlobSize(), Arena), small, false, rbq);
+                                small, id.BlobSize(), Arena, ReplCtx->GetAddHeader()), small, false, rbq);
                         }
 
                         ReplInfo->LogoBlobsRecovered += !!numSmallParts;
@@ -369,7 +373,7 @@ namespace NKikimr {
                     merger.Add(TDiskBlob(&last.Data, last.LocalParts, ReplCtx->VCtx->Top->GType, id));
                     merger.Add(TDiskBlob(&blob, parts, ReplCtx->VCtx->Top->GType, id));
                     last.LocalParts = merger.GetDiskBlob().GetParts();
-                    last.Data = merger.CreateDiskBlob(Arena);
+                    last.Data = merger.CreateDiskBlob(Arena, ReplCtx->GetAddHeader());
                 } else {
                     rbq.emplace(id, std::move(blob), isHugeBlob, parts);
                 }
@@ -378,7 +382,7 @@ namespace NKikimr {
             void RecoverMetadata(const TLogoBlobID& id, TRecoveredBlobsQueue& rbq) {
                 while (!MetadataParts.empty() && MetadataParts.front().FullID() <= id) {
                     const TLogoBlobID id = MetadataParts.front();
-                    const bool isHugeBlob = ReplCtx->HugeBlobCtx->IsHugeBlob(ReplCtx->VCtx->Top->GType, id.FullID());
+                    const bool isHugeBlob = ReplCtx->HugeBlobCtx->IsHugeBlob(ReplCtx->VCtx->Top->GType, id.FullID(), ReplCtx->MinHugeBlobInBytes);
                     MetadataParts.pop_front();
                     STLOG(PRI_DEBUG, BS_REPL, BSVR30, VDISKP(ReplCtx->VCtx->VDiskLogPrefix,
                         "TRecoveryMachine::RecoverMetadata"), (BlobId, id));
@@ -392,7 +396,7 @@ namespace NKikimr {
                         const NMatrix::TVectorType parts = NMatrix::TVectorType::MakeOneHot(id.PartId() - 1,
                             gtype.TotalPartCount());
                         AddBlobToQueue(id.FullID(), TDiskBlob::Create(id.BlobSize(), parts, TRope(),
-                            Arena), parts, isHugeBlob, rbq);
+                            Arena, ReplCtx->GetAddHeader()), parts, isHugeBlob, rbq);
                     }
                     ++ReplInfo->MetadataBlobs;
                 }

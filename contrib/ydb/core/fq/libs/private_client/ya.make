@@ -1,5 +1,9 @@
 LIBRARY()
 
+ADDINCL(
+    contrib/ydb/public/sdk/cpp
+)
+
 SRCS(
     internal_service.cpp
     loopback_service.cpp
@@ -13,7 +17,7 @@ PEERDIR(
     contrib/ydb/core/fq/libs/grpc
     contrib/ydb/core/fq/libs/shared_resources
     contrib/ydb/core/protos
-    contrib/ydb/public/sdk/cpp/client/ydb_table
+    contrib/ydb/public/sdk/cpp/src/client/table
 )
 
 YQL_LAST_ABI_VERSION()

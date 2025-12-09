@@ -12,7 +12,7 @@ SRCS(
 
 PEERDIR(
     library/cpp/deprecated/enum_codegen
-    contrib/ydb/library/grpc/client
+    contrib/ydb/public/sdk/cpp/src/library/grpc/client
     contrib/ydb/core/blobstorage/pdisk
     contrib/ydb/core/client/server
     contrib/ydb/core/driver_lib/cli_config_base

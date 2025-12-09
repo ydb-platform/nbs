@@ -1,9 +1,10 @@
 #pragma once
 
 #include <contrib/ydb/library/ydb_issue/proto/issue_id.pb.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue_id.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
+#include <yql/essentials/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue_id.h>
+#include <yql/essentials/public/issue/yql_issue_message.h>
+#include <contrib/ydb/library/yql/public/ydb_issue/ydb_issue_message.h>
 
 namespace NKikimr {
 

@@ -171,14 +171,14 @@ namespace NMem {
 
 } // namespace NMem
 
-    class TMemIt;
+    class TMemIter;
 
     struct TMemTableSnapshot;
 
     struct TMemTableRollbackState;
 
     class TMemTable : public TThrRefBase {
-        friend class TMemIt;
+        friend class TMemIter;
 
     public:
         struct TTxIdStat {
@@ -460,7 +460,8 @@ namespace NMem {
             return TxIdStats;
         }
 
-        void CommitTx(ui64 txId, TRowVersion rowVersion) {
+        bool CommitTx(ui64 txId, TRowVersion rowVersion) {
+            bool newRef = false;
             auto it = Committed.find(txId);
             bool toInsert = (it == Committed.end());
 
@@ -480,12 +481,16 @@ namespace NMem {
                             UndoBuffer.push_back(TUndoOpInsertRemoved{ txId });
                         }
                         Removed.erase(itRemoved);
+                    } else {
+                        newRef = true;
                     }
                 }
             }
+            return newRef;
         }
 
-        void RemoveTx(ui64 txId) {
+        bool RemoveTx(ui64 txId) {
+            bool newRef = false;
             auto it = Committed.find(txId);
             if (it == Committed.end()) {
                 auto itRemoved = Removed.find(txId);
@@ -494,8 +499,10 @@ namespace NMem {
                         UndoBuffer.push_back(TUndoOpEraseRemoved{ txId });
                     }
                     Removed.insert(txId);
+                    newRef = true;
                 }
             }
+            return newRef;
         }
 
         const absl::flat_hash_map<ui64, TRowVersion>& GetCommittedTransactions() const {
