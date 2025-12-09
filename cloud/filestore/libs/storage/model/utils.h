@@ -18,18 +18,15 @@ inline bool IsAligned(size_t len, size_t align) noexcept
 
 namespace {
 
-constexpr ui64 SeventhByteMask = static_cast<ui64>(Max<ui8>())
-                                 << (6U * CHAR_BIT);
-constexpr ui32 IdBitsCount = 6U * CHAR_BIT;
-constexpr ui32 ShardNoBitsCount = (8U * CHAR_BIT) - IdBitsCount;
-constexpr ui32 MaxShardNo = 1UL << ShardNoBitsCount;
-constexpr ui64 IdMask = Max<ui64>() >> ShardNoBitsCount;
-constexpr ui32 LeastSignificantByteMask = static_cast<ui32>(Max<ui8>());
+constexpr ui64 SeventhByteMask = static_cast<ui64>(Max<ui8>()) << (6U * 8U);
+
+constexpr ui32 IdBitsCount = 48;
+constexpr ui64 IdMask = Max<ui64>() >> (64 - IdBitsCount);
 
 // It is assumed that two most significant bytes are equal to zero
 inline ui32 SwapTwoLeastSignificantBytes(ui32 shardNo)
 {
-    ui32 leastSignificantByte = (shardNo & LeastSignificantByteMask);
+    ui32 leastSignificantByte = (shardNo & 0xff);
     shardNo >>= CHAR_BIT;
     return shardNo | (leastSignificantByte << CHAR_BIT);
 }
@@ -42,7 +39,7 @@ inline ui64 ShardedId(ui64 id, ui32 shardNo)
     // To place the second byte of shardNo into the 7th byte of the
     // resulting id, we need to swap the 7th and 8th bytes.
     shardNo = SwapTwoLeastSignificantBytes(shardNo);
-    Y_DEBUG_ABORT_UNLESS(shardNo < MaxShardNo);
+    Y_DEBUG_ABORT_UNLESS(shardNo < (1UL << (64 - IdBitsCount)));
     return (static_cast<ui64>(shardNo) << IdBitsCount) | (IdMask & id);
 }
 

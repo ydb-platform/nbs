@@ -6162,53 +6162,36 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     Y_UNIT_TEST(ShouldCalcCorrectShardedIds)
     {
-        SetRandomSeed(0xBADF00D);
-        constexpr ui32 unit32 = 1;
         constexpr ui64 unit64 = 1;
-        constexpr ui32 maxByte = (unit32 << CHAR_BIT);
-        constexpr ui32 maxTwoBytes = (unit32 << (CHAR_BIT * 2U));
-        constexpr ui64 maxSixBytes = (unit64 << (CHAR_BIT * 6U));
-        constexpr ui64 sixBytesMask = maxSixBytes - 1U;
+        constexpr ui64 sixBytesMask = (unit64 << (CHAR_BIT * 6U)) - 1U;
 
         // shardId <= 255, id uses less than 6 bytes
-        ui32 shardNo = RandomNumber<ui32>(maxByte);
-        ui64 id = RandomNumber<ui64>(maxSixBytes);
+        ui32 shardNo = 0xfa;
+        ui64 id = 0xfb0001;
         ui64 shardedId = ShardedId(id, shardNo);
         UNIT_ASSERT(!IsSeventhByteUsed(shardedId));
         UNIT_ASSERT_EQUAL(shardNo, ExtractShardNo(shardedId));
         UNIT_ASSERT_EQUAL(shardedId & sixBytesMask, id);
 
         // shardId > 255, id uses less than 6 bytes
-        shardNo = 0;
-        while (shardNo < maxByte) {
-            shardNo = RandomNumber<ui32>(maxTwoBytes);
-        }
-        id = RandomNumber<ui64>(maxSixBytes);
+        shardNo = 0xfa01;
+        id = 0xfc0003;
         shardedId = ShardedId(id, shardNo);
         UNIT_ASSERT(IsSeventhByteUsed(shardedId));
         UNIT_ASSERT_EQUAL(shardNo, ExtractShardNo(shardedId));
         UNIT_ASSERT_EQUAL(shardedId & sixBytesMask, id);
 
         // shardId <= 255, id uses more than 6 bytes
-        shardNo = RandomNumber<ui32>(maxByte);
-        id = 0;
-        while (id < maxSixBytes) {
-            id = RandomNumber<ui64>();
-        }
+        shardNo = 0xf1;
+        id = 0xdf0000000000fd;
         shardedId = ShardedId(id, shardNo);
         UNIT_ASSERT(!IsSeventhByteUsed(shardedId));
         UNIT_ASSERT_EQUAL(shardNo, ExtractShardNo(shardedId));
         UNIT_ASSERT_EQUAL(shardedId & sixBytesMask, id & sixBytesMask);
 
         // shardId > 255, id uses more than 6 bytes
-        shardNo = 0;
-        while (shardNo < maxByte) {
-            shardNo = RandomNumber<ui32>(maxTwoBytes);
-        }
-        id = 0;
-        while (id < maxSixBytes) {
-            id = RandomNumber<ui64>();
-        }
+        shardNo = 0x1c50;
+        id = 0xca0000000000df;
         shardedId = ShardedId(id, shardNo);
         UNIT_ASSERT(IsSeventhByteUsed(shardedId));
         UNIT_ASSERT_EQUAL(shardNo, ExtractShardNo(shardedId));
