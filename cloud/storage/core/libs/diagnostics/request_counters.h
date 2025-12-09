@@ -36,6 +36,7 @@ public:
         ReportControlPlaneHistogram = (1 << 2),
         AddSpecialCounters          = (1 << 3),
         LazyRequestInitialization   = (1 << 4),
+        OnlyStartEndpointRequests   = (1 << 5),
     };
 
     using TRequestType = TDiagnosticsRequestType;
@@ -51,6 +52,7 @@ public:
 private:
     const std::function<TString(TRequestType)> RequestType2Name;
     const std::function<bool(TRequestType)> IsReadWriteRequestType;
+    const std::function<bool(TRequestType)> IsStartEndpointRequestType;
     const EOptions Options;
 
     THolder<TSpecialCounters> SpecialCounters;
@@ -63,6 +65,7 @@ public:
         ui32 requestCount,
         std::function<TString(TRequestType)> requestType2Name,
         std::function<bool(TRequestType)> isReadWriteRequestType,
+        std::function<bool(TRequestType)> isStartEndpointRequestType,
         EOptions options,
         EHistogramCounterOptions histogramCounterOptions,
         const TVector<TSizeInterval>& executionTimeSizeClasses);

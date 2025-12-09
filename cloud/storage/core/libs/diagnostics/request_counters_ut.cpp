@@ -99,6 +99,12 @@ auto IsReadWriteRequest(TRequestCounters::TRequestType t)
     return true;
 }
 
+auto IsStartEndpointRequest(TRequestCounters::TRequestType t)
+{
+    Y_UNUSED(t);
+    return false;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TRequestCountersOptions
@@ -116,6 +122,7 @@ auto MakeRequestCounters(TRequestCountersOptions options = {})
         2,
         RequestType2Name,
         IsReadWriteRequest,
+        IsStartEndpointRequest,
         options.Options,
         options.HistogramCounterOptions,
         options.ExecutionTimeSizeClasses);
@@ -128,6 +135,7 @@ auto MakeRequestCountersPtr(TRequestCountersOptions options = {})
         2,
         RequestType2Name,
         IsReadWriteRequest,
+        IsStartEndpointRequest,
         options.Options,
         options.HistogramCounterOptions,
         options.ExecutionTimeSizeClasses);

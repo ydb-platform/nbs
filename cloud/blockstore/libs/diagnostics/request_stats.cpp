@@ -241,6 +241,11 @@ constexpr TRequestCounters::EOptions SSDOrHDDOptions =
     TRequestCounters::EOption::ReportDataPlaneHistogram |
     TRequestCounters::EOption::OnlyReadWriteRequests;
 
+constexpr TRequestCounters::EOptions StartEndpointOptions =
+    TRequestCounters::EOption::ReportDataPlaneHistogram |
+    TRequestCounters::EOption::OnlyStartEndpointRequests |
+    TRequestCounters::EOption::AddSpecialCounters;
+
 #define BLOCKSTORE_MEDIA_KIND(xxx, ...)                                        \
     xxx(,                  GeneralOptions                      __VA_ARGS__    )\
     xxx(SSD,               SSDOrHDDOptions                     __VA_ARGS__    )\
@@ -251,6 +256,13 @@ constexpr TRequestCounters::EOptions SSDOrHDDOptions =
     xxx(SSDLocal,          DefaultOptions,                     __VA_ARGS__    )\
     xxx(HDDLocal,          DefaultOptions,                     __VA_ARGS__    )\
     xxx(HDDNonrepl,        DefaultOptions,                     __VA_ARGS__    )\
+// BLOCKSTORE_MEDIA_KIND
+
+#define BLOCKSTORE_MOUNT_TYPE(xxx, ...)                                        \
+    xxx(LocalROMount,      StartEndpointOptions,               __VA_ARGS__    )\
+    xxx(RemoteROMount,     StartEndpointOptions,               __VA_ARGS__    )\
+    xxx(LocalRWMount,      StartEndpointOptions,               __VA_ARGS__    )\
+    xxx(RemoteRWMount,     StartEndpointOptions,               __VA_ARGS__    )\
 // BLOCKSTORE_MEDIA_KIND
 
 class TRequestStats final
@@ -270,6 +282,11 @@ private:
     TRequestCounters TotalSSDLocal;
     TRequestCounters TotalHDDLocal;
     TRequestCounters TotalHDDNonrepl;
+
+    TRequestCounters TotalLocalROMount;
+    TRequestCounters TotalRemoteROMount;
+    TRequestCounters TotalLocalRWMount;
+    TRequestCounters TotalRemoteRWMount;
 
     THdrPercentiles HdrTotal;
     THdrPercentiles HdrTotalSSD;
@@ -305,6 +322,7 @@ public:
         : Counters(std::move(counters))
         , IsServerSide(isServerSide)
         BLOCKSTORE_MEDIA_KIND(INITIALIZE_REQUEST_COUNTERS)
+        BLOCKSTORE_MOUNT_TYPE(INITIALIZE_REQUEST_COUNTERS)
         BLOCKSTORE_MEDIA_KIND(INITIALIZE_HDR_PERCENTILES)
     {
         Total.Register(*Counters);
@@ -333,6 +351,18 @@ public:
         auto hddNonrepl = Counters->GetSubgroup("type", "hdd_nonrepl");
         TotalHDDNonrepl.Register(*hddNonrepl);
 
+        auto localROMount = Counters->GetSubgroup("type", "local_read_only");
+        TotalLocalROMount.Register(*localROMount);
+
+        auto remoteROMount = Counters->GetSubgroup("type", "remote_read_only");
+        TotalRemoteROMount.Register(*remoteROMount);
+
+        auto localRWMount = Counters->GetSubgroup("type", "local_read_write");
+        TotalLocalRWMount.Register(*localRWMount);
+
+        auto remoteRWMount = Counters->GetSubgroup("type", "remote_read_write");
+        TotalRemoteRWMount.Register(*remoteRWMount);
+
         if (IsServerSide) {
             HdrTotal.Register(*Counters);
             HdrTotalSSD.Register(*ssd);
@@ -352,7 +382,9 @@ public:
     ui64 RequestStarted(
         NCloud::NProto::EStorageMediaKind mediaKind,
         EBlockStoreRequest requestType,
-        ui64 requestBytes) override
+        ui64 requestBytes,
+        NProto::EVolumeAccessMode accessMode,
+        NProto::EVolumeMountMode mountMode) override
     {
         auto requestStarted = Total.RequestStarted(
             static_cast<TRequestCounters::TRequestType>(
@@ -366,6 +398,12 @@ public:
                 static_cast<TRequestCounters::TRequestType>(
                     TranslateLocalRequestType(requestType)),
                 requestBytes);
+        }
+        if (requestType == EBlockStoreRequest::StartEndpoint) {
+            GetRequestCounters(accessMode, mountMode)
+                .RequestStarted(
+                    static_cast<TRequestCounters::TRequestType>(requestType),
+                    requestBytes);
         }
 
         return requestStarted;
@@ -381,7 +419,9 @@ public:
         ui32 errorFlags,
         bool unaligned,
         ECalcMaxTime calcMaxTime,
-        ui64 responseSent) override
+        ui64 responseSent,
+        NProto::EVolumeAccessMode accessMode,
+        NProto::EVolumeMountMode mountMode) override
     {
         auto [execTime, requestTime] = Total.RequestCompleted(
             static_cast<TRequestCounters::TRequestType>(
@@ -423,6 +463,20 @@ public:
                     requestTime,
                     requestBytes);
             }
+        }
+
+        if (requestType == EBlockStoreRequest::StartEndpoint) {
+            GetRequestCounters(accessMode, mountMode)
+                .RequestCompleted(
+                    static_cast<TRequestCounters::TRequestType>(requestType),
+                    requestStarted,
+                    postponedTime,
+                    requestBytes,
+                    errorKind,
+                    errorFlags,
+                    unaligned,
+                    calcMaxTime,
+                    responseSent);
         }
 
         return requestTime;
@@ -567,6 +621,11 @@ public:
         TotalHDDLocal.UpdateStats(updatePercentiles);
         TotalHDDNonrepl.UpdateStats(updatePercentiles);
 
+        TotalLocalROMount.UpdateStats(updatePercentiles);
+        TotalRemoteROMount.UpdateStats(updatePercentiles);
+        TotalLocalRWMount.UpdateStats(updatePercentiles);
+        TotalRemoteRWMount.UpdateStats(updatePercentiles);
+
         if (updatePercentiles && IsServerSide) {
             HdrTotal.UpdateStats();
             HdrTotalSSD.UpdateStats();
@@ -626,6 +685,25 @@ private:
                 return HdrTotalHDD;
         }
     }
+
+    TRequestCounters& GetRequestCounters(
+        NProto::EVolumeAccessMode accessMode,
+        NProto::EVolumeMountMode mountMode)
+    {
+        if (accessMode == NProto::EVolumeAccessMode::VOLUME_ACCESS_READ_ONLY) {
+            return mountMode == NProto::EVolumeMountMode::VOLUME_MOUNT_LOCAL
+                       ? TotalLocalROMount
+                       : TotalRemoteROMount;
+        }
+
+        if (accessMode == NProto::EVolumeAccessMode::VOLUME_ACCESS_READ_WRITE) {
+            return mountMode == NProto::EVolumeMountMode::VOLUME_MOUNT_LOCAL
+                       ? TotalLocalRWMount
+                       : TotalRemoteRWMount;
+        }
+
+        return TotalLocalRWMount;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -636,11 +714,15 @@ struct TRequestStatsStub final
     ui64 RequestStarted(
         NCloud::NProto::EStorageMediaKind mediaKind,
         EBlockStoreRequest requestType,
-        ui64 requestBytes) override
+        ui64 requestBytes,
+        NProto::EVolumeAccessMode accessMode,
+        NProto::EVolumeMountMode mountMode) override
     {
         Y_UNUSED(mediaKind);
         Y_UNUSED(requestType);
         Y_UNUSED(requestBytes);
+        Y_UNUSED(accessMode);
+        Y_UNUSED(mountMode);
         return GetCycleCount();
     }
 
@@ -654,7 +736,9 @@ struct TRequestStatsStub final
         ui32 errorFlags,
         bool unaligned,
         ECalcMaxTime calcMaxTime,
-        ui64 responseSent) override
+        ui64 responseSent,
+        NProto::EVolumeAccessMode accessMode,
+        NProto::EVolumeMountMode mountMode) override
     {
         Y_UNUSED(mediaKind);
         Y_UNUSED(requestType);
@@ -665,6 +749,8 @@ struct TRequestStatsStub final
         Y_UNUSED(unaligned);
         Y_UNUSED(calcMaxTime);
         Y_UNUSED(responseSent);
+        Y_UNUSED(accessMode);
+        Y_UNUSED(mountMode);
         return CyclesToDurationSafe(GetCycleCount() - requestStarted);
     }
 

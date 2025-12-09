@@ -24,7 +24,9 @@ struct IRequestStats
     virtual ui64 RequestStarted(
         NCloud::NProto::EStorageMediaKind mediaKind,
         EBlockStoreRequest requestType,
-        ui64 requestBytes) = 0;
+        ui64 requestBytes,
+        NProto::EVolumeAccessMode accessMode,
+        NProto::EVolumeMountMode mountMode) = 0;
 
     virtual TDuration RequestCompleted(
         NCloud::NProto::EStorageMediaKind mediaKind,
@@ -36,7 +38,9 @@ struct IRequestStats
         ui32 errorFlags,
         bool unaligned,
         ECalcMaxTime calcMaxTime,
-        ui64 responseSent) = 0;
+        ui64 responseSent,
+        NProto::EVolumeAccessMode accessMode,
+        NProto::EVolumeMountMode mountMode) = 0;
 
     virtual void AddIncompleteStats(
         NCloud::NProto::EStorageMediaKind mediaKind,

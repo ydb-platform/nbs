@@ -875,11 +875,13 @@ TRequestCounters::TRequestCounters(
         ui32 requestCount,
         std::function<TString(TRequestType)> requestType2Name,
         std::function<bool(TRequestType)> isReadWriteRequestType,
+        std::function<bool(TRequestType)> isStartEndpointRequestType,
         EOptions options,
         EHistogramCounterOptions histogramCounterOptions,
         const TVector<TSizeInterval>& executionTimeSizeClasses)
     : RequestType2Name(std::move(requestType2Name))
     , IsReadWriteRequestType(std::move(isReadWriteRequestType))
+    , IsStartEndpointRequestType(std::move(isStartEndpointRequestType))
     , Options(options)
 {
     if (Options & EOption::AddSpecialCounters) {
@@ -1166,9 +1168,19 @@ void TRequestCounters::RequestCompletedImpl(
 
 bool TRequestCounters::ShouldReport(TRequestType requestType) const
 {
-    return requestType < CountersByRequest.size()
-        && (IsReadWriteRequestType(requestType)
-        || !(Options & EOption::OnlyReadWriteRequests));
+    if (requestType >= CountersByRequest.size()) {
+        return false;
+    }
+
+    if (Options & EOption::OnlyReadWriteRequests) {
+        return IsReadWriteRequestType(requestType);
+    }
+
+    if (Options & EOption::OnlyStartEndpointRequests) {
+        return IsStartEndpointRequestType(requestType);
+    }
+
+    return true;
 }
 
 template<typename TMethod, typename... TArgs>
