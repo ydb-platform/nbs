@@ -1,7 +1,9 @@
+import collections
 import dataclasses
 import hashlib
 import json
 import logging
+import os
 import subprocess
 import http.client
 import time
@@ -15,7 +17,6 @@ import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
 
-from cloud.disk_manager.test.recipe.common import get_ydb_binary_path
 from cloud.disk_manager.test.recipe.disk_manager_launcher import DiskManagerLauncher
 from cloud.disk_manager.test.recipe.metadata_service_launcher import MetadataServiceLauncher
 from cloud.disk_manager.test.recipe.nbs_launcher import NbsLauncher
@@ -59,7 +60,7 @@ class _MigrationTestSetup:
         self._cert_key_file = certs_dir / "server.key"
         _logger.info(self._cert_key_file.exists())
 
-        ydb_binary_path = get_ydb_binary_path()
+        ydb_binary_path = yatest_common.binary_path(os.getenv("YDBD_BINARY"))
         nbs_binary_path = yatest_common.binary_path("cloud/blockstore/apps/server/nbsd")
         disk_agent_binary_path = yatest_common.binary_path("cloud/blockstore/apps/disk_agent/diskagentd")
         self.disk_manager_binary_path = yatest_common.binary_path("cloud/disk_manager/cmd/disk-manager/disk-manager")
@@ -419,19 +420,24 @@ class _MigrationTestSetup:
 
 
 @pytest.mark.parametrize(
-    ["use_s3_as_src", "use_s3_as_dst"],
+    ["use_s3_as_src", "use_s3_as_dst", "with_nemesis"],
     [
-        (True, False),
-        (False, True),
-        (True, True),
-        (False, False),
+        (True, False, True),
+        (False, True, False),
+        (True, True, False),
+        (False, False, False),
     ]
 )
-def test_disk_manager_single_snapshot_migration(use_s3_as_src, use_s3_as_dst):
+def test_disk_manager_single_snapshot_migration(
+    use_s3_as_src,
+    use_s3_as_dst,
+    with_nemesis,
+):
     with _MigrationTestSetup(
         use_s3_as_src=use_s3_as_src,
         use_s3_as_dst=use_s3_as_dst,
         migrating_snapshots_inflight_limit=10,
+        with_nemesis=with_nemesis,
     ) as setup:
         assert setup.list_snapshots() == []
         disk_size = 16 * 1024 * 1024
@@ -449,19 +455,24 @@ def test_disk_manager_single_snapshot_migration(use_s3_as_src, use_s3_as_dst):
 
 
 @pytest.mark.parametrize(
-    ["use_s3_as_src", "use_s3_as_dst"],
+    ["use_s3_as_src", "use_s3_as_dst", "with_nemesis"],
     [
-        (False, False),
-        (False, True),
-        (True, False),
-        (True, True),
+        (False, False, True),
+        (False, True, False),
+        (True, False, False),
+        (True, True, False),
     ]
 )
-def test_disk_manager_several_migrations_do_not_overlap(use_s3_as_src, use_s3_as_dst):
+def test_disk_manager_several_migrations_do_not_overlap(
+    use_s3_as_src,
+    use_s3_as_dst,
+    with_nemesis,
+):
     with _MigrationTestSetup(
         use_s3_as_src=use_s3_as_src,
         use_s3_as_dst=use_s3_as_dst,
         migrating_snapshots_inflight_limit=1,
+        with_nemesis=with_nemesis,
     ) as setup:
         assert setup.list_snapshots() == []
         # Test that checks that several migration do not corrupt each other
@@ -623,3 +634,93 @@ def test_disk_manager_dataplane_database_migration(
             )
             new_checksum = setup.checksum_disk(config.dst_disk_id)
             assert new_checksum == config.checksum
+
+
+@pytest.mark.parametrize(
+    ["use_s3_as_src", "use_s3_as_dst", "with_nemesis"],
+    [
+        (False, False, True),
+        (False, True, False),
+        (True, False, False),
+        (True, True, False),
+    ],
+)
+def test_disk_manager_snapshot_database_migration_with_incremental_snapshot(
+    use_s3_as_src,
+    use_s3_as_dst,
+    with_nemesis,
+):
+    with _MigrationTestSetup(
+        use_s3_as_src=use_s3_as_src,
+        use_s3_as_dst=use_s3_as_dst,
+        migrating_snapshots_inflight_limit=5,
+        with_nemesis=with_nemesis,
+    ) as setup:
+        assert setup.list_snapshots() == []
+        checksums_by_snapshot_id = collections.OrderedDict()
+        disk_size = 16 * 1024 * 1024
+        initial_disk_id = "example"
+        base_snapshot_id = "base_snapshot"
+
+        # Create initial disk and base snapshot
+        created_disk = setup.create_new_disk(initial_disk_id, disk_size)
+        checksum = setup.fill_disk(initial_disk_id, 0, created_disk.blocks_count)
+        setup.create_snapshot(src_disk_id=initial_disk_id, snapshot_id=base_snapshot_id)
+        checksums_by_snapshot_id[base_snapshot_id] = setup.checksum_disk(initial_disk_id)
+        # Create a long incremental chain, with the size
+        # greater than migrating_snapshots_inflight_limit
+        for i in range(10):
+            intermediate_snapshot_id = f"intermediate_snapshot_{i}"
+            setup.fill_disk(
+                initial_disk_id,
+                start_block_index=i % created_disk.blocks_count,
+                blocks_count=1,
+            )
+            checksums_by_snapshot_id[intermediate_snapshot_id] = setup.checksum_disk(initial_disk_id)
+            setup.create_snapshot(
+                src_disk_id=initial_disk_id,
+                snapshot_id=intermediate_snapshot_id,
+            )
+
+        task_id = setup.start_database_migration()
+        setup.wait_for_dpl_metric_equals(0)
+        # Create incremental snapshots during migration
+        for i in range(10, 20):
+            intermediate_snapshot_id = f"intermediate_snapshot_{i}"
+            setup.fill_disk(
+                initial_disk_id,
+                start_block_index=i % created_disk.blocks_count,
+                blocks_count=1,
+            )
+            checksums_by_snapshot_id[intermediate_snapshot_id] = setup.checksum_disk(initial_disk_id)
+            setup.create_snapshot(
+                src_disk_id=initial_disk_id,
+                snapshot_id=intermediate_snapshot_id,
+            )
+        setup.wait_for_dpl_metric_equals(0)
+        setup.finish_database_migration(task_id)
+        setup.switch_dataplane_to_new_db()
+        for snapshot_id, checksum in checksums_by_snapshot_id.items():
+            new_disk_id = f"new_disk_from_{snapshot_id}"
+            setup.create_disk_from_snapshot(
+                snapshot_id=snapshot_id,
+                disk_id=new_disk_id,
+                size=disk_size,
+            )
+            new_checksum = setup.checksum_disk(new_disk_id)
+            assert new_checksum == checksum
+
+        database_entries = setup.get_snapshot_database_entries(
+            setup.secondary_ydb.mon_port,
+        )
+        assert len(database_entries) == len(checksums_by_snapshot_id)
+        base_snapshot_ids = {}
+        for record in database_entries:
+            base_snapshot_ids[record['id']] = record['base_snapshot_id']
+
+        # Check that base snapshot ids form a correct chain
+        for i, snapshot_id in enumerate(checksums_by_snapshot_id.keys()):
+            if snapshot_id == base_snapshot_id:
+                assert base_snapshot_ids[snapshot_id] == ""
+            else:
+                assert base_snapshot_ids[snapshot_id] == [*checksums_by_snapshot_id.keys()][i - 1]

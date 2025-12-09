@@ -4,9 +4,9 @@
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/model/block_buffer.h>
-#include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/model/sparse_segment.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
+#include <cloud/storage/core/libs/common/byte_range.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>

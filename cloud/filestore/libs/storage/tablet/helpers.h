@@ -4,7 +4,6 @@
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/core/model.h>
-#include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
 #include <cloud/filestore/libs/storage/tablet/model/throttling_policy.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
@@ -12,6 +11,7 @@
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
 
+#include <cloud/storage/core/libs/common/byte_range.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 

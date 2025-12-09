@@ -19,7 +19,7 @@ on:
 
 jobs:
   pre-commit:
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, "self-hosted", "runner_light" ]
     steps:
     - uses: actions/checkout@v5
       with:

@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
+#include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
 #include <util/system/hostname.h>
 
@@ -3531,6 +3532,268 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             Volume->WaitReady();
         }
     };
+
+    static void DoTestShouldCommonCheckRange(
+        NCloud::NProto::EStorageMediaKind mediaKind)
+    {
+        constexpr ui32 DiskSize = 8192;
+        auto runtime = PrepareTestActorRuntime();
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind, DiskSize);
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        volume.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 1024),
+            clientInfo.GetClientId(),
+            1);
+        volume.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(576, 3073),
+            clientInfo.GetClientId(),
+            42);
+
+        const auto checkRange = [&](ui32 startIndex, ui32 size)
+        {
+            volume.SendCheckRangeRequest("disk-id", startIndex, size);
+            auto response =
+                volume.RecvCheckRangeResponse(TDuration::Seconds(1));
+            const auto& record = response->Record;
+
+            std::string extended_msg =
+                "startIndex: " + std::to_string(startIndex) +
+                ", size: " + std::to_string(size);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                false,
+                HasError(record.error()),
+                extended_msg);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                false,
+                HasError(record.status()),
+                extended_msg);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                size,
+                record.GetChecksums().size(),
+                extended_msg);
+        };
+
+        checkRange(0, 1);
+        checkRange(0, 1024);
+        checkRange(1024, 512);
+        checkRange(1, 1);
+        checkRange(1000, 1000);
+    }
+
+    static void DoTestShouldCheckRangeWithBrokenBlocks(
+        NCloud::NProto::EStorageMediaKind mediaKind)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind, 8192);
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        volume.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 1023),
+            clientInfo.GetClientId(),
+            42);
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvReadBlocksLocalResponse: {
+                        using TEv = TEvService::TEvReadBlocksLocalResponse;
+
+                        auto response = std::make_unique<TEv>(
+                            MakeError(E_IO, "block is broken"));
+
+                        runtime->Send(
+                            new IEventHandle(
+                                event->Recipient,
+                                event->Sender,
+                                response.release(),
+                                0,   // flags
+                                event->Cookie),
+                            0);
+
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                    default:
+                        break;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        const auto checkRange = [&](ui32 startIndex, ui32 size)
+        {
+            volume.SendCheckRangeRequest("disk-id", startIndex, size);
+            auto response =
+                volume.RecvCheckRangeResponse(TDuration::Seconds(1));
+            const auto& record = response->Record;
+
+            std::string extended_msg =
+                "startIndex: " + std::to_string(startIndex) +
+                ", size: " + std::to_string(size);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_IO,
+                record.GetStatus().code(),
+                extended_msg);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                extended_msg);
+        };
+
+        checkRange(0, 1024);
+        checkRange(1, 1);
+        checkRange(1024, 512);
+    }
+
+    static void DoTestShouldSuccessfullyCheckRangeIfDiskIsEmpty(
+        NCloud::NProto::EStorageMediaKind mediaKind)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind, 8192);
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        volume.SendCheckRangeRequest("disk-id", 0, 1024);
+        auto response = volume.RecvCheckRangeResponse(TDuration::Seconds(3));
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->Record.GetStatus().GetCode());
+    }
+
+    static void DoTestShouldntCheckRangeWithBigBlockCount(
+        NCloud::NProto::EStorageMediaKind mediaKind)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind, 8192);
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        volume.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 1023),
+            clientInfo.GetClientId(),
+            42);
+
+        volume.SendCheckRangeRequest("disk-id", 0, 1024 + 1);
+        auto response = volume.RecvCheckRangeResponse(TDuration::Seconds(3));
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+    }
+
+    static void DoTestShouldGetSameChecksumsWhileCheckRangeEqualBlocks(
+        NCloud::NProto::EStorageMediaKind mediaKind)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind, 8192);
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        volume.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 1023),
+            clientInfo.GetClientId(),
+            42);
+
+        volume.SendCheckRangeRequest("disk-id", 0, 99);
+        auto response1 = volume.RecvCheckRangeResponse(TDuration::Seconds(5));
+        bool resp1NotNull = response1 != nullptr;
+        UNIT_ASSERT_VALUES_EQUAL(resp1NotNull, true);
+        const auto& record1 = response1->Record;
+
+        volume.SendCheckRangeRequest("disk-id", 100, 99);
+        auto response2 = volume.RecvCheckRangeResponse(TDuration::Seconds(5));
+        bool resp2NotNull = response2 != nullptr;
+        UNIT_ASSERT_VALUES_EQUAL(resp2NotNull, true);
+        const auto& record2 = response2->Record;
+
+        const auto& checksums1 = record1.GetChecksums();
+        const auto& checksums2 = record2.GetChecksums();
+
+        ASSERT_VECTORS_EQUAL(
+            TVector<ui32>(checksums1.begin(), checksums1.end()),
+            TVector<ui32>(checksums2.begin(), checksums2.end()));
+    }
+
+    static void DoTEstShouldGetDifferentChecksumsWhileCheckRange(
+        NCloud::NProto::EStorageMediaKind mediaKind)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind, 8192);
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+
+        volume.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(0, 1023),
+            clientInfo.GetClientId(),
+            42);
+        volume.WriteBlocks(
+            TBlockRange64::MakeClosedInterval(1024, 2047),
+            clientInfo.GetClientId(),
+            77);
+
+        volume.SendCheckRangeRequest("disk-id", 0, 1024);
+        auto response1 = volume.RecvCheckRangeResponse(TDuration::Seconds(5));
+        bool resp1NotNull = response1 != nullptr;
+        UNIT_ASSERT_VALUES_EQUAL(resp1NotNull, true);
+        const auto& record1 = response1->Record;
+
+        volume.SendCheckRangeRequest("disk-id", 1024, 1024);
+        auto response2 = volume.RecvCheckRangeResponse(TDuration::Seconds(5));
+        bool resp2NotNull = response2 != nullptr;
+        UNIT_ASSERT_VALUES_EQUAL(resp2NotNull, true);
+        const auto& record2 = response2->Record;
+
+        const auto& checksums1 = record1.GetChecksums();
+        const auto& checksums2 = record2.GetChecksums();
+
+        UNIT_ASSERT_VALUES_EQUAL(checksums1.size(), checksums2.size());
+
+        ui32 differentChecksums = 0;
+        for (int i = 0; i < checksums1.size(); ++i) {
+            if (checksums1.at(i) != checksums2.at(i)) {
+                ++differentChecksums;
+            }
+        }
+
+        UNIT_ASSERT_VALUES_UNEQUAL(differentChecksums, 0);
+    }
+
+    ///////
 
     void DoTestShouldThrottleSomeOps(
         NCloud::NProto::EStorageMediaKind mediaKind,
@@ -9882,6 +10145,214 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 response->Record.FailInfo.FailedRanges.size());
         }
     }
+
+    // ====== checkrange tests
+    // --- base TestCase
+    Y_UNIT_TEST(ShouldCommonCheckRangeSSDNonreplicated)
+    {
+        DoTestShouldCommonCheckRange(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST(ShouldCommonCheckRangeMirror2)
+    {
+        DoTestShouldCommonCheckRange(NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2);
+    }
+
+    Y_UNIT_TEST(ShouldCommonCheckRangeMirror3)
+    {
+        DoTestShouldCommonCheckRange(NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
+    }
+
+    Y_UNIT_TEST(ShouldCommonCheckRangeSSD)
+    {
+        DoTestShouldCommonCheckRange(NCloud::NProto::STORAGE_MEDIA_SSD);
+    }
+
+    Y_UNIT_TEST(ShouldCommonCheckRangeHDD)
+    {
+        DoTestShouldCommonCheckRange(NCloud::NProto::STORAGE_MEDIA_HDD);
+    }
+
+    Y_UNIT_TEST(ShouldCommonCheckRangeHybrid)
+    {
+        DoTestShouldCommonCheckRange(NCloud::NProto::STORAGE_MEDIA_HYBRID);
+    }
+
+    //---empty disk (with no written data)
+    Y_UNIT_TEST(ShouldSuccessfullyCheckRangeIfDiskIsEmptySSDNonreplicated)
+    {
+        DoTestShouldSuccessfullyCheckRangeIfDiskIsEmpty(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST(ShouldSuccessfullyCheckRangeIfDiskIsEmptyMirror2)
+    {
+        DoTestShouldSuccessfullyCheckRangeIfDiskIsEmpty(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2);
+    }
+
+    Y_UNIT_TEST(ShouldSuccessfullyCheckRangeIfDiskIsEmptyMirror3)
+    {
+        DoTestShouldSuccessfullyCheckRangeIfDiskIsEmpty(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
+    }
+
+    Y_UNIT_TEST(ShouldSuccessfullyCheckRangeIfDiskIsEmptySSD)
+    {
+        DoTestShouldSuccessfullyCheckRangeIfDiskIsEmpty(
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+    }
+
+    Y_UNIT_TEST(ShouldSuccessfullyCheckRangeIfDiskIsEmptyHDD)
+    {
+        DoTestShouldSuccessfullyCheckRangeIfDiskIsEmpty(
+            NCloud::NProto::STORAGE_MEDIA_HDD);
+    }
+
+    Y_UNIT_TEST(ShouldSuccessfullyCheckRangeIfDiskIsEmptyHybrid)
+    {
+        DoTestShouldSuccessfullyCheckRangeIfDiskIsEmpty(
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
+    }
+
+    //--- too big blockCount (check argument's verifying)
+    Y_UNIT_TEST(ShouldntCheckRangeWithBigBlockCountSSDNonreplicated)
+    {
+        DoTestShouldntCheckRangeWithBigBlockCount(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST(ShouldntCheckRangeWithBigBlockCountMirror2)
+    {
+        DoTestShouldntCheckRangeWithBigBlockCount(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2);
+    }
+
+    Y_UNIT_TEST(ShouldntCheckRangeWithBigBlockCountMirror3)
+    {
+        DoTestShouldntCheckRangeWithBigBlockCount(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
+    }
+
+    Y_UNIT_TEST(ShouldntCheckRangeWithBigBlockCountSSD)
+    {
+        DoTestShouldntCheckRangeWithBigBlockCount(
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+    }
+
+    Y_UNIT_TEST(ShouldntCheckRangeWithBigBlockCountHDD)
+    {
+        DoTestShouldntCheckRangeWithBigBlockCount(
+            NCloud::NProto::STORAGE_MEDIA_HDD);
+    }
+
+    Y_UNIT_TEST(ShouldntCheckRangeWithBigBlockCountHybrid)
+    {
+        DoTestShouldntCheckRangeWithBigBlockCount(
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
+    }
+
+    //--- check same data return same checksums
+    Y_UNIT_TEST(
+        ShouldGetSameChecksumsWhileCheckRangeEqualBlocksSSDNonreplicated)
+    {
+        DoTestShouldGetSameChecksumsWhileCheckRangeEqualBlocks(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST(ShouldGetSameChecksumsWhileCheckRangeEqualBlocksMirror2)
+    {
+        DoTestShouldGetSameChecksumsWhileCheckRangeEqualBlocks(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2);
+    }
+
+    Y_UNIT_TEST(ShouldGetSameChecksumsWhileCheckRangeEqualBlocksMirror3)
+    {
+        DoTestShouldGetSameChecksumsWhileCheckRangeEqualBlocks(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
+    }
+
+    Y_UNIT_TEST(ShouldGetSameChecksumsWhileCheckRangeEqualBlocksSSD)
+    {
+        DoTestShouldGetSameChecksumsWhileCheckRangeEqualBlocks(
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+    }
+
+    Y_UNIT_TEST(ShouldGetSameChecksumsWhileCheckRangeEqualBlocksHDD)
+    {
+        DoTestShouldGetSameChecksumsWhileCheckRangeEqualBlocks(
+            NCloud::NProto::STORAGE_MEDIA_HDD);
+    }
+
+    Y_UNIT_TEST(ShouldGetSameChecksumsWhileCheckRangeEqualBlocksHybrid)
+    {
+        DoTestShouldGetSameChecksumsWhileCheckRangeEqualBlocks(
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
+    }
+
+    //--- check different data return different checksums
+    Y_UNIT_TEST(ShouldGetDifferentChecksumsWhileCheckRangeSSDNonreplicated)
+    {
+        DoTEstShouldGetDifferentChecksumsWhileCheckRange(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST(ShouldGetDifferentChecksumsWhileCheckRangeMirror2)
+    {
+        DoTEstShouldGetDifferentChecksumsWhileCheckRange(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2);
+    }
+
+    Y_UNIT_TEST(ShouldGetDifferentChecksumsWhileCheckRangeMirror3)
+    {
+        DoTEstShouldGetDifferentChecksumsWhileCheckRange(
+            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
+    }
+
+    Y_UNIT_TEST(ShouldGetDifferentChecksumsWhileCheckRangeSSD)
+    {
+        DoTEstShouldGetDifferentChecksumsWhileCheckRange(
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+    }
+
+    Y_UNIT_TEST(ShouldGetDifferentChecksumsWhileCheckRangeHDD)
+    {
+        DoTEstShouldGetDifferentChecksumsWhileCheckRange(
+            NCloud::NProto::STORAGE_MEDIA_HDD);
+    }
+
+    Y_UNIT_TEST(ShouldGetDifferentChecksumsWhileCheckRangeHybrid)
+    {
+        DoTEstShouldGetDifferentChecksumsWhileCheckRange(
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
+    }
+
+    //--- check response with IO error for non-mirror disks
+    Y_UNIT_TEST(ShouldCheckRangeWithBrokenBlocksSSDNonreplicated)
+    {
+        DoTestShouldCheckRangeWithBrokenBlocks(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST(ShouldCheckRangeWithBrokenBlocksSSD)
+    {
+        DoTestShouldCheckRangeWithBrokenBlocks(
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+    }
+
+    Y_UNIT_TEST(ShouldCheckRangeWithBrokenBlocksHDD)
+    {
+        DoTestShouldCheckRangeWithBrokenBlocks(
+            NCloud::NProto::STORAGE_MEDIA_HDD);
+    }
+
+    Y_UNIT_TEST(ShouldCheckRangeWithBrokenBlocksHybrid)
+    {
+        DoTestShouldCheckRangeWithBrokenBlocks(
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
+    }
+    //------------------
 
     void DoShouldReceiveDeviceOperationStartedAndFinished(bool useRdma)
     {
