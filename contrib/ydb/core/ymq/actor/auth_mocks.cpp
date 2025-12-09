@@ -4,7 +4,7 @@
 #include <contrib/ydb/library/folder_service/events.h>
 #include <contrib/ydb/library/services/services.pb.h>
 
-#include <contrib/ydb/library/grpc/client/grpc_client_low.h>
+#include <contrib/ydb/public/sdk/cpp/src/library/grpc/client/grpc_client_low.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>

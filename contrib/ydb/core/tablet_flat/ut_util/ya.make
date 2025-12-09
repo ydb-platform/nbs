@@ -1,6 +1,5 @@
 UNITTEST_FOR(contrib/ydb/core/tablet_flat)
 
-TIMEOUT(600)
 SIZE(MEDIUM)
 
 SRCS(

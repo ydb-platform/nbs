@@ -268,7 +268,6 @@ Y_UNIT_TEST_SUITE(TLogSettingsConfiguratorTests)
         label.SetName("tenant");
         label.SetValue(TENANT1_1_NAME);
         TTenantTestRuntime runtime(DefaultConsoleTestConfig(), ext);
-
         auto settings = InitLogSettingsConfigurator(runtime);
         WaitForUpdate(runtime); // initial update
 
@@ -302,7 +301,6 @@ Y_UNIT_TEST_SUITE(TLogSettingsConfiguratorTests)
         label.SetName("tenant");
         label.SetValue(TENANT1_1_NAME);
         TTenantTestRuntime runtime(DefaultConsoleTestConfig(), ext);
-
         auto settings = InitLogSettingsConfigurator(runtime);
         WaitForUpdate(runtime); // initial update
 

@@ -1,13 +1,17 @@
 #pragma once
-#include "defs.h"
-
 #include "schemeshard_identificators.h"
-#include <contrib/ydb/core/kqp/provider/yql_kikimr_gateway.h>
+
+#include <contrib/ydb/core/protos/flat_scheme_op.pb.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
+#include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
+
+#include <util/datetime/base.h>
 
 namespace NKikimr {
 namespace NSchemeShard {
 
-struct TEvPrivate {
+namespace TEvPrivate {
     enum EEv {
         EvProgressOperation = EventSpaceBegin(TKikimrEvents::ES_PRIVATE),
         EvOperationPlanStep,
@@ -16,6 +20,10 @@ struct TEvPrivate {
         EvRunConditionalErase,
         EvIndexBuildBilling,
         EvImportSchemeReady,
+        EvImportSchemaMappingReady,
+        EvImportSchemeQueryResult,
+        EvExportSchemeUploadResult,
+        EvExportUploadMetadataResult,
         EvServerlessStorageBilling,
         EvCleanDroppedPaths,
         EvCleanDroppedSubDomains,
@@ -32,6 +40,10 @@ struct TEvPrivate {
         EvSendBaseStatsToSA,
         EvRunBackgroundCleaning,
         EvRetryNodeSubscribe,
+        EvRunDataErasure,
+        EvRunTenantDataErasure,
+        EvAddNewShardToDataErasure,
+        EvTestNotifySubdomainCleanup,
         EvEnd
     };
 
@@ -96,6 +108,67 @@ struct TEvPrivate {
         {}
     };
 
+    struct TEvImportSchemaMappingReady: public TEventLocal<TEvImportSchemaMappingReady, EvImportSchemaMappingReady> {
+        const ui64 ImportId;
+        const bool Success;
+        const TString Error;
+
+        TEvImportSchemaMappingReady(ui64 id, bool success, const TString& error)
+            : ImportId(id)
+            , Success(success)
+            , Error(error)
+        {}
+    };
+
+    struct TEvImportSchemeQueryResult: public TEventLocal<TEvImportSchemeQueryResult, EvImportSchemeQueryResult> {
+        const ui64 ImportId;
+        const ui32 ItemIdx;
+        const Ydb::StatusIds::StatusCode Status;
+        const std::variant<TString, NKikimrSchemeOp::TModifyScheme> Result;
+
+        // failed query
+        TEvImportSchemeQueryResult(ui64 id, ui32 itemIdx, Ydb::StatusIds::StatusCode status, TString&& error)
+            : ImportId(id)
+            , ItemIdx(itemIdx)
+            , Status(status)
+            , Result(error)
+        {}
+
+        // successful query
+        TEvImportSchemeQueryResult(ui64 id, ui32 itemIdx, Ydb::StatusIds::StatusCode status, NKikimrSchemeOp::TModifyScheme&& preparedQuery)
+            : ImportId(id)
+            , ItemIdx(itemIdx)
+            , Status(status)
+            , Result(preparedQuery)
+        {}
+    };
+
+    struct TEvExportSchemeUploadResult: public TEventLocal<TEvExportSchemeUploadResult, EvExportSchemeUploadResult> {
+        const ui64 ExportId;
+        const ui32 ItemIdx;
+        const bool Success;
+        const TString Error;
+
+        TEvExportSchemeUploadResult(ui64 id, ui32 itemIdx, bool success, const TString& error)
+            : ExportId(id)
+            , ItemIdx(itemIdx)
+            , Success(success)
+            , Error(error)
+        {}
+    };
+
+    struct TEvExportUploadMetadataResult: public TEventLocal<TEvExportUploadMetadataResult, EvExportUploadMetadataResult> {
+        const ui64 ExportId;
+        const bool Success;
+        const TString Error;
+
+        TEvExportUploadMetadataResult(ui64 id, bool success, const TString& error)
+            : ExportId(id)
+            , Success(success)
+            , Error(error)
+        {}
+    };
+
     struct TEvServerlessStorageBilling: public TEventLocal<TEvServerlessStorageBilling, EvServerlessStorageBilling> {
         TEvServerlessStorageBilling()
         {}
@@ -122,6 +195,14 @@ struct TEvPrivate {
 
         explicit TEvNotifyShardDeleted(const TShardIdx& shardIdx)
             : ShardIdx(shardIdx)
+        { }
+    };
+
+    struct TEvTestNotifySubdomainCleanup : public TEventLocal<TEvTestNotifySubdomainCleanup, EvTestNotifySubdomainCleanup> {
+        TPathId SubdomainPathId;
+
+        explicit TEvTestNotifySubdomainCleanup(const TPathId& subdomainPathId)
+            : SubdomainPathId(subdomainPathId)
         { }
     };
 
@@ -192,6 +273,14 @@ struct TEvPrivate {
         explicit TEvRetryNodeSubscribe(ui32 nodeId)
             : NodeId(nodeId)
         { }
+    };
+
+    struct TEvAddNewShardToDataErasure : public TEventLocal<TEvAddNewShardToDataErasure, EvAddNewShardToDataErasure> {
+        const std::vector<TShardIdx> Shards;
+
+        TEvAddNewShardToDataErasure(std::vector<TShardIdx>&& shards)
+            : Shards(std::move(shards))
+        {}
     };
 }; // TEvPrivate
 

@@ -8,13 +8,13 @@ import uuid
 
 import yatest.common
 
-import contrib.ydb.tests.library.common.yatest_common as yatest_common
+from contrib.ydb.tests.library.common.helpers import plain_or_under_sanitizer
 from contrib.ydb.public.api.grpc.draft import ydb_datastreams_v1_pb2_grpc
 from contrib.ydb.public.api.protos.draft import datastreams_pb2
 from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
 
 
-READ_TOOL_TIMEOUT = yatest_common.plain_or_under_sanitizer(20, 300)
+READ_TOOL_TIMEOUT = plain_or_under_sanitizer(30, 300)
 
 
 def write_stream(path, data, partition_key=None):

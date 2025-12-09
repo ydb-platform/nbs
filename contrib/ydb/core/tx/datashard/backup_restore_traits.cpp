@@ -72,6 +72,38 @@ TString DataFileExtension(EDataFormat format, ECompressionCodec codec) {
     return Sprintf("%s%s", fit->second.c_str(), cit->second.c_str());
 }
 
+static TString AddEncryptedSuffix(TString name, bool encryptedBackup) {
+    if (encryptedBackup) {
+        name.append(".enc");
+    }
+    return name;
+}
+
+TString PermissionsKeySuffix(bool encryptedBackup) {
+    return AddEncryptedSuffix("permissions.pb", encryptedBackup);
+}
+
+TString TopicKeySuffix(bool encryptedBackup) {
+    return AddEncryptedSuffix("topic_description.pb", encryptedBackup);
+}
+
+TString ChangefeedKeySuffix(bool encryptedBackup) {
+    return AddEncryptedSuffix("changefeed_description.pb", encryptedBackup);
+}
+
+TString SchemeKeySuffix(bool encryptedBackup) {
+    return AddEncryptedSuffix("scheme.pb", encryptedBackup);
+}
+
+TString MetadataKeySuffix(bool encryptedBackup) {
+    return AddEncryptedSuffix("metadata.json", encryptedBackup);
+}
+
+TString DataKeySuffix(ui32 n, EDataFormat format, ECompressionCodec codec, bool encryptedBackup) {
+    const auto ext = DataFileExtension(format, codec);
+    return AddEncryptedSuffix(Sprintf("data_%02d%s", n, ext.c_str()), encryptedBackup);
+}
+
 } // NBackupRestoreTraits
 } // NDataShard
 } // NKikimr

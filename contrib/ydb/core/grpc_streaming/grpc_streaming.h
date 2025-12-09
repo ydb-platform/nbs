@@ -17,27 +17,14 @@
 namespace NKikimr {
 namespace NGRpcServer {
 
-/**
- * Context for performing operations on a bidirectional stream
- *
- * Only one thread is allowed to call methods on this class at any time
- */
-template<class TIn, class TOut>
-class IGRpcStreamingContext : public TThrRefBase {
+class IGRpcStreamingContextBase : public TThrRefBase {
 public:
-    using ISelf = IGRpcStreamingContext<TIn, TOut>;
-
     enum EEv {
         EvBegin = EventSpaceBegin(TKikimrEvents::ES_GRPC_STREAMING),
 
         EvReadFinished,
         EvWriteFinished,
         EvNotifiedWhenDone,
-    };
-
-    struct TEvReadFinished : public TEventLocal<TEvReadFinished, EvReadFinished> {
-        TIn Record;
-        bool Success;
     };
 
     struct TEvWriteFinished : public TEventLocal<TEvWriteFinished, EvWriteFinished> {
@@ -53,9 +40,8 @@ public:
     };
 
 public:
-    virtual ~IGRpcStreamingContext() = default;
+    virtual ~IGRpcStreamingContextBase() = default;
 
-public:
     /**
      * Asynchronously cancels the request
      *
@@ -80,6 +66,38 @@ public:
     virtual bool Read() = 0;
 
     /**
+     * Schedules stream termination with the specified status
+     *
+     * Only the first call is accepted, after which new Read or Write calls
+     * are no longer permitted and ignored.
+     */
+    virtual bool Finish(const grpc::Status& status) = 0;
+
+    virtual NYdbGrpc::TAuthState& GetAuthState() const = 0;
+    virtual TString GetPeerName() const = 0;
+    virtual TVector<TStringBuf> GetPeerMetaValues(TStringBuf key) const = 0;
+    virtual grpc_compression_level GetCompressionLevel() const = 0;
+    virtual void UseDatabase(const TString& database) = 0;
+    virtual TString GetRpcMethodName() const = 0;
+};
+
+/**
+ * Context for performing operations on a bidirectional stream
+ *
+ * Only one thread is allowed to call methods on this class at any time
+ */
+template<class TIn, class TOut>
+class IGRpcStreamingContext : public IGRpcStreamingContextBase {
+public:
+    using ISelf = IGRpcStreamingContext<TIn, TOut>;
+
+    struct TEvReadFinished : public TEventLocal<TEvReadFinished, EvReadFinished> {
+        TIn Record;
+        bool Success;
+    };
+
+public:
+    /**
      * Schedules the next message write
      *
      * May be called multiple times, in which case multiple writes will be
@@ -87,14 +105,6 @@ public:
      * corresponding TEvWriteFinished event.
      */
     virtual bool Write(TOut&& message, const grpc::WriteOptions& options = { }) = 0;
-
-    /**
-     * Schedules stream termination with the specified status
-     *
-     * Only the first call is accepted, after which new Read or Write calls
-     * are no longer permitted and ignored.
-     */
-    virtual bool Finish(const grpc::Status& status) = 0;
 
     /**
      * Schedules the next message write combined with the status
@@ -109,13 +119,6 @@ public:
      * This is similar to Write and Finish combined into a more efficient call.
      */
     virtual bool WriteAndFinish(TOut&& message, const grpc::WriteOptions& options, const grpc::Status& status) = 0;
-
-public:
-    virtual NYdbGrpc::TAuthState& GetAuthState() const = 0;
-    virtual TString GetPeerName() const = 0;
-    virtual TVector<TStringBuf> GetPeerMetaValues(TStringBuf key) const = 0;
-    virtual grpc_compression_level GetCompressionLevel() const = 0;
-    virtual void UseDatabase(const TString& database) = 0;
 };
 
 template<class TIn, class TOut, class TServer, int LoggerServiceId>
@@ -224,7 +227,7 @@ private:
         LOG_DEBUG(ActorSystem, LoggerServiceId, "[%p] stream accepted Name# %s ok# %s peer# %s",
             this, Name,
             status == NYdbGrpc::EQueueEventStatus::OK ? "true" : "false",
-            this->GetPeerName().c_str());
+            this->GetPeer().c_str());
 
         if (status == NYdbGrpc::EQueueEventStatus::ERROR) {
             // Don't bother registering if accept failed
@@ -247,7 +250,7 @@ private:
 
         if (IncRequest()) {
             if (Counters) {
-                Counters->StartProcessing(0);
+                Counters->StartProcessing(0, TInstant::Max());
             }
             Flags |= FlagStarted;
 
@@ -265,7 +268,7 @@ private:
         LOG_DEBUG(ActorSystem, LoggerServiceId, "[%p] stream done notification Name# %s ok# %s peer# %s",
             this, Name,
             status == NYdbGrpc::EQueueEventStatus::OK ? "true" : "false",
-            this->GetPeerName().c_str());
+            this->GetPeer().c_str());
 
         bool success = status == NYdbGrpc::EQueueEventStatus::OK;
 
@@ -285,7 +288,7 @@ private:
     void Cancel() {
         LOG_DEBUG(ActorSystem, LoggerServiceId, "[%p] facade cancel Name# %s peer# %s",
             this, Name,
-            this->GetPeerName().c_str());
+            this->GetPeer().c_str());
 
         this->Context.TryCancel();
     }
@@ -298,7 +301,7 @@ private:
         LOG_DEBUG(ActorSystem, LoggerServiceId, "[%p] facade attach Name# %s actor# %s peer# %s",
             this, Name,
             actor.ToString().c_str(),
-            this->GetPeerName().c_str());
+            this->GetPeer().c_str());
 
         auto guard = SingleThreaded.Enforce();
 
@@ -322,7 +325,7 @@ private:
     bool Read() {
         LOG_DEBUG(ActorSystem, LoggerServiceId, "[%p] facade read Name# %s peer# %s",
             this, Name,
-            this->GetPeerName().c_str());
+            this->GetPeer().c_str());
 
         auto guard = SingleThreaded.Enforce();
 
@@ -339,7 +342,7 @@ private:
             ReadInProgress = MakeHolder<typename IContext::TEvReadFinished>();
             Stream.Read(&ReadInProgress->Record, OnReadDoneTag.Prepare());
         } else {
-            Y_DEBUG_ABORT_UNLESS(false, "Multiple outstanding reads are unsafe in grpc streaming");
+            Y_DEBUG_ABORT("Multiple outstanding reads are unsafe in grpc streaming");
         }
 
         return true;
@@ -350,7 +353,7 @@ private:
             this, Name,
             status == NYdbGrpc::EQueueEventStatus::OK ? "true" : "false",
             NYdbGrpc::FormatMessage<TIn>(ReadInProgress->Record, status == NYdbGrpc::EQueueEventStatus::OK).c_str(),
-            this->GetPeerName().c_str());
+            this->GetPeer().c_str());
 
         // Take current in-progress read first
         auto read = std::move(ReadInProgress);
@@ -373,14 +376,14 @@ private:
                 Y_DEBUG_ABORT_UNLESS(flags & FlagFinishCalled);
                 if (Flags.compare_exchange_weak(flags, flags & ~FlagRegistered, std::memory_order_acq_rel)) {
                     LOG_DEBUG(ActorSystem, LoggerServiceId, "[%p] deregistering request Name# %s peer# %s (read done)",
-                        this, Name, this->GetPeerName().c_str());
+                        this, Name, this->GetPeer().c_str());
                     Server->DeregisterRequestCtx(this);
                     break;
                 }
             }
         } else {
             // We need to perform another read (likely unsafe)
-            Y_DEBUG_ABORT_UNLESS(false, "Multiple outstanding reads are unsafe in grpc streaming");
+            Y_DEBUG_ABORT("Multiple outstanding reads are unsafe in grpc streaming");
             ReadInProgress = MakeHolder<typename IContext::TEvReadFinished>();
             Stream.Read(&ReadInProgress->Record, OnReadDoneTag.Prepare());
         }
@@ -391,14 +394,14 @@ private:
             LOG_DEBUG(ActorSystem, LoggerServiceId, "[%p] facade write Name# %s data# %s peer# %s grpc status# (%d) message# %s",
                 this, Name,
                 NYdbGrpc::FormatMessage<TOut>(message).c_str(),
-                this->GetPeerName().c_str(),
+                this->GetPeer().c_str(),
                 static_cast<int>(status->error_code()),
                 status->error_message().c_str());
         } else {
             LOG_DEBUG(ActorSystem, LoggerServiceId, "[%p] facade write Name# %s data# %s peer# %s",
                 this, Name,
                 NYdbGrpc::FormatMessage<TOut>(message).c_str(),
-                this->GetPeerName().c_str());
+                this->GetPeer().c_str());
         }
 
         Y_ABORT_UNLESS(!options.is_corked(),
@@ -453,7 +456,7 @@ private:
         LOG_DEBUG(ActorSystem, LoggerServiceId, "[%p] write finished Name# %s ok# %s peer# %s",
             this, Name,
             status == NYdbGrpc::EQueueEventStatus::OK ? "true" : "false",
-            this->GetPeerName().c_str());
+            this->GetPeer().c_str());
 
         auto event = MakeHolder<typename IContext::TEvWriteFinished>();
         event->Success = status == NYdbGrpc::EQueueEventStatus::OK;
@@ -506,7 +509,7 @@ private:
     bool Finish(const grpc::Status& status) {
         LOG_DEBUG(ActorSystem, LoggerServiceId, "[%p] facade finish Name# %s peer# %s grpc status# (%d) message# %s",
             this, Name,
-            this->GetPeerName().c_str(),
+            this->GetPeer().c_str(),
             static_cast<int>(status.error_code()),
             status.error_message().c_str());
 
@@ -542,7 +545,7 @@ private:
         LOG_DEBUG(ActorSystem, LoggerServiceId, "[%p] stream finished Name# %s ok# %s peer# %s grpc status# (%d) message# %s",
             this, Name,
             status == NYdbGrpc::EQueueEventStatus::OK ? "true" : "false",
-            this->GetPeerName().c_str(),
+            this->GetPeer().c_str(),
             static_cast<int>(Status->error_code()),
             Status->error_message().c_str());
 
@@ -577,7 +580,7 @@ private:
         while ((flags & FlagRegistered) && ReadQueue.load() == 0) {
             if (Flags.compare_exchange_weak(flags, flags & ~FlagRegistered, std::memory_order_acq_rel)) {
                 LOG_DEBUG(ActorSystem, LoggerServiceId, "[%p] deregistering request Name# %s peer# %s (finish done)",
-                    this, Name, this->GetPeerName().c_str());
+                    this, Name, this->GetPeer().c_str());
                 Server->DeregisterRequestCtx(this);
                 break;
             }
@@ -600,6 +603,10 @@ private:
         if (Limiter) {
             Limiter->DecRequest();
         }
+    }
+
+    TString GetRpcMethodName() const {
+        return TStringBuilder() << TServer::TCurrentGRpcService::service_full_name() << '/' << Name;
     }
 
 private:
@@ -646,7 +653,7 @@ private:
         }
 
         TString GetPeerName() const override {
-            return Self->GetPeerName();
+            return Self->GetPeer();
         }
 
         TVector<TStringBuf> GetPeerMetaValues(TStringBuf key) const override {
@@ -659,6 +666,10 @@ private:
 
         void UseDatabase(const TString& database) override {
             Self->UseDatabase(database);
+        }
+
+        TString GetRpcMethodName() const override {
+            return Self->GetRpcMethodName();
         }
 
     private:

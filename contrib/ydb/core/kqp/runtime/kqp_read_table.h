@@ -4,8 +4,8 @@
 #include <contrib/ydb/core/tablet_flat/flat_database.h>
 #include <contrib/ydb/core/scheme/scheme_tabledefs.h>
 
-#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_codegen.h>
-#include <contrib/ydb/library/yql/minikql/computation/mkql_computation_node_holders.h>
+#include <yql/essentials/minikql/computation/mkql_computation_node_codegen.h>
+#include <yql/essentials/minikql/computation/mkql_computation_node_holders.h>
 
 namespace NKikimr {
 namespace NMiniKQL {

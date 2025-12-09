@@ -1,10 +1,12 @@
 LIBRARY()
 
 PEERDIR(
-    contrib/ydb/library/yql/minikql
-    contrib/ydb/library/yql/utils
-    contrib/ydb/library/yql/public/udf
+    yql/essentials/minikql
+    yql/essentials/utils
+    yql/essentials/public/udf
     contrib/ydb/core/formats/arrow/hash
+    contrib/ydb/core/tx/schemeshard/olap/schema
+    contrib/ydb/core/tx/columnshard/common
     contrib/ydb/core/formats
     contrib/ydb/core/protos
 )
@@ -15,7 +17,17 @@ SRCS(
     sharding.cpp
     hash.cpp
     unboxed_reader.cpp
+    hash_slider.cpp
+    GLOBAL hash_modulo.cpp
+    GLOBAL hash_intervals.cpp
+    random.cpp
 )
+
+IF (OS_WINDOWS)
+    CFLAGS(
+        -DKIKIMR_DISABLE_WINDOWS
+    )
+ENDIF()
 
 END()
 

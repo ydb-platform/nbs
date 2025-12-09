@@ -2,6 +2,7 @@
 
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
+#include <contrib/ydb/core/protos/netclassifier.pb.h>
 
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/http/http_proxy.h>

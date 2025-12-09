@@ -7,10 +7,12 @@
 #include <util/string/join.h>
 #include <util/string/printf.h>
 
+#include <contrib/ydb/core/protos/cms.pb.h>
+
 namespace NKikimr {
 namespace NDriverClient {
 
-class TCmsClientCommand : public TClientCommandConfig {
+class TCmsClientCommand : public TClientCommandBase {
 public:
     TString Domain;
     NKikimrClient::TCmsRequest Request;
@@ -18,7 +20,7 @@ public:
     TCmsClientCommand(const TString &name,
                       const std::initializer_list<TString> &aliases,
                       const TString &description)
-        : TClientCommandConfig(name, aliases, description)
+        : TClientCommandBase(name, aliases, description)
     {
     }
 
@@ -252,6 +254,16 @@ public:
     }
 };
 
+class TClientCommandApproveRequest : public TClientCommandManageRequest
+{
+public:
+    TClientCommandApproveRequest()
+        : TClientCommandManageRequest("approve", {}, "Approve scheduled request",
+                                      NKikimrCms::TManageRequestRequest::APPROVE, true)
+    {
+    }
+};
+
 class TClientCommandCheckRequest : public TCmsClientCommand
 {
 public:
@@ -412,6 +424,7 @@ public:
     ui32 Minutes;
     TString TenantPolicy;
     TString AvailabilityMode;
+    i32 Priority;
 
     TClientCommandMakeRequest(const TString &description,
                              NKikimrCms::TAction::EType type,
@@ -433,6 +446,7 @@ public:
         EvictVDisks = false;
         Hours = 0;
         Minutes = 0;
+        Priority = 0;
 
         config.Opts->AddLongOption("user", "User name").Required()
             .RequiredArgument("NAME").StoreResult(&User);
@@ -453,6 +467,9 @@ public:
             .RequiredArgument("max|keep|force").DefaultValue("max").StoreResult(&AvailabilityMode);
         config.Opts->AddLongOption("evict-vdisks", "Evict vdisks before granting permission(s)")
             .NoArgument().SetFlag(&EvictVDisks);
+        config.Opts->AddLongOption("priority", "Request priority")
+            .RequiredArgument("NUM").StoreResult(&Priority);
+            
     }
 
     void Parse(TConfig& config) override
@@ -494,6 +511,9 @@ public:
         if (Hours || Minutes) {
             auto duration = TDuration::Minutes(Minutes) + TDuration::Hours(Hours);
             rec.SetDuration(duration.GetValue());
+        }
+        if (Priority) {
+            rec.SetPriority(Priority);
         }
     }
 };
@@ -579,6 +599,7 @@ public:
         AddCommand(std::make_unique<TClientCommandGetRequest>());
         AddCommand(std::make_unique<TClientCommandListRequest>());
         AddCommand(std::make_unique<TClientCommandRejectRequest>());
+        AddCommand(std::make_unique<TClientCommandApproveRequest>());
         AddCommand(std::make_unique<TClientCommandCheckRequest>());
     }
 };

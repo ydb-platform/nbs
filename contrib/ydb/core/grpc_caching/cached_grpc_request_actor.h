@@ -10,7 +10,7 @@
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/event_local.h>
 #include <contrib/ydb/library/actors/core/log.h>
-#include <contrib/ydb/library/grpc/client/grpc_client_low.h>
+#include <contrib/ydb/public/sdk/cpp/src/library/grpc/client/grpc_client_low.h>
 
 #include <util/datetime/base.h>
 
@@ -158,7 +158,7 @@ namespace NKikimr {
 
             void Bootstrap(const TActorContext& ctx) {
                 TActorId actorId = ctx.SelfID;
-                TActorSystem* actorSystem = ctx.ExecutorThread.ActorSystem;
+                TActorSystem* actorSystem = ctx.ActorSystem();
 
                 NYdbGrpc::TResponseCallback<TResponse> responseCb =
                         [actorId, actorSystem](NYdbGrpc::TGrpcStatus&& status, TResponse&& response) -> void {

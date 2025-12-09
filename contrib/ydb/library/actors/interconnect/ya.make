@@ -11,8 +11,6 @@ SRCS(
     event_filter.h
     event_holder_pool.h
     events_local.h
-    interconnect_address.cpp
-    interconnect_address.h
     interconnect_channel.cpp
     interconnect_channel.h
     interconnect_common.h
@@ -37,33 +35,20 @@ SRCS(
     interconnect_tcp_server.h
     interconnect_tcp_session.cpp
     interconnect_tcp_session.h
+    interconnect_zc_processor.cpp
+    interconnect_zc_processor.h
     load.cpp
     load.h
-    logging.h
     packet.cpp
     packet.h
-    poller_actor.cpp
-    poller_actor.h
-    poller.h
-    poller_tcp.cpp
-    poller_tcp.h
-    poller_tcp_unit.cpp
-    poller_tcp_unit.h
-    poller_tcp_unit_select.cpp
-    poller_tcp_unit_select.h
     profiler.h
     slowpoke_actor.h
+    subscription_manager.cpp
+    subscription_manager.h
     types.cpp
     types.h
     watchdog_timer.h
 )
-
-IF (OS_LINUX)
-    SRCS(
-        poller_tcp_unit_epoll.cpp
-        poller_tcp_unit_epoll.h
-    )
-ENDIF()
 
 PEERDIR(
     contrib/libs/libc_compat
@@ -73,6 +58,10 @@ PEERDIR(
     contrib/ydb/library/actors/dnscachelib
     contrib/ydb/library/actors/dnsresolver
     contrib/ydb/library/actors/helpers
+    contrib/ydb/library/actors/interconnect/address
+    contrib/ydb/library/actors/interconnect/poller
+    contrib/ydb/library/actors/interconnect/rdma
+    contrib/ydb/library/actors/interconnect/rdma/cq_actor
     contrib/ydb/library/actors/prof
     contrib/ydb/library/actors/protos
     contrib/ydb/library/actors/util
@@ -89,6 +78,16 @@ PEERDIR(
 )
 
 END()
+
+IF (OS_LINUX)
+    RECURSE(
+        rdma
+    )
+
+    RECURSE_FOR_TESTS(
+        ut_rdma
+    )
+ENDIF()
 
 RECURSE_FOR_TESTS(
     ut

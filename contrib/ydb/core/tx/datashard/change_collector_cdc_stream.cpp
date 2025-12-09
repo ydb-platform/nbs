@@ -53,7 +53,7 @@ namespace {
         Y_ABORT_UNLESS(cells.size() == types.size());
 
         for (TPos pos = 0; pos < cells.size(); ++pos) {
-            result.emplace_back(tags.at(pos), ECellOp::Set, TRawTypeValue(cells.at(pos).AsRef(), types.at(pos)));
+            result.emplace_back(tags.at(pos), ECellOp::Set, TRawTypeValue(cells.at(pos).AsRef(), types.at(pos).GetTypeId()));
         }
 
         return result;
@@ -227,6 +227,10 @@ bool TCdcStreamChangeCollector::Collect(const TTableId& tableId, ERowOp rop,
             case NKikimrSchemeOp::ECdcStreamModeUpdate:
                 Persist(tableId, pathId, ERowOp::Upsert, key, keyTags, MakeUpdates(**initialState, valueTags, valueTypes));
                 break;
+            case NKikimrSchemeOp::ECdcStreamModeRestoreIncrBackup: {
+                Y_FAIL_S("Invariant violation: source table must be locked before restore.");
+                break;
+            }
             case NKikimrSchemeOp::ECdcStreamModeNewImage:
             case NKikimrSchemeOp::ECdcStreamModeNewAndOldImages:
                 Persist(tableId, pathId, ERowOp::Upsert, key, keyTags, nullptr, &*initialState, valueTags);
@@ -246,6 +250,8 @@ bool TCdcStreamChangeCollector::Collect(const TTableId& tableId, ERowOp rop,
         case NKikimrSchemeOp::ECdcStreamModeUpdate:
             Persist(tableId, pathId, rop, key, keyTags, updates);
             break;
+        case NKikimrSchemeOp::ECdcStreamModeRestoreIncrBackup:
+            Y_FAIL_S("Invariant violation: source table must be locked before restore.");
         case NKikimrSchemeOp::ECdcStreamModeNewImage:
         case NKikimrSchemeOp::ECdcStreamModeOldImage:
         case NKikimrSchemeOp::ECdcStreamModeNewAndOldImages:
@@ -273,10 +279,10 @@ bool TCdcStreamChangeCollector::Collect(const TTableId& tableId, ERowOp rop,
 }
 
 TMaybe<TRowState> TCdcStreamChangeCollector::GetState(const TTableId& tableId, TArrayRef<const TRawTypeValue> key,
-        TArrayRef<const TTag> valueTags, TSelectStats& stats, const TMaybe<TRowVersion>& readVersion)
+        TArrayRef<const TTag> valueTags, TSelectStats& stats, const TMaybe<TRowVersion>& snapshot)
 {
     TRowState row;
-    const auto ready = UserDb.SelectRow(tableId, key, valueTags, row, stats, readVersion);
+    const auto ready = UserDb.SelectRow(tableId, key, valueTags, row, stats, snapshot);
 
     if (ready == EReady::Page) {
         return Nothing();
@@ -286,10 +292,10 @@ TMaybe<TRowState> TCdcStreamChangeCollector::GetState(const TTableId& tableId, T
 }
 
 TMaybe<TRowState> TCdcStreamChangeCollector::GetState(const TTableId& tableId, TArrayRef<const TRawTypeValue> key,
-        TArrayRef<const TTag> valueTags, const TMaybe<TRowVersion>& readVersion)
+        TArrayRef<const TTag> valueTags, const TMaybe<TRowVersion>& snapshot)
 {
     TSelectStats stats;
-    return GetState(tableId, key, valueTags, stats, readVersion);
+    return GetState(tableId, key, valueTags, stats, snapshot);
 }
 
 TRowState TCdcStreamChangeCollector::PatchState(const TRowState& oldState, ERowOp rop,

@@ -1,0 +1,266 @@
+{
+    "meta": {
+        "type": "script",
+        "version": "0.2"
+    },
+    "queries": [
+        {
+            "Plan": {
+                "Node Type": "Query",
+                "PlanNodeType": "Query",
+                "Plans": [
+                    {
+                        "Node Type": "ResultSet_1",
+                        "PlanNodeId": 8,
+                        "PlanNodeType": "ResultSet",
+                        "Plans": [
+                            {
+                                "Node Type": "Limit-Offset",
+                                "Operators": [
+                                    {
+                                        "Inputs": [
+                                            {
+                                                "InternalOperatorId": 1
+                                            }
+                                        ],
+                                        "Limit": "10",
+                                        "Name": "Limit"
+                                    },
+                                    {
+                                        "Inputs": [
+                                            {
+                                                "ExternalPlanNodeId": 6
+                                            }
+                                        ],
+                                        "Name": "Offset",
+                                        "Offset": "1000"
+                                    }
+                                ],
+                                "PlanNodeId": 7,
+                                "Plans": [
+                                    {
+                                        "Node Type": "UnionAll",
+                                        "PlanNodeId": 6,
+                                        "PlanNodeType": "Connection",
+                                        "Plans": [
+                                            {
+                                                "Node Type": "Limit",
+                                                "Operators": [
+                                                    {
+                                                        "Inputs": [
+                                                            {
+                                                                "ExternalPlanNodeId": 4
+                                                            }
+                                                        ],
+                                                        "Limit": "Min(If,SUM(10,1000))",
+                                                        "Name": "Limit"
+                                                    }
+                                                ],
+                                                "PlanNodeId": 5,
+                                                "Plans": [
+                                                    {
+                                                        "Node Type": "Merge",
+                                                        "PlanNodeId": 4,
+                                                        "PlanNodeType": "Connection",
+                                                        "Plans": [
+                                                            {
+                                                                "Node Type": "TopSort-Aggregate",
+                                                                "Operators": [
+                                                                    {
+                                                                        "Inputs": [
+                                                                            {
+                                                                                "InternalOperatorId": 1
+                                                                            }
+                                                                        ],
+                                                                        "Limit": "SUM(10,1000)",
+                                                                        "Name": "TopSort",
+                                                                        "TopSortBy": "argument.Count0"
+                                                                    },
+                                                                    {
+                                                                        "Inputs": [
+                                                                            {
+                                                                                "ExternalPlanNodeId": 2
+                                                                            }
+                                                                        ],
+                                                                        "Name": "Aggregate",
+                                                                        "Phase": "Final"
+                                                                    }
+                                                                ],
+                                                                "PlanNodeId": 3,
+                                                                "Plans": [
+                                                                    {
+                                                                        "HashFunc": "HashV1",
+                                                                        "KeyColumns": [
+                                                                            "AdvEngineID",
+                                                                            "Dst",
+                                                                            "SearchEngineID",
+                                                                            "Src",
+                                                                            "TraficSourceID"
+                                                                        ],
+                                                                        "Node Type": "HashShuffle",
+                                                                        "PlanNodeId": 2,
+                                                                        "PlanNodeType": "Connection",
+                                                                        "Plans": [
+                                                                            {
+                                                                                "Node Type": "Aggregate-Filter-TableRangeScan",
+                                                                                "Operators": [
+                                                                                    {
+                                                                                        "Aggregation": "{SUM(1)}",
+                                                                                        "GroupBy": "[item.AdvEngineID,item.Dst,item.SearchEngineID,item.Src,item.TraficSourceID]",
+                                                                                        "Inputs": [
+                                                                                            {
+                                                                                                "InternalOperatorId": 1
+                                                                                            }
+                                                                                        ],
+                                                                                        "Name": "Aggregate",
+                                                                                        "Phase": "Intermediate"
+                                                                                    },
+                                                                                    {
+                                                                                        "Inputs": [
+                                                                                            {
+                                                                                                "InternalOperatorId": 2
+                                                                                            }
+                                                                                        ],
+                                                                                        "Name": "Filter",
+                                                                                        "Predicate": "IsRefresh == 0",
+                                                                                        "Pushdown": "True"
+                                                                                    },
+                                                                                    {
+                                                                                        "Inputs": [],
+                                                                                        "Name": "TableRangeScan",
+                                                                                        "Path": "/local/clickbench/plans/column/hits",
+                                                                                        "ReadColumns": [
+                                                                                            "AdvEngineID",
+                                                                                            "IsRefresh",
+                                                                                            "Referer",
+                                                                                            "SearchEngineID",
+                                                                                            "TraficSourceID",
+                                                                                            "URL"
+                                                                                        ],
+                                                                                        "ReadRanges": [
+                                                                                            "CounterID [62, 62]",
+                                                                                            "EventDate [15887, 15917]"
+                                                                                        ],
+                                                                                        "ReadRangesExpectedSize": 1,
+                                                                                        "ReadRangesKeys": [
+                                                                                            "CounterID",
+                                                                                            "EventDate"
+                                                                                        ],
+                                                                                        "Scan": "Parallel",
+                                                                                        "SsaProgram": {
+                                                                                            "Command": [
+                                                                                                {
+                                                                                                    "Assign": {
+                                                                                                        "Column": {
+                                                                                                            "Id": 106
+                                                                                                        },
+                                                                                                        "Constant": {
+                                                                                                            "Int32": 0
+                                                                                                        }
+                                                                                                    }
+                                                                                                },
+                                                                                                {
+                                                                                                    "Assign": {
+                                                                                                        "Column": {
+                                                                                                            "Id": 107
+                                                                                                        },
+                                                                                                        "Function": {
+                                                                                                            "Arguments": [
+                                                                                                                {
+                                                                                                                    "Id": 16
+                                                                                                                },
+                                                                                                                {
+                                                                                                                    "Id": 106
+                                                                                                                }
+                                                                                                            ],
+                                                                                                            "FunctionType": 2,
+                                                                                                            "KernelIdx": 0,
+                                                                                                            "YqlOperationId": 11
+                                                                                                        }
+                                                                                                    }
+                                                                                                },
+                                                                                                {
+                                                                                                    "Filter": {
+                                                                                                        "Predicate": {
+                                                                                                            "Id": 107
+                                                                                                        }
+                                                                                                    }
+                                                                                                },
+                                                                                                {
+                                                                                                    "Projection": {
+                                                                                                        "Columns": [
+                                                                                                            {
+                                                                                                                "Id": 41
+                                                                                                            },
+                                                                                                            {
+                                                                                                                "Id": 15
+                                                                                                            },
+                                                                                                            {
+                                                                                                                "Id": 39
+                                                                                                            },
+                                                                                                            {
+                                                                                                                "Id": 38
+                                                                                                            },
+                                                                                                            {
+                                                                                                                "Id": 14
+                                                                                                            }
+                                                                                                        ]
+                                                                                                    }
+                                                                                                }
+                                                                                            ]
+                                                                                        },
+                                                                                        "Table": "clickbench/plans/column/hits"
+                                                                                    }
+                                                                                ],
+                                                                                "PlanNodeId": 1,
+                                                                                "Tables": [
+                                                                                    "clickbench/plans/column/hits"
+                                                                                ]
+                                                                            }
+                                                                        ]
+                                                                    }
+                                                                ]
+                                                            }
+                                                        ],
+                                                        "SortColumns": [
+                                                            "Count0 (Desc)"
+                                                        ]
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ],
+                "Stats": {
+                    "ResourcePoolId": "default"
+                }
+            },
+            "tables": [
+                {
+                    "name": "/local/clickbench/plans/column/hits",
+                    "reads": [
+                        {
+                            "columns": [
+                                "AdvEngineID",
+                                "IsRefresh",
+                                "Referer",
+                                "SearchEngineID",
+                                "TraficSourceID",
+                                "URL"
+                            ],
+                            "scan_by": [
+                                "CounterID [62, 62]",
+                                "EventDate [15887, 15917]"
+                            ],
+                            "type": "Scan"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

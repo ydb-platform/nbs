@@ -1,11 +1,11 @@
 #include "ydb_common_ut.h"
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_result/result.h>
-#include <contrib/ydb/public/sdk/cpp/client/ydb_table/table.h>
+#include <ydb-cpp-sdk/client/result/result.h>
+#include <ydb-cpp-sdk/client/table/table.h>
 #include <contrib/ydb/public/lib/yson_value/ydb_yson_value.h>
 
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
+#include <yql/essentials/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue_message.h>
 
 using namespace NYdb;
 
@@ -87,6 +87,75 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
         ui64 count = rs.ColumnParser("__count").GetUint64();
         Cerr << "count returned " << count << " rows" << Endl;
         UNIT_ASSERT_VALUES_EQUAL(count, BATCH_COUNT * BATCH_SIZE);
+    }
+
+    Y_UNIT_TEST(ValidRetry) {
+        TKikimrWithGrpcAndRootSchema server;
+        ui16 grpc = server.GetPort();
+
+        TString location = TStringBuilder() << "localhost:" << grpc;
+
+        auto connection = NYdb::TDriver(TDriverConfig().SetEndpoint(location));
+
+        NYdb::NTable::TTableClient client(connection);
+        auto session = client.GetSession().ExtractValueSync().GetSession();
+
+        {
+            auto tableBuilder = client.GetTableBuilder();
+            tableBuilder
+                .AddNullableColumn("Shard", EPrimitiveType::Uint64)
+                .AddNullableColumn("Message", EPrimitiveType::Utf8);
+            tableBuilder.SetPrimaryKeyColumns({"Shard"});
+            NYdb::NTable::TCreateTableSettings tableSettings;
+            tableSettings.PartitioningPolicy(NYdb::NTable::TPartitioningPolicy().UniformPartitions(32));
+            auto result = session.CreateTable("/Root/Logs", tableBuilder.Build(), tableSettings).ExtractValueSync();
+
+            UNIT_ASSERT_EQUAL(result.GetStatus(), EStatus::SUCCESS);
+        }
+
+        TValueBuilder rows;
+        rows.BeginList();
+        rows.AddListItem()
+            .BeginStruct()
+                .AddMember("Shard").Uint64(1)
+                .AddMember("Message").Utf8("message")
+            .EndStruct();
+        rows.EndList();
+
+        auto v1 = rows.Build();
+        auto v2 = v1;
+
+        ui32 limit = 100;
+        while (true && --limit) {
+            NYdb::NTable::TBulkUpsertSettings upsertSettings;
+            upsertSettings.ClientTimeout(TDuration::MicroSeconds(10));
+            auto res = client.BulkUpsert("/Root/Logs", std::move(v2), upsertSettings).GetValueSync();
+
+            Cerr << res.GetStatus() << Endl;
+            if (res.GetStatus() == EStatus::CLIENT_DEADLINE_EXCEEDED)
+                break;
+        }
+
+        UNIT_ASSERT_C(limit, "Unable to get client error response");
+
+        {
+            auto res = client.BulkUpsert("/Root/Logs", std::move(v1)).GetValueSync();
+            UNIT_ASSERT_EQUAL(res.GetStatus(), EStatus::SUCCESS);
+        }
+
+        {
+            auto res = session.ExecuteDataQuery(
+                "SELECT Message as col FROM `/Root/Logs`;",
+                NYdb::NTable::TTxControl::BeginTx().CommitTx()
+            ).ExtractValueSync();
+
+            UNIT_ASSERT_EQUAL(res.GetStatus(), EStatus::SUCCESS);
+
+            auto rs = NYdb::TResultSetParser(res.GetResultSet(0));
+            UNIT_ASSERT(rs.TryNextRow());
+            auto msg = rs.ColumnParser("col").GetOptionalUtf8();
+            UNIT_ASSERT_VALUES_EQUAL(msg, "message");
+        }
     }
 
     void TestNull(NYdb::TDriver& connection, EPrimitiveType valueType, bool inKey) {
@@ -344,6 +413,7 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
                     .BeginStruct()
                         .AddMember("Shard").Uint64(42)
                         .AddMember("App").Utf8("app_")
+                        .AddMember("Timestamp").Int64(1)
                         .AddMember("Message").OptionalUtf8("message")
                         .AddMember("Ratio").Double(0.33)
                     .EndStruct();
@@ -381,6 +451,7 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
                     .BeginStruct()
                         .AddMember("App").Utf8("app_")
                         .AddMember("Timestamp").Int64(-3)
+                        .AddMember("Timestamp").Int64(1)
                         .AddMember("Message").Utf8("message")
                         .AddMember("Ratio").Double(0.33)
                     .EndStruct();
@@ -408,7 +479,7 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
 
             auto res = client.BulkUpsert("/Root/Logs", rows.Build()).GetValueSync();
             Cerr << res.GetIssues().ToString() << Endl;
-            UNIT_ASSERT_STRING_CONTAINS(res.GetIssues().ToString(), "Type mismatch for column App: expected Utf8, got Uint64");
+            UNIT_ASSERT_STRING_CONTAINS(res.GetIssues().ToString(), "Type mismatch, got type Uint64 for column App, but expected Utf8");
             UNIT_ASSERT_EQUAL(res.GetStatus(), EStatus::SCHEME_ERROR);
         }
 
@@ -428,27 +499,8 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
 
             auto res = client.BulkUpsert("/Root/Logs", rows.Build()).GetValueSync();
             Cerr << res.GetIssues().ToString() << Endl;
-            UNIT_ASSERT_STRING_CONTAINS(res.GetIssues().ToString(), "Type mismatch for column Message: expected Utf8, got Uint64");
+            UNIT_ASSERT_STRING_CONTAINS(res.GetIssues().ToString(), "Type mismatch, got type Uint64 for column Message, but expected Utf8");
             UNIT_ASSERT_EQUAL(res.GetStatus(), EStatus::SCHEME_ERROR);
-        }
-
-        // Missing value column - it's ok
-        {
-            TValueBuilder rows;
-            rows.BeginList();
-                rows.AddListItem()
-                    .BeginStruct()
-                        .AddMember("Shard").Uint64(42)
-                        .AddMember("App").Utf8("app")
-                        .AddMember("Timestamp").Int64(-3)
-                        .AddMember("Ratio").OptionalDouble(0.33)
-                    .EndStruct();
-            rows.EndList();
-
-            auto res = client.BulkUpsert("/Root/Logs", rows.Build()).GetValueSync();
-            Cerr << res.GetIssues().ToString() << Endl;
-            UNIT_ASSERT(res.GetIssues().ToString().empty());
-            UNIT_ASSERT_EQUAL(res.GetStatus(), EStatus::SUCCESS);
         }
 
         // Unknown column
@@ -508,6 +560,7 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
                     .AddNullableColumn("Column_JsonDocument", EPrimitiveType::JsonDocument)
                     .AddNullableColumn("Column_DyNumber", EPrimitiveType::DyNumber)
                     .AddNullableColumn("Column_Decimal",  TDecimalType(22, 9))
+                    .AddNullableColumn("Column_Decimal35",  TDecimalType(35, 10))
 // These types are not currently supported for table columns
 //                    .AddNullableColumn("Column_Int8",  EPrimitiveType::Int8)
 //                    .AddNullableColumn("Column_Int16",  EPrimitiveType::Int16)
@@ -521,8 +574,7 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
             auto result = session.CreateTable("/Root/Types", tableBuilder.Build()).ExtractValueSync();
 
             UNIT_ASSERT_EQUAL(result.IsTransportError(), false);
-            Cerr << result.GetIssues().ToString() << Endl;
-            UNIT_ASSERT_EQUAL(result.GetStatus(), EStatus::SUCCESS);
+            UNIT_ASSERT_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
         }
 
         {
@@ -557,13 +609,13 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
                         .AddMember("Column_JsonDocument").JsonDocument("{}")
                         .AddMember("Column_DyNumber").DyNumber("123")
 //                        .AddMember("Column_Uuid").Uuid("")
-                        .AddMember("Column_Decimal").Decimal(TDecimalValue("99.95"))
+                        .AddMember("Column_Decimal").Decimal(TDecimalValue("99.95", 22, 9))
+                        .AddMember("Column_Decimal35").Decimal(TDecimalValue("555555555555555.95", 35, 10))
                     .EndStruct();
             rows.EndList();
 
             auto res = client.BulkUpsert("/Root/Types", rows.Build()).GetValueSync();
-            Cerr << res.GetIssues().ToString() << Endl;
-            UNIT_ASSERT_EQUAL(res.GetStatus(), EStatus::SUCCESS);
+            UNIT_ASSERT_EQUAL_C(res.GetStatus(), EStatus::SUCCESS, res.GetIssues().ToString());
         }
 
         // With Optionals
@@ -599,13 +651,13 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
                         .AddMember("Column_JsonDocument").OptionalJsonDocument("{}")
                         .AddMember("Column_DyNumber").OptionalDyNumber("42")
 //                        .AddMember("Column_Uuid").OptionalUuid("")
-                        .AddMember("Column_Decimal").Decimal(TDecimalValue("99.95"))
+                        .AddMember("Column_Decimal").Decimal(TDecimalValue("99.95", 22, 9))
+                        .AddMember("Column_Decimal35").Decimal(TDecimalValue("555555555555555.95", 35, 10))
                     .EndStruct();
             rows.EndList();
 
             auto res = client.BulkUpsert("/Root/Types", rows.Build()).GetValueSync();
-            Cerr << res.GetIssues().ToString() << Endl;
-            UNIT_ASSERT_EQUAL(res.GetStatus(), EStatus::SUCCESS);
+            UNIT_ASSERT_EQUAL_C(res.GetStatus(), EStatus::SUCCESS, res.GetIssues().ToString());
         }
     }
 
@@ -730,6 +782,7 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
             tableBuilder
                     .AddNullableColumn("Key", EPrimitiveType::Uint32)
                     .AddNullableColumn("Value_Decimal",     TDecimalType(22, 9))
+                    .AddNullableColumn("Value_Decimal35",     TDecimalType(35, 10))
                     .AddNullableColumn("Value_Date",        EPrimitiveType::Date)
                     .AddNullableColumn("Value_DateTime",    EPrimitiveType::Datetime)
                     .AddNullableColumn("Value_Timestamp",   EPrimitiveType::Timestamp)
@@ -751,11 +804,24 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
 
         {
             TString table = "/Root/TestInvalidData";
-            TDecimalValue val("0");
+            TDecimalValue val("0", 22, 9);
             val.Low_ = 0;
             val.Hi_ =  11000000000000000000ULL;
             TValueBuilder rows;
-            rows.BeginList().AddListItem().BeginStruct().AddMember("Key").Uint32(1).AddMember("Value_Decimal").Decimal(val).EndStruct().EndList();
+            rows.BeginList().AddListItem().BeginStruct()
+                .AddMember("Key").Uint32(1)
+                .AddMember("Value_Decimal").Decimal(val)
+                .AddMember("Value_Decimal35").Decimal(TDecimalValue("0", 35, 10))
+                .AddMember("Value_Date").Date(TInstant())
+                .AddMember("Value_DateTime").Datetime(TInstant())
+                .AddMember("Value_Timestamp").Timestamp(TInstant())
+                .AddMember("Value_Interval").Interval(0)
+                .AddMember("Value_Utf8").Utf8("")
+                .AddMember("Value_Yson").Yson("{}")
+                .AddMember("Value_Json").Json("{}")
+                .AddMember("Value_JsonDocument").JsonDocument("{}")
+                .AddMember("Value_DyNumber").DyNumber("0")
+                .EndStruct().EndList();
 
             auto res = client.BulkUpsert(table, rows.Build()).GetValueSync();
             Cerr << res.GetStatus() << Endl;
@@ -766,7 +832,20 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
         {
             TString table = "/Root/TestInvalidData";
             TValueBuilder rows;
-            rows.BeginList().AddListItem().BeginStruct().AddMember("Key").Uint32(1).AddMember("Value_Date").Date(TInstant::Days(50000)).EndStruct().EndList();
+            rows.BeginList().AddListItem().BeginStruct()
+                .AddMember("Key").Uint32(1)
+                .AddMember("Value_Date").Date(TInstant::Days(50000))
+                .AddMember("Value_Decimal").Decimal(TDecimalValue("0", 22, 9))
+                .AddMember("Value_Decimal35").Decimal(TDecimalValue("0", 35, 10))
+                .AddMember("Value_DateTime").Datetime(TInstant())
+                .AddMember("Value_Timestamp").Timestamp(TInstant())
+                .AddMember("Value_Interval").Interval(0)
+                .AddMember("Value_Utf8").Utf8("")
+                .AddMember("Value_Yson").Yson("{}")
+                .AddMember("Value_Json").Json("{}")
+                .AddMember("Value_JsonDocument").JsonDocument("{}")
+                .AddMember("Value_DyNumber").DyNumber("0")
+                .EndStruct().EndList();
 
             auto res = client.BulkUpsert(table, rows.Build()).GetValueSync();
             Cerr << res.GetStatus() << Endl;
@@ -777,7 +856,20 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
         {
             TString table = "/Root/TestInvalidData";
             TValueBuilder rows;
-            rows.BeginList().AddListItem().BeginStruct().AddMember("Key").Uint32(1).AddMember("Value_DateTime").Datetime(TInstant::Seconds(Max<ui32>())).EndStruct().EndList();
+            rows.BeginList().AddListItem().BeginStruct()
+                .AddMember("Key").Uint32(1)
+                .AddMember("Value_DateTime").Datetime(TInstant::Seconds(Max<ui32>()))
+                .AddMember("Value_Decimal").Decimal(TDecimalValue("0", 22, 9))
+                .AddMember("Value_Decimal35").Decimal(TDecimalValue("0", 35, 10))
+                .AddMember("Value_Date").Date(TInstant())
+                .AddMember("Value_Timestamp").Timestamp(TInstant())
+                .AddMember("Value_Interval").Interval(0)
+                .AddMember("Value_Utf8").Utf8("")
+                .AddMember("Value_Yson").Yson("{}")
+                .AddMember("Value_Json").Json("{}")
+                .AddMember("Value_JsonDocument").JsonDocument("{}")
+                .AddMember("Value_DyNumber").DyNumber("0")
+                .EndStruct().EndList();
 
             auto res = client.BulkUpsert(table, rows.Build()).GetValueSync();
             Cerr << res.GetStatus() << Endl;
@@ -788,7 +880,20 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
         {
             TString table = "/Root/TestInvalidData";
             TValueBuilder rows;
-            rows.BeginList().AddListItem().BeginStruct().AddMember("Key").Uint32(1).AddMember("Value_Timestamp").Timestamp(TInstant::Days(50000)).EndStruct().EndList();
+            rows.BeginList().AddListItem().BeginStruct()
+                .AddMember("Key").Uint32(1)
+                .AddMember("Value_Timestamp").Timestamp(TInstant::Days(50000))
+                .AddMember("Value_Decimal").Decimal(TDecimalValue("0", 22, 9))
+                .AddMember("Value_Decimal35").Decimal(TDecimalValue("0", 35, 10))
+                .AddMember("Value_Date").Date(TInstant())
+                .AddMember("Value_DateTime").Datetime(TInstant())
+                .AddMember("Value_Interval").Interval(0)
+                .AddMember("Value_Utf8").Utf8("")
+                .AddMember("Value_Yson").Yson("{}")
+                .AddMember("Value_Json").Json("{}")
+                .AddMember("Value_JsonDocument").JsonDocument("{}")
+                .AddMember("Value_DyNumber").DyNumber("0")
+                .EndStruct().EndList();
 
             auto res = client.BulkUpsert(table, rows.Build()).GetValueSync();
             Cerr << res.GetStatus() << Endl;
@@ -799,7 +904,20 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
         {
             TString table = "/Root/TestInvalidData";
             TValueBuilder rows;
-            rows.BeginList().AddListItem().BeginStruct().AddMember("Key").Uint32(1).AddMember("Value_Interval").Interval(TDuration::Days(50000).MicroSeconds()).EndStruct().EndList();
+            rows.BeginList().AddListItem().BeginStruct()
+                .AddMember("Key").Uint32(1)
+                .AddMember("Value_Interval").Interval(TDuration::Days(50000).MicroSeconds())
+                .AddMember("Value_Decimal").Decimal(TDecimalValue("0", 22, 9))
+                .AddMember("Value_Decimal35").Decimal(TDecimalValue("0", 35, 10))
+                .AddMember("Value_Date").Date(TInstant())
+                .AddMember("Value_DateTime").Datetime(TInstant())
+                .AddMember("Value_Timestamp").Timestamp(TInstant())
+                .AddMember("Value_Utf8").Utf8("")
+                .AddMember("Value_Yson").Yson("{}")
+                .AddMember("Value_Json").Json("{}")
+                .AddMember("Value_JsonDocument").JsonDocument("{}")
+                .AddMember("Value_DyNumber").DyNumber("0")
+                .EndStruct().EndList();
 
             auto res = client.BulkUpsert(table, rows.Build()).GetValueSync();
             Cerr << res.GetStatus() << Endl;
@@ -810,7 +928,20 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
         {
             TString table = "/Root/TestInvalidData";
             TValueBuilder rows;
-            rows.BeginList().AddListItem().BeginStruct().AddMember("Key").Uint32(1).AddMember("Value_Utf8").Utf8("\xff").EndStruct().EndList();
+            rows.BeginList().AddListItem().BeginStruct()
+                .AddMember("Key").Uint32(1)
+                .AddMember("Value_Utf8").Utf8("\xff")
+                .AddMember("Value_Decimal").Decimal(TDecimalValue("0", 22, 9))
+                .AddMember("Value_Decimal35").Decimal(TDecimalValue("0", 35, 10))
+                .AddMember("Value_Date").Date(TInstant())
+                .AddMember("Value_DateTime").Datetime(TInstant())
+                .AddMember("Value_Timestamp").Timestamp(TInstant())
+                .AddMember("Value_Interval").Interval(0)
+                .AddMember("Value_Yson").Yson("{}")
+                .AddMember("Value_Json").Json("{}")
+                .AddMember("Value_JsonDocument").JsonDocument("{}")
+                .AddMember("Value_DyNumber").DyNumber("0")
+                .EndStruct().EndList();
 
             auto res = client.BulkUpsert(table, rows.Build()).GetValueSync();
             Cerr << res.GetStatus() << Endl;
@@ -822,7 +953,20 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
         {
             TString table = "/Root/TestInvalidData";
             TValueBuilder rows;
-            rows.BeginList().AddListItem().BeginStruct().AddMember("Key").Uint32(1).AddMember("Value_Yson").Yson("]][").EndStruct().EndList();
+            rows.BeginList().AddListItem().BeginStruct()
+                .AddMember("Key").Uint32(1)
+                .AddMember("Value_Yson").Yson("]][")
+                .AddMember("Value_Decimal").Decimal(TDecimalValue("0", 22, 9))
+                .AddMember("Value_Decimal35").Decimal(TDecimalValue("0", 35, 10))
+                .AddMember("Value_Date").Date(TInstant())
+                .AddMember("Value_DateTime").Datetime(TInstant())
+                .AddMember("Value_Timestamp").Timestamp(TInstant())
+                .AddMember("Value_Interval").Interval(0)
+                .AddMember("Value_Utf8").Utf8("")
+                .AddMember("Value_Json").Json("{}")
+                .AddMember("Value_JsonDocument").JsonDocument("{}")
+                .AddMember("Value_DyNumber").DyNumber("0")
+                .EndStruct().EndList();
 
             auto res = client.BulkUpsert(table, rows.Build()).GetValueSync();
             Cerr << res.GetStatus() << Endl;
@@ -833,7 +977,20 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
         {
             TString table = "/Root/TestInvalidData";
             TValueBuilder rows;
-            rows.BeginList().AddListItem().BeginStruct().AddMember("Key").Uint32(1).AddMember("Value_Json").Json("]]]").EndStruct().EndList();
+            rows.BeginList().AddListItem().BeginStruct()
+                .AddMember("Key").Uint32(1)
+                .AddMember("Value_Json").Json("]]]")
+                .AddMember("Value_Decimal").Decimal(TDecimalValue("0", 22, 9))
+                .AddMember("Value_Decimal35").Decimal(TDecimalValue("0", 35, 10))
+                .AddMember("Value_Date").Date(TInstant())
+                .AddMember("Value_DateTime").Datetime(TInstant())
+                .AddMember("Value_Timestamp").Timestamp(TInstant())
+                .AddMember("Value_Interval").Interval(0)
+                .AddMember("Value_Utf8").Utf8("")
+                .AddMember("Value_Yson").Yson("{}")
+                .AddMember("Value_JsonDocument").JsonDocument("{}")
+                .AddMember("Value_DyNumber").DyNumber("0")
+                .EndStruct().EndList();
 
             auto res = client.BulkUpsert(table, rows.Build()).GetValueSync();
             Cerr << res.GetStatus() << Endl;
@@ -844,7 +1001,20 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
         {
             TString table = "/Root/TestInvalidData";
             TValueBuilder rows;
-            rows.BeginList().AddListItem().BeginStruct().AddMember("Key").Uint32(1).AddMember("Value_JsonDocument").JsonDocument("]]]").EndStruct().EndList();
+            rows.BeginList().AddListItem().BeginStruct()
+                .AddMember("Key").Uint32(1)
+                .AddMember("Value_JsonDocument").JsonDocument("]]]")
+                .AddMember("Value_Decimal").Decimal(TDecimalValue("0", 22, 9))
+                .AddMember("Value_Decimal35").Decimal(TDecimalValue("0", 35, 10))
+                .AddMember("Value_Date").Date(TInstant())
+                .AddMember("Value_DateTime").Datetime(TInstant())
+                .AddMember("Value_Timestamp").Timestamp(TInstant())
+                .AddMember("Value_Interval").Interval(0)
+                .AddMember("Value_Utf8").Utf8("")
+                .AddMember("Value_Yson").Yson("{}")
+                .AddMember("Value_Json").Json("{}")
+                .AddMember("Value_DyNumber").DyNumber("0")
+                .EndStruct().EndList();
 
             auto res = client.BulkUpsert(table, rows.Build()).GetValueSync();
             Cerr << res.GetStatus() << Endl;
@@ -855,7 +1025,20 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
         {
             TString table = "/Root/TestInvalidData";
             TValueBuilder rows;
-            rows.BeginList().AddListItem().BeginStruct().AddMember("Key").Uint32(1).AddMember("Value_DyNumber").DyNumber("[[[]]]").EndStruct().EndList();
+            rows.BeginList().AddListItem().BeginStruct()
+                .AddMember("Key").Uint32(1)
+                .AddMember("Value_DyNumber").DyNumber("[[[]]]")
+                .AddMember("Value_Decimal").Decimal(TDecimalValue("0", 22, 9))
+                .AddMember("Value_Decimal35").Decimal(TDecimalValue("0", 35, 10))
+                .AddMember("Value_Date").Date(TInstant())
+                .AddMember("Value_DateTime").Datetime(TInstant())
+                .AddMember("Value_Timestamp").Timestamp(TInstant())
+                .AddMember("Value_Interval").Interval(0)
+                .AddMember("Value_Utf8").Utf8("")
+                .AddMember("Value_Yson").Yson("{}")
+                .AddMember("Value_Json").Json("{}")
+                .AddMember("Value_JsonDocument").JsonDocument("{}")
+                .EndStruct().EndList();
 
             auto res = client.BulkUpsert(table, rows.Build()).GetValueSync();
             Cerr << res.GetStatus() << Endl;
@@ -892,10 +1075,7 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
         for (ui32 i = 0; i < 256; ++i) {
             {
                 auto res = TestUpsertRow(client, "/Root/ui8", i, 42);
-                if (i <= 127)
-                    UNIT_ASSERT_VALUES_EQUAL(res.GetStatus(), EStatus::SUCCESS);
-                else
-                    UNIT_ASSERT_VALUES_EQUAL(res.GetStatus(), EStatus::BAD_REQUEST);
+                UNIT_ASSERT_VALUES_EQUAL(res.GetStatus(), EStatus::SUCCESS);
             }
 
             {
@@ -904,6 +1084,63 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
             }
         }
     }
+
+    Y_UNIT_TEST(DecimalPK) {
+        TKikimrWithGrpcAndRootSchema server;
+        ui16 grpc = server.GetPort();
+
+        TString location = TStringBuilder() << "localhost:" << grpc;
+
+        auto connection = NYdb::TDriver(TDriverConfig().SetEndpoint(location));
+
+        NYdb::NTable::TTableClient client(connection);
+        auto session = client.GetSession().ExtractValueSync().GetSession();
+
+        {
+            auto tableBuilder = client.GetTableBuilder();
+            tableBuilder
+                .AddNullableColumn("Key_Decimal22", TDecimalType(22, 9))
+                .AddNullableColumn("Key_Decimal35", TDecimalType(35, 10))
+                .AddNullableColumn("Value_Decimal22", TDecimalType(22, 9))
+                .AddNullableColumn("Value_Decimal35", TDecimalType(35, 10));
+
+            tableBuilder.SetPrimaryKeyColumns({"Key_Decimal22", "Key_Decimal35"});
+            auto result = session.CreateTable("/Root/Decimal", tableBuilder.Build()).ExtractValueSync();
+
+            UNIT_ASSERT_EQUAL(result.IsTransportError(), false);
+            Cerr << result.GetIssues().ToString() << Endl;
+            UNIT_ASSERT_VALUES_EQUAL(result.GetStatus(), EStatus::SUCCESS);
+        }
+
+        {
+            TValueBuilder rows;
+            rows.BeginList();
+                rows.AddListItem()
+                    .BeginStruct()
+                        .AddMember("Key_Decimal22").Decimal(TDecimalValue("1.1", 22, 9))
+                        .AddMember("Key_Decimal35").Decimal(TDecimalValue("555555555555555.55", 35, 10))
+                        .AddMember("Value_Decimal22").Decimal(TDecimalValue("2.2", 22, 9))
+                        .AddMember("Value_Decimal35").Decimal(TDecimalValue("666666666666666.66", 35, 10))
+                    .EndStruct();
+            rows.EndList();
+
+            auto res = client.BulkUpsert("/Root/Decimal", rows.Build()).GetValueSync();
+            UNIT_ASSERT_EQUAL_C(res.GetStatus(), EStatus::SUCCESS, res.GetIssues().ToString());
+        }
+
+        {
+            auto res = session.ExecuteDataQuery(
+                "SELECT Value_Decimal22 = Decimal('2.2', 22, 9) AND Value_Decimal35 = Decimal('666666666666666.66', 35, 10) AS res FROM `/Root/Decimal` WHERE Key_Decimal22 = Decimal('1.1', 22, 9) AND Key_Decimal35 = Decimal('555555555555555.55', 35, 10)",
+                NYdb::NTable::TTxControl::BeginTx().CommitTx()
+            ).ExtractValueSync();
+            UNIT_ASSERT_EQUAL(res.GetStatus(), EStatus::SUCCESS);
+
+            auto rs = NYdb::TResultSetParser(res.GetResultSet(0));
+            UNIT_ASSERT(rs.TryNextRow());
+            std::optional<bool> value = rs.ColumnParser("res").GetOptionalBool();
+            UNIT_ASSERT(*value);
+        }
+    }    
 
     void Index(NYdb::NTable::EIndexType indexType, bool enableBulkUpsertToAsyncIndexedTables = false) {
         auto server = TKikimrWithGrpcAndRootSchema({}, {}, {}, false, nullptr, [=](auto& settings) {
@@ -1209,7 +1446,7 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
                 auto status = db.RetryOperationSync([&failInjector](NYdb::NTable::TTableClient& db) {
                         EStatus injected = failInjector.GetInjectedStatus();
                         if (injected != EStatus::SUCCESS) {
-                            return NYdb::NTable::TBulkUpsertResult(TStatus(injected, NYql::TIssues()));
+                            return NYdb::NTable::TBulkUpsertResult(TStatus(injected, NYdb::NIssue::TIssues()));
                         }
 
                         NYdb::TValueBuilder rows;
@@ -1260,7 +1497,7 @@ Y_UNIT_TEST_SUITE(YdbTableBulkUpsert) {
                     [&failInjector](NYdb::NTable::TTableClient& db) {
                         EStatus injected = failInjector.GetInjectedStatus();
                         if (injected != EStatus::SUCCESS) {
-                            return NThreading::MakeFuture<NYdb::NTable::TBulkUpsertResult>(NYdb::NTable::TBulkUpsertResult(TStatus(injected, NYql::TIssues())));
+                            return NThreading::MakeFuture<NYdb::NTable::TBulkUpsertResult>(NYdb::NTable::TBulkUpsertResult(TStatus(injected, NYdb::NIssue::TIssues())));
                         }
 
                         NYdb::TValueBuilder rows;

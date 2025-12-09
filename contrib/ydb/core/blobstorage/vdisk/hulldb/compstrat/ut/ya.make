@@ -2,8 +2,6 @@ UNITTEST_FOR(contrib/ydb/core/blobstorage/vdisk/hulldb/compstrat)
 
 FORK_SUBTESTS()
 
-TIMEOUT(600)
-
 SIZE(MEDIUM)
 
 PEERDIR(

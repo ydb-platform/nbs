@@ -8,7 +8,7 @@ PEERDIR(
     contrib/ydb/core/base
     contrib/ydb/library/aclib
     contrib/ydb/public/api/protos
-    contrib/ydb/library/yql/public/issue
+    yql/essentials/public/issue
 )
 
 YQL_LAST_ABI_VERSION()

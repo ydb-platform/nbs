@@ -1,7 +1,7 @@
 PROTO_LIBRARY()
 
 PEERDIR(
-    contrib/ydb/library/yql/providers/generic/connector/api/common
+    yql/essentials/providers/common/proto
     contrib/ydb/public/api/protos
 )
 

@@ -6,8 +6,6 @@ SRCS(
 
 SIZE(MEDIUM)
 
-TIMEOUT(600)
-
 PEERDIR(
     contrib/ydb/apps/version
     contrib/ydb/library/actors/interconnect/mock
@@ -22,6 +20,7 @@ PEERDIR(
     contrib/ydb/core/blobstorage/vdisk/repl
     contrib/ydb/core/tx/scheme_board
     contrib/ydb/core/util
+    contrib/ydb/core/util/actorsys_test
 )
 
 END()

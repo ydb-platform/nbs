@@ -105,12 +105,15 @@ void BuildUnionAllChannels(TGraph& graph, const NNodes::TDqPhyStage& stage, ui32
 template <typename TGraph, typename TKeyColumns>
 void BuildHashShuffleChannels(TGraph& graph, const typename TGraph::TStageInfoType& stageInfo, ui32 inputIndex,
     const typename TGraph::TStageInfoType& inputStageInfo, ui32 outputIndex, const TKeyColumns& keyColumns,
-    bool enableSpilling, const TChannelLogFunc& logFunc)
+    bool enableSpilling, const TChannelLogFunc& logFunc, EHashShuffleFuncType hashKind = EHashShuffleFuncType::HashV1, bool forceSpilling = false)
 {
     for (auto& originTaskId : inputStageInfo.Tasks) {
         auto& originTask = graph.GetTask(originTaskId);
         auto& taskOutput = originTask.Outputs[outputIndex];
+
         taskOutput.Type = TTaskOutputType::HashPartition;
+        taskOutput.HashKind = hashKind;
+
         for (const auto& keyColumn : keyColumns) {
             taskOutput.KeyColumns.push_back(keyColumn);
         }
@@ -127,9 +130,8 @@ void BuildHashShuffleChannels(TGraph& graph, const typename TGraph::TStageInfoTy
             channel.DstStageId = stageInfo.Id;
             channel.DstTask = targetTask.Id;
             channel.DstInputIndex = inputIndex;
-            channel.InMemory = !enableSpilling || inputStageInfo.OutputsCount == 1;
+            channel.InMemory = !enableSpilling || (inputStageInfo.OutputsCount == 1 && !forceSpilling);
             taskOutput.Channels.push_back(channel.Id);
-
             auto& taskInput = targetTask.Inputs[inputIndex];
             taskInput.Channels.push_back(channel.Id);
 
@@ -204,6 +206,19 @@ void BuildMapChannels(TGraph& graph, const NNodes::TDqPhyStage& stage, ui32 inpu
     auto outputIndex = FromString<ui32>(cnMap.Output().Index().Value());
 
     BuildMapChannels(graph, stageInfo, inputIndex, originStageInfo, outputIndex, false /*spilling*/, logFunc);
+}
+
+template <typename TGraph>
+void BuildStreamLookupChannels(TGraph& graph, const NNodes::TDqPhyStage& stage, ui32 inputIndex,
+    const TChannelLogFunc& logFunc)
+{
+    auto& stageInfo = graph.GetStageInfo(stage);
+    auto cnStreamLookup = stage.Inputs().Item(inputIndex).Cast<NNodes::TDqCnStreamLookup>();
+
+    auto& originStageInfo = graph.GetStageInfo(cnStreamLookup.Output().Stage());
+    auto outputIndex = FromString<ui32>(cnStreamLookup.Output().Index().Value());
+
+    BuildUnionAllChannels(graph, stageInfo, inputIndex, originStageInfo, outputIndex, false /*spilling*/, logFunc);
 }
 
 template <typename TGraph>

@@ -17,9 +17,12 @@ PEERDIR(
     contrib/ydb/core/kqp/gateway/behaviour/tablestore
     contrib/ydb/core/kqp/gateway/behaviour/table
     contrib/ydb/core/kqp/gateway/behaviour/external_data_source
+    contrib/ydb/core/kqp/gateway/behaviour/resource_pool
+    contrib/ydb/core/kqp/gateway/behaviour/resource_pool_classifier
     contrib/ydb/core/kqp/gateway/behaviour/view
     contrib/ydb/core/kqp/gateway/utils
-    contrib/ydb/library/yql/providers/result/expr_nodes
+    contrib/ydb/core/statistics/service    
+    yql/essentials/providers/result/expr_nodes
 )
 
 YQL_LAST_ABI_VERSION()
@@ -32,3 +35,5 @@ RECURSE(
     local_rpc
     utils
 )
+
+RECURSE_FOR_TESTS(ut)

@@ -1,12 +1,14 @@
 #pragma once
-#include <contrib/ydb/core/base/events.h>
+
+#include <contrib/ydb/library/actors/core/actorsystem.h>
+
+#include <contrib/ydb/core/protos/s3_settings.pb.h>
 #include <contrib/ydb/core/wrappers/events/abstract.h>
 #include <contrib/ydb/core/wrappers/events/common.h>
-#include <contrib/ydb/core/wrappers/events/delete_objects.h>
-#include <contrib/ydb/core/wrappers/events/list_objects.h>
-#include <contrib/ydb/core/wrappers/events/object_exists.h>
 #include <contrib/ydb/core/wrappers/events/get_object.h>
-#include <util/generic/ptr.h>
+#include <contrib/ydb/core/wrappers/events/object_exists.h>
+
+#include <memory>
 
 namespace NKikimr::NWrappers {
 

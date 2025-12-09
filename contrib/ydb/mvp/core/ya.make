@@ -1,0 +1,72 @@
+RECURSE_FOR_TESTS(
+    ut
+)
+
+LIBRARY()
+
+SRCS(
+    appdata.h
+    filter.cpp
+    filter.h
+    grpc_log.h
+    http_check.h
+    http_sensors.h
+    infra.h
+    mapper.cpp
+    mapper.h
+    merger.cpp
+    merger.h
+    mvp_log.h
+    mvp_mem_profiler.cpp
+    mvp_swagger.h
+    mvp_test_runtime.cpp
+    mvp_test_runtime.h
+    mvp_tokens.cpp
+    mvp_tokens.h
+    parser.cpp
+    parser.h
+    reducer.cpp
+    reducer.h
+    signals.h
+    core_ydb.cpp
+    core_ydb.h
+    core_ydb_impl.h
+    core_ydbc.cpp
+    core_ydbc.h
+    core_ydbc_impl.h
+    cache_policy.h
+    cache_policy.cpp
+)
+
+PEERDIR(
+    contrib/ydb/public/api/client/yc_private/ydb/v1
+    contrib/ydb/public/api/client/yc_private/resourcemanager
+    contrib/ydb/public/api/client/yc_private/iam
+    contrib/ydb/public/api/client/nc_private/iam/v1
+    contrib/libs/googleapis-common-protos
+    contrib/libs/jwt-cpp
+    contrib/libs/yaml-cpp
+
+    contrib/ydb/mvp/core/protos
+    contrib/ydb/mvp/security/simple
+
+    contrib/ydb/library/actors/core
+    contrib/ydb/library/actors/http
+    contrib/ydb/library/actors/protos
+    contrib/ydb/library/security
+    library/cpp/lwtrace/protos
+    library/cpp/lfalloc/alloc_profiler
+    contrib/ydb/core/viewer/json
+    contrib/ydb/core/protos
+    contrib/ydb/public/sdk/cpp/src/client/draft
+    contrib/ydb/public/sdk/cpp/src/client/datastreams
+    contrib/ydb/public/sdk/cpp/src/client/topic
+    contrib/ydb/public/sdk/cpp/src/client/scheme
+    contrib/ydb/public/sdk/cpp/src/client/table
+    contrib/ydb/public/sdk/cpp/src/client/persqueue_public
+    contrib/ydb/public/sdk/cpp/src/library/operation_id
+    contrib/ydb/public/api/protos
+    contrib/ydb/public/api/grpc
+)
+
+END()

@@ -15,6 +15,7 @@ PEERDIR(
     contrib/ydb/core/fq/libs/result_formatter
     contrib/ydb/core/kqp/provider
     contrib/ydb/library/db_pool/protos
+    contrib/ydb/public/sdk/cpp/adapters/issue
 )
 
 GENERATE_ENUM_SERIALIZATION(ydb_schema_query_actor.h)

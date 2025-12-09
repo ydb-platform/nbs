@@ -13,8 +13,9 @@ PEERDIR(
     library/cpp/xml/document
     contrib/ydb/library/yql/providers/common/http_gateway
     contrib/ydb/library/yql/providers/s3/credentials
-    contrib/ydb/library/yql/utils
-    contrib/ydb/library/yql/utils/threading
+    yql/essentials/utils
+    contrib/ydb/library/yql/utils/actor_log
+    yql/essentials/utils/threading
 )
 
 END()

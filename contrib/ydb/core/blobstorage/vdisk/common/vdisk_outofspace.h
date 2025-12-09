@@ -39,17 +39,19 @@ namespace NKikimr {
             return StatusFlagToSpaceColor(GetLocalStatusFlags());
         }
 
-        ESpaceColor GetLocalLogColor() const {
-            return StatusFlagToSpaceColor(GetLocalLogStatusFlags());
-        }
-
         // update state with flags received from local PDisk
-        void UpdateLocal(NPDisk::TStatusFlags flags) {
-            Update(SelfOrderNum, flags);
+        void UpdateLocalChunk(NPDisk::TStatusFlags flags) {
+            if (flags & NKikimrBlobStorage::StatusIsValid && flags != AtomicGet(ChunkFlags)) {
+                AtomicSet(ChunkFlags, flags);
+                Update(SelfOrderNum, flags | AtomicGet(LogFlags));
+            }
         }
 
         void UpdateLocalLog(NPDisk::TStatusFlags flags) {
-            AtomicSet(LogFlags, flags);
+            if (flags & NKikimrBlobStorage::StatusIsValid && flags != AtomicGet(LogFlags)) {
+                AtomicSet(LogFlags, flags);
+                Update(SelfOrderNum, flags | AtomicGet(ChunkFlags));
+            }
         }
 
         void UpdateLocalFreeSpaceShare(ui64 freeSpaceShare24bit) {
@@ -60,8 +62,16 @@ namespace NKikimr {
             AtomicSet(LocalUsedChunks, static_cast<TAtomicBase>(usedChunks));
         }
 
+        void UpdateLocalTotalChunks(ui32 totalChunks) {
+            AtomicSet(LocalTotalChunks, static_cast<TAtomicBase>(totalChunks));
+        }
+
         NPDisk::TStatusFlags GetLocalStatusFlags() const {
             return static_cast<NPDisk::TStatusFlags>(AtomicGet(AllVDiskFlags[SelfOrderNum]));
+        }
+
+        NPDisk::TStatusFlags GetLocalChunkStatusFlags() const {
+            return static_cast<NPDisk::TStatusFlags>(AtomicGet(ChunkFlags));
         }
 
         NPDisk::TStatusFlags GetLocalLogStatusFlags() const {
@@ -81,9 +91,15 @@ namespace NKikimr {
             return static_cast<ui32>(AtomicGet(LocalUsedChunks));
         }
 
+        ui32 GetLocalTotalChunks() const {
+            return static_cast<ui32>(AtomicGet(LocalTotalChunks));
+        }
+
     private:
         // Log space flags.
         TAtomic LogFlags = 0;
+        // Chunk space flags.
+        TAtomic ChunkFlags = 0;
         // Flag for every VDisk in the BlobStorage group
         TAtomic AllVDiskFlags[MaxVDisksInGroup];
         // Cached global flags (obtained by merging AllVDiskFlags)
@@ -96,6 +112,8 @@ namespace NKikimr {
         const ui32 SelfOrderNum;
         // Chunks used locally by VDisk
         TAtomic LocalUsedChunks = 0;
+        // VDisk chunks limit in shared free space mode
+        TAtomic LocalTotalChunks = 0;
     };
 
     ////////////////////////////////////////////////////////////////////////////

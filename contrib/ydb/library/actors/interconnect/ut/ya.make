@@ -1,11 +1,9 @@
 UNITTEST()
 
 IF (SANITIZER_TYPE == "thread")
-    TIMEOUT(1200)
     SIZE(LARGE)
     TAG(ya:fat)
 ELSE()
-    TIMEOUT(600)
     SIZE(MEDIUM)
 ENDIF()
 
@@ -24,6 +22,8 @@ PEERDIR(
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/interconnect
     contrib/ydb/library/actors/interconnect/ut/lib
+    contrib/ydb/library/actors/interconnect/ut/lib/port_manager
+    contrib/ydb/library/actors/interconnect/rdma/ut/utils
     contrib/ydb/library/actors/interconnect/ut/protos
     contrib/ydb/library/actors/testlib
     library/cpp/digest/md5

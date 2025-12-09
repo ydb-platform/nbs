@@ -180,7 +180,7 @@ namespace NFake {
                 return new NFake::TDummy(tablet, info, SelfId());
             };
 
-            auto *actor = TStarter().Do(SelfId(), 1, MyId, std::move(make));
+            auto *actor = TStarter().Do(SelfId(), 1, MyId, std::move(make), 4);
             auto *event = new TEvFire{ 7, { }, { actor, EMail::Simple, 0 } };
 
             Send(TWorld::Where(EPath::Root), event);
@@ -194,7 +194,7 @@ namespace NFake {
         }
 
     private:
-        const ui64 MyId = MakeTabletID(0, 0, 1);
+        const ui64 MyId = MakeTabletID(false, 1);
         TAutoPtr<NUtil::ILogger> Logger;
         TActorId Owner;
         TActorId Tablet;

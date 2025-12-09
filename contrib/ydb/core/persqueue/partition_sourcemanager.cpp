@@ -25,6 +25,7 @@ const TPartitionSourceManager::TSourceInfo TPartitionSourceManager::Get(const TS
         result.Offset = value.Offset;
         result.Explicit = value.Explicit;
         result.WriteTimestamp = value.WriteTimestamp;
+        result.ProducerEpoch = value.ProducerEpoch;
 
         return result;
     }
@@ -41,7 +42,7 @@ TPartitionSourceManager::TModificationBatch TPartitionSourceManager::CreateModif
 }
 
 const TPartitionSourceManager::TPartitionNode* TPartitionSourceManager::GetPartitionNode() const {
-    return Partition.PartitionGraph.GetPartition(Partition.Partition);
+    return Partition.PartitionGraph.GetPartition(Partition.Partition.OriginalPartitionId);
 }
 
 TSourceIdStorage& TPartitionSourceManager::GetSourceIdStorage() const {
@@ -49,8 +50,8 @@ TSourceIdStorage& TPartitionSourceManager::GetSourceIdStorage() const {
 }
 
 bool TPartitionSourceManager::HasParents() const {
-    auto node = Partition.PartitionGraph.GetPartition(Partition.Partition);
-    return node && !node->Parents.empty();
+    auto node = GetPartitionNode();
+    return node && !node->DirectParents.empty();
 }
 
 
@@ -60,7 +61,7 @@ bool TPartitionSourceManager::HasParents() const {
 
 TPartitionSourceManager::TModificationBatch::TModificationBatch(TPartitionSourceManager& manager, ESourceIdFormat format)
     : Manager(manager)
-    , Node(Manager.GetPartitionNode()) 
+    , Node(Manager.GetPartitionNode())
     , SourceIdWriter(format)
     , HeartbeatEmitter(Manager.Partition.SourceIdStorage) {
 }
@@ -81,7 +82,8 @@ void TPartitionSourceManager::TModificationBatch::Cancel() {
 }
 
 bool TPartitionSourceManager::TModificationBatch::HasModifications() const {
-    return !SourceIdWriter.GetSourceIdsToWrite().empty();
+    return !SourceIdWriter.GetSourceIdsToWrite().empty()
+        || !SourceIdWriter.GetSourceIdsToDelete().empty();
 }
 
 void TPartitionSourceManager::TModificationBatch::FillRequest(TEvKeyValue::TEvRequest* request) {
@@ -104,9 +106,11 @@ TPartitionSourceManager& TPartitionSourceManager::TModificationBatch::GetManager
 TPartitionSourceManager::TSourceInfo Convert(TSourceIdInfo value) {
     TPartitionSourceManager::TSourceInfo result(value.State);
     result.SeqNo = value.SeqNo;
+    result.MinSeqNo = value.MinSeqNo;
     result.Offset = value.Offset;
     result.Explicit = value.Explicit;
     result.WriteTimestamp = value.WriteTimestamp;
+    result.ProducerEpoch = value.ProducerEpoch;
     return result;
 }
 
@@ -133,6 +137,10 @@ std::optional<ui64> TPartitionSourceManager::TSourceManager::SeqNo() const {
     return Info.State == TSourceIdInfo::EState::Unknown ? std::nullopt : std::optional(Info.SeqNo);
 }
 
+std::optional<TMaybe<i16>> TPartitionSourceManager::TSourceManager::ProducerEpoch() const {
+    return Info.State == TSourceIdInfo::EState::Unknown ? std::nullopt : std::optional(Info.ProducerEpoch);
+}
+
 bool TPartitionSourceManager::TSourceManager::Explicit() const {
     return Info.Explicit;
 }
@@ -145,11 +153,11 @@ std::optional<ui64> TPartitionSourceManager::TSourceManager::UpdatedSeqNo() cons
     return InWriter == WriteStorage().end() ? std::nullopt : std::optional(InWriter->second.SeqNo);
 }
 
-void TPartitionSourceManager::TSourceManager::Update(ui64 seqNo, ui64 offset, TInstant timestamp) {
+void TPartitionSourceManager::TSourceManager::Update(ui64 seqNo, ui64 offset, TInstant timestamp, TMaybe<i16> producerEpoch) {
     if (InMemory == MemoryStorage().end()) {
-        Batch.SourceIdWriter.RegisterSourceId(SourceId, seqNo, offset, timestamp);
+        Batch.SourceIdWriter.RegisterSourceId(SourceId, seqNo, offset, timestamp, producerEpoch);
     } else {
-        Batch.SourceIdWriter.RegisterSourceId(SourceId, InMemory->second.Updated(seqNo, offset, timestamp));
+        Batch.SourceIdWriter.RegisterSourceId(SourceId, InMemory->second.Updated(seqNo, offset, timestamp, producerEpoch));
     }
 }
 

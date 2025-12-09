@@ -19,10 +19,10 @@ PEERDIR(
     contrib/ydb/core/engine
     contrib/ydb/core/kqp/provider
     contrib/ydb/core/scheme
-    contrib/ydb/library/yql/ast
-    contrib/ydb/library/yql/core
-    contrib/ydb/library/yql/minikql
-    contrib/ydb/library/yql/providers/common/mkql
+    yql/essentials/ast
+    yql/essentials/core
+    yql/essentials/minikql
+    yql/essentials/providers/common/mkql
 )
 
 YQL_LAST_ABI_VERSION()

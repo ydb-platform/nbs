@@ -16,9 +16,9 @@ PEERDIR(
     contrib/ydb/library/grpc/server/actors
     library/cpp/svnversion
     library/cpp/threading/future
-    contrib/ydb/library/yql/sql
+    yql/essentials/sql
     contrib/ydb/public/api/protos
-    contrib/ydb/library/yql/providers/common/metrics
+    yql/essentials/providers/common/metrics
     contrib/ydb/library/yql/providers/dq/actors
     contrib/ydb/library/yql/providers/dq/api/grpc
     contrib/ydb/library/yql/providers/dq/common

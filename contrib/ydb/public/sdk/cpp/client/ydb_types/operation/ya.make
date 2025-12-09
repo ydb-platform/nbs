@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     operation.cpp
+    out.cpp
 )
 
 PEERDIR(
@@ -9,6 +10,7 @@ PEERDIR(
     library/cpp/threading/future
     contrib/ydb/public/lib/operation_id
     contrib/ydb/public/sdk/cpp/client/ydb_types
+    contrib/ydb/public/api/protos
 )
 
 END()

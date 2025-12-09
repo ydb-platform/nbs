@@ -1,6 +1,6 @@
 #pragma once
 
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue.h>
 
 #include <contrib/ydb/public/api/protos/draft/fq.pb.h>
 #include <contrib/ydb/core/fq/libs/control_plane_storage/events/events.h>

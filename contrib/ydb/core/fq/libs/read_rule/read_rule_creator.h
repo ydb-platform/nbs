@@ -1,7 +1,7 @@
 #pragma once
 #include <contrib/ydb/core/fq/libs/protos/fq_private.pb.h>
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_driver/driver.h>
+#include <ydb-cpp-sdk/client/driver/driver.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
 

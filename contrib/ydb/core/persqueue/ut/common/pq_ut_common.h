@@ -6,6 +6,7 @@
 #include <contrib/ydb/core/testlib/actors/test_runtime.h>
 #include <contrib/ydb/core/testlib/basics/runtime.h>
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
+#include <contrib/ydb/core/protos/msgbus_kv.pb.h>
 
 
 const bool ENABLE_DETAILED_PQ_LOG = false;
@@ -37,7 +38,7 @@ class TInitialEventsFilter : TNonCopyable {
 public:
     TInitialEventsFilter() = default;
 
-    TTestActorRuntime::TEventFilter Prepare(const std::unordered_set<EventKing>& eventKings = {TabletPipe, NPDisk, KeyValue, PQ}, 
+    TTestActorRuntime::TEventFilter Prepare(const std::unordered_set<EventKing>& eventKings = {TabletPipe, NPDisk, KeyValue, PQ},
                          const std::unordered_set<TString>& eventTypeNames = {}) {
         Events.clear();
 
@@ -87,22 +88,24 @@ struct TTestContext {
     THolder<TTestActorRuntime> Runtime;
     TActorId Edge;
     THashMap<ui32, ui32> MsgSeqNoMap;
-
+    bool EnableDetailedPQLog = ENABLE_DETAILED_PQ_LOG;
 
     TTestContext() {
-        TabletId = MakeTabletID(0, 0, 1);
+        TabletId = MakeTabletID(false, 1);
         TabletIds.push_back(TabletId);
 
-        BalancerTabletId = MakeTabletID(0, 0, 2);
+        BalancerTabletId = MakeTabletID(false, 2);
         TabletIds.push_back(BalancerTabletId);
     }
 
-    static void SetupLogging(TTestActorRuntime& runtime)  {
-        NActors::NLog::EPriority pqPriority = ENABLE_DETAILED_PQ_LOG ? NLog::PRI_DEBUG : NLog::PRI_INFO;
+    static void SetupLogging(TTestActorRuntime& runtime, bool enableDetailedPQLog)  {
+        NActors::NLog::EPriority pqPriority = enableDetailedPQLog ? NLog::PRI_DEBUG : NLog::PRI_INFO;
         NActors::NLog::EPriority priority = ENABLE_DETAILED_KV_LOG ? NLog::PRI_DEBUG : NLog::PRI_ERROR;
         NActors::NLog::EPriority otherPriority = NLog::PRI_INFO;
 
         runtime.SetLogPriority(NKikimrServices::PERSQUEUE, pqPriority);
+        runtime.SetLogPriority(NKikimrServices::PQ_TX, pqPriority);
+        runtime.SetLogPriority(NKikimrServices::PERSQUEUE_READ_BALANCER, pqPriority);
 
         runtime.SetLogPriority(NKikimrServices::SYSTEM_VIEWS, pqPriority);
         runtime.SetLogPriority(NKikimrServices::KEYVALUE, priority);
@@ -125,9 +128,7 @@ struct TTestContext {
 
     static bool RequestTimeoutFilter(TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event, TDuration duration, TInstant& deadline) {
         if (event->GetTypeRewrite() == TEvents::TSystem::Wakeup) {
-            TActorId actorId = event->GetRecipientRewrite();
-            IActor *actor = runtime.FindActor(actorId);
-            if (actor && actor->GetActivityType() == NKikimrServices::TActivity::PERSQUEUE_ANS_ACTOR) {
+            if (runtime.FindActorName(event->GetRecipientRewrite()) == "PERSQUEUE_ANS_ACTOR") {
                 return true;
             }
         }
@@ -164,7 +165,7 @@ struct TTestContext {
         TAppPrepare appData;
         appData.SetEnablePersistentQueryStats(enableDbCounters);
         appData.SetEnableDbCounters(enableDbCounters);
-        SetupLogging(*Runtime);
+        SetupLogging(*Runtime, EnableDetailedPQLog);
         SetupTabletServices(*Runtime, &appData);
         setup(*Runtime);
 
@@ -196,7 +197,7 @@ struct TTestContext {
     void Prepare() {
         Runtime.Reset(new TTestBasicRuntime);
         Runtime->SetScheduledLimit(200);
-        SetupLogging(*Runtime);
+        SetupLogging(*Runtime, EnableDetailedPQLog);
         SetupTabletServices(*Runtime);
         CreateTestBootstrapper(*Runtime,
             CreateTestTabletInfo(TabletId, PQTabletType, TErasureType::ErasureNone),
@@ -260,10 +261,19 @@ struct TTabletPreparationParameters {
     TString databasePath{"/Root/PQ"};
     TString account{"federationAccount"};
     ::NKikimrPQ::TPQTabletConfig_EMeteringMode meteringMode = NKikimrPQ::TPQTabletConfig::METERING_MODE_RESERVED_CAPACITY;
+    bool enableCompactificationByKey{false};
 };
 void PQTabletPrepare(
     const TTabletPreparationParameters& parameters,
     const TVector<std::pair<TString, bool>>& users,
+    TTestActorRuntime& runtime,
+    ui64 tabletId,
+    TActorId edge);
+
+void PQTabletPrepareFromResource(
+    const TTabletPreparationParameters& parameters,
+    const TVector<std::pair<TString, bool>>& users,
+    const TString& resourceName,
     TTestActorRuntime& runtime,
     ui64 tabletId,
     TActorId edge);
@@ -276,13 +286,17 @@ void PQBalancerPrepare(
     ui64 tabletId,
     TActorId edge,
     const bool requireAuth = false,
-    bool kill = true);
+    bool kill = true,
+    const THashSet<TString>& xtraConsumers = {});
 
 void PQTabletRestart(
     TTestActorRuntime& runtime,
     ui64 tabletId,
     TActorId edge);
 
+THashSet<TString> GetTabletKeys(TTestActorRuntime& runtime,
+                                ui64 tabletId,
+                                const TActorId& edge);
 
 /*
 ** TTestContext requiring functions
@@ -293,15 +307,24 @@ void PQTabletPrepare(
     const TVector<std::pair<TString, bool>>& users,
     TTestContext& context);
 
+void PQTabletPrepareFromResource(
+    const TTabletPreparationParameters& parameters,
+    const TVector<std::pair<TString, bool>>& users,
+    const TString& resourceName,
+    TTestContext& context);
+
 void PQBalancerPrepare(
     const TString topic,
     const TVector<std::pair<ui32, std::pair<ui64, ui32>>>& map,
     const ui64 ssId,
     TTestContext& context,
     const bool requireAuth = false,
-    bool kill = true);
+    bool kill = true,
+    const THashSet<TString>& xtraConsumers = {});
 
 void PQTabletRestart(TTestContext& context);
+
+THashSet<TString> GetTabletKeys(TTestContext& context);
 
 TActorId RegisterReadSession(
    const TString& session,
@@ -317,7 +340,7 @@ TActorId SetOwner(
 
 TActorId SetOwner(
     TTestActorRuntime* runtime,
-    ui64 tabletId, 
+    ui64 tabletId,
     const TActorId& sender,
     const ui32 partition,
     const TString& owner,
@@ -339,6 +362,12 @@ void PQGetPartInfo(
     ui64 startOffset,
     ui64 endOffset,
     TTestContext& tc);
+
+void PQGetPartInfo(
+    std::function<bool(ui64)> firstOffsetMatcher,
+    ui64 endOffset,
+    TTestContext& tc
+);
 
 void ReserveBytes(
     TTestContext& tc,
@@ -370,7 +399,7 @@ void WriteData(
 
 void WriteData(
     TTestActorRuntime* runtime,
-    ui64 tabletId, 
+    ui64 tabletId,
     const TActorId& sender,
     const ui32 partition,
     const TString& sourceId,
@@ -423,6 +452,7 @@ struct TPQCmdSettingsBase {
 struct TPQCmdSettings : public TPQCmdSettingsBase {
     ui32 Generation = 0;
     ui32 Step = 0;
+    bool KeepPipe = false;
     TPQCmdSettings() = default;
     TPQCmdSettings(ui32 partition, const TString& user, const TString& session, i64 offset = 0, ui32 generation = 0,
                    ui32 step = 0, bool error = false)
@@ -441,12 +471,13 @@ struct TPQCmdReadSettings : public TPQCmdSettingsBase {
     ui32 MaxTimeLagMs = 0;
     ui32 ReadTimestampMs = 0;
     ui64 DirectReadId = 0;
+    i64 LastOffset = 0;
     TActorId Pipe;
     TPQCmdReadSettings() = default;
     TPQCmdReadSettings(const TString& session, ui32 partition, i64 offset, ui32 count, ui32 size, ui32 resCount, bool timeout = false,
                        TVector<i32> offsets = {}, const ui32 maxTimeLagMs = 0, const ui64 readTimestampMs = 0,
-                       const TString user = "user")
-    
+                       const TString user = "user", const i64 lastOffset = 0)
+
         : TPQCmdSettingsBase{partition, user, session, 0, offset, false}
         , Count(count)
         , Size(size)
@@ -455,13 +486,14 @@ struct TPQCmdReadSettings : public TPQCmdSettingsBase {
         , Offsets (offsets)
         , MaxTimeLagMs(maxTimeLagMs)
         , ReadTimestampMs(readTimestampMs)
+        , LastOffset(lastOffset)
     {}
 };
 
 struct TCmdDirectReadSettings {
     ui32 Partition;
     TString Session;
-    ui64 PartitionSessionId; 
+    ui64 PartitionSessionId;
     ui64 DirectReadId;
     TActorId Pipe;
     bool Fail = false;
@@ -475,7 +507,7 @@ std::pair<TString, TActorId> CmdSetOwner(
 
 std::pair<TString, TActorId> CmdSetOwner(
     TTestActorRuntime* runtime,
-    ui64 tabletId, 
+    ui64 tabletId,
     const TActorId& sender,
     const ui32 partition,
     const TString& owner = "default",
@@ -483,10 +515,10 @@ std::pair<TString, TActorId> CmdSetOwner(
 
 TActorId CmdCreateSession(const TPQCmdSettings& settings, TTestContext& tc);
 
-void CmdGetOffset(
+i64 CmdGetOffset(
     const ui32 partition,
     const TString& user,
-    i64 offset,
+    const TMaybe<i64>& expectedOffset,
     TTestContext& tc,
     i64 ctime = -1,
     ui64 writeTime = 0);
@@ -514,6 +546,9 @@ void CmdRead(
 void CmdRead(
     const TPQCmdReadSettings& settings,
     TTestContext& tc);
+
+void BeginCmdRead(const TPQCmdReadSettings& settings, TTestContext& tc);
+bool EndCmdRead(const TPQCmdReadSettings& settings, TTestContext& tc);
 
 void CmdPublishRead(const TCmdDirectReadSettings& settings, TTestContext& tc);
 void CmdForgetRead(const TCmdDirectReadSettings& settings, TTestContext& tc);
@@ -557,7 +592,7 @@ void CmdWrite(
 
 void CmdWrite(
     TTestActorRuntime* runtime,
-    ui64 tabletId, 
+    ui64 tabletId,
     const TActorId& sender,
     const ui32 partition,
     const TString& sourceId,

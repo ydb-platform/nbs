@@ -4,7 +4,7 @@
 #include <contrib/ydb/core/scheme/scheme_pathid.h>
 #include <contrib/ydb/library/aclib/aclib.h>
 #include <contrib/ydb/public/api/protos/ydb_status_codes.pb.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue.h>
 
 #include <variant>
 
@@ -62,6 +62,7 @@ namespace NSequenceProxy {
             TEvNextValResult(Ydb::StatusIds::StatusCode status, const NYql::TIssues& issues)
                 : Status(status)
                 , Issues(issues)
+                , Value(0)
             { }
 
             TEvNextValResult(const TPathId& pathId, i64 value)

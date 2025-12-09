@@ -16,6 +16,7 @@ PEERDIR(
     contrib/ydb/core/fq/libs/ydb
     contrib/ydb/core/protos
     contrib/ydb/library/security
+    contrib/ydb/public/sdk/cpp/adapters/issue
 )
 
 YQL_LAST_ABI_VERSION()

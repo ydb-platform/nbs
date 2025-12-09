@@ -10,8 +10,8 @@ PEERDIR(
     library/cpp/charset
     library/cpp/getopt
     contrib/ydb/core/tablet_flat
-    contrib/ydb/library/yql/sql/pg_dummy
-    contrib/ydb/library/yql/public/udf/service/exception_policy
+    yql/essentials/sql/pg_dummy
+    yql/essentials/public/udf/service/exception_policy
 )
 
 END()

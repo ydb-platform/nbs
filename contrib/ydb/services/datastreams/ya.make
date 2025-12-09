@@ -16,9 +16,9 @@ PEERDIR(
     contrib/ydb/core/mind
     contrib/ydb/public/api/grpc
     contrib/ydb/public/api/grpc/draft
-    contrib/ydb/public/lib/operation_id
-    contrib/ydb/public/sdk/cpp/client/resources
-    contrib/ydb/public/sdk/cpp/client/ydb_datastreams
+    contrib/ydb/public/sdk/cpp/src/library/operation_id
+    contrib/ydb/public/sdk/cpp/src/client/resources
+    contrib/ydb/public/sdk/cpp/src/client/datastreams
     contrib/ydb/services/lib/actors
     contrib/ydb/services/lib/sharding
     contrib/ydb/services/persqueue_v1

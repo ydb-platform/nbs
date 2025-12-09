@@ -7,7 +7,8 @@ SRCS(
 )
 
 PEERDIR(
-    contrib/ydb/library/yql/utils
+    yql/essentials/utils
+    yql/essentials/utils/network
     contrib/ydb/library/yql/dq/actors/compute
     contrib/ydb/library/yql/dq/actors/spilling
     contrib/ydb/library/yql/providers/dq/provider

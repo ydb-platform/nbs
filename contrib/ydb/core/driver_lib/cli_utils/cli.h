@@ -5,7 +5,7 @@
 #include <contrib/ydb/core/driver_lib/cli_base/cli.h>
 #include <contrib/ydb/core/driver_lib/run/factories.h>
 
-#include <contrib/ydb/library/actors/interconnect/poller_tcp.h>
+#include <contrib/ydb/library/actors/interconnect/poller/poller_tcp.h>
 #include <contrib/ydb/public/lib/deprecated/client/msgbus_client.h>
 
 #include <library/cpp/deprecated/enum_codegen/enum_codegen.h>
@@ -22,19 +22,11 @@
 namespace NKikimr {
 
 namespace NDriverClient {
-
-    void DumpProxyErrorCodes(IOutputStream &o, const NKikimrClient::TResponse &response);
-    void DumpSchemeErrorCode(IOutputStream &o, const NKikimrClient::TResponse &response);
-
     int SchemeInitRoot(TCommandConfig &cmdConf, int argc, char** argv);
-    int BSAdmCreateVSlots(TCommandConfig &cmdConf, int argc, char **argv);
-    int BSAdmCreateGroup(TCommandConfig &cmdConf, int argc, char **argv);
-    int CompileAndExecMiniKQL(TCommandConfig &cmdConf, int argc, char **argv);
     int KeyValueRequest(TCommandConfig &cmdConf, int argc, char **argv);
     int PersQueueRequest(TCommandConfig &cmdConf, int argc, char **argv);
     int PersQueueStress(TCommandConfig &cmdConf, int argc, char **argv);
     int PersQueueDiscoverClustersRequest(TCommandConfig &cmdConf, int argc, char **argv);
-    int LoadRequest(TCommandConfig &cmdConf, int argc, char **argv);
     int ActorsysPerfTest(TCommandConfig &cmdConf, int argc, char **argv);
     void HideOptions(NLastGetopt::TOpts& opts, const TString& prefix);
     void HideOptions(NLastGetopt::TOpts& opts);

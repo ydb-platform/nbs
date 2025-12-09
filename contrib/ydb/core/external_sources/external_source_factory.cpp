@@ -5,7 +5,7 @@
 #include <util/generic/map.h>
 #include <util/string/cast.h>
 
-#include <contrib/ydb/library/yql/providers/common/provider/yql_provider_names.h>
+#include <yql/essentials/providers/common/provider/yql_provider_names.h>
 #include <contrib/ydb/library/yql/providers/common/db_id_async_resolver/db_async_resolver.h>
 
 
@@ -14,30 +14,61 @@ namespace NKikimr::NExternalSource {
 namespace {
 
 struct TExternalSourceFactory : public IExternalSourceFactory {
-    TExternalSourceFactory(const TMap<TString, IExternalSource::TPtr>& sources)
+    TExternalSourceFactory(
+        const TMap<TString, IExternalSource::TPtr>& sources,
+        bool allExternalDataSourcesAreAvailable,
+        const std::set<TString>& availableExternalDataSources)
         : Sources(sources)
-    {}
+        , AllExternalDataSourcesAreAvailable(allExternalDataSourcesAreAvailable)
+        , AvailableExternalDataSources(availableExternalDataSources)
+    {
+        for (const auto& [type, source] : sources) {
+            if (AvailableExternalDataSources.contains(type)) {
+                AvailableProviders.insert(source->GetName());
+            }
+        }
+    }
 
     IExternalSource::TPtr GetOrCreate(const TString& type) const override {
         auto it = Sources.find(type);
-        if (it != Sources.end()) {
-            return it->second;
+        if (it == Sources.end()) {
+            throw TExternalSourceException() << "External source with type " << type << " was not found";
         }
-        ythrow TExternalSourceException() << "External source with type " << type << " was not found";
+        if (!AllExternalDataSourcesAreAvailable && !AvailableExternalDataSources.contains(type)) {
+            throw TExternalSourceException() << "External source with type " << type << " is disabled. Please contact your system administrator to enable it";
+        }
+        return it->second;
+    }
+
+    bool IsAvailableProvider(const TString& provider) const override {
+        if (AllExternalDataSourcesAreAvailable) {
+            return true;
+        }
+        return AvailableProviders.contains(provider);
     }
 
 private:
-    TMap<TString, IExternalSource::TPtr> Sources;
+    const TMap<TString, IExternalSource::TPtr> Sources;
+    bool AllExternalDataSourcesAreAvailable;
+    const std::set<TString> AvailableExternalDataSources;
+    std::set<TString> AvailableProviders;
 };
 
 }
 
-IExternalSourceFactory::TPtr CreateExternalSourceFactory(const std::vector<TString>& hostnamePatterns) {
+IExternalSourceFactory::TPtr CreateExternalSourceFactory(const std::vector<TString>& hostnamePatterns,
+                                                         NActors::TActorSystem* actorSystem,
+                                                         size_t pathsLimit,
+                                                         std::shared_ptr<NYql::ISecuredServiceAccountCredentialsFactory> credentialsFactory,
+                                                         bool enableInfer,
+                                                         bool allowLocalFiles,
+                                                         bool allExternalDataSourcesAreAvailable,
+                                                         const std::set<TString>& availableExternalDataSources) {
     std::vector<TRegExMatch> hostnamePatternsRegEx(hostnamePatterns.begin(), hostnamePatterns.end());
     return MakeIntrusive<TExternalSourceFactory>(TMap<TString, IExternalSource::TPtr>{
         {
             ToString(NYql::EDatabaseType::ObjectStorage),
-            CreateObjectStorageExternalSource(hostnamePatternsRegEx)
+            CreateObjectStorageExternalSource(hostnamePatternsRegEx, actorSystem, pathsLimit, std::move(credentialsFactory), enableInfer, allowLocalFiles)
         },
         {
             ToString(NYql::EDatabaseType::ClickHouse),
@@ -48,10 +79,40 @@ IExternalSourceFactory::TPtr CreateExternalSourceFactory(const std::vector<TStri
             CreateExternalDataSource(TString{NYql::GenericProviderName}, {"MDB_BASIC", "BASIC"}, {"database_name", "protocol", "mdb_cluster_id", "use_tls", "schema"}, hostnamePatternsRegEx)
         },
         {
+            ToString(NYql::EDatabaseType::MySQL),
+            CreateExternalDataSource(TString{NYql::GenericProviderName}, {"MDB_BASIC", "BASIC"}, {"database_name", "mdb_cluster_id", "use_tls"}, hostnamePatternsRegEx)
+        },
+        {
             ToString(NYql::EDatabaseType::Ydb),
             CreateExternalDataSource(TString{NYql::GenericProviderName}, {"BASIC", "SERVICE_ACCOUNT"}, {"database_name", "use_tls", "database_id"}, hostnamePatternsRegEx)
+        },
+        {
+            ToString(NYql::EDatabaseType::YT),
+            CreateExternalDataSource(TString{NYql::YtProviderName}, {"NONE", "TOKEN"}, {}, hostnamePatternsRegEx)
+        },
+        {
+            ToString(NYql::EDatabaseType::Greenplum),
+            CreateExternalDataSource(TString{NYql::GenericProviderName}, {"MDB_BASIC", "BASIC"}, {"database_name", "mdb_cluster_id", "use_tls", "schema"}, hostnamePatternsRegEx)
+        },
+        {
+            ToString(NYql::EDatabaseType::MsSQLServer),
+            CreateExternalDataSource(TString{NYql::GenericProviderName}, {"BASIC"}, {"database_name", "use_tls"}, hostnamePatternsRegEx)
+        },
+        {
+            ToString(NYql::EDatabaseType::Oracle),
+            CreateExternalDataSource(TString{NYql::GenericProviderName}, {"BASIC"}, {"database_name", "use_tls", "service_name"}, hostnamePatternsRegEx)
+        },
+        {
+            ToString(NYql::EDatabaseType::Logging),
+            CreateExternalDataSource(TString{NYql::GenericProviderName}, {"SERVICE_ACCOUNT"}, {"folder_id"}, hostnamePatternsRegEx)
+        },
+        {
+            ToString(NYql::EDatabaseType::Solomon),
+            CreateExternalDataSource(TString{NYql::SolomonProviderName}, {"NONE", "TOKEN"}, {"use_ssl", "grpc_location", "project", "cluster"}, hostnamePatternsRegEx)
         }
-    });
+    },
+    allExternalDataSourcesAreAvailable,
+    availableExternalDataSources); 
 }
 
 }

@@ -27,7 +27,7 @@ public:
     }
 
     bool Has(const TString& key) const noexcept override {
-        return YamlProfile[key];
+        return static_cast<bool>(YamlProfile[key]);
     }
 
     void SetValue(const TString& key, const YAML::Node& value) override {
@@ -164,8 +164,7 @@ private:
             if (TFileStat(configFilePath).Mode & (S_IRGRP | S_IROTH)) {
                 int chmodResult = Chmod(configFilePath.GetPath().c_str(), S_IRUSR | S_IWUSR);
                 if (chmodResult) {
-                    Cerr << "Couldn't change permissions for the file \"" << configFilePath.GetPath() << "\"" << Endl;
-                    exit(chmodResult);
+                    throw yexception() << "Couldn't change permissions for the file \"" << configFilePath.GetPath() << "\"";
                 }
             }
             TFileOutput resultConfigFile(TFile(configFilePath, CreateAlways | WrOnly | AWUser | ARUser));

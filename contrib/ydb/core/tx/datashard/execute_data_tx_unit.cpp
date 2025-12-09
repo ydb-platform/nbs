@@ -68,7 +68,7 @@ EExecutionStatus TExecuteDataTxUnit::Execute(TOperation::TPtr op,
 
     if (op->IsImmediate()) {
         // Every time we execute immediate transaction we may choose a new mvcc version
-        op->MvccReadWriteVersion.reset();
+        op->CachedMvccVersion.reset();
     }
 
     TActiveTransaction* tx = dynamic_cast<TActiveTransaction*>(op.Get());
@@ -104,7 +104,7 @@ EExecutionStatus TExecuteDataTxUnit::Execute(TOperation::TPtr op,
     IEngineFlat* engine = tx->GetDataTx()->GetEngine();
     Y_VERIFY_S(engine, "missing engine for " << *op << " at " << DataShard.TabletID());
 
-    if (op->IsImmediate() && !tx->ReValidateKeys()) {
+    if (op->IsImmediate() && !tx->ReValidateKeys(txc.DB.GetScheme())) {
         // Immediate transactions may be reordered with schema changes and become invalid
         const auto& dataTx = tx->GetDataTx();
         Y_ABORT_UNLESS(!dataTx->Ready());
@@ -233,9 +233,8 @@ void TExecuteDataTxUnit::ExecuteDataTx(TOperation::TPtr op,
     DataShard.ReleaseCache(*tx);
     tx->GetDataTx()->ResetCounters();
 
-    auto [readVersion, writeVersion] = DataShard.GetReadWriteVersions(tx);
-    tx->GetDataTx()->SetReadVersion(readVersion);
-    tx->GetDataTx()->SetWriteVersion(writeVersion);
+    auto mvccVersion = DataShard.GetMvccVersion(tx);
+    tx->GetDataTx()->SetMvccVersion(mvccVersion);
 
     // TODO: is it required to always prepare outgoing read sets?
     if (!engine->IsAfterOutgoingReadsetsExtracted()) {
@@ -313,7 +312,7 @@ void TExecuteDataTxUnit::ExecuteDataTx(TOperation::TPtr op,
 
     KqpUpdateDataShardStatCounters(DataShard, counters);
     if (tx->GetDataTx()->CollectStats()) {
-        KqpFillTxStats(DataShard, counters, *result);
+        KqpFillTxStats(DataShard, counters, *result->Record.MutableTxStats());
     }
 
     if (counters.InvisibleRowSkips && op->LockTxId()) {
@@ -326,7 +325,7 @@ void TExecuteDataTxUnit::ExecuteDataTx(TOperation::TPtr op,
         TVector<ui64> participants; // empty participants
         DataShard.GetVolatileTxManager().PersistAddVolatileTx(
             tx->GetTxId(),
-            writeVersion,
+            mvccVersion,
             commitTxIds,
             tx->GetDataTx()->GetVolatileDependencies(),
             participants,
@@ -336,13 +335,17 @@ void TExecuteDataTxUnit::ExecuteDataTx(TOperation::TPtr op,
             txc);
     }
 
+    if (tx->GetDataTx()->GetPerformedUserReads()) {
+        tx->SetPerformedUserReads(true);
+    }
+
     AddLocksToResult(op, ctx);
 
     Pipeline.AddCommittingOp(op);
 }
 
 void TExecuteDataTxUnit::AddLocksToResult(TOperation::TPtr op, const TActorContext& ctx) {
-    auto locks = DataShard.SysLocksTable().ApplyLocks();
+    auto [locks, _] = DataShard.SysLocksTable().ApplyLocks();
     for (const auto& lock : locks) {
         if (lock.IsError()) {
             LOG_NOTICE_S(TActivationContext::AsActorContext(), NKikimrServices::TX_DATASHARD,

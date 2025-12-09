@@ -40,6 +40,7 @@ public:
     }
 };
 
+// WARNING: not thread safe
 class TMemorizableControlWrapper {
     static constexpr i32 RequestCountWithRelevantValue = 1024;
     static constexpr TDuration TimeDurationWithRelevantValue = TDuration::Seconds(15);
@@ -53,6 +54,11 @@ public:
         : Control(control)
         , CurrentValue(Control)
     {
+    }
+
+    void ResetControl(const TControlWrapper &control) {
+        Control = control;
+        CurrentValue = control;
     }
 
     i64 Update(TInstant now) {

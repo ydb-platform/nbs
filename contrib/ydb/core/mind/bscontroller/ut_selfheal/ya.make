@@ -18,12 +18,14 @@ SRCS(
 PEERDIR(
     contrib/ydb/apps/version
     contrib/ydb/core/blobstorage/dsproxy/mock
+    contrib/ydb/core/blobstorage/nodewarden
+    contrib/ydb/core/mind
     contrib/ydb/core/blobstorage/pdisk/mock
     contrib/ydb/core/mind/bscontroller
     contrib/ydb/core/tx/scheme_board
-    contrib/ydb/library/yql/minikql/comp_nodes/llvm14
-    contrib/ydb/library/yql/public/udf/service/stub
-    contrib/ydb/library/yql/sql/pg_dummy
+    yql/essentials/minikql/comp_nodes/llvm16
+    yql/essentials/public/udf/service/stub
+    yql/essentials/sql/pg_dummy
 )
 
 YQL_LAST_ABI_VERSION()

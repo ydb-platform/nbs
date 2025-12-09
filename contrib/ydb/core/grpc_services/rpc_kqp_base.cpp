@@ -1,5 +1,7 @@
 #include "rpc_kqp_base.h"
 
+#include <contrib/ydb/core/protos/kqp_stats.pb.h>
+
 namespace NKikimr {
 namespace NGRpcService {
 

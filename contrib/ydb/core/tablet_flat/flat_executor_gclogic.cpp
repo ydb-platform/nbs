@@ -5,6 +5,12 @@
 namespace NKikimr {
 namespace NTabletFlatExecutor {
 
+namespace {
+    constexpr ui64 GcErrorInitialBackoffMs = 1;
+    constexpr ui64 GcErrorMaxBackoffMs = 10000;
+    constexpr ui64 GcMaxErrors = 25;  // ~1.13 min in total
+}
+
 TExecutorGCLogic::TExecutorGCLogic(TIntrusiveConstPtr<TTabletStorageInfo> info, TAutoPtr<NPageCollection::TSteppedCookieAllocator> cookies)
     : TabletStorageInfo(std::move(info))
     , Cookies(cookies)
@@ -118,7 +124,7 @@ void TExecutorGCLogic::OnCommitLog(ui32 step, ui32 confirmedOnSend, const TActor
         SendCollectGarbage(ctx);
 }
 
-void TExecutorGCLogic::OnCollectGarbageResult(TEvBlobStorage::TEvCollectGarbageResult::TPtr &ptr) {
+TDuration TExecutorGCLogic::OnCollectGarbageResult(TEvBlobStorage::TEvCollectGarbageResult::TPtr &ptr) {
     TEvBlobStorage::TEvCollectGarbageResult* ev = ptr->Get();
     TChannelInfo& channel = ChannelInfo[ev->Channel];
     if (ev->Status == NKikimrProto::EReplyStatus::OK) {
@@ -126,6 +132,7 @@ void TExecutorGCLogic::OnCollectGarbageResult(TEvBlobStorage::TEvCollectGarbageR
     } else {
         channel.OnCollectGarbageFailure();
     }
+    return channel.TryScheduleGcRequestRetries();
 }
 
 void TExecutorGCLogic::ApplyLogEntry(TGCLogEntry& entry) {
@@ -174,6 +181,24 @@ void TExecutorGCLogic::ApplyDelta(TGCTime time, TGCBlobDelta &delta) {
     }
 }
 
+bool TExecutorGCLogic::HasGarbageBefore(TGCTime snapshotTime) {
+    for (const auto& [_, ci] : ChannelInfo) {
+        if (ci.MinUncollectedTime < snapshotTime) {
+            return true;
+        }
+        if (!ci.CommittedDelta.empty() && ci.CommittedDelta.begin()->first < snapshotTime) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void TExecutorGCLogic::RetryGcRequests(ui32 channel, const TActorContext& ctx) {
+    if (auto* channelInfo = ChannelInfo.FindPtr(channel)) {
+        channelInfo->RetryGcRequests(TabletStorageInfo.Get(), channel, Generation, ctx);
+    }
+}
+
 void TExecutorGCLogic::SendCollectGarbage(const TActorContext& ctx) {
     if (!AllowGarbageCollection)
         return;
@@ -192,13 +217,11 @@ void TExecutorGCLogic::SendCollectGarbage(const TActorContext& ctx) {
 TExecutorGCLogic::TChannelInfo::TChannelInfo()
     : GcCounter(1)
     , GcWaitFor(0)
+    , TryCounter(0)
+    , BackoffTimer(GcErrorInitialBackoffMs, GcErrorMaxBackoffMs)
+    , PendingRetry(false)
+    , FailCount(0)
 {
-}
-
-void TExecutorGCLogic::TChannelInfo::ApplyDelta(TGCTime time, TGCBlobDelta& delta) {
-    TGCBlobDelta& committedDelta = CommittedDelta[time];
-    DoSwap(committedDelta, delta);
-    Y_DEBUG_ABORT_UNLESS(delta.Created.empty() && delta.Deleted.empty());
 }
 
 void TExecutorGCLogic::MergeVectors(TVector<TLogoBlobID>& destination, const TVector<TLogoBlobID>& source) {
@@ -358,6 +381,10 @@ void TExecutorGCLogic::TChannelInfo::SendCollectGarbage(TGCTime uncommittedTime,
     if (GcWaitFor > 0)
         return;
 
+    MinUncollectedTime = uncommittedTime;
+    PendingRetry = false;
+    FailCount = 0;
+
     TVector<TLogoBlobID> keep;
     TVector<TLogoBlobID> notKeep;
 
@@ -374,7 +401,7 @@ void TExecutorGCLogic::TChannelInfo::SendCollectGarbage(TGCTime uncommittedTime,
 
     // The first barrier of gen:0 (zero entry) is special
     TGCTime zeroTime{ generation, 0 };
-    if (KnownGcBarrier < zeroTime && collectBarrier < zeroTime && zeroTime <= uncommittedTime) {
+    if (CommitedGcBarrier < zeroTime && collectBarrier < zeroTime && zeroTime <= uncommittedTime) {
         collectBarrier = zeroTime;
     }
 
@@ -457,11 +484,31 @@ void TExecutorGCLogic::TChannelInfo::OnCollectGarbageSuccess() {
 
     CollectSent.Clear();
     CommitedGcBarrier = KnownGcBarrier;
+    TryCounter = 0;
+    BackoffTimer.Reset();
 }
 
 void TExecutorGCLogic::TChannelInfo::OnCollectGarbageFailure() {
     CollectSent.Clear();
     --GcWaitFor;
+    ++FailCount;
+}
+
+TDuration TExecutorGCLogic::TChannelInfo::TryScheduleGcRequestRetries() {
+    if (GcWaitFor == 0 && FailCount > 0) {
+        if (!PendingRetry && TryCounter < GcMaxErrors) {
+            ++TryCounter;
+            PendingRetry = true;
+            return TDuration::MilliSeconds(BackoffTimer.NextBackoffMs());
+        }
+    }
+    return TDuration{};
+}
+
+void TExecutorGCLogic::TChannelInfo::RetryGcRequests(const TTabletStorageInfo *tabletStorageInfo, ui32 channel, ui32 generation, const TActorContext& ctx) {
+    if (PendingRetry) {
+        SendCollectGarbage(MinUncollectedTime, tabletStorageInfo, channel, generation, ctx);
+    }
 }
 
 }

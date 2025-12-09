@@ -1,8 +1,8 @@
 UNITTEST_FOR(contrib/ydb/core/external_sources)
 
 PEERDIR(
-    contrib/ydb/library/yql/public/udf/service/stub
-    contrib/ydb/library/yql/sql/pg_dummy
+    yql/essentials/public/udf/service/stub
+    yql/essentials/sql/pg_dummy
 )
 
 SRCS(

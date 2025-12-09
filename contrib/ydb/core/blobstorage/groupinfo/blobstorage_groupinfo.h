@@ -5,7 +5,8 @@
 #include <contrib/ydb/core/blobstorage/crypto/crypto.h>
 #include <contrib/ydb/core/protos/blobstorage.pb.h>
 
-#include <contrib/ydb/core/base/appdata.h>
+#include <contrib/ydb/core/base/appdata_fwd.h>
+#include <contrib/ydb/core/base/blobstorage_common.h>
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/base/event_filter.h>
 #include <contrib/ydb/core/protos/blobstorage_base3.pb.h>
@@ -83,7 +84,6 @@ public:
     using TVDiskIds = TStackVec<TVDiskID, 16>;
     using TServiceIds = TStackVec<TActorId, 16>;
     using TOrderNums = TStackVec<ui32, 16>;
-
     enum EBlobStateFlags {
         EBSF_DISINTEGRATED = 1, // Group is disintegrated.
         EBSF_UNRECOVERABLE = 1 << 1, // Recoverability: Blob can not be recovered. Ever.
@@ -146,9 +146,33 @@ public:
 
         virtual EBlobState GetBlobState(const TSubgroupPartLayout& parts, const TSubgroupVDisks& failedDisks) const = 0;
 
+        // check recoverability of the blob based only on presense of different parts without checking the layout
+        virtual EBlobState GetBlobStateWithoutLayoutCheck(const TSubgroupPartLayout& parts,
+                const TSubgroupVDisks& failedDisks) const = 0;
+
         // check if we need to resurrect something; returns bit mask of parts needed for specified disk in group,
         // nth bit represents nth part; all returned parts are suitable for this particular disk
         virtual ui32 GetPartsToResurrect(const TSubgroupPartLayout& parts, ui32 idxInSubgroup) const = 0;
+    };
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // BLOB PART DATA INTEGRITY CHECKER
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    struct IDataIntegrityChecker {
+        virtual ~IDataIntegrityChecker() = default;
+
+        using TPart = std::pair<ui32, TRope>;
+
+        struct TPartsData {
+            std::vector<std::vector<TPart>> Parts; // partId - 1 -> [ {diskIdx; data} ]
+        };
+
+        struct TPartsState {
+            bool IsOk = true;
+            TString DataInfo;
+        };
+
+        virtual TPartsState GetDataState(const TLogoBlobID& id, const TPartsData& partsData, char separator) const = 0;
     };
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -194,6 +218,8 @@ public:
         std::unique_ptr<IQuorumChecker> QuorumChecker;
         // map to quickly get (Short)VDisk id from its order number inside the group
         TVector<TVDiskIdShort> VDiskIdForOrderNumber;
+        // data integrity checker
+        std::unique_ptr<IDataIntegrityChecker> DataIntegrityChecker;
 
         TTopology(TBlobStorageGroupType gtype);
         TTopology(TBlobStorageGroupType gtype, ui32 numFailRealms, ui32 numFailDomainsPerFailRealm, ui32 numVDisksPerFailDomain,
@@ -232,6 +258,8 @@ public:
         ui32 GetNumFailDomainsPerFailRealm() const { return FailRealms[0].FailDomains.size(); }
         // get quorum checker
         const IQuorumChecker& GetQuorumChecker() const { return *QuorumChecker; }
+        // get data integrity checker
+        const IDataIntegrityChecker& GetDataIntegrityChecker() const { return *DataIntegrityChecker; }
 
         //////////////////////////////////////////////////////////////////////////////////////
         // IBlobToDiskMapper interface
@@ -249,6 +277,8 @@ public:
         ui32 GetIdxInSubgroup(const TVDiskIdShort& vdisk, ui32 hash) const;
         // function returns idxInSubgroup-th element of vdisks array from PickSubgroup
         TVDiskIdShort GetVDiskInSubgroup(ui32 idxInSubgroup, ui32 hash) const;
+
+        bool IsHandoff(const TVDiskIdShort& vdisk, ui32 hash) const;
 
 
         TFailRealmIterator FailRealmsBegin() const;
@@ -271,6 +301,7 @@ public:
     private:
         static IBlobToDiskMapper *CreateMapper(TBlobStorageGroupType gtype, const TTopology *topology);
         static IQuorumChecker *CreateQuorumChecker(const TTopology *topology);
+        static IDataIntegrityChecker *CreateDataIntegrityChecker(const TTopology *topology);
     };
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -278,13 +309,13 @@ public:
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     struct TDynamicInfo {
         // blobstorage group id
-        const ui32 GroupId;
+        const TGroupId GroupId;
         // blobstorage group generation
         const ui32 GroupGeneration;
         // map to quickly get Service id (TActorId) from its order number inside TTopology
         TVector<TActorId> ServiceIdForOrderNumber;
 
-        TDynamicInfo(ui32 groupId, ui32 groupGen);
+        TDynamicInfo(TGroupId groupId, ui32 groupGen);
         TDynamicInfo(const TDynamicInfo&) = default;
         TDynamicInfo(TDynamicInfo&&) = default;
         TDynamicInfo &operator =(TDynamicInfo&&) = default;
@@ -309,7 +340,7 @@ public:
     explicit TBlobStorageGroupInfo(TBlobStorageGroupType gtype, ui32 numVDisksPerFailDomain = 1,
             ui32 numFailDomains = 0, ui32 numFailRealms = 1, const TVector<TActorId> *vdiskIds = nullptr,
             EEncryptionMode encryptionMode = EEM_ENC_V1, ELifeCyclePhase lifeCyclePhase = ELCP_IN_USE,
-            TCypherKey key = TCypherKey((const ui8*)"TestKey", 8));
+            TCypherKey key = TCypherKey((const ui8*)"TestKey", 8), TGroupId groupId = TGroupId::Zero());
 
     TBlobStorageGroupInfo(std::shared_ptr<TTopology> topology, TDynamicInfo&& rti, TString storagePoolName,
         TMaybe<TKikimrScopeId> acceptedScope, NPDisk::EDeviceType deviceType);
@@ -413,7 +444,7 @@ private:
 
 public:
     // blobstorage group id
-    const ui32 GroupID;
+    const TGroupId GroupID;
     // blobstorage group generation
     const ui32 GroupGeneration;
     // erasure primarily

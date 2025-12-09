@@ -1,5 +1,7 @@
 #include "kafka_create_topics_actor.h"
 
+#include "control_plane_common.h"
+
 #include <contrib/ydb/core/kafka_proxy/kafka_events.h>
 
 #include <contrib/ydb/services/lib/actors/pq_schema_actor.h>
@@ -9,235 +11,45 @@
 
 namespace NKafka {
 
-class TKafkaCreateTopicRequest : public NKikimr::NGRpcService::IRequestOpCtx {
-public:
-    using TRequest = TKafkaCreateTopicRequest;
-
-    TKafkaCreateTopicRequest(
-            TIntrusiveConstPtr<NACLib::TUserToken> userToken,
-            TString topicPath,
-            TString databaseName,
-            const std::function<void(EKafkaErrors, TString&)> sendResultCallback)
-        : UserToken(userToken)
-        , TopicPath(topicPath)
-        , DatabaseName(databaseName)
-        , SendResultCallback(sendResultCallback)
-    {
-    };
-
-    const TString path() const {
-        return TopicPath;
+std::optional<THolder<TEvKafka::TEvTopicModificationResponse>> ConvertCleanupPolicy(
+        const std::optional<TString>& configValue, std::optional<ECleanupPolicy>& cleanupPolicy
+) {
+    if (configValue.value_or("") == "delete") {
+        cleanupPolicy = ECleanupPolicy::REMOVE;
+        return std::nullopt;
+    } else if (configValue.value_or("") == "compact") {
+        cleanupPolicy = ECleanupPolicy::COMPACT;
+        return std::nullopt;
     }
+    auto result = MakeHolder<TEvKafka::TEvTopicModificationResponse>();
+    result->Status = EKafkaErrors::INVALID_REQUEST;
+    result->Message = TStringBuilder()
+        << "Topic-level config '"
+        << CLEANUP_POLICY
+        << "' has invalid/unsupported value: "
+        << configValue.value_or("");
+    return result;
+}
 
-    TMaybe<TString> GetTraceId() const override {
-        return Nothing();
-    }
-
-    const TMaybe<TString> GetDatabaseName() const override {
-        return DatabaseName;
-    }
-
-    const TIntrusiveConstPtr<NACLib::TUserToken>& GetInternalToken() const override {
-        return UserToken;
-    }
-
-    const TString& GetSerializedToken() const override {
-        return UserToken->GetSerializedToken();
-    }
-
-    bool IsClientLost() const override {
-        return false;
-    };
-
-    virtual const google::protobuf::Message* GetRequest() const override {
-        return nullptr;
-    };
-
-    const TMaybe<TString> GetRequestType() const override {
-        return Nothing();
-    };
-
-    void SetFinishAction(std::function<void()>&& cb) override {
-        Y_UNUSED(cb);
-    };
-
-    google::protobuf::Arena* GetArena() override {
-        return nullptr;
-    };
-
-    bool HasClientCapability(const TString& capability) const override {
-        Y_UNUSED(capability);
-        return false;
-    };
-
-    void ReplyWithYdbStatus(Ydb::StatusIds::StatusCode status) override {
-        ProcessYdbStatusCode(status);
-    };
-
-    void ReplyWithRpcStatus(grpc::StatusCode code, const TString& msg = "", const TString& details = "") override {
-        Y_UNUSED(code);
-        Y_UNUSED(msg);
-        Y_UNUSED(details);
-    }
-
-    TString GetPeerName() const override {
-        return "";
-    }
-
-    TInstant GetDeadline() const override {
-        return TInstant();
-    }
-
-    const TMaybe<TString> GetPeerMetaValues(const TString&) const override {
-        return Nothing();
-    }
-
-    TVector<TStringBuf> FindClientCert() const override {
-        return TVector<TStringBuf>();
-    }
-
-    TMaybe<NKikimr::NRpcService::TRlPath> GetRlPath() const override {
-        return Nothing();
-    }
-
-    void RaiseIssue(const NYql::TIssue& issue) override{
-        ReplyMessage = issue.GetMessage();
-        Y_UNUSED(issue);
-    }
-    void RaiseIssues(const NYql::TIssues& issues) override {
-        Y_UNUSED(issues);
-    };
-    const TString& GetRequestName() const override {
-        return DummyString;
-    };
-    void SetDiskQuotaExceeded(bool disk) override {
-        Y_UNUSED(disk);
-    };
-
-    bool GetDiskQuotaExceeded() const override {
-        return false;
-    };
-
-    void AddAuditLogPart(const TStringBuf& name, const TString& value) override {
-        Y_UNUSED(name);
-        Y_UNUSED(value);
-    };
-
-    const NKikimr::NGRpcService::TAuditLogParts& GetAuditLogParts() const override {
-        return DummyAuditLogParts;
-    };
-
-    google::protobuf::Message* GetRequestMut() override {
-        return nullptr;
-    };
-
-    void SetRuHeader(ui64 ru) override {
-        Y_UNUSED(ru);
-    };
-
-    void AddServerHint(const TString& hint) override {
-        Y_UNUSED(hint);
-    };
-
-    void SetCostInfo(float consumed_units) override {
-        Y_UNUSED(consumed_units);
-    };
-
-    void SetStreamingNotify(NYdbGrpc::IRequestContextBase::TOnNextReply&& cb) override {
-        Y_UNUSED(cb);
-    };
-
-    void FinishStream(ui32 status) override {
-        Y_UNUSED(status);
-    };
-
-    void SendSerializedResult(TString&& in, Ydb::StatusIds::StatusCode status, EStreamCtrl flag) override {
-        Y_UNUSED(in);
-        Y_UNUSED(status);
-        Y_UNUSED(flag);
-    };
-
-    void Reply(NProtoBuf::Message* resp, ui32 status = 0) override {
-        Y_UNUSED(resp);
-        Y_UNUSED(status);
-    };
-
-    void SendOperation(const Ydb::Operations::Operation& operation) override {
-        Y_UNUSED(operation);
-    };
-
-    NWilson::TTraceId GetWilsonTraceId() const override {
-        return {};
-    }
-
-    void SendResult(const google::protobuf::Message& result, Ydb::StatusIds::StatusCode status) override {
-        Y_UNUSED(result);
-        ProcessYdbStatusCode(status);
-    };
-
-    void SendResult(
-            const google::protobuf::Message& result,
-            Ydb::StatusIds::StatusCode status,
-            const google::protobuf::RepeatedPtrField<NKikimr::NGRpcService::TYdbIssueMessageType>& message) override {
-
-        Y_UNUSED(result);
-        Y_UNUSED(message);
-        ProcessYdbStatusCode(status);
-    };
-
-    void SendResult(
-            Ydb::StatusIds::StatusCode status,
-            const google::protobuf::RepeatedPtrField<NKikimr::NGRpcService::TYdbIssueMessageType>& message) override {
-
-        Y_UNUSED(message);
-        ProcessYdbStatusCode(status);
-    };
-
-    const Ydb::Operations::OperationParams& operation_params() const {
-        return DummyParams;
-    }
-
-    static TKafkaCreateTopicRequest* GetProtoRequest(std::shared_ptr<IRequestOpCtx> request) {
-        return static_cast<TKafkaCreateTopicRequest*>(&(*request));
-    }
-
-protected:
-    void FinishRequest() override {
-    };
-
-private:
-    const Ydb::Operations::OperationParams DummyParams;
-    const TIntrusiveConstPtr<NACLib::TUserToken> UserToken;
-    const TString DummyString;
-    const NKikimr::NGRpcService::TAuditLogParts DummyAuditLogParts;
-    const TString TopicPath;
-    const TString DatabaseName;
-    const std::function<void(EKafkaErrors status, TString& message)> SendResultCallback;
-    TString ReplyMessage;
-
-    void ProcessYdbStatusCode(Ydb::StatusIds::StatusCode& status) {
-        SendResultCallback(ConvertErrorCode(status), ReplyMessage);
-    }
-};
-
-class TCreateTopicActor : public NKikimr::NGRpcProxy::V1::TPQGrpcSchemaBase<TCreateTopicActor, TKafkaCreateTopicRequest> {
-    using TBase = NKikimr::NGRpcProxy::V1::TPQGrpcSchemaBase<TCreateTopicActor, TKafkaCreateTopicRequest>;
+class TCreateTopicActor : public NKikimr::NGRpcProxy::V1::TPQGrpcSchemaBase<TCreateTopicActor, TKafkaTopicRequestCtx> {
+    using TBase = NKikimr::NGRpcProxy::V1::TPQGrpcSchemaBase<TCreateTopicActor, TKafkaTopicRequestCtx>;
 public:
 
     TCreateTopicActor(
-            TActorId requester, 
+            TActorId requester,
             TIntrusiveConstPtr<NACLib::TUserToken> userToken,
             TString topicPath,
             TString databaseName,
             ui32 partitionsNumber,
             std::optional<ui64> retentionMs,
-            std::optional<ui64> retentionBytes)
-        : TBase(new TKafkaCreateTopicRequest(
+            std::optional<ui64> retentionBytes,
+            std::optional<ECleanupPolicy> cleanupPolicy)
+        : TBase(new TKafkaTopicRequestCtx(
             userToken,
             topicPath,
             databaseName,
-            [this](EKafkaErrors status, TString& message) {
-                this->SendResult(status, message);
+            [this](EKafkaErrors status, const std::string& message, const google::protobuf::Message&) {
+                this->SendResult(status, TString{message});
             })
         )
         , Requester(requester)
@@ -245,13 +57,14 @@ public:
         , PartionsNumber(partitionsNumber)
         , RetentionMs(retentionMs)
         , RetentionBytes(retentionBytes)
+        , CleanupPolicy(cleanupPolicy)
     {
         KAFKA_LOG_D(LogMessage(databaseName));
     };
 
     ~TCreateTopicActor() = default;
 
-    void SendResult(EKafkaErrors status, TString& message) {
+    void SendResult(EKafkaErrors status, const TString& message) {
         THolder<TEvKafka::TEvTopicModificationResponse> response(new TEvKafka::TEvTopicModificationResponse());
         response->Status = status;
         response->TopicPath = TopicPath;
@@ -271,6 +84,9 @@ public:
 
         auto pqDescr = modifyScheme.MutableCreatePersQueueGroup();
         pqDescr->SetPartitionPerTablet(1);
+        if (CleanupPolicy.value_or(ECleanupPolicy::UNKNOWN) == ECleanupPolicy::COMPACT) {
+            pqDescr->MutablePQTabletConfig()->SetEnableCompactification(true);
+        }
 
         Ydb::Topic::CreateTopicRequest topicRequest;
         topicRequest.mutable_partitioning_settings()->set_min_active_partitions(PartionsNumber);
@@ -278,7 +94,7 @@ public:
             topicRequest.mutable_retention_period()->set_seconds(RetentionMs.value() / 1000);
         }
         if (RetentionBytes.has_value()) {
-            topicRequest.set_retention_storage_mb(RetentionBytes.value() / 1000'000);
+            topicRequest.set_retention_storage_mb(RetentionBytes.value() / 1_MB);
         }
         topicRequest.mutable_supported_codecs()->add_codecs(Ydb::Topic::CODEC_RAW);
 
@@ -287,13 +103,13 @@ public:
                 name,
                 topicRequest,
                 modifyScheme,
-                ctx,
+                NKikimr::AppData(ctx),
                 error,
                 workingDir,
                 proposal.Record.GetDatabaseName()
         );
         if (codes.YdbCode != Ydb::StatusIds::SUCCESS) {
-            return ReplyWithError(codes.YdbCode, codes.PQCode, error, ctx);
+            return ReplyWithError(codes.YdbCode, codes.PQCode, error);
         }
     };
 
@@ -319,10 +135,11 @@ private:
     const ui32 PartionsNumber;
     std::optional<ui64> RetentionMs;
     std::optional<ui64> RetentionBytes;
+    std::optional<ECleanupPolicy> CleanupPolicy;
 
     TStringBuilder LogMessage(TString& databaseName) {
         TStringBuilder stringBuilder = TStringBuilder()
-            << "Create Topic actor. DatabaseName: " << databaseName
+            << "Create topics actor. DatabaseName: " << databaseName
             << ". TopicPath: " << TopicPath
             << ". PartitionsNumber: " << PartionsNumber;
         if (RetentionMs.has_value()) {
@@ -330,6 +147,9 @@ private:
         }
         if (RetentionBytes.has_value()) {
             stringBuilder << ". RetentionBytes: " << RetentionBytes.value();
+        }
+        if (CleanupPolicy.has_value() && CleanupPolicy.value() == ECleanupPolicy::COMPACT) {
+            stringBuilder << ". CleaunpPolicy: compact";
         }
         return stringBuilder;
     }
@@ -351,15 +171,9 @@ void TKafkaCreateTopicsActor::Bootstrap(const NActors::TActorContext& ctx) {
         return;
     }
 
-    std::unordered_set<TString> topicNames;
-    for (auto& topic : Message->Topics) {
-        auto& topicName = topic.Name.value();
-        if (topicNames.contains(topicName)) {
-            DuplicateTopicNames.insert(topicName);
-        } else {
-            topicNames.insert(topicName);
-        }
-    }
+    DuplicateTopicNames = ExtractDuplicates<TCreateTopicsRequestData::TCreatableTopic>(
+        Message->Topics,
+        [](TCreateTopicsRequestData::TCreatableTopic topic) -> TString { return topic.Name.value(); });
 
     for (auto& topic : Message->Topics) {
         auto& topicName = topic.Name.value();
@@ -376,46 +190,44 @@ void TKafkaCreateTopicsActor::Bootstrap(const NActors::TActorContext& ctx) {
             continue;
         }
 
-        std::optional<ui64> retentionMs;
-        std::optional<ui64> retentionBytes;
+        std::optional<TString> retentionMs;
+        std::optional<TString> retentionBytes;
+        std::optional<ECleanupPolicy> cleanupPolicy;
 
-        auto parseRetention = [this, topic](
-                TCreateTopicsRequestData::TCreatableTopic::TCreateableTopicConfig& config,
-                std::optional<ui64>& retention) -> bool {
-            try {
-                retention = std::stoul(config.Value.value());
-                return true;
-            } catch(std::invalid_argument) {
-                auto result = MakeHolder<TEvKafka::TEvTopicModificationResponse>();
-                result->Status = EKafkaErrors::INVALID_CONFIG;
-                result->Message = "Provided retention value is not a number";
-                this->TopicNamesToResponses[topic.Name.value()] = TAutoPtr<TEvKafka::TEvTopicModificationResponse>(result.Release());
-                return false;
+        std::optional<THolder<TEvKafka::TEvTopicModificationResponse>> unsupportedConfigResponse;
+
+        for (auto& config : topic.Configs) {
+            unsupportedConfigResponse = ValidateTopicConfigName(config.Name.value());
+            if (unsupportedConfigResponse.has_value()) {
+                break;
             }
-        };
-
-        auto processConfig = [&topic, &retentionMs, &retentionBytes, &parseRetention]() -> bool { 
-            for (auto& config : topic.Configs) {
-                bool result = true;
-                if (config.Name.value() == RETENTION_BYTES_CONFIG_NAME) {
-                    result = parseRetention(config, retentionBytes);
-                } else if (config.Name.value() == RETENTION_MS_CONFIG_NAME) {
-                    result = parseRetention(config, retentionMs);
-                }
-                if (!result) {
-                    return false;
+            if (config.Name.value() == RETENTION_MS_CONFIG_NAME) {
+                retentionMs = config.Value;
+            } else if (config.Name.value() == RETENTION_BYTES_CONFIG_NAME) {
+                retentionBytes = config.Value;
+            } else if (config.Name.value() == CLEANUP_POLICY) {
+                unsupportedConfigResponse = ConvertCleanupPolicy(config.Value, cleanupPolicy);
+                if (unsupportedConfigResponse.has_value()) {
+                    break;
                 }
             }
-            return true;
-        };
+        }
 
-        if (!processConfig()) {
+        if (unsupportedConfigResponse.has_value()) {
+            this->TopicNamesToResponses[topicName] = unsupportedConfigResponse.value();
             continue;
         }
 
+        TRetentionsConversionResult convertedRetentions = ConvertRetentions(retentionMs, retentionBytes);
+
+        if (!convertedRetentions.IsValid) {
+            this->TopicNamesToResponses[topicName] = convertedRetentions.GetKafkaErrorResponse(topicName);
+            continue;
+        };
+
         TopicNamesToRetentions[topicName] = std::pair<std::optional<ui64>, std::optional<ui64>>(
-            retentionMs,
-            retentionBytes
+            convertedRetentions.Ms,
+            convertedRetentions.Bytes
         );
 
         ctx.Register(new TCreateTopicActor(
@@ -424,8 +236,9 @@ void TKafkaCreateTopicsActor::Bootstrap(const NActors::TActorContext& ctx) {
             topic.Name.value(),
             Context->DatabasePath,
             topic.NumPartitions,
-            retentionMs,
-            retentionBytes
+            convertedRetentions.Ms,
+            convertedRetentions.Bytes,
+            cleanupPolicy
         ));
 
         InflyTopics++;
@@ -455,6 +268,10 @@ void TKafkaCreateTopicsActor::Reply(const TActorContext& ctx) {
     for (auto& requestTopic : Message->Topics) {
         auto topicName = requestTopic.Name.value();
 
+        if (!TopicNamesToResponses.contains(topicName)) {
+            continue;
+        }
+
         TCreateTopicsResponseData::TCreatableTopicResult responseTopic;
         responseTopic.Name = topicName;
 
@@ -462,7 +279,7 @@ void TKafkaCreateTopicsActor::Reply(const TActorContext& ctx) {
             responseTopic.ErrorMessage = TopicNamesToResponses[topicName]->Message;
         }
 
-        auto addConfigIfRequired = [this, &topicName, &responseTopic](std::optional<ui64> configValue, TString configName) { 
+        auto addConfigIfRequired = [this, &topicName, &responseTopic](std::optional<ui64> configValue, TString configName) {
             if (configValue.has_value()) {
                 TCreateTopicsResponseData::TCreatableTopicResult::TCreatableTopicConfigs config;
                 config.Name = configName;
@@ -473,22 +290,23 @@ void TKafkaCreateTopicsActor::Reply(const TActorContext& ctx) {
             }
         };
 
-        auto setError= [&responseTopic, &responseStatus](EKafkaErrors status) { 
-            responseTopic.ErrorCode = status;
-            responseStatus = status;
-        };
-
-        if (DuplicateTopicNames.contains(topicName)) {
-            setError(DUPLICATE_RESOURCE);
-        } else {
-            auto status = TopicNamesToResponses[topicName]->Status;
-            if (status == EKafkaErrors::NONE_ERROR) {
-                addConfigIfRequired(TopicNamesToRetentions[topicName].first, RETENTION_MS_CONFIG_NAME);
-                addConfigIfRequired(TopicNamesToRetentions[topicName].second, RETENTION_BYTES_CONFIG_NAME);
-            }
-            setError(TopicNamesToResponses[topicName]->Status);
-        } 
+        EKafkaErrors status = TopicNamesToResponses[topicName]->Status;
+        if (status == EKafkaErrors::NONE_ERROR) {
+            addConfigIfRequired(TopicNamesToRetentions[topicName].first, RETENTION_MS_CONFIG_NAME);
+            addConfigIfRequired(TopicNamesToRetentions[topicName].second, RETENTION_BYTES_CONFIG_NAME);
+        }
+        responseTopic.ErrorCode = status;
+        responseStatus = status;
         response->Topics.push_back(responseTopic);
+    }
+
+    for (auto& topicName : DuplicateTopicNames) {
+        TCreateTopicsResponseData::TCreatableTopicResult responseTopic;
+        responseTopic.Name = topicName;
+        responseTopic.ErrorCode = INVALID_REQUEST;
+        responseTopic.ErrorMessage = "Duplicate topic in request.";
+        response->Topics.push_back(responseTopic);
+        responseStatus = INVALID_REQUEST;
     }
 
     Send(Context->ConnectionId,
@@ -498,20 +316,13 @@ void TKafkaCreateTopicsActor::Reply(const TActorContext& ctx) {
 };
 
 TStringBuilder TKafkaCreateTopicsActor::InputLogMessage() {
-    TStringBuilder stringBuilder;
-    stringBuilder << "Create topics actor: New request. ValidateOnly:" << (Message->ValidateOnly != 0) << " Topics: [";
-
-    bool isFirst = true;
-    for (auto& requestTopic : Message->Topics) {
-        if (isFirst) {
-            isFirst = false;
-        } else {
-            stringBuilder << ",";
-        }
-        stringBuilder << " " << requestTopic.Name.value();
-    }
-    stringBuilder << " ]";
-    return stringBuilder;
+    return InputLogMessage<TCreateTopicsRequestData::TCreatableTopic>(
+            "Create topics actor",
+            Message->Topics,
+            Message->ValidateOnly != 0,
+            [](TCreateTopicsRequestData::TCreatableTopic topic) -> TString {
+                return topic.Name.value();
+            });
 };
 
 

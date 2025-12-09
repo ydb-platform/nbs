@@ -2,7 +2,10 @@ LIBRARY()
 
 SRCS(
     topic_parser.h
-    topic_parser.cpp
+)
+
+PEERDIR(
+    contrib/ydb/public/sdk/cpp/src/library/persqueue/topic_parser_public
 )
 
 END()

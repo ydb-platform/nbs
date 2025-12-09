@@ -5,6 +5,7 @@
 #include <contrib/ydb/library/actors/core/interconnect.h>
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
+#include <contrib/ydb/core/util/backoff.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <util/generic/intrlist.h>
 #include <util/generic/set.h>
@@ -92,6 +93,8 @@ class TTablet : public TActor<TTablet> {
 
         TVector<ui32> YellowMoveChannels;
         TVector<ui32> YellowStopChannels;
+
+        THashMap<ui32, float> ApproximateFreeSpaceShareByChannel;
 
         size_t ByteSize;
 
@@ -214,6 +217,7 @@ class TTablet : public TActor<TTablet> {
     bool NeedCleanupOnLockedPath;
     ui32 GcCounter;
     THolder<NTabletPipe::IConnectAcceptor> PipeConnectAcceptor;
+    TString TabletVersionInfo;
     TInstant BoostrapTime;
     TInstant ActivateTime;
     bool Leader;
@@ -221,7 +225,16 @@ class TTablet : public TActor<TTablet> {
     ui32 DiscoveredLastBlocked;
     ui32 GcInFly;
     ui32 GcInFlyStep;
+    ui32 GcConfirmedStep;
     ui32 GcNextStep;
+
+    // retry failed GC logic
+    ui32 GcTryCounter;
+    TBackoffTimer GcBackoffTimer;
+    bool GcPendingRetry;
+    ui32 GcFailCount;
+
+    TEvTablet::TEvGcForStepAckRequest::TPtr GcForStepAckRequest;
     TResourceProfilesPtr ResourceProfiles;
     TSharedQuotaPtr TxCacheQuota;
     THolder<NTracing::ITrace> IntrospectionTrace;
@@ -251,7 +264,6 @@ class TTablet : public TActor<TTablet> {
     TString BlobStorageErrorReason;
     bool BlobStorageErrorReported = false;
 
-    ui64 StateStorageGroup() const;
     ui64 TabletID() const;
 
     void ReportTabletStateChange(ETabletState state);
@@ -313,6 +325,9 @@ class TTablet : public TActor<TTablet> {
     void Handle(TEvBlobStorage::TEvCollectGarbageResult::TPtr &ev);
     void Handle(TEvTablet::TEvPreCommit::TPtr &ev);
 
+    void Handle(TEvTablet::TEvGcForStepAckRequest::TPtr& ev);
+    void Handle(TEvTabletBase::TEvLogGcRetry::TPtr& ev);
+
     void Handle(TEvTablet::TEvCommit::TPtr &ev);
     bool HandleNext(TEvTablet::TEvCommit::TPtr &ev);
     void Handle(TEvTablet::TEvAux::TPtr &ev);
@@ -326,6 +341,7 @@ class TTablet : public TActor<TTablet> {
     void DoSyncToFollower(TMap<TActorId, TLeaderInfo>::iterator followerIt);
 
     void GcLogChannel(ui32 step);
+    void RetryGcRequests();
 
     bool ProgressCommitQueue();
     void ProgressFollowerQueue();
@@ -531,6 +547,8 @@ class TTablet : public TActor<TTablet> {
             hFunc(TEvInterconnect::TEvNodeDisconnected, HandleByLeader);
             hFunc(TEvents::TEvUndelivered, HandleByLeader);
             hFunc(TEvBlobStorage::TEvCollectGarbageResult, Handle);
+            hFunc(TEvTablet::TEvGcForStepAckRequest, Handle);
+            sFunc(TEvTabletBase::TEvLogGcRetry, RetryGcRequests);
         }
     }
 

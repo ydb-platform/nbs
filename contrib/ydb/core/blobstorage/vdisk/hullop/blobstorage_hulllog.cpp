@@ -1,5 +1,6 @@
 #include "blobstorage_hulllog.h"
 #include <contrib/ydb/core/blobstorage/vdisk/huge/blobstorage_hullhuge.h>
+#include <contrib/ydb/core/blobstorage/pdisk/blobstorage_pdisk.h>
 
 namespace NKikimr {
 
