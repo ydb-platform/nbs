@@ -414,6 +414,7 @@ TVolumeClient::CreateCheckRangeRequest(
     request->Record.SetDiskId(diskId);
     request->Record.SetStartIndex(startIndex);
     request->Record.SetBlocksCount(size);
+    request->Record.SetCalculateChecksums(true);
     return request;
 }
 
