@@ -203,6 +203,9 @@ message TLocalServiceConfig
 
     // Enable FUSE_HANDLE_KILLPRIV_V2 on guest (FUSE client)
     optional bool GuestHandleKillPrivV2Enabled = 36;
+
+    // Enable zero-copy for read operations in the VFS FUSE layer
+    optional bool ZeroCopyReadEnabled = 37;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

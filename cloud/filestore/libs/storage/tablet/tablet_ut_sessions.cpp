@@ -850,6 +850,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         config.SetAllowHandlelessIO(true);
         config.SetZeroCopyWriteEnabled(true);
         config.SetGuestHandleKillPrivV2Enabled(true);
+        config.SetZeroCopyReadEnabled(true);
 
         features.SetTwoStageReadEnabled(true);
         features.SetEntryTimeout(TDuration::Seconds(10).MilliSeconds());
@@ -868,6 +869,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetAllowHandlelessIO(true);
         features.SetZeroCopyWriteEnabled(true);
         features.SetGuestHandleKillPrivV2Enabled(true);
+        features.SetZeroCopyReadEnabled(true);
 
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
     }
