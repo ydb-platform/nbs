@@ -7482,8 +7482,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         writeData(partition1);
         writeData(partition2);
 
-        const auto response1 = partition1.CheckRange("id", 0, 1024, true);
-        const auto response2 = partition2.CheckRange("id", 0, 1024, true);
+        const auto response1 = partition1.CheckRange("id", 0, 1024);
+        const auto response2 = partition2.CheckRange("id", 0, 1024);
 
         TDispatchOptions options;
         options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
@@ -7517,8 +7517,8 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             TBlockRange32::MakeClosedInterval(0, 1024 * 10),
             99);
 
-        const auto response1 = partition1.CheckRange("id", 0, 1024, true);
-        const auto response2 = partition2.CheckRange("id", 0, 1024, true);
+        const auto response1 = partition1.CheckRange("id", 0, 1024);
+        const auto response2 = partition2.CheckRange("id", 0, 1024);
 
         TDispatchOptions options;
         options.FinalEvents.emplace_back(TEvVolume::EvCheckRangeResponse);
