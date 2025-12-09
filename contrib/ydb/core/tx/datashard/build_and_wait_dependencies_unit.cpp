@@ -1,7 +1,8 @@
 #include "datashard_impl.h"
-#include "datashard_counters.h"
 #include "datashard_pipeline.h"
 #include "execution_unit_ctors.h"
+
+#include <contrib/ydb/core/tx/locks/time_counters.h>
 
 namespace NKikimr {
 namespace NDataShard {
@@ -124,23 +125,6 @@ EExecutionStatus TBuildAndWaitDependenciesUnit::Execute(TOperation::TPtr op,
 
     op->ResetWaitingDependenciesFlag();
     op->MarkAsExecuting();
-
-    // Replicate legacy behavior when mvcc is not enabled
-    // When mvcc enabled we don't mark transactions until as late as possible
-    if (!DataShard.IsMvccEnabled()) {
-        bool hadWrites = false;
-        if (!op->IsImmediate()) {
-            // If we start planned operation out of order, then all preceding
-            // planned operations must become blocking for conflicting immediate
-            // operations. This is to avoid any P2-I-P1 ordering where it is
-            // revealed that planned operations are executed out of order.
-            hadWrites |= Pipeline.MarkPlannedLogicallyCompleteUpTo(TRowVersion(op->GetStep(), op->GetTxId()), txc);
-        }
-
-        if (hadWrites) {
-            return EExecutionStatus::ExecutedNoMoreRestarts;
-        }
-    }
 
     return EExecutionStatus::Executed;
 }

@@ -3,6 +3,7 @@ LIBRARY()
 SRCS(
     activeactors.h
     address_classifier.cpp
+    aws.cpp
     backoff.cpp
     cache.cpp
     cache.h
@@ -12,9 +13,9 @@ SRCS(
     concurrent_rw_hash.h
     console.cpp
     console.h
-    count_min_sketch.cpp
-    count_min_sketch.h
     counted_leaky_bucket.h
+    cpuinfo.cpp
+    cpuinfo.h
     defs.h
     event_priority_queue.h
     failure_injection.cpp
@@ -24,6 +25,8 @@ SRCS(
     format.h
     fragmented_buffer.cpp
     fragmented_buffer.h
+    gen_step.cpp
+    gen_step.h
     hazard.cpp
     hyperlog_counter.cpp
     hyperlog_counter.h
@@ -41,14 +44,11 @@ SRCS(
     proto_duration.h
     queue_inplace.h
     queue_oneone_inplace.h
+    random.cpp
     simple_cache.h
-    single_thread_ic_mock.cpp
-    single_thread_ic_mock.h
+    source_location.cpp
     stlog.cpp
     stlog.h
-    templates.h
-    testactorsys.cpp
-    testactorsys.h
     text.cpp
     text.h
     token_bucket.h
@@ -60,12 +60,14 @@ SRCS(
     ui64id.cpp
     ui64id.h
     wildcard.h
+    wilson.h
 )
 
 PEERDIR(
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/interconnect/mock
     contrib/ydb/library/actors/util
+    contrib/ydb/library/actors/wilson
     library/cpp/containers/stack_vector
     library/cpp/html/escape
     library/cpp/ipmath
@@ -75,9 +77,21 @@ PEERDIR(
     library/cpp/random_provider
     contrib/ydb/core/base
     contrib/ydb/core/protos
+    contrib/ydb/core/mon
     library/cpp/deprecated/atomic
     contrib/ydb/library/yverify_stream
 )
+
+IF (OS_WINDOWS)
+    CFLAGS(
+        -DKIKIMR_DISABLE_S3_OPS
+    )
+ELSE()
+    PEERDIR(
+        contrib/libs/aws-sdk-cpp/aws-cpp-sdk-core
+        contrib/libs/curl
+    )
+ENDIF()
 
 END()
 

@@ -15,7 +15,9 @@ public:
     {}
 
     EStrategyOutcome Process(TLogContext& /*logCtx*/, TBlobState& state, const TBlobStorageGroupInfo& info,
-            TBlackboard& /*blackboard*/, TGroupDiskRequests& groupDiskRequests) override {
+            TBlackboard& /*blackboard*/, TGroupDiskRequests& groupDiskRequests,
+            const TAccelerationParams& accelerationParams) override {
+        Y_UNUSED(accelerationParams);
         if (!CheckFailModel(state, info)) {
             state.WholeSituation = TBlobState::ESituation::Error;
             return EStrategyOutcome::Error("failure model exceeded");
@@ -39,7 +41,7 @@ public:
     }
 
 protected:
-    TRope GetDataBuffer(TBlobState& state, const TBlobStorageGroupInfo& info) {
+    TRope GetDataBuffer(TBlobState& state, const TBlobStorageGroupInfo& info, IRcBufAllocator* allocator) {
         for (ui32 i = 0; i < info.Type.TotalPartCount(); ++i) {
             if (info.Type.PartSize(TLogoBlobID(state.Id, i + 1)) && state.Parts[i].Data.IsMonolith()) {
                 return state.Parts[i].Data.GetMonolith();
@@ -49,7 +51,7 @@ protected:
         Y_ABORT_UNLESS(interval.IsSubsetOf(state.Whole.Here()), "missing blob data State# %s", state.ToString().data());
         std::array<TRope, 3> parts;
         ErasureSplit((TErasureType::ECrcMode)state.Id.CrcMode(), info.Type,
-            state.Whole.Data.Read(0, state.Id.BlobSize()), parts);
+            state.Whole.Data.Read(0, state.Id.BlobSize()), parts, nullptr, allocator);
         state.Parts[0].Data.SetMonolith(std::move(parts[0]));
         return parts[1]; // must be the same as parts[0]
     }
@@ -96,6 +98,11 @@ protected:
             return EStrategyOutcome::DONE;
         }
 
+        IRcBufAllocator* allocator = GetDefaultRcBufAllocator();
+        if (TlsActivationContext) {
+            allocator = TlsActivationContext->ActorSystem()->GetRcBufAllocator();
+        }
+
         TGroups groups;
         const ui32 requiredNumDataParts = minLatency ? 4 : 3;
         const ui32 requiredNumMetadataParts = minLatency ? 4 : 2;
@@ -135,7 +142,7 @@ protected:
                                 // send request to this disk
                                 groupDiskRequests.AddPut(disk.OrderNumber,
                                     TLogoBlobID(state.Id, group.PartIdx + 1),
-                                    GetDataBuffer(state, info),
+                                    GetDataBuffer(state, info, allocator),
                                     diskIdx == group.DiskIdx[0] ? TDiskPutRequest::ReasonInitial : TDiskPutRequest::ReasonError,
                                     diskIdx != group.DiskIdx[0],
                                     state.BlobIdx);

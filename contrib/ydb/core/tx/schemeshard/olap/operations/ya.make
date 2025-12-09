@@ -12,6 +12,7 @@ SRCS(
 PEERDIR(
     contrib/ydb/core/mind/hive
     contrib/ydb/services/bg_tasks
+    contrib/ydb/core/tx/schemeshard/olap/operations/alter
 )
 
 YQL_LAST_ABI_VERSION()

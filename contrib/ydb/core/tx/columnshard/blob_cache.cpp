@@ -3,6 +3,7 @@
 
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/blobstorage.h>
+#include <contrib/ydb/core/base/memory_controller_iface.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
@@ -62,18 +63,8 @@ private:
         // (e.g. DS blobs from the same tablet residing on the same DS group, or 2 small blobs from the same tablet)
         std::tuple<ui64, ui32, EReadVariant> BlobSource() const {
             const TUnifiedBlobId& blobId = BlobRange.BlobId;
-
             Y_ABORT_UNLESS(blobId.IsValid());
-
-            if (blobId.IsDsBlob()) {
-                // Tablet & group restriction
-                return {blobId.GetTabletId(), blobId.GetDsGroup(), ReadVariant()};
-            } else if (blobId.IsSmallBlob()) {
-                // Tablet restriction, no group restrictions
-                return {blobId.GetTabletId(), 0, ReadVariant()};
-            }
-
-            return {0, 0, EReadVariant::FAST};
+            return {blobId.GetTabletId(), blobId.GetDsGroup(), ReadVariant()};
         }
     };
 
@@ -102,7 +93,7 @@ private:
     static constexpr i64 MAX_IN_FLIGHT_BYTES = 250ll << 20;
     static constexpr i64 MAX_REQUEST_BYTES = 8ll << 20;
     static constexpr TDuration DEFAULT_READ_DEADLINE = TDuration::Seconds(30);
-    static constexpr TDuration FAST_READ_DEADLINE = TDuration::Seconds(10);
+    static constexpr ui64 DEFAULT_MAX_CACHE_DATA_SIZE = 1000ull << 20;
 
     TLRUCache<TBlobRange, TString> Cache;
     /// List of cached ranges by blob id.
@@ -111,6 +102,7 @@ private:
     THashMultiSet<TBlobRange, BlobRangeHash, BlobRangeEqual> CachedRanges;
 
     TControlWrapper MaxCacheDataSize;
+    const bool UseMaxCacheDataSizeFromConfig;
     TControlWrapper MaxInFlightDataSize;
     i64 CacheDataSize;              // Current size of all blobs in cache
     ui64 ReadCookie;
@@ -144,6 +136,9 @@ private:
     const TCounterPtr SizeBlobsInFlight;
     const TCounterPtr ReadRequests;
     const TCounterPtr ReadsInQueue;
+    const TCounterPtr MaxSizeBytes;
+
+    TIntrusivePtr<NMemory::IMemoryConsumer> MemoryConsumer;
 
 public:
     static constexpr auto ActorActivityType() {
@@ -151,10 +146,11 @@ public:
     }
 
 public:
-    explicit TBlobCache(ui64 maxSize, TIntrusivePtr<::NMonitoring::TDynamicCounters> counters)
+    explicit TBlobCache(const std::optional<ui64>& maxSize, TIntrusivePtr<::NMonitoring::TDynamicCounters> counters)
         : TActorBootstrapped<TBlobCache>()
         , Cache(SIZE_MAX)
-        , MaxCacheDataSize(maxSize, 0, 1ull << 40)
+        , MaxCacheDataSize(maxSize.value_or(DEFAULT_MAX_CACHE_DATA_SIZE), 0, 1ull << 40)
+        , UseMaxCacheDataSizeFromConfig(maxSize.has_value())
         , MaxInFlightDataSize(Min<i64>(MaxCacheDataSize, MAX_IN_FLIGHT_BYTES), 0, 10ull << 30)
         , CacheDataSize(0)
         , ReadCookie(1)
@@ -179,7 +175,8 @@ public:
         , SizeBlobsInFlight(counters->GetCounter("SizeBlobsInFlight"))
         , ReadRequests(counters->GetCounter("ReadRequests", true))
         , ReadsInQueue(counters->GetCounter("ReadsInQueue"))
-    {}
+        , MaxSizeBytes(counters->GetCounter("MaxSizeBytes")) {
+    }
 
     void Bootstrap(const TActorContext& ctx) {
         auto& icb = AppData(ctx)->Icb;
@@ -188,6 +185,10 @@ public:
 
         LOG_S_NOTICE("MaxCacheDataSize: " << (i64)MaxCacheDataSize
             << " InFlightDataSize: " << (i64)InFlightDataSize);
+
+        MaxSizeBytes->Set((i64)MaxCacheDataSize);
+
+        Send(NMemory::MakeMemoryControllerId(), new NMemory::TEvConsumerRegister(NMemory::EMemoryConsumerKind::ColumnTablesBlobCache));
 
         Become(&TBlobCache::StateFunc);
         ScheduleWakeup();
@@ -205,6 +206,8 @@ private:
             HFunc(TEvBlobStorage::TEvGetResult, Handle);
             HFunc(TEvTabletPipe::TEvClientConnected, Handle);
             HFunc(TEvTabletPipe::TEvClientDestroyed, Handle);
+            HFunc(NMemory::TEvConsumerRegistered, Handle);
+            HFunc(NMemory::TEvConsumerLimit, Handle);
         default:
             LOG_S_WARN("Unhandled event type: " << ev->GetTypeRewrite()
                        << " event: " << ev->ToString());
@@ -248,7 +251,7 @@ private:
         if (it != Cache.End()) {
             Hits->Inc();
             HitsBytes->Add(blobRange.Size);
-            SendResult(sender, blobRange, NKikimrProto::OK, it.Value(), ctx, true);
+            SendResult(sender, blobRange, NKikimrProto::OK, it.Value(),  {}, ctx, true);
             return true;
         }
 
@@ -342,6 +345,37 @@ private:
         }
 
         CachedRanges.erase(begin, end);
+
+        UpdateConsumption();
+    }
+
+    void Handle(NMemory::TEvConsumerRegistered::TPtr& ev, const TActorContext&) {
+        MemoryConsumer = std::move(ev->Get()->Consumer);
+    }
+
+    void Handle(NMemory::TEvConsumerLimit::TPtr& ev, const TActorContext&) {
+        if (UseMaxCacheDataSizeFromConfig) {
+            return;
+        }
+
+        const i64 newMaxCacheDataSize = ev->Get()->LimitBytes;
+        if (newMaxCacheDataSize == (i64)MaxCacheDataSize) {
+            return;
+        }
+
+        LOG_S_DEBUG("Updating max cache data size: " << newMaxCacheDataSize);
+
+        MaxCacheDataSize = newMaxCacheDataSize;
+
+        MaxSizeBytes->Set((i64)MaxCacheDataSize);
+    }
+
+    void UpdateConsumption() {
+        if (!MemoryConsumer) {
+            return;
+        }
+
+        MemoryConsumer->SetConsumption(CacheDataSize);
     }
 
     void SendBatchReadRequestToDS(const std::vector<TBlobRange>& blobRanges, const ui64 cookie,
@@ -368,12 +402,11 @@ private:
     }
 
     static TInstant ReadDeadline(TReadItem::EReadVariant variant) {
-        if (variant == TReadItem::EReadVariant::FAST) {
-            return TAppData::TimeProvider->Now() + FAST_READ_DEADLINE;
-        } else if (variant == TReadItem::EReadVariant::DEFAULT) {
+        if (variant == TReadItem::EReadVariant::DEFAULT) {
             return TAppData::TimeProvider->Now() + DEFAULT_READ_DEADLINE;
         }
-        return TInstant::Max(); // EReadVariant::DEFAULT_NO_DEADLINE
+        // We want to wait for data anyway in this case. This behaviour is similar to datashard
+        return TInstant::Max(); // EReadVariant::DEFAULT_NO_DEADLINE || EReadVariant::FAST
     }
 
     void MakeReadRequests(const TActorContext& ctx) {
@@ -409,7 +442,6 @@ private:
             ui64 requestSize = 0;
             ui32 dsGroup = std::get<1>(target);
             TReadItem::EReadVariant readVariant = std::get<2>(target);
-            Y_ABORT_UNLESS(rangesGroup.begin()->BlobId.IsDsBlob());
 
             std::vector<ui64> dsReads;
 
@@ -436,10 +468,10 @@ private:
     }
 
     void SendResult(const TActorId& to, const TBlobRange& blobRange, NKikimrProto::EReplyStatus status,
-                    const TString& data, const TActorContext& ctx, const bool fromCache = false) {
+                    const TString& data, const TString& detailedError, const TActorContext& ctx, const bool fromCache = false) {
         LOG_S_DEBUG("Send result: " << blobRange << " to: " << to << " status: " << status);
 
-        ctx.Send(to, new TEvBlobCache::TEvReadBlobRangeResult(blobRange, status, data, fromCache));
+        ctx.Send(to, new TEvBlobCache::TEvReadBlobRangeResult(blobRange, status, data, detailedError, fromCache));
     }
 
     void Handle(TEvBlobStorage::TEvGetResult::TPtr& ev, const TActorContext& ctx) {
@@ -449,7 +481,9 @@ private:
             Y_ABORT("Unexpected reply from blobstorage");
         }
 
+        TString detailedError;
         if (ev->Get()->Status != NKikimrProto::EReplyStatus::OK) {
+            detailedError = ev->Get()->ToString();
             AFL_WARN(NKikimrServices::BLOB_CACHE)("fail", ev->Get()->ToString());
             ReadSimpleFailedBytes->Add(ev->Get()->ResponseSz);
             ReadSimpleFailedCount->Add(1);
@@ -471,14 +505,14 @@ private:
 
         for (size_t i = 0; i < ev->Get()->ResponseSz; ++i) {
             const auto& res = ev->Get()->Responses[i];
-            ProcessSingleRangeResult(blobRanges[i], readCookie, res.Status, res.Buffer.ConvertToString(), ctx);
+            ProcessSingleRangeResult(blobRanges[i], readCookie, res.Status, res.Buffer.ConvertToString(), detailedError, ctx);
         }
 
         MakeReadRequests(ctx);
     }
 
     void ProcessSingleRangeResult(const TBlobRange& blobRange, const ui64 readCookie,
-        ui32 status, const TString& data, const TActorContext& ctx) noexcept
+        ui32 status, const TString& data, const TString& detailedError, const TActorContext& ctx) noexcept
     {
         AFL_DEBUG(NKikimrServices::BLOB_CACHE)("ProcessSingleRangeResult", blobRange);
         auto readIt = OutstandingReads.find(blobRange);
@@ -513,7 +547,7 @@ private:
         AFL_DEBUG(NKikimrServices::BLOB_CACHE)("ProcessSingleRangeResult", blobRange)("send_replies", readIt->second.Waiting.size());
         // Send results to all waiters
         for (const auto& to : readIt->second.Waiting) {
-            SendResult(to, blobRange, (NKikimrProto::EReplyStatus)status, data, ctx);
+            SendResult(to, blobRange, (NKikimrProto::EReplyStatus)status, data, detailedError, ctx);
         }
 
         OutstandingReads.erase(readIt);
@@ -538,7 +572,7 @@ private:
 
             for (size_t i = 0; i < blobRanges.size(); ++i) {
                 Y_ABORT_UNLESS(blobRanges[i].BlobId.GetTabletId() == tabletId);
-                ProcessSingleRangeResult(blobRanges[i], readCookie, NKikimrProto::EReplyStatus::NOTREADY, {}, ctx);
+                ProcessSingleRangeResult(blobRanges[i], readCookie, NKikimrProto::EReplyStatus::NOTREADY, {}, {}, ctx);
             }
         }
 
@@ -578,6 +612,8 @@ private:
             SizeBytes->Add(blobRange.Size);
             SizeBlobs->Inc();
         }
+
+        UpdateConsumption();
     }
 
     void Evict(const TActorContext&) {
@@ -602,12 +638,14 @@ private:
             SizeBytes->Set(CacheDataSize);
             SizeBlobs->Set(Cache.Size());
         }
+
+        UpdateConsumption();
     }
 };
 
 } // namespace
 
-NActors::IActor* CreateBlobCache(ui64 maxBytes, TIntrusivePtr<::NMonitoring::TDynamicCounters> counters) {
+NActors::IActor* CreateBlobCache(const std::optional<ui64>& maxBytes, TIntrusivePtr<::NMonitoring::TDynamicCounters> counters) {
     return new TBlobCache(maxBytes, counters);
 }
 

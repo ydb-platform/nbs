@@ -1,7 +1,7 @@
 #include "dq_function_provider.h"
 
-#include <contrib/ydb/library/yql/core/yql_graph_transformer.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
+#include <yql/essentials/core/yql_graph_transformer.h>
+#include <yql/essentials/public/issue/yql_issue.h>
 
 #include <library/cpp/threading/future/async.h>
 

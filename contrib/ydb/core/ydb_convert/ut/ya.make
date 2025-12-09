@@ -14,7 +14,7 @@ SRCS(
 
 PEERDIR(
     library/cpp/testing/unittest
-    contrib/ydb/core/testlib/default
+    contrib/ydb/core/testlib/pg
 )
 
 END()

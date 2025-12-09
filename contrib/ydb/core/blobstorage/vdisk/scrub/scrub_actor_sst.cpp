@@ -10,7 +10,7 @@ namespace NKikimr {
         ReadOutAndResilverIndex(sst);
         ReadOutSelectedBlobs(std::move(blobsOnDisk));
         SstId.reset();
-        ++*SstProcessed;
+        ++MonGroup.SstProcessed();
     }
 
     std::vector<TScrubCoroImpl::TBlobOnDisk> TScrubCoroImpl::MakeBlobList(TLevelSegmentPtr sst) {
@@ -158,8 +158,8 @@ namespace NKikimr {
                     STLOGX(GetActorContext(), intervalReadable ? PRI_DEBUG : PRI_ERROR, BS_VDISK_SCRUB, VDS04,
                         VDISKP(LogPrefix, "small blob interval checked"), (Interval, interval),
                         (IsReadable, intervalReadable), (NumBlobsOfInterest, pendingBlobs.size()));
-                    ++*SmallBlobIntervalsRead;
-                    *SmallBlobIntervalBytesRead += interval.Size;
+                    ++MonGroup.SmallBlobIntervalsRead();
+                    MonGroup.SmallBlobIntervalBytesRead() += interval.Size;
 
                     for (TBlobOnDisk *blob : pendingBlobs) {
                         const bool blobReadable = intervalReadable || IsReadable(blob->Part);
@@ -167,8 +167,8 @@ namespace NKikimr {
                             STLOGX(GetActorContext(), blobReadable ? PRI_INFO : PRI_ERROR, BS_VDISK_SCRUB, VDS12,
                                 VDISKP(LogPrefix, "small blob from unreadable interval checked"),
                                 (Key, blob->Id), (Location, blob->Part), (IsReadable, blobReadable));
-                            ++*SmallBlobsRead;
-                            *SmallBlobBytesRead += blob->Part.Size;
+                            ++MonGroup.SmallBlobsRead();
+                            MonGroup.SmallBlobBytesRead() += interval.Size;
                         }
                         if (blobReadable) {
                             UpdateReadableParts(blob->Id, blob->Local);
@@ -181,9 +181,12 @@ namespace NKikimr {
                 pendingBlobs.clear();
             };
             for (TBlobOnDisk *blob : blobs) {
+                if (ScrubCtx->EnableDeepScrubbing) {
+                    EnqueueCheckIntegrity(blob->Id, false);
+                }
                 const TDiskPart& part = blob->Part;
                 const ui32 end = part.Offset + part.Size;
-                Y_ABORT_UNLESS(part.ChunkIdx == chunkIdx);
+                Y_VERIFY_S(part.ChunkIdx == chunkIdx, LogPrefix);
                 if (interval == TDiskPart()) {
                     interval = blob->Part;
                 } else if (end - interval.Offset <= ScrubCtx->PDiskCtx->Dsk->ReadBlockSize) {

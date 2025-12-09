@@ -1,6 +1,9 @@
 #include "object.h"
-#include <contrib/ydb/core/formats/arrow/common/validation.h>
+
 #include <contrib/ydb/core/formats/arrow/transformer/dictionary.h>
+
+#include <contrib/ydb/library/formats/arrow/validation/validation.h>
+
 #include <util/string/builder.h>
 
 namespace NKikimr::NArrow::NDictionary {
@@ -40,4 +43,4 @@ NTransformation::ITransformer::TPtr TEncodingSettings::BuildDecoder() const {
     }
 }
 
-}
+}   // namespace NKikimr::NArrow::NDictionary
