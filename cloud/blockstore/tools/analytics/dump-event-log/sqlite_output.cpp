@@ -21,6 +21,7 @@ constexpr TStringBuf CreateRequestsTable = R"__(
         StartBlock integer not null,
         EndBlock integer not null,
         DurationUs integer not null,
+        PostponedUs integer not null,
         PRIMARY KEY ("Id" AUTOINCREMENT)
     );
 )__";
@@ -115,9 +116,9 @@ constexpr TStringBuf AddDiskSql = R"__(
 
 constexpr TStringBuf AddRequestSql = R"__(
     INSERT INTO Requests
-        (AtUs, DiskId, RequestTypeId, StartBlock, EndBlock, DurationUs)
+        (AtUs, DiskId, RequestTypeId, StartBlock, EndBlock, DurationUs, PostponedUs)
     VALUES
-        (?, ?, ?, ?, ?, ?);
+        (?, ?, ?, ?, ?, ?, ?);
 )__";
 
 constexpr TStringBuf AddChecksumSql = R"__(
@@ -182,19 +183,24 @@ TSqliteOutput::~TSqliteOutput()
 }
 
 void TSqliteOutput::ProcessRequest(
-    const TString& diskId,
+    const TDiskInfo& diskInfo,
     TInstant timestamp,
     ui32 requestType,
     TBlockRange64 blockRange,
     TDuration duration,
-    const TReplicaChecksums& replicaChecksums)
+    TDuration postponed,
+    const TReplicaChecksums& replicaChecksums,
+    const TInflightInfo& inflightInfo)
 {
+    Y_UNUSED(inflightInfo);
+
     const ui64 requestId = AddRequest(
         timestamp,
-        GetVolumeId(diskId),
+        GetVolumeId(diskInfo.DiskId),
         requestType,
         blockRange,
-        duration);
+        duration,
+        postponed);
 
     AddChecksums(requestId, blockRange, replicaChecksums);
 
@@ -399,7 +405,8 @@ ui64 TSqliteOutput::AddRequest(
     ui64 volumeId,
     ui64 requestTypeId,
     TBlockRange64 range,
-    TDuration duration)
+    TDuration duration,
+    TDuration postponed)
 {
     sqlite3_reset(AddRequestStmt);
 
@@ -417,6 +424,7 @@ ui64 TSqliteOutput::AddRequest(
     bindInt(4, range.Start);
     bindInt(5, range.End);
     bindInt(6, duration.MicroSeconds());
+    bindInt(7, postponed.MicroSeconds());
 
     if (sqlite3_step(AddRequestStmt) != SQLITE_DONE) {
         ythrow yexception() << "Step error: " << sqlite3_errmsg(Db);

@@ -85,15 +85,19 @@ TZeroRangesStat::~TZeroRangesStat()
 }
 
 void TZeroRangesStat::ProcessRequest(
-    const TString& diskId,
+    const TDiskInfo& diskInfo,
     TInstant timestamp,
     ui32 requestType,
     TBlockRange64 blockRange,
     TDuration duration,
-    const TReplicaChecksums& replicaChecksums)
+    TDuration postponed,
+    const TReplicaChecksums& replicaChecksums,
+    const TInflightInfo& inflightInfo)
 {
     Y_UNUSED(timestamp);
     Y_UNUSED(duration);
+    Y_UNUSED(postponed);
+    Y_UNUSED(inflightInfo);
 
     if (requestType != static_cast<ui32>(ESysRequestType::Scrubbing)) {
         return;
@@ -106,7 +110,7 @@ void TZeroRangesStat::ProcessRequest(
         }
     }
 
-    auto& volume = Volumes[diskId];
+    auto& volume = Volumes[diskInfo.DiskId];
     const ui32 rangeIndex4MiB = blockRange.Start / blockRange.Size();
     volume.Set(rangeIndex4MiB, isZeroRange);
 }

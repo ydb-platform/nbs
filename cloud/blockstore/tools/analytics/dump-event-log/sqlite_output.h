@@ -13,7 +13,7 @@
 
 namespace NCloud::NBlockStore {
 
-class TSqliteOutput : public IProfileLogEventHandler
+class TSqliteOutput: public IProfileLogEventHandler
 {
     class TTransaction;
 
@@ -36,12 +36,14 @@ public:
     TSqliteOutput& operator=(TSqliteOutput&&) = delete;
 
     void ProcessRequest(
-        const TString& diskId,
+        const TDiskInfo& diskInfo,
         TInstant timestamp,
         ui32 requestType,
         TBlockRange64 blockRange,
         TDuration duration,
-        const TReplicaChecksums& replicaChecksums) override;
+        TDuration postponed,
+        const TReplicaChecksums& replicaChecksums,
+        const TInflightInfo& inflightInfo) override;
 
 private:
     void CreateTables();
@@ -56,7 +58,8 @@ private:
         ui64 volumeId,
         ui64 requestTypeId,
         TBlockRange64 range,
-        TDuration duration);
+        TDuration duration,
+        TDuration postponed);
     void AddChecksums(
         ui64 requestId,
         TBlockRange64 blockRange,
