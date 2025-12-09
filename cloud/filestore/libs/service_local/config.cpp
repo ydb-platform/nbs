@@ -40,7 +40,6 @@ namespace {
     xxx(MaxResponseEntries,          ui32,          10000                     )\
     xxx(MaxBackground,               ui32,          0                         )\
     xxx(MaxFuseLoopThreads,          ui32,          1                         )\
-    xxx(ZeroCopyWriteEnabled,        bool,          false                     )\
     xxx(FSyncQueueDisabled,          bool,          false                     )\
     xxx(EntryTimeout,                TDuration,     TDuration::Seconds(15)    )\
     xxx(NegativeEntryTimeout,        TDuration,     TDuration::Zero()         )\
@@ -49,7 +48,6 @@ namespace {
     xxx(DirectoryHandlesStorageEnabled, bool,       false                     )\
     xxx(DirectoryHandlesTableSize,   ui64,          100'000                   )\
     xxx(GuestHandleKillPrivV2Enabled,   bool,       false                     )\
-    xxx(ZeroCopyReadEnabled,            bool,       false                     )\
 // FILESTORE_SERVICE_CONFIG
 
 #define FILESTORE_SERVICE_NULL_FILE_IO_CONFIG(xxx)                             \
