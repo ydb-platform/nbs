@@ -275,7 +275,7 @@ class TDiskRegistryState
 
         TVector<TLaggingDevice> OutdatedLaggingDevices;
 
-        bool operator==(const TDiskState& rhs) const;
+        std::vector<std::string> getDiff(const TDiskState& rhs) const;
     };
 
     struct TVolumeDeviceOverrides
@@ -484,7 +484,7 @@ public:
 
     bool IsAcquireInProgress(const TString& diskId) const;
 
-    bool CompareMeaningfulFields(const TDiskRegistryState& rhs) const;
+    TVector<TString> GetDifferingFields(const TDiskRegistryState& rhs) const;
 
     const TVector<NProto::TAgentConfig>& GetAgents() const;
 

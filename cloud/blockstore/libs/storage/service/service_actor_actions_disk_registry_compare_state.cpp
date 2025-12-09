@@ -33,7 +33,7 @@ private:
     const TRequestInfoPtr RequestInfo;
     const TString Input;
 
-    NPrivateProto::TCompareDiskRegistryStateRequest Request;
+    NProto::TCompareDiskRegistryStateRequest Request;
 
     NProto::TError Error;
 
