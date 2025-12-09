@@ -62,6 +62,7 @@ public:
     ui32 GetMaxFuseLoopThreads() const;
 
     bool GetZeroCopyWriteEnabled() const;
+    bool GetZeroCopyReadEnabled() const;
 
     bool GetFSyncQueueDisabled() const;
 

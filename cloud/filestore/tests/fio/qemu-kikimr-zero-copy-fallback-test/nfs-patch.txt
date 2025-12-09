@@ -1,1 +1,2 @@
 ZeroCopyWriteEnabled: true
+ZeroCopyReadEnabled: true

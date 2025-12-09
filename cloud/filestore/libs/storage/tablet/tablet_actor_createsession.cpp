@@ -89,6 +89,8 @@ void FillFeatures(
 
     features->SetGuestHandleKillPrivV2Enabled(
         config.GetGuestHandleKillPrivV2Enabled());
+
+    features->SetZeroCopyReadEnabled(config.GetZeroCopyReadEnabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
