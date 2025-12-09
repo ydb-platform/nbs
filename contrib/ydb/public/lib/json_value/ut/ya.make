@@ -1,7 +1,5 @@
 UNITTEST_FOR(contrib/ydb/public/lib/json_value)
 
-TIMEOUT(600)
-
 SIZE(MEDIUM)
 
 FORK_SUBTESTS()
@@ -13,8 +11,8 @@ SRCS(
 PEERDIR(
     library/cpp/json
     library/cpp/testing/unittest
-    contrib/ydb/public/sdk/cpp/client/ydb_proto
-    contrib/ydb/public/sdk/cpp/client/ydb_params
+    contrib/ydb/public/sdk/cpp/src/client/proto
+    contrib/ydb/public/sdk/cpp/src/client/params
 )
 
 END()

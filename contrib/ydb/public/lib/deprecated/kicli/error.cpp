@@ -1,6 +1,6 @@
 #include "kicli.h"
-#include <contrib/ydb/library/yql/public/issue/yql_issue.h>
-#include <contrib/ydb/library/yql/public/issue/yql_issue_message.h>
+#include <yql/essentials/public/issue/yql_issue.h>
+#include <yql/essentials/public/issue/yql_issue_message.h>
 #include <contrib/ydb/public/lib/base/defs.h>
 #include <contrib/ydb/public/lib/deprecated/client/msgbus_client.h>
 #include <contrib/ydb/core/protos/minikql_engine.pb.h>

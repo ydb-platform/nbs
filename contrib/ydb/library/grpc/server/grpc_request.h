@@ -16,6 +16,7 @@
 #include "grpc_server.h"
 #include "logger.h"
 
+#include <util/string/builder.h>
 #include <util/system/hp_timer.h>
 
 #include <grpc++/server.h>
@@ -73,12 +74,11 @@ public:
         , RequestLimiter_(std::move(limiter))
         , Writer_(new grpc::ServerAsyncResponseWriter<TUniversalResponseRef<TOut>>(&this->Context))
         , StateFunc_(&TThis::SetRequestDone)
+        , Request_(google::protobuf::Arena::CreateMessage<TIn>(&Arena_))
+        , AuthState_(server->NeedAuth())
     {
-        AuthState_ = Server_->NeedAuth() ? TAuthState(true) : TAuthState(false);
-        Request_ = google::protobuf::Arena::CreateMessage<TIn>(&Arena_);
         Y_ABORT_UNLESS(Request_);
-        GRPC_LOG_DEBUG(Logger_, "[%p] created request Name# %s", this, Name_);
-        FinishPromise_ = NThreading::NewPromise<EFinishStatus>();
+        GRPC_LOG_DEBUG(Logger_, "[%p] created request Name# %s", this, GetRpcMethodName().c_str());
     }
 
     TGRpcRequestImpl(TService* server,
@@ -101,13 +101,12 @@ public:
         , RequestLimiter_(std::move(limiter))
         , StreamWriter_(new grpc::ServerAsyncWriter<TUniversalResponse<TOut>>(&this->Context))
         , StateFunc_(&TThis::SetRequestDone)
+        , Request_(google::protobuf::Arena::CreateMessage<TIn>(&Arena_))
+        , AuthState_(server->NeedAuth())
+        , StreamAdaptor_(CreateStreamAdaptor())
     {
-        AuthState_ = Server_->NeedAuth() ? TAuthState(true) : TAuthState(false);
-        Request_ = google::protobuf::Arena::CreateMessage<TIn>(&Arena_);
         Y_ABORT_UNLESS(Request_);
-        GRPC_LOG_DEBUG(Logger_, "[%p] created streaming request Name# %s", this, Name_);
-        FinishPromise_ = NThreading::NewPromise<EFinishStatus>();
-        StreamAdaptor_ = CreateStreamAdaptor();
+        GRPC_LOG_DEBUG(Logger_, "[%p] created streaming request Name# %s", this, GetRpcMethodName().c_str());
     }
 
     TAsyncFinishResult GetFinishFuture() override {
@@ -118,15 +117,16 @@ public:
         return ClientLost_.load();
     }
 
-    TString GetPeer() const override {
-        // Decode URL-encoded square brackets
-        auto ip = TString(this->Context.peer());
-        CGIUnescape(ip);
-        return ip;
+    bool IsStreamCall() const override {
+        return bool(StreamAdaptor_);
     }
 
     bool SslServer() const override {
         return Server_->SslServer();
+    }
+
+    TString GetRpcMethodName() const override {
+        return TStringBuilder() << TService::TCurrentGRpcService::service_full_name() << '/' << Name_;
     }
 
     void Run() {
@@ -166,6 +166,10 @@ public:
         UnRef();
     }
 
+    TString GetPeer() const override {
+        return TBaseAsyncContext<TService>::GetPeer();
+    }
+
     TInstant Deadline() const override {
         return TBaseAsyncContext<TService>::Deadline();
     }
@@ -186,15 +190,14 @@ public:
         return TBaseAsyncContext<TService>::GetCompressionLevel();
     }
 
+    TString GetEndpointId() const override {
+        return Server_->GetEndpointId();
+    }
+
     //! Get pointer to the request's message.
     const NProtoBuf::Message* GetRequest() const override {
         return Request_;
     }
-
-    NProtoBuf::Message* GetRequestMut() override {
-        return Request_;
-    }
-
 
     TAuthState& GetAuthState() override {
         return AuthState_;
@@ -226,11 +229,11 @@ public:
     }
 
     void FinishStreamingOk() override {
-        GRPC_LOG_DEBUG(Logger_, "[%p] finished streaming Name# %s peer# %s (enqueued)", this, Name_,
+        GRPC_LOG_DEBUG(Logger_, "[%p] finished streaming Name# %s peer# %s (enqueued)", this, GetRpcMethodName().c_str(),
                   this->Context.peer().c_str());
         auto cb = [this]() {
             StateFunc_ = &TThis::SetFinishDone;
-            GRPC_LOG_DEBUG(Logger_, "[%p] finished streaming Name# %s peer# %s (pushed to grpc)", this, Name_,
+            GRPC_LOG_DEBUG(Logger_, "[%p] finished streaming Name# %s peer# %s (pushed to grpc)", this, GetRpcMethodName().c_str(),
                       this->Context.peer().c_str());
 
             OnBeforeCall();
@@ -253,10 +256,10 @@ private:
         if (!Server_->IsShuttingDown()) {
             if (RequestCallback_) {
                 MakeIntrusive<TThis>(
-                    Server_, this->Service, this->CQ, Cb_, RequestCallback_, Name_, Logger_, Counters_->Clone(), RequestLimiter_)->Run();
+                    static_cast<TService*>(Server_), this->Service, this->CQ, Cb_, RequestCallback_, Name_, Logger_, Counters_->Clone(), RequestLimiter_)->Run();
             } else {
                 MakeIntrusive<TThis>(
-                    Server_, this->Service, this->CQ, Cb_, StreamRequestCallback_, Name_, Logger_, Counters_->Clone(), RequestLimiter_)->Run();
+                    static_cast<TService*>(Server_), this->Service, this->CQ, Cb_, StreamRequestCallback_, Name_, Logger_, Counters_->Clone(), RequestLimiter_)->Run();
             }
         }
     }
@@ -285,7 +288,7 @@ private:
 
         auto sz = (size_t)resp->ByteSize();
         if (Writer_) {
-            GRPC_LOG_DEBUG(Logger_, "[%p] issuing response Name# %s data# %s peer# %s", this, Name_,
+            GRPC_LOG_DEBUG(Logger_, "[%p] issuing response Name# %s data# %s peer# %s", this, GetRpcMethodName().c_str(),
                 makeResponseString().data(), this->Context.peer().c_str());
             StateFunc_ = &TThis::SetFinishDone;
             ResponseSize = sz;
@@ -296,14 +299,14 @@ private:
             Writer_->Finish(TUniversalResponseRef<TOut>(resp), grpc::Status::OK, GetGRpcTag());
         } else {
             GRPC_LOG_DEBUG(Logger_, "[%p] issuing response Name# %s data# %s peer# %s (enqueued)",
-                this, Name_, makeResponseString().data(), this->Context.peer().c_str());
+                this, GetRpcMethodName().c_str(), makeResponseString().data(), this->Context.peer().c_str());
 
             // because of std::function cannot hold move-only captured object
             // we allocate shared object on heap to avoid message copy
             auto uResp = MakeIntrusive<TUniversalResponse<TOut>>(resp);
             auto cb = [this, uResp = std::move(uResp), sz, status]() {
                 GRPC_LOG_DEBUG(Logger_, "[%p] issuing response Name# %s peer# %s (pushed to grpc)",
-                    this, Name_, this->Context.peer().c_str());
+                    this, GetRpcMethodName().c_str(), this->Context.peer().c_str());
                 StateFunc_ = &TThis::NextReply;
                 ResponseSize += sz;
                 ResponseStatus = status;
@@ -317,7 +320,7 @@ private:
     void WriteByteDataOk(grpc::ByteBuffer* resp, ui32 status, EStreamCtrl ctrl) {
         auto sz = resp->Length();
         if (Writer_) {
-            GRPC_LOG_DEBUG(Logger_, "[%p] issuing response Name# %s data# byteString peer# %s", this, Name_,
+            GRPC_LOG_DEBUG(Logger_, "[%p] issuing response Name# %s data# byteString peer# %s", this, GetRpcMethodName().c_str(),
                 this->Context.peer().c_str());
             StateFunc_ = &TThis::SetFinishDone;
             ResponseSize = sz;
@@ -326,7 +329,7 @@ private:
             Finished_ = true;
             Writer_->Finish(TUniversalResponseRef<TOut>(resp), grpc::Status::OK, GetGRpcTag());
         } else {
-            GRPC_LOG_DEBUG(Logger_, "[%p] issuing response Name# %s data# byteString peer# %s (enqueued)", this, Name_,
+            GRPC_LOG_DEBUG(Logger_, "[%p] issuing response Name# %s data# byteString peer# %s (enqueued)", this, GetRpcMethodName().c_str(),
                 this->Context.peer().c_str());
 
             // because of std::function cannot hold move-only captured object
@@ -335,7 +338,7 @@ private:
             const bool finish = ctrl == EStreamCtrl::FINISH;
             auto cb = [this, uResp = std::move(uResp), sz, status, finish]() {
                 GRPC_LOG_DEBUG(Logger_, "[%p] issuing response Name# %s data# byteString peer# %s (pushed to grpc)",
-                    this, Name_, this->Context.peer().c_str());
+                    this, GetRpcMethodName().c_str(), this->Context.peer().c_str());
 
                 StateFunc_ = finish ? &TThis::SetFinishDone : &TThis::NextReply;
 
@@ -364,7 +367,7 @@ private:
 
         if (Writer_) {
             GRPC_LOG_DEBUG(Logger_, "[%p] issuing response Name# %s nodata (%s) peer# %s, grpc status# (%d)", this,
-                Name_, msg.c_str(), this->Context.peer().c_str(), (int)code);
+                GetRpcMethodName().c_str(), msg.c_str(), this->Context.peer().c_str(), (int)code);
             StateFunc_ = &TThis::SetFinishError;
             TOut resp;
             OnBeforeCall();
@@ -372,10 +375,10 @@ private:
             Writer_->Finish(TUniversalResponseRef<TOut>(&resp), grpc::Status(code, msg, details), GetGRpcTag());
         } else {
             GRPC_LOG_DEBUG(Logger_, "[%p] issuing response Name# %s nodata (%s) peer# %s, grpc status# (%d)"
-                                    " (enqueued)", this, Name_, msg.c_str(), this->Context.peer().c_str(), (int)code);
+                                    " (enqueued)", this, GetRpcMethodName().c_str(), msg.c_str(), this->Context.peer().c_str(), (int)code);
             auto cb = [this, code, msg, details]() {
                 GRPC_LOG_DEBUG(Logger_, "[%p] issuing response Name# %s nodata (%s) peer# %s, grpc status# (%d)"
-                                        " (pushed to grpc)", this, Name_, msg.c_str(),
+                                        " (pushed to grpc)", this, GetRpcMethodName().c_str(), msg.c_str(),
                                this->Context.peer().c_str(), (int)code);
                 StateFunc_ = &TThis::SetFinishError;
                 OnBeforeCall();
@@ -400,7 +403,7 @@ private:
             }
             return resp;
         };
-        GRPC_LOG_DEBUG(Logger_, "[%p] received request Name# %s ok# %s data# %s peer# %s", this, Name_,
+        GRPC_LOG_DEBUG(Logger_, "[%p] received request Name# %s ok# %s data# %s peer# %s", this, GetRpcMethodName().c_str(),
             ok ? "true" : "false", makeRequestString().data(), this->Context.peer().c_str());
 
         if (this->Context.c_call() == nullptr) {
@@ -410,7 +413,7 @@ private:
         } else if (!(RequestRegistered_ = Server_->RegisterRequestCtx(this))) {
             // Request cannot be registered due to shutdown
             // It's unsafe to continue, so drop this request without processing
-            GRPC_LOG_DEBUG(Logger_, "[%p] dropping request Name# %s due to shutdown", this, Name_);
+            GRPC_LOG_DEBUG(Logger_, "[%p] dropping request Name# %s due to shutdown", this, GetRpcMethodName().c_str());
             this->Context.TryCancel();
             return false;
         }
@@ -424,7 +427,7 @@ private:
         if (IncRequest()) {
             // Adjust counters.
             RequestSize = Request_->ByteSize();
-            Counters_->StartProcessing(RequestSize);
+            Counters_->StartProcessing(RequestSize, Deadline());
             RequestTimer.Reset();
 
             if (!SslServer()) {
@@ -441,7 +444,7 @@ private:
                 TString db{maybeDatabase ? maybeDatabase[0] : TStringBuf{}};
                 Counters_->CountRequestsWithoutToken();
                 GRPC_LOG_DEBUG(Logger_, "[%p] received request without user token "
-                    "Name# %s data# %s peer# %s database# %s", this, Name_,
+                    "Name# %s data# %s peer# %s database# %s", this, GetRpcMethodName().c_str(),
                     makeRequestString().data(), this->Context.peer().c_str(), db.c_str());
             }
 
@@ -459,7 +462,7 @@ private:
         OnAfterCall();
 
         auto logCb = [this, ok](int left) {
-            GRPC_LOG_DEBUG(Logger_, "[%p] ready for next reply Name# %s ok# %s peer# %s left# %d", this, Name_,
+            GRPC_LOG_DEBUG(Logger_, "[%p] ready for next reply Name# %s ok# %s peer# %s left# %d", this, GetRpcMethodName().c_str(),
                 ok ? "true" : "false", this->Context.peer().c_str(), left);
         };
 
@@ -485,7 +488,7 @@ private:
     bool SetFinishDone(bool ok) {
         OnAfterCall();
 
-        GRPC_LOG_DEBUG(Logger_, "[%p] finished request Name# %s ok# %s peer# %s", this, Name_,
+        GRPC_LOG_DEBUG(Logger_, "[%p] finished request Name# %s ok# %s peer# %s", this, GetRpcMethodName().c_str(),
             ok ? "true" : "false", this->Context.peer().c_str());
         //PrintBackTrace();
         DecRequest();
@@ -497,7 +500,7 @@ private:
     bool SetFinishError(bool ok) {
         OnAfterCall();
 
-        GRPC_LOG_DEBUG(Logger_, "[%p] finished request with error Name# %s ok# %s peer# %s", this, Name_,
+        GRPC_LOG_DEBUG(Logger_, "[%p] finished request with error Name# %s ok# %s peer# %s", this, GetRpcMethodName().c_str(),
             ok ? "true" : "false", this->Context.peer().c_str());
         if (!SkipUpdateCountersOnError) {
             DecRequest();
@@ -545,7 +548,7 @@ private:
     }
 
     using TStateFunc = bool (TThis::*)(bool);
-    TService* Server_;
+    TGrpcServiceProtectiable* Server_ = nullptr;
     TOnRequest Cb_;
     TRequestCallback RequestCallback_;
     TStreamRequestCallback StreamRequestCallback_;
@@ -557,9 +560,9 @@ private:
     THolder<grpc::ServerAsyncResponseWriter<TUniversalResponseRef<TOut>>> Writer_;
     THolder<grpc::ServerAsyncWriterInterface<TUniversalResponse<TOut>>> StreamWriter_;
     TStateFunc StateFunc_;
-    TIn* Request_;
 
     google::protobuf::Arena Arena_;
+    TIn* Request_ = nullptr;
     TOnNextReply NextReplyCb_;
     ui32 RequestSize = 0;
     ui32 ResponseSize = 0;
@@ -573,7 +576,7 @@ private:
 
     using TFixedEvent = TQueueFixedEvent<TGRpcRequestImpl>;
     TFixedEvent OnFinishTag = { this, &TGRpcRequestImpl::OnFinish };
-    NThreading::TPromise<EFinishStatus> FinishPromise_;
+    NThreading::TPromise<EFinishStatus> FinishPromise_ = NThreading::NewPromise<EFinishStatus>();
     bool SkipUpdateCountersOnError = false;
     IStreamAdaptor::TPtr StreamAdaptor_;
     std::atomic<bool> ClientLost_ = false;
@@ -603,8 +606,9 @@ public:
                  typename TBase::TStreamRequestCallback requestCallback,
                  const char* name,
                  TLoggerPtr logger,
-                 ICounterBlockPtr counters)
-        : TBase{server, service, cq, std::move(cb), std::move(requestCallback), name, std::move(logger), std::move(counters), nullptr}
+                 ICounterBlockPtr counters,
+                 IGRpcRequestLimiterPtr limiter = nullptr)
+        : TBase{server, service, cq, std::move(cb), std::move(requestCallback), name, std::move(logger), std::move(counters), std::move(limiter)}
     {
     }
 };

@@ -3,9 +3,11 @@
 #include <contrib/ydb/core/kqp/compute_actor/kqp_compute_events.h>
 #include <contrib/ydb/core/kqp/counters/kqp_counters.h>
 #include <contrib/ydb/core/kqp/federated_query/kqp_federated_query_helpers.h>
+#include <contrib/ydb/core/kqp/runtime/kqp_compute_scheduler.h>
 #include <contrib/ydb/core/scheme/scheme_tabledefs.h>
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_compute_actor.h>
 #include <contrib/ydb/library/yql/dq/actors/compute/dq_compute_actor_async_io_factory.h>
+#include <contrib/ydb/library/yql/providers/s3/actors_factory/yql_s3_actors_factory.h>
 
 namespace NKikimr {
 
@@ -13,7 +15,7 @@ namespace NMiniKQL {
 
 class TKqpScanComputeContext;
 
-TComputationNodeFactory GetKqpActorComputeFactory(TKqpScanComputeContext* computeCtx);
+TComputationNodeFactory GetKqpActorComputeFactory(TKqpScanComputeContext* computeCtx, const std::optional<NKqp::TKqpFederatedQuerySetup>& federatedQuerySetup);
 
 } // namespace NMiniKQL
 
@@ -29,6 +31,14 @@ public:
 
     }
 
+    ui32 GetCriticalTotalRetriesCount() const {
+        return ProtoConfig.GetCriticalTotalRetriesCount();
+    }
+
+    ui32 GetReaskShardRetriesCount() const {
+        return ProtoConfig.GetReaskShardRetriesCount();
+    }
+
     bool IsParallelScanningAvailable() const {
         return ProtoConfig.GetParallelScanningAvailable();
     }
@@ -42,25 +52,37 @@ public:
 
 };
 
+class TCPULimits {
+    YDB_OPT(double, CPUGroupThreadsLimit);
+    YDB_READONLY_DEF(TString, CPUGroupName);
+public:
+    TConclusionStatus DeserializeFromProto(const NKikimrKqp::TEvStartKqpTasksRequest& config);
+};
+
 IActor* CreateKqpComputeActor(const TActorId& executerId, ui64 txId, NYql::NDqProto::TDqTask* task,
     NYql::NDq::IDqAsyncIoFactory::TPtr asyncIoFactory,
-    const NKikimr::NMiniKQL::IFunctionRegistry* functionRegistry,
     const NYql::NDq::TComputeRuntimeSettings& settings, const NYql::NDq::TComputeMemoryLimits& memoryLimits,
     NWilson::TTraceId traceId,
-    TIntrusivePtr<NActors::TProtoArenaHolder> arena);
+    TIntrusivePtr<NActors::TProtoArenaHolder> arena,
+    const std::optional<TKqpFederatedQuerySetup>& federatedQuerySetup, const TGUCSettings::TPtr& GUCSettings,
+    TComputeActorSchedulingOptions, NKikimrConfig::TTableServiceConfig::EBlockTrackingMode,
+    TIntrusiveConstPtr<NACLib::TUserToken> userToken,
+    const TString& database);
 
-IActor* CreateKqpScanComputeActor(const TActorId& executerId, ui64 txId,
-    NYql::NDqProto::TDqTask* task, NYql::NDq::IDqAsyncIoFactory::TPtr asyncIoFactory,
-    const NKikimr::NMiniKQL::IFunctionRegistry* functionRegistry,
-    const NYql::NDq::TComputeRuntimeSettings& settings, const NYql::NDq::TComputeMemoryLimits& memoryLimits, NWilson::TTraceId traceId,
-    TIntrusivePtr<NActors::TProtoArenaHolder> arena);
+IActor* CreateKqpScanComputeActor(const TActorId& executerId, ui64 txId, NYql::NDqProto::TDqTask* task,
+    NYql::NDq::IDqAsyncIoFactory::TPtr asyncIoFactory, const NYql::NDq::TComputeRuntimeSettings& settings,
+    const NYql::NDq::TComputeMemoryLimits& memoryLimits, NWilson::TTraceId traceId,
+    TIntrusivePtr<NActors::TProtoArenaHolder> arena, TComputeActorSchedulingOptions, NKikimrConfig::TTableServiceConfig::EBlockTrackingMode mode);
 
 IActor* CreateKqpScanFetcher(const NKikimrKqp::TKqpSnapshot& snapshot, std::vector<NActors::TActorId>&& computeActors,
     const NKikimrTxDataShard::TKqpTransaction::TScanTaskMeta& meta, const NYql::NDq::TComputeRuntimeSettings& settings,
-    const ui64 txId, const TShardsScanningPolicy& shardsScanningPolicy, TIntrusivePtr<TKqpCounters> counters, NWilson::TTraceId traceId);
+    const ui64 txId, TMaybe<ui64> lockTxId, ui32 lockNodeId, TMaybe<NKikimrDataEvents::ELockMode> lockMode, const TShardsScanningPolicy& shardsScanningPolicy,
+    TIntrusivePtr<TKqpCounters> counters, NWilson::TTraceId traceId, const TCPULimits& cpuLimits);
 
 NYql::NDq::IDqAsyncIoFactory::TPtr CreateKqpAsyncIoFactory(
-    TIntrusivePtr<TKqpCounters> counters, std::optional<TKqpFederatedQuerySetup> federatedQuerySetup);
+    TIntrusivePtr<TKqpCounters> counters,
+    std::optional<TKqpFederatedQuerySetup> federatedQuerySetup,
+    std::shared_ptr<NYql::NDq::IS3ActorsFactory> s3ActorsFactory);
 
 } // namespace NKqp
 } // namespace NKikimr

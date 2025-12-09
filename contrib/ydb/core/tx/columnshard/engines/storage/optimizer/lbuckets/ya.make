@@ -1,15 +1,11 @@
 LIBRARY()
 
 SRCS(
-    optimizer.cpp
-    counters.cpp
 )
 
 PEERDIR(
-    contrib/libs/apache/arrow
-    contrib/ydb/core/protos
-    contrib/ydb/core/formats/arrow
-    contrib/ydb/core/tx/columnshard/engines/changes/abstract
+    contrib/ydb/core/tx/columnshard/engines/storage/optimizer/lbuckets/planner
+    contrib/ydb/core/tx/columnshard/engines/storage/optimizer/lbuckets/constructor
 )
 
 END()

@@ -1,10 +1,11 @@
 #pragma once
 #include <memory>
-#include <contrib/ydb/core/tx/columnshard/counters/common/owner.h>
+#include <contrib/ydb/library/signals/owner.h>
 
 #include <contrib/ydb/library/accessor/accessor.h>
-
 #include <contrib/ydb/library/actors/core/actorid.h>
+#include <contrib/ydb/library/conclusion/status.h>
+
 #include <util/generic/string.h>
 
 namespace NKikimr::NConveyor {
@@ -18,14 +19,46 @@ public:
     NMonitoring::TDynamicCounters::TCounterPtr Success;
     NMonitoring::TDynamicCounters::TCounterPtr SuccessDuration;
 
+    TTaskSignals(const NColumnShard::TCommonCountersOwner& baseObject, const TString& taskClassIdentifier)
+        : TBase(baseObject, "task_class_name", taskClassIdentifier) {
+        Fails = TBase::GetDeriviative("Fails");
+        FailsDuration = TBase::GetDeriviative("FailsDuration");
+        Success = TBase::GetDeriviative("Success");
+        SuccessDuration = TBase::GetDeriviative("SuccessDuration");
+    }
+
     TTaskSignals(const TString& moduleId, const TString& taskClassIdentifier, TIntrusivePtr<::NMonitoring::TDynamicCounters> baseSignals = nullptr)
-        : TBase(moduleId, baseSignals)
-    {
+        : TBase(moduleId, baseSignals) {
         DeepSubGroup("task_class", taskClassIdentifier);
         Fails = TBase::GetDeriviative("Fails");
         FailsDuration = TBase::GetDeriviative("FailsDuration");
         Success = TBase::GetDeriviative("Success");
         SuccessDuration = TBase::GetDeriviative("SuccessDuration");
+    }
+};
+
+class TProcessGuard: TNonCopyable {
+private:
+    const ui64 ProcessId;
+    bool Finished = false;
+    const std::optional<NActors::TActorId> ServiceActorId;
+public:
+    ui64 GetProcessId() const {
+        return ProcessId;
+    }
+
+    explicit TProcessGuard(const ui64 processId, const std::optional<NActors::TActorId>& actorId)
+        : ProcessId(processId)
+        , ServiceActorId(actorId) {
+
+    }
+
+    void Finish();
+
+    ~TProcessGuard() {
+        if (!Finished) {
+            Finish();
+        }
     }
 };
 
@@ -37,32 +70,21 @@ public:
         Low = 0
     };
 private:
-    YDB_READONLY_DEF(TString, ErrorMessage);
     YDB_ACCESSOR(EPriority, Priority, EPriority::Normal);
-    YDB_READONLY_DEF(std::optional<NActors::TActorId>, OwnerId);
     bool ExecutedFlag = false;
 protected:
-    ITask& SetErrorMessage(const TString& message) {
-        ErrorMessage = message;
-        return *this;
-    }
-    virtual bool DoExecute() = 0;
+    virtual void DoExecute(const std::shared_ptr<ITask>& taskPtr) = 0;
+    virtual void DoOnCannotExecute(const TString& reason);
 public:
-    ITask(const std::optional<NActors::TActorId>& ownerId = {})
-        : OwnerId(ownerId)
-    {
-
-    }
     using TPtr = std::shared_ptr<ITask>;
     virtual ~ITask() = default;
 
     virtual TString GetTaskClassIdentifier() const = 0;
 
-    bool HasError() const {
-        return !!ErrorMessage;
+    void OnCannotExecute(const TString& reason) {
+        return DoOnCannotExecute(reason);
     }
-
-    bool Execute(std::shared_ptr<TTaskSignals> signals);
+    void Execute(std::shared_ptr<TTaskSignals> signals, const std::shared_ptr<ITask>& taskPtr);
 };
 
 }

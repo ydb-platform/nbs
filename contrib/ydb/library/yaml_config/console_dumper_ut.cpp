@@ -2,6 +2,11 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <contrib/ydb/core/protos/config.pb.h>
+#include <contrib/ydb/core/protos/cms.pb.h>
+#include <contrib/ydb/core/protos/netclassifier.pb.h>
+#include <contrib/ydb/core/protos/key.pb.h>
+
 using namespace NKikimr;
 
 Y_UNIT_TEST_SUITE(ConsoleDumper) {
@@ -1122,7 +1127,9 @@ selector_config:
         configItem->MutableConfig()->AddNamedConfigs()->SetName("test");
 
         TString result = NYamlConfig::DumpConsoleConfigs(items);
-        const TString expected = R"(config: {}
+        const TString expected = R"(config:
+  nameservice_config:
+    cluster_uuid: test
 allowed_labels:
   node_id:
     type: string

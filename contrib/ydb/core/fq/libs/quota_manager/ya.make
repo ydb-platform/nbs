@@ -13,7 +13,7 @@ PEERDIR(
     contrib/ydb/core/fq/libs/shared_resources
     contrib/ydb/core/protos
     contrib/ydb/public/api/grpc/draft
-    contrib/ydb/public/sdk/cpp/client/ydb_table
+    contrib/ydb/public/sdk/cpp/src/client/table
 )
 
 YQL_LAST_ABI_VERSION()
@@ -22,6 +22,5 @@ END()
 
 RECURSE(
     events
-    proto
     ut_helpers
 )

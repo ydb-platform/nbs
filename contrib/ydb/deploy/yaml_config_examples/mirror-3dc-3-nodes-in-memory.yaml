@@ -1,0 +1,47 @@
+metadata:
+  kind: MainConfig
+  cluster: ""
+  version: 0
+config:
+  yaml_config_enabled: true
+  erasure: mirror-3-dc
+  fail_domain_type: disk
+  self_management_config:
+    enabled: true
+  default_disk_type: SSD
+  host_configs:
+  - drive:
+    - path: SectorMap:1:64
+      type: SSD
+    - path: SectorMap:2:64
+      type: SSD
+    - path: SectorMap:3:64
+      type: SSD
+    host_config_id: 1
+  hosts:
+  - host: localhost
+    host_config_id: 1
+    port: 19001
+    location:
+      body: 1
+      data_center: '1'
+      rack: '1'
+  - host: localhost
+    host_config_id: 1
+    port: 19002
+    location:
+      body: 2
+      data_center: '2'
+      rack: '2'
+  - host: localhost
+    host_config_id: 1
+    port: 19003
+    location:
+      body: 3
+      data_center: '3'
+      rack: '3'
+  table_service_config:
+    sql_version: 1
+  actor_system_config:
+    use_auto_config: true
+    cpu_count: 8

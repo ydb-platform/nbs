@@ -11,7 +11,6 @@ SRCS(
     dq_compute_actor_watermarks.cpp
     dq_compute_actor.cpp
     dq_compute_issues_buffer.cpp
-    retry_queue.cpp
     dq_request_context.h
     dq_request_context.cpp
 )
@@ -21,13 +20,15 @@ PEERDIR(
     contrib/ydb/library/actors/wilson/protos
     contrib/ydb/library/services
     contrib/ydb/library/ydb_issue/proto
+    contrib/ydb/library/yql/dq/actors/common
+    contrib/ydb/library/yql/dq/actors/spilling
     contrib/ydb/library/yql/dq/common
     contrib/ydb/library/yql/dq/proto
     contrib/ydb/library/yql/dq/runtime
     contrib/ydb/library/yql/dq/tasks
-    contrib/ydb/library/yql/dq/actors/spilling
-    contrib/ydb/library/yql/minikql/comp_nodes
-    contrib/ydb/library/yql/public/issue
+    yql/essentials/minikql
+    yql/essentials/minikql/comp_nodes
+    yql/essentials/public/issue
     contrib/ydb/core/quoter/public
 )
 

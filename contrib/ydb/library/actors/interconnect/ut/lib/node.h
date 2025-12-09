@@ -11,18 +11,27 @@
 #include <contrib/ydb/library/actors/interconnect/interconnect_tcp_server.h>
 #include <contrib/ydb/library/actors/interconnect/interconnect_tcp_proxy.h>
 #include <contrib/ydb/library/actors/interconnect/interconnect_proxy_wrapper.h>
+#include <contrib/ydb/library/actors/interconnect/rdma/mem_pool.h>
+#include <contrib/ydb/library/actors/interconnect/rdma/cq_actor/cq_actor.h>
+
+#include "tls/tls.h"
 
 using namespace NActors;
 
 class TNode {
     THolder<TActorSystem> ActorSystem;
+    TString CaPath;
 
 public:
+    static constexpr ui32 DefaultInflight() { return 512 * 1024; }
     TNode(ui32 nodeId, ui32 numNodes, const THashMap<ui32, ui16>& nodeToPort, const TString& address,
           NMonitoring::TDynamicCounterPtr counters, TDuration deadPeerTimeout,
           TChannelsConfig channelsSettings = TChannelsConfig(),
           ui32 numDynamicNodes = 0, ui32 numThreads = 1,
-          TIntrusivePtr<NLog::TSettings> loggerSettings = nullptr, ui32 inflight = 512 * 1024) {
+          TIntrusivePtr<NLog::TSettings> loggerSettings = nullptr, ui32 inflight = DefaultInflight(),
+          ESocketSendOptimization sendOpt = ESocketSendOptimization::DISABLED,
+          bool withTls = false,
+          NInterconnect::NRdma::ECqMode rdmaCqMode = NInterconnect::NRdma::ECqMode::EVENT) {
         TActorSystemSetup setup;
         setup.NodeId = nodeId;
         setup.ExecutorsCount = 2;
@@ -45,7 +54,20 @@ public:
         common->Settings.SendBufferDieLimitInMB = 512;
         common->Settings.TotalInflightAmountOfData = inflight;
         common->Settings.TCPSocketBufferSize = 2048 * 1024;
+        common->Settings.SocketSendOptimization = sendOpt;
         common->OutgoingHandshakeInflightLimit = 3;
+
+        #if !defined(_msan_enabled_)
+        common->RdmaMemPool = NInterconnect::NRdma::CreateSlotMemPool(nullptr, {});
+        #endif
+
+        if (withTls) {
+            common->Settings.Certificate = NInterconnect::GetCertificateForTest();
+            common->Settings.PrivateKey = NInterconnect::GetPrivateKeyForTest();
+            CaPath = NInterconnect::GetTempCaPathForTest();
+            common->Settings.CaFilePath = CaPath;
+            common->Settings.EncryptionMode = EEncryptionMode::REQUIRED;
+        }
 
         setup.Interconnect.ProxyActors.resize(numNodes + 1 - numDynamicNodes);
         setup.Interconnect.ProxyWrapperFactory = CreateProxyWrapperFactory(common, interconnectPoolId);
@@ -63,6 +85,9 @@ public:
         }
 
         setup.LocalServices.emplace_back(MakePollerActorId(), TActorSetupCmd(CreatePollerActor(),
+            TMailboxType::ReadAsFilled, 0));
+        setup.LocalServices.emplace_back(NInterconnect::NRdma::MakeCqActorId(),
+            TActorSetupCmd(NInterconnect::NRdma::CreateCqActor(-1, 32, rdmaCqMode, nullptr),
             TMailboxType::ReadAsFilled, 0));
 
         const TActorId loggerActorId = loggerSettings ? loggerSettings->LoggerActorId : TActorId(0, "logger");
@@ -124,6 +149,7 @@ public:
 
     ~TNode() {
         ActorSystem->Stop();
+        unlink(CaPath.c_str());
     }
 
     bool Send(const TActorId& recipient, IEventBase* ev) {

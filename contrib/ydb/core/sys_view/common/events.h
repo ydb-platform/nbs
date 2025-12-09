@@ -7,6 +7,7 @@
 #include <contrib/ydb/core/scheme/scheme_pathid.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/core/protos/sys_view.pb.h>
+#include <contrib/ydb/core/protos/tablet.pb.h>
 
 namespace NKikimr {
 namespace NSysView {

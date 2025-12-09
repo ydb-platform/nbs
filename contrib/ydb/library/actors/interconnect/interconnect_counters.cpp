@@ -9,6 +9,26 @@ namespace NActors {
 
 namespace {
 
+    static constexpr std::initializer_list<ui32> UtilizationPPM{
+        1'000, 5'000, 10'000, 50'000, 100'000, 200'000, 300'000, 400'000, 500'000, 600'000, 700'000, 800'000,
+        900'000, 950'000, 990'000, 999'000, Max<ui32>()
+    };
+
+    namespace {
+        void UpdateUtilization(auto& prevIndex, auto& array, ui32 value) {
+            auto comp = [](const auto& x, ui32 y) { return std::get<0>(x) < y; };
+            auto it = std::lower_bound(array.begin(), array.end(), value, comp);
+            Y_ABORT_UNLESS(it != array.end());
+            if (const ui32 index = it - array.begin(); index != prevIndex) {
+                auto& [_1, prev] = array[prevIndex];
+                prev->Dec();
+                auto& [_2, cur] = *it;
+                cur->Inc();
+                prevIndex = index;
+            }
+        };
+    }
+
     class TInterconnectCounters: public IInterconnectMetrics {
     public:
         struct TOutputChannel {
@@ -86,6 +106,7 @@ namespace {
         const TInterconnectProxyCommon::TPtr Common;
         const bool MergePerDataCenterCounters;
         const bool MergePerPeerCounters;
+        const bool HasSessionCounters;
         NMonitoring::TDynamicCounterPtr Counters;
         NMonitoring::TDynamicCounterPtr PerSessionCounters;
         NMonitoring::TDynamicCounterPtr PerDataCenterCounters;
@@ -102,6 +123,7 @@ namespace {
             : Common(common)
             , MergePerDataCenterCounters(common->Settings.MergePerDataCenterCounters)
             , MergePerPeerCounters(common->Settings.MergePerPeerCounters)
+            , HasSessionCounters(!MergePerDataCenterCounters && !MergePerPeerCounters)
             , Counters(common->MonCounters)
             , AdaptiveCounters(MergePerDataCenterCounters
                     ? PerDataCenterCounters :
@@ -112,8 +134,16 @@ namespace {
             *InflightDataAmount += value;
         }
 
+        void AddInflightRdmaDataAmount(ui64 value) override {
+            *InflightRdmaDataAmount += value;
+        }
+
         void SubInflightDataAmount(ui64 value) override {
             *InflightDataAmount -= value;
+        }
+
+        void SubInflightRdmaDataAmount(ui64 value) override {
+            *InflightRdmaDataAmount -= value;
         }
 
         void AddTotalBytesWritten(ui64 value) override {
@@ -214,6 +244,14 @@ namespace {
             PingTimeHistogram->Collect(value);
         }
 
+        void UpdateIcQueueTimeHistogram(ui64 value) override {
+            InterconnectQueueTimeHistogram->Collect(value);
+        }
+
+        void UpdateRdmaReadTimeHistogram(ui64 value) override {
+            RdmaReadTimeHistogram->Collect(value);
+        }
+
         void UpdateOutputChannelTraffic(ui16 channel, ui64 value) override {
             auto& ch = GetOutputChannel(channel);
             if (ch.OutgoingTraffic) {
@@ -234,8 +272,15 @@ namespace {
             }
         }
 
-        void SetPeerInfo(const TString& name, const TString& dataCenterId) override {
-            if (name != std::exchange(HumanFriendlyPeerHostName, name)) {
+        void SetUtilization(ui32 total, ui32 starvation) override {
+            UpdateUtilization(PrevUtilization, Utilization, total);
+            UpdateUtilization(PrevStarvation, Starvation, starvation);
+        }
+
+        void SetPeerInfo(ui32 nodeId, const TString& name, const TString& dataCenterId) override {
+            if (nodeId != PeerNodeId || name != HumanFriendlyPeerHostName) {
+                PeerNodeId = nodeId;
+                HumanFriendlyPeerHostName = name;
                 PerSessionCounters.Reset();
             }
             VALGRIND_MAKE_READABLE(&DataCenterId, sizeof(DataCenterId));
@@ -249,9 +294,11 @@ namespace {
             }
 
             const bool updatePerSession = !PerSessionCounters || updatePerDataCenter;
-            if (updatePerSession) {
+            if (HasSessionCounters && updatePerSession) {
                 auto base = MergePerDataCenterCounters ? PerDataCenterCounters : Counters;
-                PerSessionCounters = base->GetSubgroup("peer", *HumanFriendlyPeerHostName);
+                PerSessionCounters = base
+                    ->GetSubgroup("peer_node_id", ToString(*PeerNodeId))
+                    ->GetSubgroup("peer_name", *HumanFriendlyPeerHostName);
             }
 
             const bool updateGlobal = !Initialized;
@@ -263,12 +310,12 @@ namespace {
                 false;
 
             if (updatePerSession) {
-                Connected = PerSessionCounters->GetCounter("Connected");
-                Disconnections = PerSessionCounters->GetCounter("Disconnections", true);
-                ClockSkewMicrosec = PerSessionCounters->GetCounter("ClockSkewMicrosec");
-                Traffic = PerSessionCounters->GetCounter("Traffic", true);
-                Events = PerSessionCounters->GetCounter("Events", true);
-                ScopeErrors = PerSessionCounters->GetCounter("ScopeErrors", true);
+                Connected = AdaptiveCounters->GetCounter("Connected");
+                Disconnections = AdaptiveCounters->GetCounter("Disconnections", true);
+                ClockSkewMicrosec = AdaptiveCounters->GetCounter("ClockSkewMicrosec");
+                Traffic = AdaptiveCounters->GetCounter("Traffic", true);
+                Events = AdaptiveCounters->GetCounter("Events", true);
+                ScopeErrors = AdaptiveCounters->GetCounter("ScopeErrors", true);
 
                 for (const auto& [id, name] : Common->ChannelName) {
                     OutputChannels.try_emplace(id, Counters->GetSubgroup("channel", name), Traffic, Events);
@@ -283,9 +330,14 @@ namespace {
                 HandshakeFails = AdaptiveCounters->GetCounter("Handshake_Fails", true);
                 InflyLimitReach = AdaptiveCounters->GetCounter("InflyLimitReach", true);
                 InflightDataAmount = AdaptiveCounters->GetCounter("Inflight_Data");
+                InflightRdmaDataAmount = AdaptiveCounters->GetCounter("InflightRdma_Data");
 
                 PingTimeHistogram = AdaptiveCounters->GetHistogram(
                     "PingTimeUs", NMonitoring::ExponentialHistogram(18, 2, 125));
+                InterconnectQueueTimeHistogram = AdaptiveCounters->GetHistogram(
+                    "InterconnectQueueTimeHistogramUs", NMonitoring::ExplicitHistogram({500, 1000, 5000, 10000, 50000, 100000}));
+                RdmaReadTimeHistogram = AdaptiveCounters->GetHistogram(
++                    "RdmaReadTimeUs", NMonitoring::ExplicitHistogram({0, 5, 10, 20, 50, 100, 200, 1000, 10000}));
             }
 
             if (updateGlobal) {
@@ -306,6 +358,17 @@ namespace {
                 for (const char *reason : TDisconnectReason::Reasons) {
                     DisconnectByReason[reason] = disconnectReasonGroup->GetCounter(reason, true);
                 }
+
+                auto group = Counters->GetSubgroup("subsystem", "utilization");
+                auto util = group->GetSubgroup("sensor", "utilization");
+                auto starv = group->GetSubgroup("sensor", "starvation");
+                for (ui32 ppm : UtilizationPPM) {
+                    const TString name = ppm != Max<ui32>() ? ToString(ppm) : "inf";
+                    Utilization.emplace_back(ppm, util->GetNamedCounter("bin", name, false));
+                    Starvation.emplace_back(ppm, starv->GetNamedCounter("bin", name, false));
+                }
+                ++*std::get<1>(Utilization[PrevUtilization]);
+                ++*std::get<1>(Starvation[PrevStarvation]);
             }
 
             Initialized = true;
@@ -323,6 +386,7 @@ namespace {
         NMonitoring::TDynamicCounters::TCounterPtr Connected;
         NMonitoring::TDynamicCounters::TCounterPtr Disconnections;
         NMonitoring::TDynamicCounters::TCounterPtr InflightDataAmount;
+        NMonitoring::TDynamicCounters::TCounterPtr InflightRdmaDataAmount;
         NMonitoring::TDynamicCounters::TCounterPtr InflyLimitReach;
         NMonitoring::TDynamicCounters::TCounterPtr OutputBuffersTotalSize;
         NMonitoring::TDynamicCounters::TCounterPtr QueueUtilization;
@@ -337,6 +401,8 @@ namespace {
         NMonitoring::TDynamicCounters::TCounterPtr UsefulWriteWakeups;
         NMonitoring::TDynamicCounters::TCounterPtr SpuriousWriteWakeups;
         NMonitoring::THistogramPtr PingTimeHistogram;
+        NMonitoring::THistogramPtr InterconnectQueueTimeHistogram;
+        NMonitoring::THistogramPtr RdmaReadTimeHistogram;
 
         std::unordered_map<ui16, TOutputChannel> OutputChannels;
         TOutputChannel OtherOutputChannel;
@@ -344,6 +410,11 @@ namespace {
         THashMap<TString, NMonitoring::TDynamicCounters::TCounterPtr> DisconnectByReason;
 
         NMonitoring::TDynamicCounters::TCounterPtr TotalBytesWritten, TotalBytesRead;
+
+        ui32 PrevUtilization = 0;
+        std::vector<std::tuple<ui32, NMonitoring::TDynamicCounters::TCounterPtr>> Utilization;
+        ui32 PrevStarvation = 0;
+        std::vector<std::tuple<ui32, NMonitoring::TDynamicCounters::TCounterPtr>> Starvation;
     };
 
     class TInterconnectMetrics: public IInterconnectMetrics {
@@ -433,8 +504,16 @@ namespace {
             InflightDataAmount_->Add(value);
         }
 
+        void AddInflightRdmaDataAmount(ui64 value) override {
+            InflightRdmaDataAmount_->Add(value);
+        }
+
         void SubInflightDataAmount(ui64 value) override {
             InflightDataAmount_->Add(-value);
+        }
+
+        void SubInflightRdmaDataAmount(ui64 value) override {
+            InflightRdmaDataAmount_->Add(-value);
         }
 
         void AddTotalBytesWritten(ui64 value) override {
@@ -533,6 +612,14 @@ namespace {
             PingTimeHistogram_->Record(value);
         }
 
+        void UpdateIcQueueTimeHistogram(ui64 value) override {
+            InterconnectQueueTimeHistogram_->Record(value);
+        }
+
+        void UpdateRdmaReadTimeHistogram(ui64 value) override {
+            RdmaReadTimeHistogram_->Record(value);
+        }
+
         void UpdateOutputChannelTraffic(ui16 channel, ui64 value) override {
             auto& ch = GetOutputChannel(channel);
             if (ch.OutgoingTraffic) {
@@ -553,8 +640,15 @@ namespace {
             }
         }
 
-        void SetPeerInfo(const TString& name, const TString& dataCenterId) override {
-            if (name != std::exchange(HumanFriendlyPeerHostName, name)) {
+        void SetUtilization(ui32 total, ui32 starvation) override {
+            UpdateUtilization(PrevUtilization_, Utilization_, total);
+            UpdateUtilization(PrevStarvation_, Starvation_, starvation);
+        }
+
+        void SetPeerInfo(ui32 nodeId, const TString& name, const TString& dataCenterId) override {
+            if (nodeId != PeerNodeId || name != HumanFriendlyPeerHostName) {
+                PeerNodeId = nodeId;
+                HumanFriendlyPeerHostName = name;
                 PerSessionMetrics_.reset();
             }
             VALGRIND_MAKE_READABLE(&DataCenterId, sizeof(DataCenterId));
@@ -572,7 +666,10 @@ namespace {
             if (updatePerSession) {
                 auto base = MergePerDataCenterMetrics_ ? PerDataCenterMetrics_ : Metrics_;
                 PerSessionMetrics_ = std::make_shared<NMonitoring::TMetricSubRegistry>(
-                        NMonitoring::TLabels{{"peer", *HumanFriendlyPeerHostName}}, base);
+                    NMonitoring::TLabels{
+                        {"peer_node_id", ToString(*PeerNodeId)},
+                        {"peer_name", *HumanFriendlyPeerHostName},
+                    }, base);
             }
 
             const bool updateGlobal = !Initialized_;
@@ -613,8 +710,13 @@ namespace {
                 HandshakeFails_ = createRate(AdaptiveMetrics_, "interconnect.handshake_fails");
                 InflyLimitReach_ = createRate(AdaptiveMetrics_, "interconnect.infly_limit_reach");
                 InflightDataAmount_ = createRate(AdaptiveMetrics_, "interconnect.inflight_data");
+                InflightRdmaDataAmount_ = createRate(AdaptiveMetrics_, "interconnect.inflight_rdma_data");
                 PingTimeHistogram_ = AdaptiveMetrics_->HistogramRate(
                         NMonitoring::MakeLabels({{"sensor", "interconnect.ping_time_us"}}), NMonitoring::ExponentialHistogram(18, 2, 125));
+                InterconnectQueueTimeHistogram_ = AdaptiveMetrics_->HistogramRate(
+                        NMonitoring::MakeLabels({{"sensor", "interconnect.ic_queue_time_us"}}), NMonitoring::ExplicitHistogram({500, 1000, 5000, 10000, 50000, 100000}));
+                RdmaReadTimeHistogram_ = AdaptiveMetrics_->HistogramRate(
+                        NMonitoring::MakeLabels({{"sensor", "interconnect.rdma_read_time_us"}}), NMonitoring::ExplicitHistogram({0, 5, 10, 20, 50, 100, 200, 1000, 10000}));
             }
 
             if (updateGlobal) {
@@ -636,6 +738,26 @@ namespace {
                                 {"reason", reason},
                             }));
                 }
+
+                for (ui32 ppm : UtilizationPPM) {
+                    const TString name = ppm != Max<ui32>() ? ToString(ppm) : "inf";
+                    Utilization_.emplace_back(ppm, Metrics_->IntGauge(
+                        NMonitoring::MakeLabels({
+                            {"subsystem", "utilization"},
+                            {"sensor", "utilization"},
+                            {"bin", name},
+                        })
+                    ));
+                    Starvation_.emplace_back(ppm, Metrics_->IntGauge(
+                        NMonitoring::MakeLabels({
+                            {"subsystem", "utilization"},
+                            {"sensor", "starvation"},
+                            {"bin", name},
+                        })
+                    ));
+                }
+                std::get<1>(Utilization_[PrevUtilization_])->Inc();
+                std::get<1>(Starvation_[PrevStarvation_])->Inc();
             }
 
             Initialized_ = true;
@@ -668,6 +790,7 @@ namespace {
         NMonitoring::IRate* HandshakeFails_;
         NMonitoring::IRate* InflyLimitReach_;
         NMonitoring::IRate* InflightDataAmount_;
+        NMonitoring::IRate* InflightRdmaDataAmount_;
         NMonitoring::IRate* OutputBuffersTotalSize_;
         NMonitoring::IIntGauge* SubscribersCount_;
         NMonitoring::IRate* SendSyscalls_;
@@ -679,6 +802,8 @@ namespace {
         NMonitoring::IIntGauge* ClockSkewMicrosec_;
 
         NMonitoring::IHistogram* PingTimeHistogram_;
+        NMonitoring::IHistogram* InterconnectQueueTimeHistogram_;
+        NMonitoring::IHistogram* RdmaReadTimeHistogram_;
 
         THashMap<ui16, TOutputChannel> OutputChannels_;
         TOutputChannel OtherOutputChannel_;
@@ -688,6 +813,11 @@ namespace {
 
         NMonitoring::IRate* TotalBytesWritten_;
         NMonitoring::IRate* TotalBytesRead_;
+
+        ui32 PrevUtilization_ = 0;
+        std::vector<std::tuple<ui32, NMonitoring::IIntGauge*>> Utilization_;
+        ui32 PrevStarvation_ = 0;
+        std::vector<std::tuple<ui32, NMonitoring::IIntGauge*>> Starvation_;
     };
 
 } // namespace

@@ -6,10 +6,10 @@
 #include <contrib/ydb/core/fq/libs/test_connection/events/events.h>
 #include <contrib/ydb/library/security/util.h>
 
-#include <contrib/ydb/library/yql/providers/common/structured_token/yql_token_builder.h>
-#include <contrib/ydb/library/yql/utils/url_builder.h>
+#include <yql/essentials/providers/common/structured_token/yql_token_builder.h>
+#include <yql/essentials/utils/url_builder.h>
 
-#include <contrib/ydb/library/yql/providers/solomon/async_io/dq_solomon_write_actor.h>
+#include <contrib/ydb/library/yql/providers/solomon/actors/dq_solomon_write_actor.h>
 #include <contrib/ydb/library/yql/utils/actors/http_sender_actor.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
