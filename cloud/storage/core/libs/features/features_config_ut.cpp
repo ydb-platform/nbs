@@ -187,6 +187,87 @@ Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
         UNIT_ASSERT_C(matches == 1000, TStringBuilder()
             << "match count: " << matches);
     }
+
+    Y_UNIT_TEST(ShouldMatchUsingRegexp)
+    {
+        NProto::TFeaturesConfig fc;
+        auto* f = fc.AddFeatures();
+        f->SetName("feature");
+
+        auto* whitelist = f->MutableWhitelist();
+        whitelist->SetMatchAlgorithm(NProto::FILTER_MATCH_ALGORITHM_REGEXP);
+        *whitelist->AddCloudIds() = R"(dev-\d+)";
+        *whitelist->AddFolderIds() = R"(folder-[A-Z]{2})";
+        *whitelist->AddEntityIds() = R"(disk-.*)";
+
+        TFeaturesConfig config(fc);
+
+        UNIT_ASSERT(config.IsFeatureEnabled("dev-123", {}, {}, f->GetName()));
+        UNIT_ASSERT(config.IsFeatureEnabled({}, "folder-AA", {}, f->GetName()));
+        UNIT_ASSERT(config.IsFeatureEnabled({}, {}, "disk-xyz", f->GetName()));
+
+        UNIT_ASSERT(!config.IsFeatureEnabled("prod-123", {}, {}, f->GetName()));
+        UNIT_ASSERT(!config.IsFeatureEnabled({}, "folder-1A", {}, f->GetName()));
+        UNIT_ASSERT(!config.IsFeatureEnabled({}, {}, "volume-xyz", f->GetName()));
+    }
+
+    Y_UNIT_TEST(ShouldNotMatchUsingBadRegexp)
+    {
+        NProto::TFeaturesConfig fc;
+        auto* f = fc.AddFeatures();
+        f->SetName("feature");
+
+        auto* whitelist = f->MutableWhitelist();
+        whitelist->SetMatchAlgorithm(NProto::FILTER_MATCH_ALGORITHM_REGEXP);
+        *whitelist->AddCloudIds() = R"([d]e[v-\d+)"; // bad regexp
+        *whitelist->AddFolderIds() = R"(folder-[A-Z]{2})";
+        *whitelist->AddEntityIds() = R"(disk-.*)";
+
+        TFeaturesConfig config(fc);
+
+        UNIT_ASSERT(!config.IsFeatureEnabled("dev-123", {}, {}, f->GetName()));
+        UNIT_ASSERT(config.IsFeatureEnabled({}, "folder-AA", {}, f->GetName()));
+        UNIT_ASSERT(config.IsFeatureEnabled({}, {}, "disk-xyz", f->GetName()));
+
+    }
+
+    Y_UNIT_TEST(ShouldRejectUsingRegexpBlacklist)
+    {
+        NProto::TFeaturesConfig fc;
+        auto* f = fc.AddFeatures();
+        f->SetName("feature");
+
+        auto* blacklist = f->MutableBlacklist();
+        blacklist->SetMatchAlgorithm(NProto::FILTER_MATCH_ALGORITHM_REGEXP);
+        *blacklist->AddCloudIds() = R"(bad-\d+)";
+        *blacklist->AddFolderIds() = R"(tmp-[a-z]+)";
+        *blacklist->AddEntityIds() = R"(forbidden-.*)";
+
+        TFeaturesConfig config(fc);
+
+        UNIT_ASSERT(!config.IsFeatureEnabled("bad-101", {}, {}, f->GetName()));
+        UNIT_ASSERT(!config.IsFeatureEnabled({}, "tmp-alpha", {}, f->GetName()));
+        UNIT_ASSERT(!config.IsFeatureEnabled({}, {}, "forbidden-id", f->GetName()));
+
+        UNIT_ASSERT(config.IsFeatureEnabled("good-101", {}, {}, f->GetName()));
+        UNIT_ASSERT(config.IsFeatureEnabled({}, "prod-alpha", {}, f->GetName()));
+        UNIT_ASSERT(config.IsFeatureEnabled({}, {}, "allowed-id", f->GetName()));
+    }
+
+    Y_UNIT_TEST(ShouldUseStringMatchByDefault)
+    {
+        NProto::TFeaturesConfig fc;
+        auto* f = fc.AddFeatures();
+        f->SetName("feature");
+
+        // Regex-looking pattern added, but algorithm not set -> string match.
+        *f->MutableWhitelist()->AddCloudIds() = R"(dev-.*)";
+
+        TFeaturesConfig config(fc);
+
+        UNIT_ASSERT(!config.IsFeatureEnabled("dev-123", {}, {}, f->GetName()));
+        UNIT_ASSERT(config.IsFeatureEnabled("dev-.*", {}, {}, f->GetName()));
+    }
 }
 
 }   // namespace NCloud::NFeatures

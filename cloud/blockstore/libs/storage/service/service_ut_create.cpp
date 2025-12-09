@@ -935,16 +935,12 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldCreateVolumeWithFreshChannelIfFeatureIsEnabledForCloud)
+    Y_UNIT_TEST(ShouldCreateVolumeWithFreshChannel)
     {
         TTestEnv env;
         NProto::TStorageServiceConfig config;
-        NProto::TFeaturesConfig featuresConfig;
-        auto* feature = featuresConfig.AddFeatures();
-        feature->SetName("AllocateFreshChannel");
-        auto* whitelist = feature->MutableWhitelist();
-        *whitelist->AddCloudIds() = "cloud_id";
-        ui32 nodeIdx = SetupTestEnv(env, config, featuresConfig);
+        config.SetFreshChannelCount(1);
+        ui32 nodeIdx = SetupTestEnv(env, config, {});
 
         auto& runtime = env.GetRuntime();
 
@@ -964,6 +960,33 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                 1,
                 response->Record.GetVolume().GetFreshChannelsCount()
             );
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCreateVolumeWithFewFreshChannel)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        config.SetFreshChannelCount(4);
+        ui32 nodeIdx = SetupTestEnv(env, config, {});
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume(
+            DefaultDiskId,
+            1024,
+            DefaultBlockSize,
+            TString(),  // folderId
+            "cloud_id"
+        );
+
+        {
+            auto response = service.DescribeVolume();
+            UNIT_ASSERT_VALUES_EQUAL(
+                4,
+                response->Record.GetVolume().GetFreshChannelsCount());
         }
     }
 
@@ -1858,7 +1881,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         NProto::TStorageServiceConfig config;
         NProto::TFeaturesConfig featuresConfig;
         auto* feature = featuresConfig.AddFeatures();
-        feature->SetName("EncryptionAtRestForDiskRegistryBasedDisks");
+        feature->SetName("RootKmsEncryptionForDiskRegistryBasedDisks");
         feature->MutableWhitelist()->AddFolderIds("encrypted-folder");
 
         ui32 nodeIdx = SetupTestEnv(env, config, featuresConfig);
@@ -1882,7 +1905,9 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             auto response = service.DescribeVolume("vol0");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
             auto desc = response->Record.GetVolume().GetEncryptionDesc();
-            UNIT_ASSERT_EQUAL(NProto::ENCRYPTION_AT_REST, desc.GetMode());
+            UNIT_ASSERT_EQUAL(
+                NProto::ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY,
+                desc.GetMode());
             UNIT_ASSERT_VALUES_EQUAL("", desc.GetKeyHash());
             UNIT_ASSERT_VALUES_UNEQUAL("", desc.GetEncryptionKey().GetKekId());
             UNIT_ASSERT_VALUES_UNEQUAL(

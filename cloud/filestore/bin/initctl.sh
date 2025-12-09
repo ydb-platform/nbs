@@ -156,7 +156,8 @@ if [[ "$1" == "startendpoint" ]]; then
         --server-port       $VHOST_PORT             \
         --filesystem        "$FS"                   \
         --socket-path       "$VHOST_SOCKET_PATH"    \
-        --client-id         "local-qemu"
+        --client-id         "local-qemu"            \
+        --persistent
     echo "started endpoint at $VHOST_SOCKET_PATH"
 
     shift

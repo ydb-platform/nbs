@@ -201,6 +201,7 @@ public:
     NCloud::NProto::EAuthorizationMode GetAuthorizationMode() const;
 
     bool GetTwoStageReadEnabled() const;
+    ui32 GetTwoStageReadThreshold() const;
     bool GetThreeStageWriteEnabled() const;
     ui32 GetThreeStageWriteThreshold() const;
     bool GetUnalignedThreeStageWriteEnabled() const;
@@ -351,6 +352,8 @@ public:
     ui64 GetDirectoryHandlesTableSize() const;
 
     bool GetGuestHandleKillPrivV2Enabled() const;
+
+    [[nodiscard]] bool GetAllowAdditionalSystemTablets() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

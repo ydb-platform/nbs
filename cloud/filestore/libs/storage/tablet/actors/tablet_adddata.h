@@ -1,3 +1,6 @@
+#pragma once
+
+#include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/filestore/libs/diagnostics/throttler_info_serializer.h>
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/storage/core/public.h>
@@ -21,6 +24,7 @@ private:
     const ITraceSerializerPtr TraceSerializer;
 
     const TString LogTag;
+    const TString FileSystemId;
     const TActorId Tablet;
     const TRequestInfoPtr RequestInfo;
 
@@ -28,18 +32,23 @@ private:
     const TVector<TMergedBlob> Blobs;
     TVector<TBlockBytesMeta> UnalignedDataParts;
     const TWriteRange WriteRange;
+    IProfileLogPtr ProfileLog;
+    NProto::TProfileLogRequestInfo ProfileLogRequest;
     ui32 BlobsSize = 0;
 
 public:
     TAddDataActor(
         ITraceSerializerPtr traceSerializer,
         TString logTag,
+        TString fileSystemId,
         TActorId tablet,
         TRequestInfoPtr requestInfo,
         ui64 commitId,
         TVector<TMergedBlob> blobs,
         TVector<TBlockBytesMeta> unalignedDataParts,
-        TWriteRange writeRange);
+        TWriteRange writeRange,
+        IProfileLogPtr profileLog,
+        NProto::TProfileLogRequestInfo profileLogRequest);
 
     void Bootstrap(const TActorContext& ctx);
 

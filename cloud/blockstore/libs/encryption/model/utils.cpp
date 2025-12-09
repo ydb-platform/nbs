@@ -12,7 +12,7 @@ namespace {
 const TMap<TString, NProto::EEncryptionMode> EncryptionModes = {
     {"no", NProto::NO_ENCRYPTION},
     {"aes-xts", NProto::ENCRYPTION_AES_XTS},
-    {"default", NProto::ENCRYPTION_AT_REST},
+    {"default", NProto::ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY},
 };
 
 }   // namespace
@@ -45,7 +45,9 @@ NProto::TEncryptionSpec CreateEncryptionSpec(
     const TString& keyPath,
     const TString& keyHash)
 {
-    if (mode == NProto::NO_ENCRYPTION || mode == NProto::ENCRYPTION_AT_REST) {
+    if (mode == NProto::NO_ENCRYPTION ||
+        mode == NProto::ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY)
+    {
         Y_ENSURE(
             keyHash.empty() && keyPath.empty(),
             "invalid encryption options: set aes-xts encryption mode or remove "

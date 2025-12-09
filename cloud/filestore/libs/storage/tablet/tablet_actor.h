@@ -16,11 +16,11 @@
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/tablet.h>
 #include <cloud/filestore/libs/storage/model/public.h>
-#include <cloud/filestore/libs/storage/model/range.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/tablet/model/throttler_logger.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 
+#include <cloud/storage/core/libs/common/byte_range.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
 #include <cloud/storage/core/libs/diagnostics/busy_idle_calculator.h>
 #include <cloud/storage/core/libs/throttling/public.h>
@@ -93,6 +93,9 @@ private:
         std::atomic<i64> UsedDirectHandlesCount{0};
         std::atomic<i64> SevenBytesHandlesCount{0};
         std::atomic<i64> UsedLocksCount{0};
+
+        std::atomic<i64> StrictFileSystemSizeEnforcementEnabled{0};
+        std::atomic<i64> DirectoryCreationInShardsEnabled{0};
 
         // Session stats
         std::atomic<i64> StatefulSessionsCount{0};

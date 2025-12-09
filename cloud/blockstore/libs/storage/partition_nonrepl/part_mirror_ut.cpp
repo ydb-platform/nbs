@@ -1601,7 +1601,11 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionTest)
 
         NProto::TStorageServiceConfig config;
         config.SetAutomaticallyEnableBufferCopyingAfterChecksumMismatch(true);
-        TTestEnv env(runtime, config, false, NProto::ENCRYPTION_AT_REST);
+        TTestEnv env(
+            runtime,
+            config,
+            false,
+            NProto::ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY);
 
         bool addTagRequest = false;
         runtime.SetEventFilter(
