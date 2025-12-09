@@ -40,7 +40,6 @@ namespace {
     xxx(MaxResponseEntries,          ui32,          10000                     )\
     xxx(MaxBackground,               ui32,          0                         )\
     xxx(MaxFuseLoopThreads,          ui32,          1                         )\
-    xxx(ZeroCopyWriteEnabled,        bool,          false                     )\
     xxx(FSyncQueueDisabled,          bool,          false                     )\
     xxx(EntryTimeout,                TDuration,     TDuration::Seconds(15)    )\
     xxx(NegativeEntryTimeout,        TDuration,     TDuration::Zero()         )\

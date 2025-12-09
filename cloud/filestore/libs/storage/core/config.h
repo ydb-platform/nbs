@@ -355,6 +355,8 @@ public:
 
     [[nodiscard]] bool GetAllowAdditionalSystemTablets() const;
 
+    bool GetZeroCopyReadEnabled() const;
+
     ui32 GetMaxShardCount() const;
 };
 

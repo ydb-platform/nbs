@@ -73,6 +73,15 @@ TString CreateBuffer(size_t len, char fill = 0)
     return TString(len, fill);
 }
 
+TString GenerateValidateData(ui32 size, ui32 seed = 0)
+{
+    TString data(size, 0);
+    for (ui32 i = 0; i < size; ++i) {
+        data[i] = 'A' + ((i + seed) % ('Z' - 'A' + 1));
+    }
+    return data;
+}
+
 template <class F>
 bool WaitForCondition(TDuration timeout, F&& predicate)
 {
@@ -2890,7 +2899,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto requestInProgressSensor = counters->GetCounter("InProgress");
         i64 requestCount = 0;
 
-        while (requestInProgressSensor->GetAtomic() < MaxPendingRequestCount) {
+        while (requestInProgressSensor->Val() < MaxPendingRequestCount) {
             UNIT_ASSERT_GT(MaxRequestCount, requestCount);
 
             ui64 nodeId = RandomNumber(NodeCount) + 123;
@@ -2915,8 +2924,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 [&]()
                 {
                     const bool requestIsProcessed =
-                        requestCount == requestInProgressSensor->GetAtomic() +
-                                            requestCountSensor->GetAtomic();
+                        requestCount == requestInProgressSensor->Val() +
+                                            requestCountSensor->Val();
 
                     // A pending request will eventually become completed if the
                     // cache is not full. We don't want to count these requests
@@ -2927,7 +2936,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     // space to store the request
 
                     const bool nonZeroPendingIsExpected =
-                        requestInProgressSensor->GetAtomic() == 0 ||
+                        requestInProgressSensor->Val() == 0 ||
                         writeDataCalledCount > 0;
 
                     return requestIsProcessed && nonZeroPendingIsExpected;
@@ -2943,15 +2952,111 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             MaxPendingRequestCount,
-            requestInProgressSensor->GetAtomic());
+            requestInProgressSensor->Val());
 
         // Enable progression of WriteData requests - this will enable flushing
         writeDataPromise.SetValue();
         UNIT_ASSERT(stopFuture.Wait(Timeout));
 
-        UNIT_ASSERT_VALUES_EQUAL(0, requestInProgressSensor->GetAtomic());
-        UNIT_ASSERT_VALUES_EQUAL(requestCount, requestCountSensor->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, requestInProgressSensor->Val());
+        UNIT_ASSERT_VALUES_EQUAL(requestCount, requestCountSensor->Val());
         UNIT_ASSERT(!path.Exists());
+    }
+
+    Y_UNIT_TEST(ShouldHandleZeroCopyReadRequest)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetZeroCopyReadEnabled(true);
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+        const ui64 size = 30;
+        const auto data = GenerateValidateData(size, 2);
+
+        bootstrap.Service->ReadDataHandler = [&](auto callContext, auto request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+            UNIT_ASSERT_VALUES_EQUAL(request->GetHandle(), handleId);
+            auto& iovecs = request->GetIovecs();
+            UNIT_ASSERT_EQUAL(1, iovecs.size());
+            UNIT_ASSERT_EQUAL(request->GetLength(), iovecs[0].GetLength());
+
+            NProto::TReadDataResponse result;
+            memcpy(
+                reinterpret_cast<void*>(iovecs[0].GetBase()),
+                data.data(),
+                iovecs[0].GetLength());
+            result.SetLength(iovecs[0].GetLength());
+
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER
+        {
+            bootstrap.Stop();
+        };
+
+        auto request =
+            std::make_shared<TReadRequest>(nodeId, handleId, 0, size);
+        auto read = bootstrap.Fuse->SendRequest<TReadRequest>(request);
+
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(read.GetValue(), size);
+        UNIT_ASSERT_VALUES_EQUAL(
+            data,
+            TString(reinterpret_cast<char*>(&request->Out->Body), size));
+    }
+
+    Y_UNIT_TEST(ShouldHandleZeroCopyReadRequestFallbackToBuffer)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetZeroCopyReadEnabled(true);
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+        const ui64 size = 105;
+        const auto data = GenerateValidateData(size, 1);
+
+        bootstrap.Service->ReadDataHandler = [&](auto callContext, auto request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+            UNIT_ASSERT_VALUES_EQUAL(request->GetHandle(), handleId);
+            auto& iovecs = request->GetIovecs();
+            UNIT_ASSERT_EQUAL(1, iovecs.size());
+            UNIT_ASSERT_EQUAL(request->GetLength(), iovecs[0].GetLength());
+
+            NProto::TReadDataResponse result;
+            result.MutableBuffer()->assign(data);
+
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER
+        {
+            bootstrap.Stop();
+        };
+
+        auto request =
+            std::make_shared<TReadRequest>(nodeId, handleId, 0, size);
+        auto read = bootstrap.Fuse->SendRequest<TReadRequest>(request);
+
+        UNIT_ASSERT(read.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(read.GetValue(), size);
+        UNIT_ASSERT_VALUES_EQUAL(
+            data,
+            TString(reinterpret_cast<char*>(&request->Out->Body), size));
     }
 }
 

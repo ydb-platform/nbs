@@ -119,8 +119,6 @@ public:
 
     ui32 GetMaxFuseLoopThreads() const;
 
-    bool GetZeroCopyWriteEnabled() const;
-
     bool GetFSyncQueueDisabled() const;
 
     TDuration GetEntryTimeout() const;
