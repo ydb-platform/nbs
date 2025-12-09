@@ -22,11 +22,11 @@ constexpr ui32 IdBitsCount = 48;
 constexpr ui64 IdMask = Max<ui64>() >> (64 - IdBitsCount);
 
 // It is assumed that two most significant bytes are equal to zero
-inline void SwapTwoLeastSignificantBytes(ui32& shardNo)
+inline ui32 SwapTwoLeastSignificantBytes(ui32 shardNo)
 {
     ui32 leastSignificantByte = (shardNo & 0xff);
     shardNo >>= CHAR_BIT;
-    shardNo |= (leastSignificantByte << CHAR_BIT);
+    return shardNo | (leastSignificantByte << CHAR_BIT);
 }
 
 inline ui64 ShardedId(ui64 id, ui32 shardNo)
@@ -34,7 +34,7 @@ inline ui64 ShardedId(ui64 id, ui32 shardNo)
     // Historically, shardNo occupied only the 8th byte.
     // To place the second byte of shardNo into the 7th byte of the
     // resulting id, we need to swap the 7th and 8th bytes.
-    SwapTwoLeastSignificantBytes(shardNo);
+    shardNo = SwapTwoLeastSignificantBytes(shardNo);
     Y_DEBUG_ABORT_UNLESS(shardNo < (1UL << (64 - IdBitsCount)));
     return (static_cast<ui64>(shardNo) << IdBitsCount) | (IdMask & id);
 }
@@ -42,7 +42,7 @@ inline ui64 ShardedId(ui64 id, ui32 shardNo)
 inline ui32 ExtractShardNo(ui64 id)
 {
     ui32 shardNo = static_cast<ui32>(id >> IdBitsCount);
-    SwapTwoLeastSignificantBytes(shardNo);
+    shardNo = SwapTwoLeastSignificantBytes(shardNo);
 
     return shardNo;
 }

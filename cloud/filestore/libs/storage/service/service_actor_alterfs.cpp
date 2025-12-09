@@ -23,10 +23,12 @@ namespace {
 // ResizeStateWork. Alter mode is quite simple and consits of the following
 // steps: Describe main filestore, Alter main filestore
 // The steps of the resize mode:
-// 1. Describe main filestore. Gets main file system size, config version,
-// calculates desired number of shards
-// 2. Get filesystem topology. Gets number of exsiting shards, calculates number
-// of shards to be created.
+// 1. Describe main filestore. Store NKikimrFileStore::TConfig of the main
+// filesystem for later use.
+// 2. Get filesystem topology. Using the topology and the config from the
+// previous step, calculate all parameters of the transformation performed by
+// resize action: ShardsToCreate, ShardsToConfigure, ShardsToAlter,
+// ShouldConfigureMainFileStore.
 // 3. Describe shards. We need this step to get config version of shards in case
 // we need to resize them.
 // 4. Alter (actually resize) main filestore.
