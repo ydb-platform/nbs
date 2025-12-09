@@ -757,7 +757,8 @@ void TVolumeActor::ForwardRequest(
      *  Validation for reads and writes for the leader and follower
      */
     if constexpr (IsReadOrWriteMethod<TMethod>) {
-        const bool isCopyingClient = clientId == CopyVolumeClientId;
+        const bool isCopyingClient =
+            clientId == CopyVolumeClientId || clientId == DMCopyVolumeClientId;
 
         auto makeMessage = [&](NLog::EPriority priority) -> TString
         {
