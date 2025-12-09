@@ -1,0 +1,5 @@
+GuestKeepCacheAllowed: true
+SessionHandleOffloadedStatsCapacity: 100
+GuestCachingType: GCT_ANY_READ
+EntryTimeout: 15000
+RegularFileEntryTimeout: 1

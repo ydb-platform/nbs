@@ -146,10 +146,18 @@ bool TFileSystem::UpdateNodeCache(
 
         entry.ino = attrs.GetId();
         entry.generation = NodeCache.Generation();
+
+        const auto nodeType = attrs.GetType();
+        const auto entryTimeout = (
+            nodeType == NProto::ENodeType::E_REGULAR_NODE ?
+            Config->GetRegularFileEntryTimeout().SecondsFloat() :
+            Config->GetEntryTimeout().SecondsFloat());
+        entry.entry_timeout = entryTimeout;
+
         entry.attr_timeout = Config->GetAttrTimeout().SecondsFloat();
-        entry.entry_timeout = Config->GetEntryTimeout().SecondsFloat();
 
         ConvertAttr(Config->GetPreferredBlockSize(), node->Attrs, entry.attr);
+
     }
 
     return true;

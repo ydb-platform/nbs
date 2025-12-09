@@ -15,6 +15,7 @@ message TFileStoreFeatures
 {
     bool TwoStageReadEnabled = 1;
     uint32 EntryTimeout = 2;
+    uint32 RegularFileEntryTimeout = 32;
     uint32 NegativeEntryTimeout = 3;
     uint32 AttrTimeout = 4;
     bool ThreeStageWriteEnabled = 5;

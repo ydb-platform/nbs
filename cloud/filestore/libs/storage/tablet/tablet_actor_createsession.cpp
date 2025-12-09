@@ -31,6 +31,7 @@ void FillFeatures(
     features->SetThreeStageWriteDisabledForHDD(
         config.GetThreeStageWriteDisabledForHDD());
     features->SetEntryTimeout(config.GetEntryTimeout().MilliSeconds());
+    features->SetRegularFileEntryTimeout(config.GetRegularFileEntryTimeout().MilliSeconds());
     features->SetNegativeEntryTimeout(
         config.GetNegativeEntryTimeout().MilliSeconds());
     features->SetAttrTimeout(config.GetAttrTimeout().MilliSeconds());
