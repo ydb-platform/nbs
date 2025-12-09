@@ -1,0 +1,198 @@
+name: Scheduler
+run-name: Scheduler ${{ inputs.flavor }}
+on:
+  workflow_dispatch:
+    inputs:
+      max_vms_to_create:
+        description: 'Max VMs to create'
+        type: string
+        required: true
+        default: "1"
+      vms_ttl:
+        description: 'VMs TTL (seconds)'
+        type: string
+        required: true
+        default: "86400"
+      flavor:
+        description: 'Runner flavor'
+        type: choice
+        options:
+          - heavy
+          - light
+        required: true
+        default: 'light'
+      provision_mode:
+        description: 'Provision mode (if set to initial it will use ubuntu-latest image)'
+        type: choice
+        options:
+          - initial
+          - regular
+        required: true
+        default: 'regular'
+      loop:
+        description: 'Loop the action'
+        type: choice
+        options:
+          - yes
+          - no
+        required: false
+        default: "no"
+
+  workflow_call:
+    inputs:
+      max_vms_to_create:
+        description: 'Max VMs to create'
+        type: string
+        required: true
+        default: "1"
+      vms_ttl:
+        description: 'VMs TTL (seconds)'
+        type: string
+        required: true
+        default: "86400"
+      flavor:
+        description: 'Runner flavor'
+        type: string
+        required: true
+        default: 'light'
+      provision_mode:
+        description: 'Provision mode (if set to initial it will use ubuntu-latest image)'
+        type: string
+        required: true
+        default: 'regular'
+      loop:
+        description: 'Loop the action'
+        type: string
+        required: false
+        default: "no"
+
+concurrency:
+  group: 'populate-vms-${{ inputs.flavor }}'
+  cancel-in-progress: false
+  
+
+env:
+  disk_size: ${{ inputs.flavor == 'heavy' && 2046 || 93 }}
+  preset: ${{ inputs.flavor == 'heavy' && vars.NEBIUS_VM_PRESET || '4vcpu-16gb' }}
+
+
+jobs:
+  calculate_missing_vms:
+    name: Schedule ${{ inputs.flavor }} runners
+    runs-on: ${{ inputs.provision_mode == 'initial' && fromJson('["ubuntu-latest"]') || fromJson('["self-hosted", "runner_light"]') }}
+    outputs:
+      running_vms: ${{ steps.list.outputs.RUNNING_VMS_COUNT }}
+      vms_to_create: ${{ steps.list.outputs.VMS_TO_CREATE }}
+      vms_to_remove: ${{ steps.list.outputs.VMS_TO_REMOVE }}
+      broken_vms_to_remove: ${{ steps.list.outputs.BROKEN_VMS_TO_REMOVE }}
+      date: ${{ steps.list.outputs.DATE }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: '.github'
+      - name: List VMs and prepare removal (vms older than 24h) and creation lists
+        id: list
+        uses: ./.github/actions/nebius_runner_populate
+        with:
+          parent_id: ${{ vars.NEBIUS_PARENT_ID }}
+          max_vms_to_create: ${{ inputs.max_vms_to_create }}
+          vms_ttl: ${{ inputs.vms_ttl }}
+          flavor: ${{ inputs.flavor }}
+          token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          maximum_amount_of_vms_to_have: ${{ vars.POOLED_MAXIMUM_AMOUNT_OF_VMS_TO_HAVE || '5' }}
+          extra_vms_if_needed: ${{ vars.POOLED_EXTRA_VMS_IF_NEEDED || '1' }}
+          service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+          loop:  ${{ inputs.provision_mode == 'initial' && 'no' || inputs.loop }}
+  remove_vms:
+    needs: calculate_missing_vms
+    name: Remove ${{ inputs.flavor }} VMs
+    if: needs.calculate_missing_vms.outputs.vms_to_remove != '[]' && always()
+    # it is important to use ubuntu-latest here, because it could happen that runner
+    # will be scheduled with task of removing itself and since it will be busy
+    # in github api, it will not be able to remove itself
+    runs-on: "ubuntu-latest"
+    strategy:
+      max-parallel: 5
+      matrix:
+        vms_to_remove: ${{ fromJson(needs.calculate_missing_vms.outputs.vms_to_remove) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: '.github'
+      - name: Remove VM ${{ matrix.vms_to_remove }}
+        id: remove-runner
+        uses: ./.github/actions/nebius_runner_remove
+        timeout-minutes: 60
+        with:
+          service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+          token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          repo_owner: ${{ github.repository_owner }}
+          repo: ${{ github.event.repository.name }}
+          vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
+          vm_id: ${{ matrix.vms_to_remove }}
+  remove_broken:
+    needs: calculate_missing_vms
+    name: Broken ${{ inputs.flavor }} VMs
+    if: needs.calculate_missing_vms.outputs.broken_vms_to_remove != '[]' && always()
+    runs-on: ${{ inputs.provision_mode == 'initial' && fromJson('["ubuntu-latest"]') || fromJson('["self-hosted", "runner_light"]') }}
+    strategy:
+      max-parallel: 5
+      matrix:
+        broken_vms_to_remove: ${{ fromJson(needs.calculate_missing_vms.outputs.broken_vms_to_remove) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: '.github'
+      - name: Remove Broken VM ${{ matrix.broken_vms_to_remove }}
+        id: remove-runner
+        uses: ./.github/actions/nebius_runner_remove
+        timeout-minutes: 60
+        with:
+          service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+          token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          repo_owner: ${{ github.repository_owner }}
+          repo: ${{ github.event.repository.name }}
+          vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
+          vm_id: ${{ matrix.broken_vms_to_remove }}
+  create_vms:
+    needs: calculate_missing_vms
+    name: Create ${{ inputs.flavor }} VMs
+    if: needs.calculate_missing_vms.outputs.vms_to_create != '[]' && always()
+    runs-on: ${{ inputs.provision_mode == 'initial' && fromJson('["ubuntu-latest"]') || fromJson('["self-hosted", "runner_light"]') }}
+    strategy:
+      max-parallel: 5
+      matrix:
+        vms_to_create: ${{ fromJson(needs.calculate_missing_vms.outputs.vms_to_create) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: '.github'
+      - name: Create VM ${{ matrix.vms_to_create }}
+        id: start-runner
+        uses: ./.github/actions/nebius_runner_create
+        timeout-minutes: 60
+        with:
+          org: ydb-platform
+          team: nbs
+          repo_owner: ${{ github.repository_owner }}
+          repo: ${{ github.event.repository.name }}
+          service_account_key: ${{ secrets.NEW_NEBIUS_SA_JSON_CREDENTIALS }}
+          token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+          vm_parent_id: ${{ vars.NEBIUS_PARENT_ID }}
+          vm_name: ${{ matrix.vms_to_create }}
+          vm_platform_id: ${{ vars.NEBIUS_PLATFORM_ID }}
+          vm_preset: ${{ env.preset }}
+          vm_disk_type: 'network-ssd-nonreplicated'
+          vm_disk_size: ${{ env.disk_size }}
+          vm_subnet: ${{ vars.NEBIUS_SUBNET_ID }}
+          vm_image: ${{ vars.NEBIUS_IMAGE_ID_2204 }}
+          vm_labels: ${{ format('run={0}-{1},repo={2},owner={3}',github.run_id, github.run_attempt, github.event.repository.name, github.repository_owner) }}
+          vm_flavor: ${{ inputs.flavor }}
+          vm_user_passwd: ${{ secrets.VM_USER_PASSWD }}
+          vm_allow_downgrade: 'no'
+    
+    
