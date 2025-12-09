@@ -698,7 +698,17 @@ private:
             << " #" << RequestId
             << " execute request: " << DumpMessage(*Request));
 
-        // Log iovecs for WriteData/ReadData requests
+        FILESTORE_TRACK(
+            ExecuteRequest,
+            CallContext,
+            TString(TMethod::RequestName),
+            CallContext->FileSystemId,
+            NProto::STORAGE_MEDIA_SSD,  // TODO NBS-2954
+            CallContext->RequestSize);
+
+        AppCtx.Stats->RequestStarted(Log, *CallContext);
+        Started = true;
+
         if constexpr (
             (std::is_same_v<TRequest, NProto::TWriteDataRequest> ||
              std::is_same_v<TRequest, NProto::TReadDataRequest>) &&
@@ -715,67 +725,38 @@ private:
                         ErrorResponse<TResponse>(
                             error.GetCode(),
                             TString(error.GetMessage())));
-                    auto* tag = AcquireCompletionTag();
-                    Response.Subscribe(
-                        [=, this](const auto& response)
-                        {
-                            Y_UNUSED(response);
-
-                            if (AtomicCas(
-                                    &RequestState,
-                                    ExecutionCompleted,
-                                    ExecutingRequest))
-                            {
-                                // will be processed on executor thread
-                                EnqueueCompletion(
-                                    ExecCtx.CompletionQueue.get(),
-                                    tag);
-                                return;
-                            }
-
-                            ReleaseCompletionTag();
-                        });
-                    return;
                 }
             }
         }
 
-        FILESTORE_TRACK(
-            ExecuteRequest,
-            CallContext,
-            TString(TMethod::RequestName),
-            CallContext->FileSystemId,
-            NProto::STORAGE_MEDIA_SSD,  // TODO NBS-2954
-            CallContext->RequestSize);
+        if (!Response.HasValue()) {
+            try {
+                AppCtx.ValidateRequest(*Context, *Request->MutableHeaders());
 
-        AppCtx.Stats->RequestStarted(Log, *CallContext);
-        Started = true;
+                Response = TMethod::Execute(
+                    *AppCtx.ServiceImpl,
+                    CallContext,
+                    std::move(Request));
+            } catch (const TServiceError& e) {
+                STORAGE_WARN(
+                    TMethod::RequestName << " #" << RequestId
+                                         << " request error: " << e);
 
-        try {
-            AppCtx.ValidateRequest(
-                *Context,
-                *Request->MutableHeaders());
+                Response = MakeFuture(
+                    ErrorResponse<TResponse>(
+                        e.GetCode(),
+                        TString(e.GetMessage())));
+            } catch (...) {
+                STORAGE_ERROR(
+                    TMethod::RequestName
+                    << " #" << RequestId
+                    << " unexpected error: " << CurrentExceptionMessage());
 
-            Response = TMethod::Execute(
-                *AppCtx.ServiceImpl,
-                CallContext,
-                std::move(Request));
-        } catch (const TServiceError& e) {
-            STORAGE_WARN(
-                TMethod::RequestName
-                << " #" << RequestId
-                << " request error: " << e);
-
-            Response = MakeFuture(
-                ErrorResponse<TResponse>(e.GetCode(), TString(e.GetMessage())));
-        } catch (...) {
-            STORAGE_ERROR(
-                TMethod::RequestName
-                << " #" << RequestId
-                << " unexpected error: " << CurrentExceptionMessage());
-
-            Response = MakeFuture(
-                ErrorResponse<TResponse>(E_FAIL, CurrentExceptionMessage()));
+                Response = MakeFuture(
+                    ErrorResponse<TResponse>(
+                        E_FAIL,
+                        CurrentExceptionMessage()));
+            }
         }
 
         auto* tag = AcquireCompletionTag();
