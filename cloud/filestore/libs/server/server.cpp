@@ -721,10 +721,9 @@ private:
                     *Request->MutableIovecs(),
                     Request->GetRegionId());
                 if (HasError(error)) {
-                    Response = MakeFuture(
-                        ErrorResponse<TResponse>(
-                            error.GetCode(),
-                            TString(error.GetMessage())));
+                    TResponse response;
+                    response.MutableError()->Swap(&error);
+                    Response = MakeFuture(std::move(response));
                 }
             }
         }
