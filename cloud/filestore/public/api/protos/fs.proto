@@ -45,7 +45,6 @@ message TFileStoreFeatures
     uint64 DirectoryHandlesTableSize = 30;
     bool GuestHandleKillPrivV2Enabled = 31;
     bool ZeroCopyReadEnabled = 32;
-    uint32 TwoStageReadThreshold = 33;
 }
 
 message TFileStore
