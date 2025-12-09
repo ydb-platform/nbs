@@ -2890,7 +2890,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto requestInProgressSensor = counters->GetCounter("InProgress");
         i64 requestCount = 0;
 
-        while (requestInProgressSensor->GetAtomic() < MaxPendingRequestCount) {
+        while (requestInProgressSensor->Val() < MaxPendingRequestCount) {
             UNIT_ASSERT_GT(MaxRequestCount, requestCount);
 
             ui64 nodeId = RandomNumber(NodeCount) + 123;
@@ -2915,8 +2915,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 [&]()
                 {
                     const bool requestIsProcessed =
-                        requestCount == requestInProgressSensor->GetAtomic() +
-                                            requestCountSensor->GetAtomic();
+                        requestCount == requestInProgressSensor->Val() +
+                                            requestCountSensor->Val();
 
                     // A pending request will eventually become completed if the
                     // cache is not full. We don't want to count these requests
@@ -2927,7 +2927,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                     // space to store the request
 
                     const bool nonZeroPendingIsExpected =
-                        requestInProgressSensor->GetAtomic() == 0 ||
+                        requestInProgressSensor->Val() == 0 ||
                         writeDataCalledCount > 0;
 
                     return requestIsProcessed && nonZeroPendingIsExpected;
@@ -2943,14 +2943,14 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             MaxPendingRequestCount,
-            requestInProgressSensor->GetAtomic());
+            requestInProgressSensor->Val());
 
         // Enable progression of WriteData requests - this will enable flushing
         writeDataPromise.SetValue();
         UNIT_ASSERT(stopFuture.Wait(Timeout));
 
-        UNIT_ASSERT_VALUES_EQUAL(0, requestInProgressSensor->GetAtomic());
-        UNIT_ASSERT_VALUES_EQUAL(requestCount, requestCountSensor->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(0, requestInProgressSensor->Val());
+        UNIT_ASSERT_VALUES_EQUAL(requestCount, requestCountSensor->Val());
         UNIT_ASSERT(!path.Exists());
     }
 }
