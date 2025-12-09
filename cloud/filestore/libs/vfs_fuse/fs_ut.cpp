@@ -2357,6 +2357,80 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(3, writeDataCalled.load());
     }
 
+    Y_UNIT_TEST(ShouldNotUseWriteBackCacheForDirectReads)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+
+        bootstrap.Service->ReadDataHandler = [&] (auto, auto) {
+            NProto::TReadDataResponse result;
+            *result.MutableBuffer() = TString("direct_data");
+            return MakeFuture(result);
+        };
+
+        bootstrap.Service->WriteDataHandler = [&] (auto, auto) {
+            NProto::TWriteDataResponse result;
+            return MakeFuture(result);
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        {
+            // write request without O_DIRECT should go to write-back cache
+            auto reqWrite = std::make_shared<TWriteRequest>(
+                nodeId,
+                handleId,
+                0,
+                "cached_data");
+            reqWrite->In->Body.flags |= O_WRONLY;
+            UNIT_ASSERT(
+                bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite).Wait(
+                    WaitTimeout));
+        }
+
+        {
+            // read request without O_DIRECT should go to cache
+            auto reqRead =
+                std::make_shared<TReadRequest>(nodeId, handleId, 0, 11);
+
+            auto rspRead = bootstrap.Fuse->SendRequest<TReadRequest>(reqRead);
+            UNIT_ASSERT(rspRead.Wait(WaitTimeout));
+
+            auto readData = TStringBuf(
+                reinterpret_cast<const char*>(reqRead->Out->Data()),
+                rspRead.GetValue());
+
+            UNIT_ASSERT_VALUES_EQUAL("cached_data", readData);
+        }
+
+        {
+            // read request with O_DIRECT should bypass cache
+            auto reqRead =
+                std::make_shared<TReadRequest>(nodeId, handleId, 0, 11);
+            reqRead->In->Body.flags |= O_DIRECT;
+
+            auto rspRead = bootstrap.Fuse->SendRequest<TReadRequest>(reqRead);
+            UNIT_ASSERT(rspRead.Wait(WaitTimeout));
+
+            auto readData = TStringBuf(
+                reinterpret_cast<const char*>(reqRead->Out->Data()),
+                rspRead.GetValue());
+
+            UNIT_ASSERT_VALUES_EQUAL("direct_data", readData);
+        }
+    }
+
     Y_UNIT_TEST(ShouldFsyncDirWithServerWriteBackCacheEnabled)
     {
         NProto::TFileStoreFeatures features;
