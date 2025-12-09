@@ -56,6 +56,13 @@ void InitProfileLogLockRequestInfo(
 
 ui32 CalculateChecksum(TStringBuf buf)
 {
+    //
+    // We calculate the checksum only up to the last non-zero byte, i.e. we
+    // discard zero suffixes. This is needed to simplify checksum comparisons
+    // between unaligned appends coming from the client and full block writes
+    // for the same block coming from the tablet's internal logic.
+    //
+
     ui64 len = buf.size();
     while (len > 0) {
         constexpr auto WordSize = sizeof(ui64);
@@ -63,6 +70,10 @@ ui32 CalculateChecksum(TStringBuf buf)
             ui64 word = 0;
             memcpy(&word, buf.data() + len - WordSize, WordSize);
             if (word != 0) {
+                while (buf[len - 1] == 0) {
+                    --len;
+                }
+
                 break;
             }
 
@@ -728,39 +739,40 @@ void CalculateChecksums(
             Max(profileLogRange.GetBytes(), profileLogRange.GetActualBytes());
         TByteRange range(profileLogRange.GetOffset(), len, blockSize);
 
-        if (range.End() - minRangeOffset > buffer.size()) {
+        const ui64 relativeRangeOffset = range.Offset - minRangeOffset;
+        if (relativeRangeOffset >= buffer.size()) {
             ReportCalculateChecksumsBufferOverflow();
             return;
         }
 
         //
-        // Processing all blocks except the tail
+        // Sometimes a request range can be wider than the actual buffer - for
+        // example for ReadData requests which are partially beyond file size.
         //
 
+        range.Length = Min(range.Length, buffer.size() - relativeRangeOffset);
+
+        //
+        // Calculating checksums for the adjusted range.
+        //
+
+        ui64 bufferOffset = relativeRangeOffset;
         if (range.UnalignedHeadLength()) {
             profileLogRange.AddBlockChecksums(CalculateChecksum(TStringBuf(
-                buffer.data() + (range.Offset - minRangeOffset),
+                buffer.data() + bufferOffset,
                 range.UnalignedHeadLength())));
+            bufferOffset += range.UnalignedHeadLength();
         }
 
         for (ui64 i = 0; i < range.AlignedBlockCount(); ++i) {
-            const ui64 offsetInBuffer =
-                (range.FirstAlignedBlock() + i) * blockSize - minRangeOffset;
             profileLogRange.AddBlockChecksums(CalculateChecksum(TStringBuf(
-                buffer.data() + offsetInBuffer, blockSize)));
+                buffer.data() + bufferOffset, blockSize)));
+            bufferOffset += blockSize;
         }
-
-        //
-        // Tail is processed a bit differently - we calculate the checksum only
-        // up to the last non-zero byte, i.e. we discard zero suffixes. This is
-        // needed to simplify checksum comparisons between unaligned appends
-        // coming from the client and full block writes for the same block
-        // coming from the tablet's internal logic.
-        //
 
         if (range.UnalignedTailLength()) {
             profileLogRange.AddBlockChecksums(CalculateChecksum(buffer.substr(
-                range.UnalignedTailOffset() - minRangeOffset,
+                bufferOffset,
                 range.UnalignedTailLength())));
         }
     }

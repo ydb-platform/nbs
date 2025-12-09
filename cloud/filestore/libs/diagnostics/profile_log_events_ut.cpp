@@ -1099,7 +1099,7 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         };
 
         //
-        // Aligned buffer
+        // Aligned buffer.
         //
 
         {
@@ -1110,7 +1110,7 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
             };
 
             //
-            // 1 range per block
+            // 1 range per block.
             //
 
             TRequest r;
@@ -1135,7 +1135,7 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
                 r.GetRanges(2).GetBlockChecksums(0));
 
             //
-            // All blocks in 1 range
+            // All blocks in 1 range.
             //
 
             r.ClearRanges();
@@ -1221,7 +1221,7 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
             };
 
             //
-            // Zeroes in unaligned tail
+            // Zeroes in unaligned tail.
             //
 
             TRequest r;
@@ -1239,13 +1239,96 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
                 r.GetRanges(0).GetBlockChecksums(0));
 
             //
-            // Zeroes in aligned part
+            // Zeroes in aligned part.
             //
 
             r.ClearRanges();
             addRange(globalOffset + headOffset, parts[0].size(), r);
 
             CalculateChecksums(block, BlockSize, r);
+
+            UNIT_ASSERT_VALUES_EQUAL(expected.size(), r.RangesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(0).BlockChecksumsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected[0],
+                r.GetRanges(0).GetBlockChecksums(0));
+        }
+
+        //
+        // Zeroes at an offset not divisible by word size.
+        //
+
+        {
+            const ui64 globalOffset = 2_MB;
+            const ui64 headOffset = 2 * BlockSize;
+            const ui64 tailLen = 1_KB + 10;
+
+            const TVector<TStringBuf> parts = {
+                TStringBuf(data).substr(headOffset, tailLen),
+            };
+
+            const TVector<ui32> expected = {
+                Crc32c(parts[0].data(), parts[0].size()),
+            };
+
+            TRequest r;
+            addRange(globalOffset + headOffset, parts[0].size() + 100, r);
+
+            TString block(BlockSize, 0);
+            memcpy(block.begin(), data.data() + headOffset, tailLen);
+
+            CalculateChecksums(block, BlockSize, r);
+
+            UNIT_ASSERT_VALUES_EQUAL(expected.size(), r.RangesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(0).BlockChecksumsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected[0],
+                r.GetRanges(0).GetBlockChecksums(0));
+        }
+
+        //
+        // Range End() beyond buffer limits.
+        //
+
+        {
+            const ui64 globalOffset = 2_MB;
+            const ui64 tailLen = 1_KB;
+            const ui64 headOffset = 3 * BlockSize - tailLen;
+
+            const TVector<TStringBuf> parts = {
+                TStringBuf(data).substr(headOffset, tailLen),
+            };
+
+            const TVector<ui32> expected = {
+                Crc32c(parts[0].data(), parts[0].size()),
+            };
+
+            //
+            // Unaligned tail case.
+            //
+
+            TRequest r;
+            addRange(globalOffset + headOffset, parts[0].size() + 10, r);
+
+            TStringBuf shiftedBuffer(
+                data.data() + headOffset,
+                data.size() - headOffset);
+            CalculateChecksums(shiftedBuffer, BlockSize, r);
+
+            UNIT_ASSERT_VALUES_EQUAL(expected.size(), r.RangesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(0).BlockChecksumsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected[0],
+                r.GetRanges(0).GetBlockChecksums(0));
+
+            //
+            // Aligned tail case.
+            //
+
+            r.ClearRanges();
+            addRange(globalOffset + headOffset, parts[0].size() + BlockSize, r);
+
+            CalculateChecksums(shiftedBuffer, BlockSize, r);
 
             UNIT_ASSERT_VALUES_EQUAL(expected.size(), r.RangesSize());
             UNIT_ASSERT_VALUES_EQUAL(1, r.GetRanges(0).BlockChecksumsSize());
