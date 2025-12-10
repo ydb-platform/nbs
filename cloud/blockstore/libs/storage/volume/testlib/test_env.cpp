@@ -1018,18 +1018,33 @@ std::unique_ptr<TTestActorRuntime> TTestRuntimeBuilder::Build()
 
 NProto::TVolumeClientInfo CreateVolumeClientInfo(
     TString clientId,
+    TString clientId,
     NProto::EVolumeAccessMode accessMode,
     NProto::EVolumeMountMode mountMode,
     ui32 mountFlags,
     ui64 mountSeqNumber)
 {
     NProto::TVolumeClientInfo info;
-    info.SetClientId(clientId);
+    info.SetClientId();
     info.SetVolumeAccessMode(accessMode);
     info.SetMountSeqNumber(mountSeqNumber);
     info.SetVolumeMountMode(mountMode);
     info.SetMountFlags(mountFlags);
     return info;
+}
+
+NProto::TVolumeClientInfo CreateVolumeClientInfo(
+    NProto::EVolumeAccessMode accessMode,
+    NProto::EVolumeMountMode mountMode,
+    ui32 mountFlags,
+    ui64 mountSeqNumber)
+{
+    return CreateVolumeClientInfo(
+        CreateGuidAsString(),
+        accessMode,
+        mountMode,
+        mountFlags,
+        mountSeqNumber);
 }
 
 NProto::TVolumeClientInfo CreateVolumeClientInfo(
