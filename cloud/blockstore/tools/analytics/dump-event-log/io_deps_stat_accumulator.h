@@ -62,7 +62,7 @@ public:
     }
 
 private:
-    TDiskInfo& GetDiskInfo(const TString& diskId);
+    const TDiskInfo& GetDiskInfo(const TString& diskId);
     void ExtractRequests();
 };
 
