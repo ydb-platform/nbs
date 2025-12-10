@@ -308,6 +308,8 @@ private:
     const ITraceSerializerPtr TraceSerializer;
     const TString LogTag;
     const TString FileSystemId;
+    const bool ShouldCalculateChecksums;
+    const ui32 BlockSize;
     const TActorId Tablet;
     const TRequestInfoPtr RequestInfo;
     const ui64 CommitId;
@@ -326,6 +328,8 @@ public:
         ITraceSerializerPtr traceSerializer,
         TString logTag,
         TString fileSystemId,
+        bool shouldCalculateChecksums,
+        ui32 blockSize,
         TActorId tablet,
         TRequestInfoPtr requestInfo,
         ui64 commitId,
@@ -364,6 +368,8 @@ TReadDataActor::TReadDataActor(
         ITraceSerializerPtr traceSerializer,
         TString logTag,
         TString fileSystemId,
+        bool shouldCalculateChecksums,
+        ui32 blockSize,
         TActorId tablet,
         TRequestInfoPtr requestInfo,
         ui64 commitId,
@@ -379,6 +385,8 @@ TReadDataActor::TReadDataActor(
     : TraceSerializer(std::move(traceSerializer))
     , LogTag(std::move(logTag))
     , FileSystemId(std::move(fileSystemId))
+    , ShouldCalculateChecksums(shouldCalculateChecksums)
+    , BlockSize(blockSize)
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
     , CommitId(commitId)
@@ -464,13 +472,6 @@ void TReadDataActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    FinalizeProfileLogRequestInfo(
-        std::move(ProfileLogRequest),
-        ctx.Now(),
-        FileSystemId,
-        error,
-        ProfileLog);
-
     {
         // notify tablet
         using TCompletion = TEvIndexTabletPrivate::TEvReadDataCompleted;
@@ -501,6 +502,13 @@ void TReadDataActor::ReplyAndDie(
                 TotalSize,
                 *Buffer,
                 response->Record.MutableBuffer());
+
+            if (ShouldCalculateChecksums) {
+                CalculateChecksums(
+                    response->Record.GetBuffer(),
+                    BlockSize,
+                    ProfileLogRequest);
+            }
         }
 
         LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER,
@@ -517,6 +525,13 @@ void TReadDataActor::ReplyAndDie(
 
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
     }
+
+    FinalizeProfileLogRequestInfo(
+        std::move(ProfileLogRequest),
+        ctx.Now(),
+        FileSystemId,
+        error,
+        ProfileLog);
 
     Die(ctx);
 }
@@ -1023,6 +1038,13 @@ void TIndexTabletActor::CompleteTx_ReadData(
             *args.Buffer,
             response->Record.MutableBuffer());
 
+        if (Config->GetBlockChecksumsInProfileLogEnabled()) {
+            CalculateChecksums(
+                response->Record.GetBuffer(),
+                GetBlockSize(),
+                args.ProfileLogRequest);
+        }
+
         CompleteResponse<TEvService::TReadDataMethod>(
             response->Record,
             args.RequestInfo->CallContext,
@@ -1046,6 +1068,8 @@ void TIndexTabletActor::CompleteTx_ReadData(
         TraceSerializer,
         LogTag,
         GetFileSystemId(),
+        Config->GetBlockChecksumsInProfileLogEnabled(),
+        GetBlockSize(),
         ctx.SelfID,
         args.RequestInfo,
         args.CommitId,

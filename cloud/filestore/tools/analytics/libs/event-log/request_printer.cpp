@@ -168,6 +168,7 @@ TString PrintRanges(
     TStringBuf bytesLabel,
     TStringBuf actualBytesLabel,
     TStringBuf actualOffsetLabel,
+    TStringBuf checksumsLabel,
     const google::protobuf::RepeatedPtrField<NProto::TProfileLogBlockRange>& ranges)
 {
     TStringBuilder out;
@@ -195,6 +196,14 @@ TString PrintRanges(
         }
         if (range.HasBufferOffset()) {
             currentRange << PrintValue(actualOffsetLabel, range.GetBufferOffset()) << ", ";
+        }
+        if (range.BlockChecksumsSize() > 0) {
+            TStringBuilder checksumsStr;
+            for (const auto checksum: range.GetBlockChecksums()) {
+                checksumsStr << checksum << " ";
+            }
+            checksumsStr.pop_back();
+            currentRange << PrintValue(checksumsLabel, checksumsStr) << ", ";
         }
 
         if (currentRange.empty()) {
@@ -237,6 +246,7 @@ TString PrintBlobsInfo(
                 "bytes",
                 "actual_bytes",
                 "actual_offset",
+                "checksums",
                 blob.GetRanges())
             << '\t';
     }
@@ -349,6 +359,7 @@ public:
                 "bytes",
                 "actual_bytes",
                 "actual_offset",
+                "checksums",
                 request.GetRanges()) << "\t";
         }
 
@@ -521,6 +532,7 @@ public:
                 "garbage_blobs",
                 "",
                 "",
+                "checksums",
                 request.GetRanges());
         }
 
@@ -544,6 +556,7 @@ public:
                 "garbage_blobs",
                 "",
                 "",
+                "checksums",
                 request.GetRanges());
         }
 
@@ -567,6 +580,7 @@ public:
                 "bytes",
                 "actual_bytes",
                 "actual_offset",
+                "checksums",
                 request.GetRanges());
         }
 

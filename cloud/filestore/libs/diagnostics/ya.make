@@ -26,6 +26,7 @@ PEERDIR(
     cloud/storage/core/libs/user_stats
     cloud/storage/core/libs/version
 
+    library/cpp/digest/crc32c
     library/cpp/eventlog
     library/cpp/monlib/dynamic_counters
     library/cpp/monlib/service/pages

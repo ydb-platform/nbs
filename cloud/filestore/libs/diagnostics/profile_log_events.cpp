@@ -1,5 +1,6 @@
 #include "profile_log_events.h"
 
+#include "critical_events.h"
 #include "profile_log.h"
 
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
@@ -16,6 +17,10 @@
 #include <cloud/filestore/public/api/protos/node.pb.h>
 #include <cloud/filestore/public/api/protos/ping.pb.h>
 #include <cloud/filestore/public/api/protos/session.pb.h>
+
+#include <cloud/storage/core/libs/common/byte_range.h>
+
+#include <library/cpp/digest/crc32c/crc32c.h>
 
 namespace NCloud::NFileStore {
 
@@ -45,6 +50,48 @@ void InitProfileLogLockRequestInfo(
         lockInfo->SetType(request.GetLockType());
     }
     lockInfo->SetPid(request.GetPid());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+ui32 CalculateChecksum(TStringBuf buf)
+{
+    //
+    // We calculate the checksum only up to the last non-zero byte, i.e. we
+    // discard zero suffixes. This is needed to simplify checksum comparisons
+    // between unaligned appends coming from the client and full block writes
+    // for the same block coming from the tablet's internal logic.
+    //
+
+    ui64 len = buf.size();
+    while (len > 0) {
+        constexpr auto WordSize = sizeof(ui64);
+        if (len % WordSize == 0 && len >= WordSize) {
+            ui64 word = 0;
+            memcpy(&word, buf.data() + len - WordSize, WordSize);
+            if (word != 0) {
+                while (buf[len - 1] == 0) {
+                    --len;
+                }
+
+                break;
+            }
+
+            len -= WordSize;
+        } else {
+            if (buf[len - 1] != 0) {
+                break;
+            }
+
+            --len;
+        }
+    }
+
+    if (len) {
+        return Crc32c(buf.data(), len);
+    }
+
+    return 0;
 }
 
 } // namespace
@@ -668,6 +715,67 @@ void FinalizeProfileLogRequestInfo(
     }
     auto* rangeInfo = profileLogRequest.MutableRanges(0);
     rangeInfo->SetActualBytes(response.BytesRead);
+}
+
+void CalculateChecksums(
+    const TStringBuf buffer,
+    ui32 blockSize,
+    NProto::TProfileLogRequestInfo& profileLogRequest)
+{
+    auto& profileLogRanges = *profileLogRequest.MutableRanges();
+    if (profileLogRanges.empty()) {
+        return;
+    }
+
+    ui64 minRangeOffset = Max<ui64>();
+    for (const auto& profileLogRange: profileLogRanges) {
+        if (profileLogRange.GetOffset() < minRangeOffset) {
+            minRangeOffset = profileLogRange.GetOffset();
+        }
+    }
+
+    for (auto& profileLogRange: profileLogRanges) {
+        const ui64 len =
+            Max(profileLogRange.GetBytes(), profileLogRange.GetActualBytes());
+        TByteRange range(profileLogRange.GetOffset(), len, blockSize);
+
+        const ui64 relativeRangeOffset = range.Offset - minRangeOffset;
+        if (relativeRangeOffset >= buffer.size()) {
+            ReportCalculateChecksumsBufferOverflow();
+            return;
+        }
+
+        //
+        // Sometimes a request range can be wider than the actual buffer - for
+        // example for ReadData requests which are partially beyond file size.
+        //
+
+        range.Length = Min(range.Length, buffer.size() - relativeRangeOffset);
+
+        //
+        // Calculating checksums for the adjusted range.
+        //
+
+        ui64 bufferOffset = relativeRangeOffset;
+        if (range.UnalignedHeadLength()) {
+            profileLogRange.AddBlockChecksums(CalculateChecksum(TStringBuf(
+                buffer.data() + bufferOffset,
+                range.UnalignedHeadLength())));
+            bufferOffset += range.UnalignedHeadLength();
+        }
+
+        for (ui64 i = 0; i < range.AlignedBlockCount(); ++i) {
+            profileLogRange.AddBlockChecksums(CalculateChecksum(TStringBuf(
+                buffer.data() + bufferOffset, blockSize)));
+            bufferOffset += blockSize;
+        }
+
+        if (range.UnalignedTailLength()) {
+            profileLogRange.AddBlockChecksums(CalculateChecksum(buffer.substr(
+                bufferOffset,
+                range.UnalignedTailLength())));
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore
