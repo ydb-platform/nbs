@@ -2244,6 +2244,7 @@ Y_UNIT_TEST_SUITE(TModel)
         StorageConfig.SetShardAllocationUnit(4_TB);
         StorageConfig.SetAutomaticallyCreatedShardSize(5_TB);
         StorageConfig.SetSSDMaxWriteIops(Max<ui32>());
+        StorageConfig.SetMaxShardCount(254);
 
         auto OldMaxWriteIops = ClientPerformanceProfile.GetMaxWriteIops();
         ClientPerformanceProfile.ClearMaxWriteIops();
@@ -2253,7 +2254,8 @@ Y_UNIT_TEST_SUITE(TModel)
             StorageConfig,
             KikimrConfig,
             ClientPerformanceProfile,
-            0);
+            0,
+            StorageConfig.GetMaxShardCount());
         UNIT_ASSERT_VALUES_EQUAL(1, fs.ShardConfigs.size());
         // MaxWriteIops per allocation unit is 1000, so (4096 GiB / 32 GiB) *
         // 1000 = 128000
@@ -2268,7 +2270,8 @@ Y_UNIT_TEST_SUITE(TModel)
             StorageConfig,
             KikimrConfig,
             ClientPerformanceProfile,
-            0);
+            0,
+            StorageConfig.GetMaxShardCount());
         UNIT_ASSERT_VALUES_EQUAL(2, fs.ShardConfigs.size());
 
         KikimrConfig.SetBlocksCount(5_TB / 4_KB);
@@ -2276,7 +2279,8 @@ Y_UNIT_TEST_SUITE(TModel)
             StorageConfig,
             KikimrConfig,
             ClientPerformanceProfile,
-            0);
+            0,
+            StorageConfig.GetMaxShardCount());
         UNIT_ASSERT_VALUES_EQUAL(2, fs.ShardConfigs.size());
 
         KikimrConfig.SetBlocksCount(16_TB / 4_KB);
@@ -2284,7 +2288,8 @@ Y_UNIT_TEST_SUITE(TModel)
             StorageConfig,
             KikimrConfig,
             ClientPerformanceProfile,
-            0);
+            0,
+            StorageConfig.GetMaxShardCount());
         UNIT_ASSERT_VALUES_EQUAL(4, fs.ShardConfigs.size());
 
         KikimrConfig.SetBlocksCount(512_TB / 4_KB);
@@ -2292,7 +2297,8 @@ Y_UNIT_TEST_SUITE(TModel)
             StorageConfig,
             KikimrConfig,
             ClientPerformanceProfile,
-            0);
+            0,
+            StorageConfig.GetMaxShardCount());
         UNIT_ASSERT_VALUES_EQUAL(128, fs.ShardConfigs.size());
 
         KikimrConfig.SetBlocksCount(1_PB / 4_KB);
@@ -2300,7 +2306,8 @@ Y_UNIT_TEST_SUITE(TModel)
             StorageConfig,
             KikimrConfig,
             ClientPerformanceProfile,
-            0);
+            0,
+            StorageConfig.GetMaxShardCount());
         UNIT_ASSERT_VALUES_EQUAL(254, fs.ShardConfigs.size());
 
         for (const auto& sc: fs.ShardConfigs) {
@@ -2329,7 +2336,8 @@ Y_UNIT_TEST_SUITE(TModel)
             StorageConfig,
             KikimrConfig,
             ClientPerformanceProfile,
-            10);
+            10,
+            StorageConfig.GetMaxShardCount());
         UNIT_ASSERT_VALUES_EQUAL(10, fs.ShardConfigs.size());
 
         for (const auto& sc: fs.ShardConfigs) {

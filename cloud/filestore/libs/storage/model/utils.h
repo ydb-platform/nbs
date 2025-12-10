@@ -16,18 +16,44 @@ inline bool IsAligned(size_t len, size_t align) noexcept
     return (len & (align - 1)) == 0;
 }
 
+namespace {
+
+constexpr ui64 SeventhByteMask = static_cast<ui64>(Max<ui8>()) << (6U * 8U);
+
+constexpr ui32 IdBitsCount = 48;
+constexpr ui64 IdMask = Max<ui64>() >> (64 - IdBitsCount);
+
+// It is assumed that two most significant bytes are equal to zero
+inline ui32 SwapTwoLeastSignificantBytes(ui32 shardNo)
+{
+    ui32 leastSignificantByte = (shardNo & 0xff);
+    shardNo >>= CHAR_BIT;
+    return shardNo | (leastSignificantByte << CHAR_BIT);
+}
+
+}   // namespace
+
 inline ui64 ShardedId(ui64 id, ui32 shardNo)
 {
-    const auto realBits = 56U;
-    const auto realMask = Max<ui64>() >> (64 - realBits);
-    Y_DEBUG_ABORT_UNLESS(shardNo < (1UL << (64 - realBits)));
-    return (static_cast<ui64>(shardNo) << realBits) | (realMask & id);
+    // Historically, shardNo occupied only the 8th byte.
+    // To place the second byte of shardNo into the 7th byte of the
+    // resulting id, we need to swap the 7th and 8th bytes.
+    shardNo = SwapTwoLeastSignificantBytes(shardNo);
+    Y_DEBUG_ABORT_UNLESS(shardNo < (1UL << (64 - IdBitsCount)));
+    return (static_cast<ui64>(shardNo) << IdBitsCount) | (IdMask & id);
 }
 
 inline ui32 ExtractShardNo(ui64 id)
 {
-    const auto realBits = 56U;
-    return id >> realBits;
+    ui32 shardNo = static_cast<ui32>(id >> IdBitsCount);
+    shardNo = SwapTwoLeastSignificantBytes(shardNo);
+
+    return shardNo;
+}
+
+inline bool IsSeventhByteUsed(ui64 id)
+{
+    return (id & SeventhByteMask) != 0;
 }
 
 template <typename T>

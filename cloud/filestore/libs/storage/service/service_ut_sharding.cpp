@@ -5947,6 +5947,218 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
     }
+
+    // TODO(2566) get rid of this test after migration
+    SERVICE_TEST_SIMPLE(ShouldReportSevenBytesHandlesCount)
+    {
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetStrictFileSystemSizeEnforcementEnabled(true);
+        config.SetShardBalancerPolicy(NProto::SBP_ROUND_ROBIN);
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        auto registry = env.GetRegistry();
+
+        // Create some number of nodes and handles
+        TVector<ui64> handles;
+        TVector<ui64> nodes;
+        const ui64 filesCount = 128;
+        for (ui64 i = 0; i < filesCount; ++i) {
+            auto createNodeResponse =
+                service.CreateNode(
+                        headers,
+                        TCreateNodeArgs::File(
+                            RootNodeId,
+                            TStringBuilder() << "file" << i))
+                    ->Record;
+            const ui64 nodeId = createNodeResponse.GetNode().GetId();
+            nodes.push_back(nodeId);
+
+            const ui64 shardNo = i % 2 + 1;
+            UNIT_ASSERT(!IsSeventhByteUsed(nodeId));
+            UNIT_ASSERT_VALUES_EQUAL(shardNo, ExtractShardNo(nodeId));
+
+            const ui64 handle = service.CreateHandle(
+                headers,
+                fsConfig.FsId,
+                nodeId,
+                "",
+                TCreateHandleArgs::RDWR)->Record.GetHandle();
+            handles.push_back(handle);
+
+            UNIT_ASSERT(!IsSeventhByteUsed(handle));
+            UNIT_ASSERT_VALUES_EQUAL(shardNo, ExtractShardNo(handle));
+        }
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(16));
+        NActors::TDispatchOptions options;
+        options.FinalEvents.emplace_back(TDispatchOptions::TFinalEventCondition(
+            TEvIndexTabletPrivate::EvUpdateCounters,3));
+        env.GetRuntime().DispatchEvents(options);
+
+        TTestRegistryVisitor visitor;
+        registry->Visit(TInstant::Zero(), visitor);
+
+        // We should not create new handles that use seventh byte
+        visitor.ValidateExpectedCounters({
+            {{{"sensor", "SevenBytesHandlesCount"}, {"filesystem", "test"}},
+                0},
+            {{{"sensor", "SevenBytesHandlesCount"}, {"filesystem", "test_s1"}},
+                0},
+            {{{"sensor", "SevenBytesHandlesCount"}, {"filesystem", "test_s2"}},
+                0},
+            {{{"sensor", "UsedHandlesCount"}, {"filesystem", "test"}},
+                0},
+            {{{"sensor", "UsedHandlesCount"}, {"filesystem", "test_s1"}},
+                filesCount / 2},
+            {{{"sensor", "UsedHandlesCount"}, {"filesystem", "test_s2"}},
+                filesCount / 2}
+        });
+
+        for (ui64 i = 0; i < handles.size(); i++) {
+            service.DestroyHandle(headers, fsConfig.FsId, nodes[i], handles[i]);
+        }
+    }
+
+    void DoShouldReportStrictFileSystemSizeEnforcementMetrics(
+        NProto::TStorageConfig& config,
+        bool strictFileSystemSizeEnforcementEnabled,
+        bool directoryCreationInShardsEnabled)
+    {
+        config.SetStrictFileSystemSizeEnforcementEnabled(
+            strictFileSystemSizeEnforcementEnabled);
+        config.SetDirectoryCreationInShardsEnabled(
+            directoryCreationInShardsEnabled);
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        auto registry = env.GetRegistry();
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(16));
+        NActors::TDispatchOptions options;
+        options.FinalEvents.emplace_back(
+            TDispatchOptions::TFinalEventCondition(
+                TEvIndexTabletPrivate::EvUpdateCounters,
+                3));
+        env.GetRuntime().DispatchEvents(options);
+
+        TTestRegistryVisitor visitor;
+        registry->Visit(TInstant::Zero(), visitor);
+
+        const auto directoryCreationInShardsEnabledMetrics =
+            directoryCreationInShardsEnabled ? 1 : 0;
+        const auto strictFileSystemSizeEnforcementEnabledMetrics =
+            strictFileSystemSizeEnforcementEnabled ? 1 : 0;
+        visitor.ValidateExpectedCounters({
+            {{{"sensor", "StrictFileSystemSizeEnforcementEnabled"},
+              {"filesystem", "test"}},
+             strictFileSystemSizeEnforcementEnabledMetrics},
+            {{{"sensor", "StrictFileSystemSizeEnforcementEnabled"},
+              {"filesystem", "test_s1"}},
+             strictFileSystemSizeEnforcementEnabledMetrics},
+            {{{"sensor", "StrictFileSystemSizeEnforcementEnabled"},
+              {"filesystem", "test_s2"}},
+             strictFileSystemSizeEnforcementEnabledMetrics},
+            {{{"sensor", "DirectoryCreationInShardsEnabled"},
+              {"filesystem", "test"}},
+             directoryCreationInShardsEnabledMetrics},
+            {{{"sensor", "DirectoryCreationInShardsEnabled"},
+              {"filesystem", "test_s1"}},
+             directoryCreationInShardsEnabledMetrics},
+            {{{"sensor", "DirectoryCreationInShardsEnabled"},
+              {"filesystem", "test_s2"}},
+             directoryCreationInShardsEnabledMetrics},
+        });
+    }
+
+    SERVICE_TEST_SIMPLE(ShouldReportStrictFileSystemSizeEnforcementMetrics)
+    {
+        DoShouldReportStrictFileSystemSizeEnforcementMetrics(
+            config,
+            true,
+            false);
+        DoShouldReportStrictFileSystemSizeEnforcementMetrics(
+            config,
+            false,
+            true);
+    }
+
+    SERVICE_TEST_SIMPLE(ShouldCreateALotOfshards)
+    {
+        const ui64 blockSize = 4_KB;
+        const ui64 shardBlockCount = 1024;
+        const ui64 shardAllocationUnit = shardBlockCount * blockSize;
+        const ui64 shardCount = 324;
+        const ui64 fsSize =
+            shardBlockCount * (shardCount - 1) + shardBlockCount / 2;
+
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetStrictFileSystemSizeEnforcementEnabled(true);
+        config.SetShardBalancerPolicy(NProto::SBP_ROUND_ROBIN);
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetShardAllocationUnit(shardAllocationUnit);
+        config.SetMaxShardCount(1024);
+
+        const TString fsId = "test";
+
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, fsSize);
+
+        WaitForTabletStart(service);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        // Check that the main fs and all the shards have the same size
+        const auto stats = GetStorageStats(service, fsId).GetStats();
+        const auto& shardStats = stats.GetShardStats();
+        UNIT_ASSERT_EQUAL(shardCount, shardStats.size());
+        UNIT_ASSERT_EQUAL(fsSize, stats.GetTotalBlocksCount());
+        for (const auto& shardStat: shardStats) {
+            UNIT_ASSERT_EQUAL(fsSize, shardStat.GetTotalBlocksCount());
+        }
+
+        const ui64 filesCount = shardCount * 2;
+        ui64 shardNo = 1;
+        for (ui64 i = 0; i < filesCount; ++i) {
+            auto createNodeResponse =
+                service.CreateNode(
+                        headers,
+                        TCreateNodeArgs::File(
+                            RootNodeId,
+                            TStringBuilder() << "file" << i))
+                    ->Record;
+            const ui64 nodeId = createNodeResponse.GetNode().GetId();
+
+            UNIT_ASSERT_VALUES_EQUAL(shardNo > 0xff, IsSeventhByteUsed(nodeId));
+            UNIT_ASSERT_VALUES_EQUAL(shardNo, ExtractShardNo(nodeId));
+
+            const ui64 handle = service.CreateHandle(
+                headers,
+                fsId,
+                nodeId,
+                "",
+                TCreateHandleArgs::RDWR)->Record.GetHandle();
+
+            UNIT_ASSERT_VALUES_EQUAL(shardNo > 0xff, IsSeventhByteUsed(handle));
+            UNIT_ASSERT_VALUES_EQUAL(shardNo, ExtractShardNo(handle));
+
+            service.DestroyHandle(headers, fsId, nodeId, handle);
+
+            shardNo++;
+            if (shardNo > shardCount) {
+                shardNo = 1;
+            }
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

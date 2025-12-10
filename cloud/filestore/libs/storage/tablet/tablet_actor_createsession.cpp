@@ -188,7 +188,8 @@ void TIndexTabletActor::HandleCreateSession(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    const auto expectedShardCount = CalculateExpectedShardCount();
+    const auto expectedShardCount =
+        CalculateExpectedShardCount(Config->GetMaxShardCount());
     const auto actualShardCount = GetFileSystem().ShardFileSystemIdsSize();
     if (actualShardCount < expectedShardCount) {
         auto message = TStringBuilder() << "Shard count smaller than expected: "
