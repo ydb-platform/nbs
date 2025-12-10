@@ -1910,7 +1910,6 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             request.SetDiskId(DefaultDiskId);
             request.SetStartIndex(0);
             request.SetBlocksCount(blockCount);
-            request.SetCalculateChecksums(true);
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);

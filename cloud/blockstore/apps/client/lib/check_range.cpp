@@ -89,7 +89,6 @@ private:
     bool ShowReadErrorsEnabled = false;
     bool SaveResultsEnabled = false;
     bool CompareResultsEnabled = false;
-    bool CalculateChecksums = false;
     TString FolderPostfix;
     ui32 ReplicaCount = 0;
 
@@ -112,10 +111,6 @@ public:
         Opts.AddLongOption("blocks-per-request", "blocks per request")
             .RequiredArgument("NUM")
             .StoreResultDef(&BlocksPerRequest, DefaultBlocksPerRequest);
-
-        Opts.AddLongOption("calculate-checksums", "calulate checksums")
-            .NoArgument()
-            .StoreTrue(&CalculateChecksums);
 
         Opts.AddLongOption(
                 "show-read-errors",
@@ -322,7 +317,6 @@ private:
         input["DiskId"] = DiskId;
         input["StartIndex"] = range.Start;
         input["BlocksCount"] = range.Size();
-        input["CalculateChecksums"] = CalculateChecksums;
         if (!isRetry && ReplicaCount) {
             input["ReplicaCount"] = ReplicaCount;
         }
