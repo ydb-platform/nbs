@@ -687,4 +687,9 @@ message TStorageConfig
     // If TwoStageReadEnabled is true, reads that exceed this threshold will use
     // the two-stage read path.
     optional uint32 TwoStageReadThreshold = 471;
+
+    // Enables checksum calculation for all blocks upon IO requests and
+    // background requests like Compaction and Cleanup. Checksums are logged
+    // to profile log.
+    optional bool BlockChecksumsInProfileLogEnabled = 472;
 }
