@@ -505,6 +505,8 @@ ui32 ComputeShardCount(
     const ui32 blockSize,
     const ui64 shardAllocationUnit,
     const ui32 maxShardCount)
+    const ui64 shardAllocationUnit,
+    const ui32 maxShardCount)
 {
     const double fileStoreSize = blocksCount * blockSize;
 
@@ -515,13 +517,15 @@ ui32 ComputeShardCount(
 
     const ui32 shardCount = std::ceil(fileStoreSize / shardAllocationUnit);
     return Min(shardCount, maxShardCount);
+    return Min(shardCount, maxShardCount);
 }
 
 TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
     const TStorageConfig& config,
     const NKikimrFileStore::TConfig& fileStore,
     const NProto::TFileStorePerformanceProfile& clientProfile,
-    const ui32 explicitShardCount)
+    const ui32 explicitShardCount,
+    const ui32 maxShardCount)
 {
     TMultiShardFileStoreConfig result;
     result.MainFileSystemConfig = fileStore;
@@ -537,7 +541,7 @@ TMultiShardFileStoreConfig SetupMultiShardFileStorePerformanceAndChannels(
             fileStore.GetBlocksCount(),
             fileStore.GetBlockSize(),
             config.GetShardAllocationUnit(),
-            config.GetMaxShardCount());
+            maxShardCount);
     result.ShardConfigs.resize(shardCount);
     for (ui32 i = 0; i < shardCount; ++i) {
         result.ShardConfigs[i] = fileStore;

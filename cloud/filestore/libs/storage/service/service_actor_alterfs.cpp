@@ -29,6 +29,12 @@ namespace {
 // previous step, calculate all parameters of the transformation performed by
 // resize action: ShardsToCreate, ShardsToConfigure, ShardsToAlter,
 // ShouldConfigureMainFileStore.
+// 1. Describe main filestore. Store NKikimrFileStore::TConfig of the main
+// filesystem for later use.
+// 2. Get filesystem topology. Using the topology and the config from the
+// previous step, calculate all parameters of the transformation performed by
+// resize action: ShardsToCreate, ShardsToConfigure, ShardsToAlter,
+// ShouldConfigureMainFileStore.
 // 3. Describe shards. We need this step to get config version of shards in case
 // we need to resize them.
 // 4. Alter (actually resize) main filestore.
@@ -52,6 +58,7 @@ private:
 
     NKikimrFileStore::TConfig TargetConfig;
     NKikimrFileStore::TConfig MainFileStoreOriginalConfig;
+    NKikimrFileStore::TConfig MainFileStoreOriginalConfig;
 
     TMultiShardFileStoreConfig FileStoreConfig;
 
@@ -60,6 +67,7 @@ private:
     ui32 ShardsToConfigure = 0;
     ui32 ShardsToAlter = 0;
     ui32 ShardsToDescribe = 0;
+    ui32 MaxShardCount = 0;
     ui32 MaxShardCount = 0;
     // These flags are set by HandleGetFileSystemTopologyResponse.
     bool DirectoryCreationInShardsEnabled = false;
@@ -95,7 +103,6 @@ private:
     void ConfigureShards(const TActorContext& ctx);
     void ConfigureMainFileStore(const TActorContext& ctx);
 
-    void PatchStorageConfig();
     void FillMultiShardFileStoreConfig(const TActorContext& ctx);
 
     void HandleDescribeFileStoreForAlterResponse(
@@ -304,17 +311,7 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
     GetFileSystemTopology(ctx);
 }
 
-void TAlterFileStoreActor::PatchStorageConfig()
-{
-    NProto::TStorageConfig protoConfig;
-    protoConfig.SetStrictFileSystemSizeEnforcementEnabled(
-        StrictFileSystemSizeEnforcementEnabled);
-    protoConfig.SetMaxShardCount(MaxShardCount);
-    StorageConfig->Merge(protoConfig);
-}
-
-void TAlterFileStoreActor::FillMultiShardFileStoreConfig(
-    const TActorContext& ctx)
+void TAlterFileStoreActor::FillMultiShardFileStoreConfig(const TActorContext& ctx)
 {
     NKikimrFileStore::TConfig currentConfig = MainFileStoreOriginalConfig;
 
@@ -348,7 +345,8 @@ void TAlterFileStoreActor::FillMultiShardFileStoreConfig(
             *StorageConfig,
             currentConfig,
             PerformanceProfile,
-            ExplicitShardCount);
+            ExplicitShardCount,
+            MaxShardCount);
     } else {
         SetupFileStorePerformanceAndChannels(
             allocateMixed0,
@@ -472,7 +470,6 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
         msg->Record.GetStrictFileSystemSizeEnforcementEnabled();
     MaxShardCount = msg->Record.GetMaxShardCount();
 
-    PatchStorageConfig();
     FillMultiShardFileStoreConfig(ctx);
 
     for (auto& shardId: *msg->Record.MutableShardFileSystemIds()) {
@@ -495,7 +492,8 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
                 *StorageConfig,
                 FileStoreConfig.MainFileSystemConfig,
                 PerformanceProfile,
-                ExistingShardIds.size());
+                ExistingShardIds.size(),
+                MaxShardCount);
         }
     }
 
