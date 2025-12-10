@@ -6654,6 +6654,111 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
     }
 
+    Y_UNIT_TEST(ShouldAcceptWritesFromCopyVolumeClientIfSourceDiskIdIsSet)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TVolumeClient volume(*runtime);
+
+        auto updateVolumeConfig = volume.TagUpdater(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1024);
+
+        updateVolumeConfig("source-disk-id=disk-1");
+
+        {
+            auto clientInfo = CreateVolumeClientInfo(
+                TString(CopyVolumeClientId),
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL,
+                0);
+            volume.AddClient(clientInfo);
+            volume.WaitReady();
+
+            volume.SendWriteBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                clientInfo.GetClientId());
+            auto response = volume.RecvWriteBlocksResponse();
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+
+            volume.RemoveClient(clientInfo.GetClientId());
+        }
+
+        {
+            auto clientInfo = CreateVolumeClientInfo(
+                TString(DMCopyVolumeClientId),
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL,
+                0);
+            volume.AddClient(clientInfo);
+            volume.WaitReady();
+
+            volume.SendWriteBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                clientInfo.GetClientId());
+            auto response = volume.RecvWriteBlocksResponse();
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+
+            volume.RemoveClient(clientInfo.GetClientId());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRejectReadsIfSourceDiskIdIsSet)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TVolumeClient volume(*runtime);
+
+        auto updateVolumeConfig = volume.TagUpdater(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            1024);
+
+        updateVolumeConfig("source-disk-id=disk-1");
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0
+        );
+        volume.AddClient(clientInfo);
+        volume.WaitReady();
+
+        {
+            volume.SendReadBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                TString(CopyVolumeClientId));
+            auto response = volume.RecvReadBlocksResponse(TDuration::Zero());
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        // Should not reject reads if source disk id is not set.
+        updateVolumeConfig("");
+        volume.ReconnectPipe();
+        volume.AddClient(clientInfo);
+
+        {
+            volume.SendReadBlocksRequest(
+                TBlockRange64::MakeOneBlock(0),
+                clientInfo.GetClientId());
+            auto response = volume.RecvReadBlocksResponse(TDuration::Zero());
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+    }
+
     void DoTestShouldTrackUsedBlocksIfTrackUsedTagIsSet(
         NProto::EStorageMediaKind mediaKind)
     {

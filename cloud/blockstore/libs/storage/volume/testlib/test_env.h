@@ -615,6 +615,13 @@ struct TTestRuntimeBuilder
 ////////////////////////////////////////////////////////////////////////////////
 
 NProto::TVolumeClientInfo CreateVolumeClientInfo(
+    TString clientId,
+    NProto::EVolumeAccessMode accessMode,
+    NProto::EVolumeMountMode mountMode,
+    ui32 mountFlags,
+    ui64 mountSeqNumber = 0);
+
+NProto::TVolumeClientInfo CreateVolumeClientInfo(
     NProto::EVolumeAccessMode accessMode,
     NProto::EVolumeMountMode mountMode,
     ui32 mountFlags,
