@@ -1023,7 +1023,7 @@ NProto::TVolumeClientInfo CreateVolumeClientInfo(
     ui64 mountSeqNumber)
 {
     NProto::TVolumeClientInfo info;
-    info.SetClientId();
+    info.SetClientId(clientId);
     info.SetVolumeAccessMode(accessMode);
     info.SetMountSeqNumber(mountSeqNumber);
     info.SetVolumeMountMode(mountMode);
