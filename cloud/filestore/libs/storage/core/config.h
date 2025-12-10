@@ -358,6 +358,8 @@ public:
     bool GetZeroCopyReadEnabled() const;
 
     [[nodiscard]] bool GetBlockChecksumsInProfileLogEnabled() const;
+
+    ui32 GetMaxShardCount() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

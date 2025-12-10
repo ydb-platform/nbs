@@ -362,7 +362,7 @@ public:
         return AllocatorRegistry.GetAllocator(tag);
     }
 
-    ui64 CalculateExpectedShardCount() const;
+    ui64 CalculateExpectedShardCount(ui32 maxShardCount) const;
 
     NProto::TError SelectShard(ui64 fileSize, TString* shardId);
 

@@ -6086,6 +6086,79 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             false,
             true);
     }
+
+    SERVICE_TEST_SIMPLE(ShouldCreateALotOfshards)
+    {
+        const ui64 blockSize = 4_KB;
+        const ui64 shardBlockCount = 1024;
+        const ui64 shardAllocationUnit = shardBlockCount * blockSize;
+        const ui64 shardCount = 324;
+        const ui64 fsSize =
+            shardBlockCount * (shardCount - 1) + shardBlockCount / 2;
+
+        config.SetMultiTabletForwardingEnabled(true);
+        config.SetStrictFileSystemSizeEnforcementEnabled(true);
+        config.SetShardBalancerPolicy(NProto::SBP_ROUND_ROBIN);
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetShardAllocationUnit(shardAllocationUnit);
+        config.SetMaxShardCount(1024);
+
+        const TString fsId = "test";
+
+        TTestEnv env({}, config);
+        env.CreateSubDomain("nfs");
+
+        ui32 nodeIdx = env.CreateNode("nfs");
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, fsSize);
+
+        WaitForTabletStart(service);
+
+        auto headers = service.InitSession(fsId, "client");
+
+        // Check that the main fs and all the shards have the same size
+        const auto stats = GetStorageStats(service, fsId).GetStats();
+        const auto& shardStats = stats.GetShardStats();
+        UNIT_ASSERT_EQUAL(shardCount, shardStats.size());
+        UNIT_ASSERT_EQUAL(fsSize, stats.GetTotalBlocksCount());
+        for (const auto& shardStat: shardStats) {
+            UNIT_ASSERT_EQUAL(fsSize, shardStat.GetTotalBlocksCount());
+        }
+
+        const ui64 filesCount = shardCount * 2;
+        ui64 shardNo = 1;
+        for (ui64 i = 0; i < filesCount; ++i) {
+            auto createNodeResponse =
+                service.CreateNode(
+                        headers,
+                        TCreateNodeArgs::File(
+                            RootNodeId,
+                            TStringBuilder() << "file" << i))
+                    ->Record;
+            const ui64 nodeId = createNodeResponse.GetNode().GetId();
+
+            UNIT_ASSERT_VALUES_EQUAL(shardNo > 0xff, IsSeventhByteUsed(nodeId));
+            UNIT_ASSERT_VALUES_EQUAL(shardNo, ExtractShardNo(nodeId));
+
+            const ui64 handle = service.CreateHandle(
+                headers,
+                fsId,
+                nodeId,
+                "",
+                TCreateHandleArgs::RDWR)->Record.GetHandle();
+
+            UNIT_ASSERT_VALUES_EQUAL(shardNo > 0xff, IsSeventhByteUsed(handle));
+            UNIT_ASSERT_VALUES_EQUAL(shardNo, ExtractShardNo(handle));
+
+            service.DestroyHandle(headers, fsId, nodeId, handle);
+
+            shardNo++;
+            if (shardNo > shardCount) {
+                shardNo = 1;
+            }
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
