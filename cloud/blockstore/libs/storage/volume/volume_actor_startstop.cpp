@@ -321,6 +321,9 @@ TActorsStack TVolumeActor::WrapWithShadowDiskActorIfNeeded(
 
         auto actorId = NCloud::Register<TShadowDiskActor>(
             ctx,
+            LogTitle.GetChildWithTags(
+                GetCycleCount(),
+                {{"ShadowDiskId", checkpointInfo.ShadowDiskId}}),
             Config,
             DiagnosticsConfig,
             GetRdmaClient(),
