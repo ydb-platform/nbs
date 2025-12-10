@@ -12,11 +12,13 @@
 
 namespace NCloud::NBlockStore {
 
+using namespace NLastGetopt;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool IsPrefix(const TFsPath& prefix, const TFsPath& path)
+bool BelongsTo(const TFsPath& prefix, const TFsPath& path)
 {
     auto prefixSplit = prefix.PathSplit();
     auto pathSplit = path.PathSplit();
@@ -25,7 +27,7 @@ bool IsPrefix(const TFsPath& prefix, const TFsPath& path)
     return it == prefixSplit.end();
 }
 
-void AddToCGroups(pid_t pid, const TVector<TString>& cgroups)
+void AddToCGroups(pid_t pid, const TVector<TFsPath>& cgroups)
 {
     const auto flags = EOpenModeFlag::OpenExisting | EOpenModeFlag::WrOnly |
                        EOpenModeFlag::ForAppend;
@@ -33,9 +35,7 @@ void AddToCGroups(pid_t pid, const TVector<TString>& cgroups)
     const TString line = ToString(pid) + '\n';
 
     for (auto& cgroup: cgroups) {
-        auto pathToProcsFile = (TFsPath{cgroup} / "cgroup.procs").RealPath();
-
-        TFile file{pathToProcsFile, flags};
+        TFile file{cgroup / "cgroup.procs", flags};
 
         file.Write(line.data(), line.size());
     }
@@ -45,29 +45,36 @@ void AddToCGroups(pid_t pid, const TVector<TString>& cgroups)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-int AppMain(TOptions options)
+void TOptions::Parse(int argc, char** argv)
 {
-    using namespace NLastGetopt;
+    TOpts opts;
+    opts.AddHelpOption();
+    opts.SetFreeArgsMin(1);
+    opts.SetFreeArgsMax(TOpts::UNLIMITED_ARGS);
+    opts.GetTrailingArgSpec().Title("CGROUP").CompletionArgHelp("cgroup path");
 
+    opts.AddLongOption('p', "pid", "pid of process")
+        .RequiredArgument("PID")
+        .StoreResult(&Pid);
+
+    TOptsParseResultException res(&opts, argc, argv);
+    for (std::string arg: res.GetFreeArgs()) {
+        Cgroups.push_back(arg.c_str());
+    }
+}
+
+int AppMain(TFsPath cgroupRootPath, TOptions options)
+{
     try {
+        TVector<TFsPath> cgroups;
+        for (const auto& cgroup: options.Cgroups) {
+            cgroups.emplace_back(cgroup.RealPath());
+        }
+
         Y_ENSURE(options.Pid);
-        Y_ENSURE(AllOf(
-            options.Cgroups,
-            [&](const auto& dir)
-            {
-                TFsPath realPath;
-                try {
-                    realPath = TFsPath(dir).RealPath();
-                } catch (...) {
-                    return false;
-                }
+        Y_ENSURE(AllOf(cgroups, std::bind_front(&BelongsTo, cgroupRootPath)));
 
-                return NCloud::NBlockStore::IsPrefix(
-                    options.CgroupRootPath,
-                    realPath);
-            }));
-
-        NCloud::NBlockStore::AddToCGroups(options.Pid, options.Cgroups);
+        AddToCGroups(options.Pid, cgroups);
     } catch (...) {
         Cerr << "Can't add pid[" << options.Pid
              << "] to cgroup file: " << CurrentExceptionMessage() << Endl;
