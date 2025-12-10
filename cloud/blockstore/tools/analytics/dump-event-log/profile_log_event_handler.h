@@ -25,22 +25,43 @@ struct TDiskInfo
     ui32 BlockSize = 0;
 };
 
-struct TInflightInfo
+struct TInflightCounter
 {
-    ui32 DiskReadInflight = 0;
-    ui32 DiskReadInflightByteCount = 0;
-    ui32 DiskWriteInflight = 0;
-    ui32 DiskWriteInflightByteCount = 0;
+    ui32 InflightCount = 0;
+    ui64 InflightBytes = 0;
 
-    ui32 HostBlobStorageReadInflight = 0;
-    ui32 HostDiskRegistryReadInflight = 0;
-    ui32 HostBlobStorageReadInflightByteCount = 0;
-    ui32 HostDiskRegistryReadInflightByteCount = 0;
+    void Add(ui64 bytes);
+};
 
-    ui32 HostBlobStorageWriteInflight = 0;
-    ui32 HostDiskRegistryWriteInflight = 0;
-    ui32 HostBlobStorageWriteInflightByteCount = 0;
-    ui32 HostDiskRegistryWriteInflightByteCount = 0;
+struct TInflightCounters
+{
+    TInflightCounter Read;
+    TInflightCounter Write;
+
+    void Add(ui32 requestType, ui64 bytes);
+};
+
+struct TInflightData
+{
+    TInflightCounters Disk;
+    TInflightCounters HostBlobStorageBased;
+    TInflightCounters HostDiskRegistryBased;
+
+    void Add(
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        ui32 requestType,
+        bool sameDisk,
+        ui64 bytes);
+};
+
+struct TTimeData
+{
+    // When user sent request
+    TInstant StartAt;
+    // How long did the throttler postpone the request?
+    TDuration Postponed;
+    // Net request execution time excluding the troller
+    TDuration ExecutionTime;
 };
 
 struct IProfileLogEventHandler
@@ -49,13 +70,11 @@ struct IProfileLogEventHandler
 
     virtual void ProcessRequest(
         const TDiskInfo& diskInfo,
-        TInstant timestamp,
+        const TTimeData& timeData,
         ui32 requestType,
         TBlockRange64 blockRange,
-        TDuration duration,
-        TDuration postponed,
         const TReplicaChecksums& replicaChecksums,
-        const TInflightInfo& inflightInfo) = 0;
+        const TInflightData& inflightData) = 0;
 };
 
 bool IsReadRequestType(ui32 requestType);

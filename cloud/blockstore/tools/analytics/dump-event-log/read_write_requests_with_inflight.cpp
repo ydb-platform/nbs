@@ -21,13 +21,11 @@ TReadWriteRequestsWithInflight::~TReadWriteRequestsWithInflight()
 
 void TReadWriteRequestsWithInflight::ProcessRequest(
     const TDiskInfo& diskInfo,
-    TInstant timestamp,
+    const TTimeData& timeData,
     ui32 requestType,
     TBlockRange64 blockRange,
-    TDuration duration,
-    TDuration postponed,
     const TReplicaChecksums& replicaChecksums,
-    const TInflightInfo& inflightInfo)
+    const TInflightData& inflightData)
 {
     Y_UNUSED(replicaChecksums);
     Y_UNUSED(blockRange);
@@ -37,21 +35,25 @@ void TReadWriteRequestsWithInflight::ProcessRequest(
     }
 
     TStringBuilder sb;
-    sb << "{" << diskInfo.DiskId.Quote();
+
+    auto printInflight =
+        [](TStringBuilder& sb, const TInflightCounters& inflightCounters)
+    {
+        sb << "," << inflightCounters.Read.InflightCount;
+        sb << "," << inflightCounters.Read.InflightBytes;
+        sb << "," << inflightCounters.Write.InflightCount;
+        sb << "," << inflightCounters.Write.InflightBytes;
+    };
+
+    sb << "[" << diskInfo.DiskId.Quote();
     sb << "," << requestType;
-    sb << "," << timestamp.MicroSeconds();
-    sb << "," << postponed.MicroSeconds();
-    sb << "," << duration.MicroSeconds();
+    sb << "," << timeData.StartAt.MicroSeconds();
+    sb << "," << timeData.Postponed.MicroSeconds();
+    sb << "," << timeData.ExecutionTime.MicroSeconds();
     sb << "," << blockRange.Size() * diskInfo.BlockSize;
-    sb << "," << inflightInfo.HostBlobStorageReadInflight;
-    sb << "," << inflightInfo.HostBlobStorageReadInflightByteCount;
-    sb << "," << inflightInfo.HostBlobStorageWriteInflight;
-    sb << "," << inflightInfo.HostBlobStorageWriteInflightByteCount;
-    sb << "," << inflightInfo.HostDiskRegistryReadInflight;
-    sb << "," << inflightInfo.HostDiskRegistryReadInflightByteCount;
-    sb << "," << inflightInfo.HostDiskRegistryWriteInflight;
-    sb << "," << inflightInfo.HostDiskRegistryWriteInflightByteCount;
-    sb << "}\n";
+    printInflight(sb, inflightData.HostBlobStorageBased);
+    printInflight(sb, inflightData.HostDiskRegistryBased);
+    sb << "]\n";
     Output.Write(sb);
 }
 

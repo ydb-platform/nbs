@@ -24,7 +24,7 @@ public:
         const TDuration Postponed;
         const ui32 RequestType;
         const TReplicaChecksums ReplicaChecksums;
-        TInflightInfo InflightInfo;
+        TInflightData InflightData;
 
         TRequestInfo(
             const TDiskInfo& diskInfo,
@@ -46,6 +46,7 @@ public:
     };
 
 private:
+    const THashMap<TString, TDiskInfo> KnownDiskInfos;
     THashMap<TString, TDiskInfo> DiskInfos;
     TMultiMap<TInstant, TRequestInfo> Requests;
     TVector<std::unique_ptr<IProfileLogEventHandler>> EventHandlers;

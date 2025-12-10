@@ -18,13 +18,11 @@ public:
 
     void ProcessRequest(
         const TDiskInfo& diskInfo,
-        TInstant timestamp,
+        const TTimeData& timeData,
         ui32 requestType,
         TBlockRange64 blockRange,
-        TDuration duration,
-        TDuration postponed,
         const TReplicaChecksums& replicaChecksums,
-        const TInflightInfo& inflightInfo) override;
+        const TInflightData& inflightData) override;
 };
 
 }   // namespace NCloud::NBlockStore

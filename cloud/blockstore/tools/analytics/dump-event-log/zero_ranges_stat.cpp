@@ -86,18 +86,14 @@ TZeroRangesStat::~TZeroRangesStat()
 
 void TZeroRangesStat::ProcessRequest(
     const TDiskInfo& diskInfo,
-    TInstant timestamp,
+    const TTimeData& timeData,
     ui32 requestType,
     TBlockRange64 blockRange,
-    TDuration duration,
-    TDuration postponed,
     const TReplicaChecksums& replicaChecksums,
-    const TInflightInfo& inflightInfo)
+    const TInflightData& inflightData)
 {
-    Y_UNUSED(timestamp);
-    Y_UNUSED(duration);
-    Y_UNUSED(postponed);
-    Y_UNUSED(inflightInfo);
+    Y_UNUSED(timeData);
+    Y_UNUSED(inflightData);
 
     if (requestType != static_cast<ui32>(ESysRequestType::Scrubbing)) {
         return;

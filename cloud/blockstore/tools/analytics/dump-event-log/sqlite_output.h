@@ -37,13 +37,11 @@ public:
 
     void ProcessRequest(
         const TDiskInfo& diskInfo,
-        TInstant timestamp,
+        const TTimeData& timeData,
         ui32 requestType,
         TBlockRange64 blockRange,
-        TDuration duration,
-        TDuration postponed,
         const TReplicaChecksums& replicaChecksums,
-        const TInflightInfo& inflightInfo) override;
+        const TInflightData& inflightData) override;
 
 private:
     void CreateTables();
@@ -54,12 +52,10 @@ private:
 
     ui64 GetVolumeId(const TString& diskId);
     ui64 AddRequest(
-        TInstant timestamp,
+        const TTimeData& timeData,
         ui64 volumeId,
         ui64 requestTypeId,
-        TBlockRange64 range,
-        TDuration duration,
-        TDuration postponed);
+        TBlockRange64 range);
     void AddChecksums(
         ui64 requestId,
         TBlockRange64 blockRange,
