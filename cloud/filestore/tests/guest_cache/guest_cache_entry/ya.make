@@ -19,7 +19,7 @@ PEERDIR(
 
 SET(
     NFS_STORAGE_CONFIG_PATCH
-    cloud/filestore/tests/guest_cache/guest_cache_regular_entry/nfs-storage-patch.txt
+    cloud/filestore/tests/guest_cache/guest_cache_entry/nfs-storage-patch.txt
 )
 
 SET(QEMU_VIRTIO fs)
