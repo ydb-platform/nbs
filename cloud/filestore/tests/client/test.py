@@ -722,9 +722,26 @@ def test_profile_log_io_requests():
     with open(small_data_file, "w") as f:
         f.write("some data")
 
+    def write_block(block_no, f):
+        c = chr(ord('a') + block_no % (ord('z') - ord('a') + 1))
+        f.write(c * 4096)
+
+    medium_chunk_block_count = 4
+    medium_chunk_size = medium_chunk_block_count * 4096
+    medium_data_files = []
+    for i in range(3):
+        medium_data_file = os.path.join(
+            common.output_path(),
+            "medium_data_%s.txt" % i)
+        with open(medium_data_file, "w") as f:
+            for block_no in range(medium_chunk_block_count):
+                write_block(block_no + i * medium_chunk_block_count, f)
+        medium_data_files.append(medium_data_file)
+
     large_data_file = os.path.join(common.output_path(), "large_data.txt")
     with open(large_data_file, "w") as f:
-        f.write("x" * 128 * 1024)
+        for block_no in range(32):
+            write_block(block_no, f)
 
     fs_id = "test_profile_log_io_requests"
 
@@ -736,10 +753,22 @@ def test_profile_log_io_requests():
         BLOCKS_COUNT)
 
     client.write(fs_id, "/small", "--data", small_data_file)
+    for i in range(len(medium_data_files)):
+        client.write(
+            fs_id,
+            "/medium",
+            "--data", medium_data_files[i],
+            "--offset", str(i * medium_chunk_size))
     client.write(fs_id, "/large", "--data", large_data_file)
     out = __exec_ls(client, fs_id, "/").decode("utf-8")
     out += "\nread_size=%s\n" % len(client.read(
         fs_id, "/small", "--length", str(4 * 1024)))
+    for i in range(3):
+        out += "read_size=%s\n" % len(client.read(
+            fs_id,
+            "/medium",
+            "--length", str(medium_chunk_size),
+            "--offset", str(i * medium_chunk_size)))
     out += "read_size=%s\n" % len(client.read(
         fs_id, "/large", "--length", str(128 * 1024)))
 
@@ -755,21 +784,25 @@ def test_profile_log_io_requests():
     profile_tool_bin_path = common.binary_path(
         "cloud/filestore/tools/analytics/profile_tool/filestore-profile-tool"
     )
-    profile_log_stats = profile.analyze_profile_log(
+    profile_log_events = profile.get_profile_log_events(
         profile_tool_bin_path, common.output_path("nfs-profile.log"), fs_id
     )
 
     with open(results_path, "w") as results_file:
         results_file.write(out)
 
-        def output_stat(req_type):
-            results_file.write(
-                "%s=%s\n" % (req_type, profile_log_stats.get(req_type, 0)))
+        io_events = ["ReadData", "DescribeData", "WriteData", "AddData"]
 
-        output_stat("ReadData")
-        output_stat("DescribeData")
-        output_stat("WriteData")
-        output_stat("AddData")
+        lines = []
+        for event_type, event_body in profile_log_events:
+            if event_type not in io_events:
+                continue
+            del event_body["handle"]
+            lines.append("%s\t%s\n" % (event_type, event_body))
+
+        lines.sort()
+        for line in lines:
+            results_file.write(line)
 
     ret = common.canonical_file(results_path, local=True)
     return ret

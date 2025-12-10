@@ -688,7 +688,12 @@ message TStorageConfig
     // the two-stage read path.
     optional uint32 TwoStageReadThreshold = 471;
 
+    // Enables checksum calculation for all blocks upon IO requests and
+    // background requests like Compaction and Cleanup. Checksums are logged
+    // to profile log.
+    optional bool BlockChecksumsInProfileLogEnabled = 472;
+
     // MaxShardCount used to be hardcoded and equal to 254.
     // Now it is configurable with the default == 254
-    optional uint32 MaxShardCount = 472;
+    optional uint32 MaxShardCount = 473;
 }

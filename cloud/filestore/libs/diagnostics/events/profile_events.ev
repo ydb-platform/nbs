@@ -18,6 +18,10 @@ message TProfileLogBlockRange {
     optional uint64 ActualBytes = 5;
     // Response buffer offset
     optional uint32 BufferOffset = 6;
+
+    // For unaligned head and tail the checksum is calculated only for the part
+    // of the block corresponding to this request.
+    repeated uint32 BlockChecksums = 7;
 };
 
 message TProfileLogNodeInfo {

@@ -305,6 +305,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(ZeroCopyReadEnabled,               bool,      false                   )\
                                                                                \
+    xxx(BlockChecksumsInProfileLogEnabled, bool,      false                   )\
+                                                                               \
     xxx(MaxShardCount,                     ui32,      254                     )\
 // FILESTORE_STORAGE_CONFIG
 

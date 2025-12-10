@@ -78,4 +78,9 @@ void FinalizeProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     const TProtoResponse& response);
 
+void CalculateChecksums(
+    const TStringBuf buffer,
+    ui32 blockSize,
+    NProto::TProfileLogRequestInfo& profileLogRequest);
+
 }   // namespace NCloud::NFileStore
