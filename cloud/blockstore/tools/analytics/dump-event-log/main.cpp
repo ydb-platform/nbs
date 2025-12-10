@@ -1,5 +1,7 @@
 #include <cloud/blockstore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
+#include <cloud/blockstore/tools/analytics/dump-event-log/io_deps_stat_accumulator.h>
+#include <cloud/blockstore/tools/analytics/dump-event-log/read_write_requests_with_inflight.h>
 #include <cloud/blockstore/tools/analytics/dump-event-log/sqlite_output.h>
 #include <cloud/blockstore/tools/analytics/dump-event-log/zero_ranges_stat.h>
 #include <cloud/blockstore/tools/analytics/libs/event-log/dump.h>
@@ -44,6 +46,8 @@ struct TEventProcessor: TProtobufEventProcessor
     TString OutputFilename;
     TString OutputDatabaseFilename;
     TString OutputZeroRangesStatFilename;
+    TString KnownDisksFilename;
+    TString OutputInflightStatFilename;
     TString FilterByDiskId;
     TString FilterByDiskIdFile;
     TString FilterByRequestTypeFile;
@@ -52,7 +56,7 @@ struct TEventProcessor: TProtobufEventProcessor
     TSet<TString> FilterByDiskIdSet;
     TSet<ui32> RequestTypeSet;
     std::optional<TBlockRange64> FilterRange;
-    TVector<std::unique_ptr<IProfileLogEventHandler>> EventHandlers;
+    std::unique_ptr<TIoDepsStatAccumulator> IoDepsStatAccumulator;
 
     void InitIfNeeded()
     {
@@ -75,15 +79,24 @@ struct TEventProcessor: TProtobufEventProcessor
                 NEvClass::Factory()->CurrentFormat());
         }
 
+        IoDepsStatAccumulator =
+            std::make_unique<TIoDepsStatAccumulator>(KnownDisksFilename);
+
+        if (OutputDatabaseFilename) {
+            IoDepsStatAccumulator->AddEventHandler(
+                std::make_unique<TSqliteOutput>(OutputDatabaseFilename));
+        }
+
         if (OutputZeroRangesStatFilename) {
-            EventHandlers.push_back(
+            IoDepsStatAccumulator->AddEventHandler(
                 std::make_unique<TZeroRangesStat>(
                     OutputZeroRangesStatFilename));
         }
 
-        if (OutputDatabaseFilename) {
-            EventHandlers.push_back(
-                std::make_unique<TSqliteOutput>(OutputDatabaseFilename));
+        if (OutputInflightStatFilename) {
+            IoDepsStatAccumulator->AddEventHandler(
+                std::make_unique<TReadWriteRequestsWithInflight>(
+                    OutputInflightStatFilename));
         }
     }
 
@@ -108,13 +121,13 @@ struct TEventProcessor: TProtobufEventProcessor
                 continue;
             }
 
-            for (const auto& handler: EventHandlers) {
+            if (IoDepsStatAccumulator->HasEventHandlers()) {
                 switch (type) {
                     case EItemType::Request: {
                         const NProto::TProfileLogRequestInfo& r =
                             message->GetRequests(index);
                         for (const auto& range: r.GetRanges()) {
-                            handler->ProcessRequest(
+                            IoDepsStatAccumulator->ProcessRequest(
                                 message->GetDiskId(),
                                 TInstant::FromValue(r.GetTimestampMcs()),
                                 r.GetRequestType(),
@@ -122,6 +135,8 @@ struct TEventProcessor: TProtobufEventProcessor
                                     range.GetBlockIndex(),
                                     range.GetBlockCount()),
                                 TDuration::MicroSeconds(r.GetDurationMcs()),
+                                TDuration::MicroSeconds(
+                                    r.GetPostponedTimeMcs()),
                                 range.GetReplicaChecksums());
                         }
                         break;
@@ -131,9 +146,6 @@ struct TEventProcessor: TProtobufEventProcessor
                     case EItemType::BlobUpdate:
                         break;
                 }
-            }
-
-            if (EventHandlers) {
                 continue;
             }
 
@@ -286,6 +298,19 @@ public:
                 "Enables output statistics of zero-block ranges to the file")
             .Optional()
             .StoreResult(&Processor->OutputZeroRangesStatFilename);
+
+        opts.AddLongOption(
+                "known-disks-file",
+                "File with known volumes. Contains diskId, block size and media kind")
+            .Optional()
+            .StoreResult(&Processor->KnownDisksFilename);
+
+        opts.AddLongOption(
+                "output-inflight-stat-file",
+                "Enables output read and write requests with inflight stats to "
+                "the file")
+            .Optional()
+            .StoreResult(&Processor->OutputInflightStatFilename);
     }
 
     void SetOptions(const TEvent::TOutputOptions& options) override

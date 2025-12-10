@@ -20,7 +20,8 @@ constexpr TStringBuf CreateRequestsTable = R"__(
         RequestTypeId integer not null,
         StartBlock integer not null,
         EndBlock integer not null,
-        DurationUs integer not null,
+        PostponedUs integer not null,
+        ExecutionUs integer not null,
         PRIMARY KEY ("Id" AUTOINCREMENT)
     );
 )__";
@@ -115,9 +116,9 @@ constexpr TStringBuf AddDiskSql = R"__(
 
 constexpr TStringBuf AddRequestSql = R"__(
     INSERT INTO Requests
-        (AtUs, DiskId, RequestTypeId, StartBlock, EndBlock, DurationUs)
+        (AtUs, DiskId, RequestTypeId, StartBlock, EndBlock, PostponedUs, ExecutionUs)
     VALUES
-        (?, ?, ?, ?, ?, ?);
+        (?, ?, ?, ?, ?, ?, ?);
 )__";
 
 constexpr TStringBuf AddChecksumSql = R"__(
@@ -182,19 +183,20 @@ TSqliteOutput::~TSqliteOutput()
 }
 
 void TSqliteOutput::ProcessRequest(
-    const TString& diskId,
-    TInstant timestamp,
+    const TDiskInfo& diskInfo,
+    const TTimeData& timeData,
     ui32 requestType,
     TBlockRange64 blockRange,
-    TDuration duration,
-    const TReplicaChecksums& replicaChecksums)
+    const TReplicaChecksums& replicaChecksums,
+    const TInflightData& inflightData)
 {
+    Y_UNUSED(inflightData);
+
     const ui64 requestId = AddRequest(
-        timestamp,
-        GetVolumeId(diskId),
+        timeData,
+        GetVolumeId(diskInfo.DiskId),
         requestType,
-        blockRange,
-        duration);
+        blockRange);
 
     AddChecksums(requestId, blockRange, replicaChecksums);
 
@@ -395,11 +397,10 @@ ui64 TSqliteOutput::GetVolumeId(const TString& diskId)
 }
 
 ui64 TSqliteOutput::AddRequest(
-    TInstant timestamp,
+    const TTimeData& timeData,
     ui64 volumeId,
     ui64 requestTypeId,
-    TBlockRange64 range,
-    TDuration duration)
+    TBlockRange64 range)
 {
     sqlite3_reset(AddRequestStmt);
 
@@ -411,12 +412,13 @@ ui64 TSqliteOutput::AddRequest(
         }
     };
 
-    bindInt(1, timestamp.MicroSeconds());
+    bindInt(1, timeData.StartAt.MicroSeconds());
     bindInt(2, volumeId);
     bindInt(3, requestTypeId);
     bindInt(4, range.Start);
     bindInt(5, range.End);
-    bindInt(6, duration.MicroSeconds());
+    bindInt(6, timeData.Postponed.MicroSeconds());
+    bindInt(7, timeData.ExecutionTime.MicroSeconds());
 
     if (sqlite3_step(AddRequestStmt) != SQLITE_DONE) {
         ythrow yexception() << "Step error: " << sqlite3_errmsg(Db);
