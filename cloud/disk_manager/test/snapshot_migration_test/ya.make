@@ -56,7 +56,16 @@ ELSE()
     )
 ENDIF()
 
-INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/ydbd.inc)
+IF (OPENSOURCE)
+    DEPENDS(
+        cloud/storage/core/tools/testing/ydb/bin
+    )
+ELSE()
+    DEPENDS(
+        contrib/ydb/apps/ydbd
+    )
+ENDIF()
+
 
 FORK_SUBTESTS()
 SPLIT_FACTOR(8)

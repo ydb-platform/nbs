@@ -19,8 +19,7 @@ DEPENDS(
     cloud/filestore/apps/client
     cloud/filestore/apps/server
     cloud/filestore/apps/vhost
+    contrib/ydb/apps/ydbd
 )
-
-INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/ydbd.inc)
 
 END()
