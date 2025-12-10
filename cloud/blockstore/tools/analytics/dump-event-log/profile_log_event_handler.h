@@ -62,6 +62,15 @@ struct TTimeData
     TDuration Postponed;
     // Net request execution time excluding the troller
     TDuration ExecutionTime;
+
+    [[nodiscard]] TInstant ExecuteAt() const
+    {
+        return StartAt + Postponed;
+    }
+    [[nodiscard]] TInstant FinishedAt() const
+    {
+        return StartAt + Postponed + ExecutionTime;
+    }
 };
 
 struct IProfileLogEventHandler

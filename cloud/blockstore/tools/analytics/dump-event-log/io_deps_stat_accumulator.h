@@ -17,39 +17,29 @@ class TIoDepsStatAccumulator
 public:
     struct TRequestInfo
     {
-        const TDiskInfo& DiskInfo;
-        const TInstant StartAt;
-        const TBlockRange64 BlockRange;
-        const TDuration Duration;
-        const TDuration Postponed;
-        const ui32 RequestType;
-        const TReplicaChecksums ReplicaChecksums;
+        TDiskInfo const* DiskInfo = nullptr;
+        TTimeData TimeData;
+        TBlockRange64 BlockRange;
+        ui32 RequestType;
+        TReplicaChecksums ReplicaChecksums;
         TInflightData InflightData;
 
         TRequestInfo(
-            const TDiskInfo& diskInfo,
+            TDiskInfo const* diskInfo,
             TInstant startAt,
             TDuration duration,
             TDuration postponed,
             ui32 requestType,
             TBlockRange64 blockRange,
             const TReplicaChecksums& replicaChecksums);
-
-        [[nodiscard]] TInstant ExecutionStartAt() const
-        {
-            return StartAt + Postponed;
-        }
-        [[nodiscard]] TInstant FinishedAt() const
-        {
-            return StartAt + Postponed + Duration;
-        }
     };
 
 private:
     const THashMap<TString, TDiskInfo> KnownDiskInfos;
-    THashMap<TString, TDiskInfo> DiskInfos;
-    TMultiMap<TInstant, TRequestInfo> Requests;
     TVector<std::unique_ptr<IProfileLogEventHandler>> EventHandlers;
+
+    THashMap<TString, TDiskInfo> DiskInfos;
+    TVector<TRequestInfo> Requests;
 
 public:
     explicit TIoDepsStatAccumulator(const TString& knownDisksFile);
@@ -73,7 +63,7 @@ public:
 
 private:
     const TDiskInfo& GetDiskInfo(const TString& diskId);
-    void ExtractRequests(TInstant windowStart);
+    void ExtractRequests();
 };
 
 }   // namespace NCloud::NBlockStore

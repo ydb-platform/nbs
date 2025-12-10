@@ -1,6 +1,6 @@
 #include "io_deps_stat_accumulator.h"
 
-#include <library/cpp/containers/stack_vector/stack_vec.h>
+#include <cloud/storage/core/libs/common/format.h>
 
 #include <util/stream/file.h>
 #include <util/string/builder.h>
@@ -18,8 +18,6 @@ constexpr ui32 DefaultBlockSize = 4096;
 constexpr NCloud::NProto::EStorageMediaKind DefaultMediaKind =
     NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_SSD;
 
-constexpr TDuration WindowWidth = TDuration::Seconds(5);
-
 void Link(
     TIoDepsStatAccumulator::TRequestInfo& lhs,
     TIoDepsStatAccumulator::TRequestInfo& rhs)
@@ -28,21 +26,21 @@ void Link(
         return;
     }
 
-    const bool sameDisk = lhs.DiskInfo.DiskId == rhs.DiskInfo.DiskId;
+    const bool sameDisk = lhs.DiskInfo->DiskId == rhs.DiskInfo->DiskId;
 
     // From left to right
     rhs.InflightData.Add(
-        lhs.DiskInfo.MediaKind,
+        lhs.DiskInfo->MediaKind,
         lhs.RequestType,
         sameDisk,
-        lhs.BlockRange.Size() * lhs.DiskInfo.BlockSize);
+        lhs.BlockRange.Size() * lhs.DiskInfo->BlockSize);
 
     // From right to left
     lhs.InflightData.Add(
-        rhs.DiskInfo.MediaKind,
+        rhs.DiskInfo->MediaKind,
         rhs.RequestType,
         sameDisk,
-        rhs.BlockRange.Size() * rhs.DiskInfo.BlockSize);
+        rhs.BlockRange.Size() * rhs.DiskInfo->BlockSize);
 }
 
 THashMap<TString, TDiskInfo> LoadKnownDisks(const TString& filename)
@@ -94,7 +92,7 @@ THashMap<TString, TDiskInfo> LoadKnownDisks(const TString& filename)
 }   // namespace
 
 TIoDepsStatAccumulator::TRequestInfo::TRequestInfo(
-    const TDiskInfo& diskInfo,
+    TDiskInfo const* diskInfo,
     TInstant startAt,
     TDuration duration,
     TDuration postponed,
@@ -102,18 +100,16 @@ TIoDepsStatAccumulator::TRequestInfo::TRequestInfo(
     TBlockRange64 blockRange,
     const TReplicaChecksums& replicaChecksums)
     : DiskInfo(diskInfo)
-    , StartAt(startAt)
+    , TimeData{.StartAt = startAt, .Postponed = postponed, .ExecutionTime = duration - postponed}
     , BlockRange(blockRange)
-    , Duration(duration)
-    , Postponed(postponed)
     , RequestType(requestType)
     , ReplicaChecksums(replicaChecksums)
 {
     InflightData.Add(
-        DiskInfo.MediaKind,
+        DiskInfo->MediaKind,
         RequestType,
         true,
-        BlockRange.Size() * DiskInfo.BlockSize);
+        BlockRange.Size() * DiskInfo->BlockSize);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -124,7 +120,7 @@ TIoDepsStatAccumulator::TIoDepsStatAccumulator(const TString& knownDisksFile)
 
 TIoDepsStatAccumulator::~TIoDepsStatAccumulator()
 {
-    ExtractRequests(TInstant::Max());
+    ExtractRequests();
 }
 
 void TIoDepsStatAccumulator::AddEventHandler(
@@ -142,38 +138,14 @@ void TIoDepsStatAccumulator::ProcessRequest(
     TDuration postponed,
     const TReplicaChecksums& replicaChecksums)
 {
-    const TInstant executionStartAt = timestamp + postponed;
-    const TInstant finishedAt = timestamp + duration;
-
-    auto inserted = Requests.emplace(
-        finishedAt,
-        TRequestInfo(
-            GetDiskInfo(diskId),
-            timestamp,
-            duration,
-            postponed,
-            requestType,
-            blockRange,
-            replicaChecksums));
-
-    //
-    auto it = inserted;
-    ++it;
-    for (; it != Requests.end(); ++it) {
-        TRequestInfo& request = it->second;
-        if (request.ExecutionStartAt() <= finishedAt) {
-            Link(inserted->second, request);
-        }
-    }
-
-    for (auto it = inserted; it->first >= executionStartAt; --it) {
-        Link(inserted->second, it->second);
-        if (it == Requests.begin()) {
-            break;
-        }
-    }
-
-    ExtractRequests(timestamp - WindowWidth);
+    Requests.emplace_back(TRequestInfo(
+        &GetDiskInfo(diskId),
+        timestamp,
+        duration,
+        postponed,
+        requestType,
+        blockRange,
+        replicaChecksums));
 }
 
 const TDiskInfo& TIoDepsStatAccumulator::GetDiskInfo(const TString& diskId)
@@ -197,47 +169,49 @@ const TDiskInfo& TIoDepsStatAccumulator::GetDiskInfo(const TString& diskId)
     return it->second;
 }
 
-void TIoDepsStatAccumulator::ExtractRequests(TInstant windowStart)
+void TIoDepsStatAccumulator::ExtractRequests()
 {
-    if (Requests.begin()->second.ExecutionStartAt() > windowStart) {
-        return;
-    }
+    Cerr << "Requests: " << Requests.size() << Endl;
+    const auto now = TInstant::Now();
 
-    using TRequestIt = decltype(Requests.begin());
-
-    TStackVec<TRequestIt> outOfWindow;
-    outOfWindow.reserve(20);
-    for (auto it = Requests.begin(); it != Requests.end(); ++it) {
-        const TRequestInfo& request = it->second;
-        if (request.ExecutionStartAt() > windowStart) {
-            break;
-        }
-        outOfWindow.push_back(it);
+    TVector<TRequestInfo*> data;
+    data.reserve(Requests.size());
+    for (auto& it: Requests) {
+        data.push_back(&it);
     }
 
     Sort(
-        outOfWindow,
-        [](TRequestIt lhs, TRequestIt rhs)
-        { return lhs->second.StartAt < rhs->second.StartAt; });
+        data,
+        [](const TRequestInfo* lhs, const TRequestInfo* rhs)
+        { return lhs->TimeData.ExecuteAt() < rhs->TimeData.ExecuteAt(); });
 
-    for (TRequestIt it: outOfWindow) {
-        const auto& request = it->second;
-        const TTimeData timeData{
-            .StartAt = request.StartAt,
-            .Postponed = request.Postponed,
-            .ExecutionTime = request.Duration - request.Postponed};
+    for (auto itA = data.begin(); itA != data.end(); ++itA) {
+        for (auto itB = itA + 1; itB != data.end(); ++itB) {
+            if ((*itA)->TimeData.FinishedAt() < (*itB)->TimeData.ExecuteAt()) {
+                break;
+            }
+            Link(**itA, **itB);
+        }
+    }
 
+    Sort(
+        data,
+        [](const TRequestInfo* lhs, const TRequestInfo* rhs)
+        { return lhs->TimeData.StartAt < rhs->TimeData.StartAt; });
+
+    Cerr << "Requests overlapped: " << FormatDuration(TInstant::Now() - now)
+         << Endl;
+
+    for (const auto* request: data) {
         for (auto& handler: EventHandlers) {
             handler->ProcessRequest(
-                request.DiskInfo,
-                timeData,
-                request.RequestType,
-                request.BlockRange,
-                request.ReplicaChecksums,
-                request.InflightData);
+                *request->DiskInfo,
+                request->TimeData,
+                request->RequestType,
+                request->BlockRange,
+                request->ReplicaChecksums,
+                request->InflightData);
         }
-
-        Requests.erase(it);
     }
 }
 
