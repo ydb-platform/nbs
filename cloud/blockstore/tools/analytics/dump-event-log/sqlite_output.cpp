@@ -20,7 +20,8 @@ constexpr TStringBuf CreateRequestsTable = R"__(
         RequestTypeId integer not null,
         StartBlock integer not null,
         EndBlock integer not null,
-        DurationUs integer not null,
+        PostponedUs integer not null,
+        ExecutionUs integer not null,
         PRIMARY KEY ("Id" AUTOINCREMENT)
     );
 )__";
@@ -115,9 +116,9 @@ constexpr TStringBuf AddDiskSql = R"__(
 
 constexpr TStringBuf AddRequestSql = R"__(
     INSERT INTO Requests
-        (At, DiskId, RequestTypeId, StartBlock, EndBlock, DurationUs)
+        (AtUs, DiskId, RequestTypeId, StartBlock, EndBlock, PostponedUs, ExecutionUs)
     VALUES
-        (?, ?, ?, ?, ?, ?);
+        (?, ?, ?, ?, ?, ?, ?);
 )__";
 
 constexpr TStringBuf AddChecksumSql = R"__(
@@ -178,28 +179,21 @@ TSqliteOutput::~TSqliteOutput()
     }
 }
 
-void TSqliteOutput::ProcessMessage(
-    const NProto::TProfileLogRecord& message,
-    EItemType itemType,
-    int index)
+void TSqliteOutput::ProcessRequest(
+    const TDiskInfo& diskInfo,
+    const TTimeData& timeData,
+    ui32 requestType,
+    TBlockRange64 blockRange,
+    const TReplicaChecksums& replicaChecksums,
+    const TInflightData& inflightData)
 {
-    if (itemType != EItemType::Request) {
-        return;
-    }
+    Y_UNUSED(inflightData);
 
-    const NProto::TProfileLogRequestInfo& r = message.GetRequests(index);
-
-    for (const auto& range: r.GetRanges()) {
-        const auto blockRange = TBlockRange64::WithLength(
-            range.GetBlockIndex(),
-            range.GetBlockCount());
-
-        const ui64 requestId = AddRequest(
-            TInstant::FromValue(r.GetTimestampMcs()),
-            GetVolumeId(message.GetDiskId()),
-            r.GetRequestType(),
-            blockRange,
-            TDuration::MicroSeconds(r.GetDurationMcs()));
+    const ui64 requestId = AddRequest(
+        timeData,
+        GetVolumeId(diskInfo.DiskId),
+        requestType,
+        blockRange);
 
         AddChecksums(requestId, blockRange, range.GetReplicaChecksums());
 
@@ -401,11 +395,10 @@ ui64 TSqliteOutput::GetVolumeId(const TString& diskId)
 }
 
 ui64 TSqliteOutput::AddRequest(
-    TInstant timestamp,
+    const TTimeData& timeData,
     ui64 volumeId,
     ui64 requestTypeId,
-    TBlockRange64 range,
-    TDuration duration)
+    TBlockRange64 range)
 {
     sqlite3_reset(AddRequestStmt);
 
@@ -417,27 +410,13 @@ ui64 TSqliteOutput::AddRequest(
         }
     };
 
-    auto bindDateTime = [&](int index, TInstant value)
-    {
-        auto str = value.ToString();
-        if (sqlite3_bind_text(
-                AddRequestStmt,
-                index,
-                str.c_str(),
-                str.size(),
-                SQLITE_TRANSIENT) != SQLITE_OK)
-        {
-            ythrow yexception()
-                << "Binding param error: " << sqlite3_errmsg(Db);
-        }
-    };
-
-    bindDateTime(1, timestamp);
+    bindInt(1, timeData.StartAt.MicroSeconds());
     bindInt(2, volumeId);
     bindInt(3, requestTypeId);
     bindInt(4, range.Start);
     bindInt(5, range.End);
-    bindInt(6, duration.MicroSeconds());
+    bindInt(6, timeData.Postponed.MicroSeconds());
+    bindInt(7, timeData.ExecutionTime.MicroSeconds());
 
     if (sqlite3_step(AddRequestStmt) != SQLITE_DONE) {
         ythrow yexception() << "Step error: " << sqlite3_errmsg(Db);

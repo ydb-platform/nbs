@@ -1,5 +1,7 @@
 #include <cloud/blockstore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
+#include <cloud/blockstore/tools/analytics/dump-event-log/io_deps_stat_accumulator.h>
+#include <cloud/blockstore/tools/analytics/dump-event-log/read_write_requests_with_inflight.h>
 #include <cloud/blockstore/tools/analytics/dump-event-log/sqlite_output.h>
 #include <cloud/blockstore/tools/analytics/libs/event-log/dump.h>
 
@@ -42,13 +44,58 @@ struct TEventProcessor: TProtobufEventProcessor
     TEventLogPtr EventLog;
     TString OutputFilename;
     TString OutputDatabaseFilename;
+    TString OutputZeroRangesStatFilename;
+    TString KnownDisksFilename;
+    TString OutputInflightStatFilename;
     TString FilterByDiskId;
     TString FilterByDiskIdFile;
     TString FilterByRequestTypeFile;
     TSet<TString> FilterByDiskIdSet;
     TSet<ui32> RequestTypeSet;
     std::optional<TBlockRange64> FilterRange;
-    std::unique_ptr<TSqliteOutput> SqliteOutput;
+    std::unique_ptr<TIoDepsStatAccumulator> IoDepsStatAccumulator;
+
+    void InitIfNeeded()
+    {
+        if (Initialized) {
+            return;
+        }
+        Initialized = true;
+
+        if (FilterByDiskIdFile) {
+            FilterByDiskIdSet = LoadDiskIds(FilterByDiskIdFile);
+        }
+
+        if (FilterByRequestTypeFile) {
+            RequestTypeSet = LoadRequestTypes(FilterByRequestTypeFile);
+        }
+
+        if (OutputFilename) {
+            EventLog = MakeIntrusive<TEventLog>(
+                OutputFilename,
+                NEvClass::Factory()->CurrentFormat());
+        }
+
+        IoDepsStatAccumulator =
+            std::make_unique<TIoDepsStatAccumulator>(KnownDisksFilename);
+
+        if (OutputDatabaseFilename) {
+            IoDepsStatAccumulator->AddEventHandler(
+                std::make_unique<TSqliteOutput>(OutputDatabaseFilename));
+        }
+
+        if (OutputZeroRangesStatFilename) {
+            IoDepsStatAccumulator->AddEventHandler(
+                std::make_unique<TZeroRangesStat>(
+                    OutputZeroRangesStatFilename));
+        }
+
+        if (OutputInflightStatFilename) {
+            IoDepsStatAccumulator->AddEventHandler(
+                std::make_unique<TReadWriteRequestsWithInflight>(
+                    OutputInflightStatFilename));
+        }
+    }
 
     void DoProcessEvent(const TEvent* ev, IOutputStream* out) override
     {
@@ -86,13 +133,31 @@ struct TEventProcessor: TProtobufEventProcessor
                 continue;
             }
 
-            if (OutputDatabaseFilename) {
-                if (!SqliteOutput) {
-                    SqliteOutput =
-                        std::make_unique<TSqliteOutput>(OutputDatabaseFilename);
+            if (IoDepsStatAccumulator->HasEventHandlers()) {
+                switch (type) {
+                    case EItemType::Request: {
+                        const NProto::TProfileLogRequestInfo& r =
+                            message->GetRequests(index);
+                        for (const auto& range: r.GetRanges()) {
+                            IoDepsStatAccumulator->ProcessRequest(
+                                message->GetDiskId(),
+                                TInstant::FromValue(r.GetTimestampMcs()),
+                                r.GetRequestType(),
+                                TBlockRange64::WithLength(
+                                    range.GetBlockIndex(),
+                                    range.GetBlockCount()),
+                                TDuration::MicroSeconds(r.GetDurationMcs()),
+                                TDuration::MicroSeconds(
+                                    r.GetPostponedTimeMcs()),
+                                range.GetReplicaChecksums());
+                        }
+                        break;
+                    }
+                    case EItemType::BlockInfo:
+                    case EItemType::BlockCommitId:
+                    case EItemType::BlobUpdate:
+                        break;
                 }
-
-                SqliteOutput->ProcessMessage(*message, type, index);
                 continue;
             }
 
@@ -239,6 +304,25 @@ public:
                 "Enables output to the sqlite database file")
             .Optional()
             .StoreResult(&Processor->OutputDatabaseFilename);
+
+        opts.AddLongOption(
+                "output-zero-ranges-stat-file",
+                "Enables output statistics of zero-block ranges to the file")
+            .Optional()
+            .StoreResult(&Processor->OutputZeroRangesStatFilename);
+
+        opts.AddLongOption(
+                "known-disks-file",
+                "File with known volumes. Contains diskId, block size and media kind")
+            .Optional()
+            .StoreResult(&Processor->KnownDisksFilename);
+
+        opts.AddLongOption(
+                "output-inflight-stat-file",
+                "Enables output read and write requests with inflight stats to "
+                "the file")
+            .Optional()
+            .StoreResult(&Processor->OutputInflightStatFilename);
     }
 
     void SetOptions(const TEvent::TOutputOptions& options) override

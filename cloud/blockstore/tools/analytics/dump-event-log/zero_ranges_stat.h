@@ -45,12 +45,12 @@ public:
     ~TZeroRangesStat() override;
 
     void ProcessRequest(
-        const TString& diskId,
-        TInstant timestamp,
+        const TDiskInfo& diskInfo,
+        const TTimeData& timeData,
         ui32 requestType,
         TBlockRange64 blockRange,
-        TDuration duration,
-        const TReplicaChecksums& replicaChecksums) override;
+        const TReplicaChecksums& replicaChecksums,
+        const TInflightData& inflightData) override;
 
 private:
     void Dump();
