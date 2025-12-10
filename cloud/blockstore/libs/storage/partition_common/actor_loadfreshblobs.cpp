@@ -51,10 +51,6 @@ void TLoadFreshBlobsActor::Bootstrap(const TActorContext& ctx)
 
 void TLoadFreshBlobsActor::DiscoverBlobs(const TActorContext& ctx)
 {
-    const auto tabletId = TabletInfo->TabletID;
-
-    auto [barrierGen, barrierStep] = ParseCommitId(TrimFreshLogToCommitId);
-
     for (ui32 channel: FreshChannels) {
         LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
             "[%lu] TLoadFreshBlobsActor: loading fresh blobs from channel %u",
@@ -64,9 +60,7 @@ void TLoadFreshBlobsActor::DiscoverBlobs(const TActorContext& ctx)
         const auto* channelInfo = TabletInfo->ChannelInfo(channel);
         Y_ABORT_UNLESS(channelInfo);
 
-        auto begin = channelInfo->History.begin();
-        auto end = channelInfo->History.end();
-        if (begin == end) {
+        if (channelInfo->History.empty()) {
             Error = MakeError(E_FAIL, TStringBuilder() <<
                 "empty history for fresh channel " << channel);
             NotifyAndDie(ctx);
@@ -77,55 +71,35 @@ void TLoadFreshBlobsActor::DiscoverBlobs(const TActorContext& ctx)
             return l.FromGeneration < r.FromGeneration;
         };
 
-        const auto genVsHistory = [] (const ui64 l, const auto& r) {
-            return l < r.FromGeneration;
-        };
-
         STORAGE_VERIFY(
-            IsSorted(begin, end, historyVsHistory),
+            IsSorted(
+                channelInfo->History.begin(),
+                channelInfo->History.end(),
+                historyVsHistory),
             TWellKnownEntityTypes::TABLET,
             TabletInfo->TabletID);
 
-        auto cur = begin;
-        if (barrierGen != 0) {
-            cur = std::upper_bound(begin, end, barrierGen, genVsHistory);
-            STORAGE_VERIFY(
-                cur != begin,
-                TWellKnownEntityTypes::TABLET,
-                TabletInfo->TabletID);
+        auto requests = BuildGroupRequestsForChannel(
+            channelInfo->History,
+            TabletInfo->TabletID,
+            TrimFreshLogToCommitId);
 
-            --cur;
-        }
-        auto next = std::next(cur);
-
-        if (cur != begin) {
-            LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] TLoadFreshBlobsActor: skipping %u history groups"
-                ", first FromGeneration=%u",
-                TabletInfo->TabletID,
-                std::distance(begin, cur),
-                cur->FromGeneration);
-        }
-
-        for (;;) {
-            const ui32 fromGen = barrierGen;
-            const ui32 fromStep = barrierStep;
-
-            const ui32 toGen = (next == end ? Max<ui32>() : next->FromGeneration);
-            const ui32 toStep = Max<ui32>();
-
+        for (auto req: requests)
+        {
+            const auto [fromGen, fromStep] = ParseCommitId(req.FromCommit);
             NKikimr::TLogoBlobID fromId(
-                tabletId,
+                TabletInfo->TabletID,
                 fromGen,
                 fromStep,
                 channel,
                 0,   // min blob size
                 0);  // min cookie
 
+            const auto [toGen, toStep] = ParseCommitId(req.ToCommit);
             NKikimr::TLogoBlobID toId(
-                tabletId,
+                TabletInfo->TabletID,
                 toGen,
-                toStep,
+                Max<ui32>(),
                 channel,
                 NKikimr::TLogoBlobID::MaxBlobSize,
                 NKikimr::TLogoBlobID::MaxCookie);
@@ -134,12 +108,12 @@ void TLoadFreshBlobsActor::DiscoverBlobs(const TActorContext& ctx)
                 "[%lu] TLoadFreshBlobsActor: sending EvRange %u:%u, %u:%u"
                 " to group %u",
                 TabletInfo->TabletID,
-                fromGen, fromStep,
-                toGen, toStep,
-                cur->GroupID);
+                fromId.Generation(), fromId.Step(),
+                toId.Generation(), toId.Step(),
+                req.GroupId);
 
             auto request = std::make_unique<TEvBlobStorage::TEvRange>(
-                tabletId,
+                TabletInfo->TabletID,
                 fromId,
                 toId,
                 true,               // restore
@@ -148,16 +122,9 @@ void TLoadFreshBlobsActor::DiscoverBlobs(const TActorContext& ctx)
 
             SendToBSProxy(
                 ctx,
-                cur->GroupID,
+                req.GroupId,
                 request.release(),
                 RangeRequestsInFlight++);  // cookie
-
-            if (next == end) {
-                break;
-            }
-
-            ++cur;
-            ++next;
         }
     }
 }
@@ -246,6 +213,60 @@ STFUNC(TLoadFreshBlobsActor::StateWork)
                 __PRETTY_FUNCTION__);
             break;
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TVector<TGroupRange> BuildGroupRequestsForChannel(
+    const TVector<TTabletChannelInfo::THistoryEntry>& history,
+    ui64 tabletId,
+    ui64 trimFreshLogToCommitId)
+{
+    TVector<TGroupRange> result;
+
+    const auto genVsHistory = [] (const ui64 l, const auto& r) {
+        return l < r.FromGeneration;
+    };
+
+    const auto barrierCommit = ParseCommitId(trimFreshLogToCommitId);
+    auto [barrierGen, barrierStep] = barrierCommit;
+
+    auto begin = history.begin();
+    auto end = history.end();
+
+    auto cur = begin;
+    if (barrierGen != 0) {
+        cur = std::upper_bound(begin, end, barrierGen, genVsHistory);
+        STORAGE_VERIFY(
+            cur != begin,
+            TWellKnownEntityTypes::TABLET,
+            tabletId);
+
+        --cur;
+    }
+    auto next = std::next(cur);
+
+    for (;;) {
+        const auto fromCommit =
+            std::max(
+                trimFreshLogToCommitId,
+                MakeCommitId(cur->FromGeneration, 0));
+
+        const auto toCommit = MakeCommitId(
+            next == end ? Max<ui32>() : next->FromGeneration - 1,
+            Max<ui32>());
+
+        result.emplace_back(fromCommit, toCommit, cur->GroupID);
+
+        if (next == end) {
+            break;
+        }
+
+        ++cur;
+        ++next;
+    }
+
+    return result;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
