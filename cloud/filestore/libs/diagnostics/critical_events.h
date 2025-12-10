@@ -60,6 +60,7 @@ namespace NCloud::NFileStore{
     xxx(FailedToLockNodeRef)                                                   \
     xxx(InvalidNodeRefUponCompleteUnlinkNode)                                  \
     xxx(UnknownOpLogEntry)                                                     \
+    xxx(CalculateChecksumsBufferOverflow)                                      \
 // FILESTORE_IMPOSSIBLE_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

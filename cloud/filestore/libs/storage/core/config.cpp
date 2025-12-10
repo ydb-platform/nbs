@@ -304,6 +304,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(AllowAdditionalSystemTablets,      bool,      false                   )\
                                                                                \
     xxx(ZeroCopyReadEnabled,               bool,      false                   )\
+                                                                               \
+    xxx(BlockChecksumsInProfileLogEnabled, bool,      false                   )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \
