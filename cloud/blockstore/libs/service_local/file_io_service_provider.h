@@ -11,8 +11,7 @@ namespace NCloud::NBlockStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IFileIOServiceProvider
-    : IStartable
+struct IFileIOServiceProvider: IStartable
 {
     virtual IFileIOServicePtr CreateFileIOService(TStringBuf filePath) = 0;
 };

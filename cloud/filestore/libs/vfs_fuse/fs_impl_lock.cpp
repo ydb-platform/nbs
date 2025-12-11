@@ -21,10 +21,12 @@ struct flock MakeCFlock(const NProto::TTestLockResponse& response)
 
 template <typename T>
 concept HasSetLockType = requires(T t) {
-    { t.SetLockType(std::declval<NProto::ELockType>()) } -> std::same_as<void>;
+    {
+        t.SetLockType(std::declval<NProto::ELockType>())
+    } -> std::same_as<void>;
 };
 
-template<typename T>
+template <typename T>
 void InitRequest(
     std::shared_ptr<T>& request,
     const TRangeLock& range,
@@ -41,7 +43,7 @@ void InitRequest(
     request->SetLockOrigin(origin);
 }
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 // locking
@@ -198,43 +200,47 @@ void TFileSystem::AcquireLock(
     InitRequest(request, range, origin);
 
     Session->AcquireLock(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) mutable {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future) mutable
+            {
+                auto self = ptr.lock();
+                if (!self) {
+                    return;
+                }
 
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            if (SUCCEEDED(error.GetCode())) {
-                self->ReplyError(*callContext, error, req, 0);
-            } else if (error.GetCode() == E_FS_WOULDBLOCK && sleep) {
-                if (callContext->Cancelled) {
-                    STORAGE_DEBUG("Acquire lock cancelled");
-                    // error code shouldn't really matter for the guest since
-                    // if we are in FUSE_SUSPEND mode we won't respond to
-                    // the guest anyway
-                    CancelRequest(std::move(callContext), req);
+                const auto& response = future.GetValue();
+                const auto& error = response.GetError();
+                if (SUCCEEDED(error.GetCode())) {
+                    self->ReplyError(*callContext, error, req, 0);
+                } else if (error.GetCode() == E_FS_WOULDBLOCK && sleep) {
+                    if (callContext->Cancelled) {
+                        STORAGE_DEBUG("Acquire lock cancelled");
+                        // error code shouldn't really matter for the guest
+                        // since if we are in FUSE_SUSPEND mode we won't respond
+                        // to the guest anyway
+                        CancelRequest(std::move(callContext), req);
+                    } else {
+                        // locks should be acquired synchronously if asked so
+                        // retry attempt
+                        self->ScheduleAcquireLock(
+                            std::move(callContext),
+                            error,
+                            req,
+                            ino,
+                            range,
+                            sleep,
+                            origin);
+                    }
                 } else {
-                    // locks should be acquired synchronously if asked so retry attempt
-                    self->ScheduleAcquireLock(
-                        std::move(callContext),
+                    STORAGE_DEBUG(
+                        "Failed to acquire lock: " << error.GetMessage());
+                    self->ReplyError(
+                        *callContext,
                         error,
                         req,
-                        ino,
-                        range,
-                        sleep,
-                        origin);
+                        ErrnoFromError(error.GetCode()));
                 }
-            } else {
-                STORAGE_DEBUG("Failed to acquire lock: " << error.GetMessage());
-                self->ReplyError(
-                    *callContext,
-                    error,
-                    req,
-                    ErrnoFromError(error.GetCode()));
-            }
-        });
+            });
 }
 
 void TFileSystem::ScheduleAcquireLock(
@@ -249,16 +255,11 @@ void TFileSystem::ScheduleAcquireLock(
     RequestStats->RequestCompleted(Log, *callContext, error);
     Scheduler->Schedule(
         Timer->Now() + Config->GetLockRetryTimeout(),
-        [=, ptr = weak_from_this()] () {
+        [=, ptr = weak_from_this()]()
+        {
             if (auto self = ptr.lock()) {
                 self->RequestStats->RequestStarted(self->Log, *callContext);
-                self->AcquireLock(
-                    callContext,
-                    req,
-                    ino,
-                    range,
-                    sleep,
-                    origin);
+                self->AcquireLock(callContext, req, ino, range, sleep, origin);
             }
         });
 }
@@ -278,14 +279,16 @@ void TFileSystem::ReleaseLock(
     InitRequest(request, range, origin);
 
     Session->ReleaseLock(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            const auto& response = future.GetValue();
-            if (auto self = ptr.lock();
-                CheckResponse(self, *callContext, req, response))
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
             {
-                self->ReplyError(*callContext, response.GetError(), req, 0);
-            }
-        });
+                const auto& response = future.GetValue();
+                if (auto self = ptr.lock();
+                    CheckResponse(self, *callContext, req, response))
+                {
+                    self->ReplyError(*callContext, response.GetError(), req, 0);
+                }
+            });
 }
 
 void TFileSystem::TestLock(
@@ -301,30 +304,32 @@ void TFileSystem::TestLock(
     InitRequest(request, range, NProto::E_FCNTL);
 
     Session->TestLock(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                auto self = ptr.lock();
+                if (!self) {
+                    return;
+                }
 
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            if (!HasError(error)) {
-                struct flock lock = {
-                    .l_type = F_UNLCK,
-                };
-                self->ReplyLock(*callContext, error, req, &lock);
-            } else if (error.GetCode() == E_FS_WOULDBLOCK) {
-                auto lock = MakeCFlock(response);
-                self->ReplyLock(*callContext, error, req, &lock);
-            } else {
-                self->ReplyError(
-                    *callContext,
-                    error,
-                    req,
-                    ErrnoFromError(error.GetCode()));
-            }
-        });
+                const auto& response = future.GetValue();
+                const auto& error = response.GetError();
+                if (!HasError(error)) {
+                    struct flock lock = {
+                        .l_type = F_UNLCK,
+                    };
+                    self->ReplyLock(*callContext, error, req, &lock);
+                } else if (error.GetCode() == E_FS_WOULDBLOCK) {
+                    auto lock = MakeCFlock(response);
+                    self->ReplyLock(*callContext, error, req, &lock);
+                } else {
+                    self->ReplyError(
+                        *callContext,
+                        error,
+                        req,
+                        ErrnoFromError(error.GetCode()));
+                }
+            });
 }
 
 }   // namespace NCloud::NFileStore::NFuse

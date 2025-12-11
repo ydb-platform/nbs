@@ -35,10 +35,8 @@ void TVolumeActor::HandleUpdateMigrationState(
         "UpdateMigrationState",
         msg->CallContext->RequestId);
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     ExecuteTx<TUpdateMigrationState>(
         ctx,

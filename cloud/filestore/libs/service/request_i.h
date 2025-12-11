@@ -29,14 +29,12 @@ namespace NProto {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TReadDataLocalRequest
-    : public TReadDataRequest
+struct TReadDataLocalRequest: public TReadDataRequest
 {
     TVector<TArrayRef<char>> Buffers;
 };
 
-struct TReadDataLocalResponse
-    : public TReadDataResponse
+struct TReadDataLocalResponse: public TReadDataResponse
 {
     TReadDataLocalResponse() = default;
 
@@ -54,8 +52,7 @@ struct TReadDataLocalResponse
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TWriteDataLocalRequest
-    : public TWriteDataRequest
+struct TWriteDataLocalRequest: public TWriteDataRequest
 {
     TVector<TArrayRef<const char>> Buffers;
     ui64 BytesToWrite = 0;
@@ -70,57 +67,70 @@ namespace NImpl {
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-concept THasFileSystemId = requires (T v)
-{
-    {v.GetFileSystemId()} -> std::convertible_to<TString>;
-    {v.SetFileSystemId(std::declval<TString>())} -> std::same_as<void>;
+concept THasFileSystemId = requires(T v) {
+    {
+        v.GetFileSystemId()
+    } -> std::convertible_to<TString>;
+    {
+        v.SetFileSystemId(std::declval<TString>())
+    } -> std::same_as<void>;
 };
 
 template <typename T>
-concept THasStorageMediaKind = requires (T v)
-{
-    {v.GetStorageMediaKind()} -> std::same_as<NCloud::NProto::EStorageMediaKind>;
-    {v.SetStorageMediaKind(std::declval<NCloud::NProto::EStorageMediaKind>())} -> std::same_as<void>;
+concept THasStorageMediaKind = requires(T v) {
+    {
+        v.GetStorageMediaKind()
+    } -> std::same_as<NCloud::NProto::EStorageMediaKind>;
+    {
+        v.SetStorageMediaKind(std::declval<NCloud::NProto::EStorageMediaKind>())
+    } -> std::same_as<void>;
 };
 
 template <typename T>
-concept THasResponseHeaders = requires (T v)
-{
-    {v.GetHeaders()} -> std::convertible_to<NProto::TResponseHeaders>;
-    {v.MutableHeaders()} -> std::convertible_to<NProto::TResponseHeaders*>;
-    {v.ClearHeaders()} -> std::same_as<void>;
+concept THasResponseHeaders = requires(T v) {
+    {
+        v.GetHeaders()
+    } -> std::convertible_to<NProto::TResponseHeaders>;
+    {
+        v.MutableHeaders()
+    } -> std::convertible_to<NProto::TResponseHeaders*>;
+    {
+        v.ClearHeaders()
+    } -> std::same_as<void>;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-struct TFileStoreRequest {};
+struct TFileStoreRequest
+{
+};
 
-#define FILESTORE_DECLARE_REQUEST(name, ...)                                   \
-    template <>                                                                \
-    struct TFileStoreRequest<NProto::T##name##Request>                         \
-    {                                                                          \
-        static constexpr EFileStoreRequest Request = EFileStoreRequest::name;  \
-    };                                                                         \
-// FILESTORE_DECLARE_REQUEST
+#define FILESTORE_DECLARE_REQUEST(name, ...)                                  \
+    template <>                                                               \
+    struct TFileStoreRequest<NProto::T##name##Request>                        \
+    {                                                                         \
+        static constexpr EFileStoreRequest Request = EFileStoreRequest::name; \
+    };                                                                        \
+    // FILESTORE_DECLARE_REQUEST
 
 FILESTORE_PROTO_REQUESTS(FILESTORE_DECLARE_REQUEST)
 
 #undef FILESTORE_DECLARE_REQUEST
 
-    template <>
-    struct TFileStoreRequest<NProto::TReadDataLocalRequest>
-    {
-        static constexpr EFileStoreRequest Request = EFileStoreRequest::ReadData;
-    };
+template <>
+struct TFileStoreRequest<NProto::TReadDataLocalRequest>
+{
+    static constexpr EFileStoreRequest Request = EFileStoreRequest::ReadData;
+};
 
-    template <>
-    struct TFileStoreRequest<NProto::TWriteDataLocalRequest>
-    {
-        static constexpr EFileStoreRequest Request = EFileStoreRequest::WriteData;
-    };
+template <>
+struct TFileStoreRequest<NProto::TWriteDataLocalRequest>
+{
+    static constexpr EFileStoreRequest Request = EFileStoreRequest::WriteData;
+};
 
-}    // namespace NImpl
+}   // namespace NImpl
 
 ////////////////////////////////////////////////////////////////////////////////
 

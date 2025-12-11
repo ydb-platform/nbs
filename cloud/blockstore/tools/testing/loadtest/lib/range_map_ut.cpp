@@ -68,14 +68,13 @@ Y_UNIT_TEST_SUITE(TRangeMapTest)
                 store.GetBlock(TBlockRange64::MakeClosedInterval(9253, 9315));
             UNIT_ASSERT(r1.Defined() && store.Size() == 2);
         }
-
     }
 
     Y_UNIT_TEST(ShouldPutBlock)
     {
         {
             TRangeMap store(TBlockRange64::WithLength(0, 100));
-            store.PutBlock(TBlockRange64::WithLength(101,20));
+            store.PutBlock(TBlockRange64::WithLength(101, 20));
             UNIT_ASSERT(store.Size() == 2);
         }
 

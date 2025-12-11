@@ -10,36 +10,37 @@ using namespace std::placeholders;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestServerStats final
-    : public IServerStats
+class TTestServerStats final: public IServerStats
 {
 private:
     IServerStatsPtr Stub = CreateServerStatsStub();
 
 public:
     std::function<NMonitoring::TDynamicCounters::TCounterPtr(
-        NProto::EClientIpcType ipcType)> GetEndpointCounterHandler
-            = std::bind_front(&IServerStats::GetEndpointCounter, Stub.get());
+        NProto::EClientIpcType ipcType)>
+        GetEndpointCounterHandler =
+            std::bind_front(&IServerStats::GetEndpointCounter, Stub.get());
 
     std::function<bool(
         const NProto::TVolume& volume,
         const TString& clientId,
-        const TString& instanceId)> MountVolumeHandler
-            = std::bind_front(&IServerStats::MountVolume, Stub.get());
+        const TString& instanceId)>
+        MountVolumeHandler =
+            std::bind_front(&IServerStats::MountVolume, Stub.get());
 
-    std::function<void(
-        const TString& diskId,
-        const TString& clientId)> UnmountVolumeHandler
-            = std::bind_front(&IServerStats::UnmountVolume, Stub.get());
+    std::function<void(const TString& diskId, const TString& clientId)>
+        UnmountVolumeHandler =
+            std::bind_front(&IServerStats::UnmountVolume, Stub.get());
 
     std::function<void(
         const TString& diskId,
         const TString& cloudId,
-        const TString& folderId)> AlterVolumeHandler
-            = std::bind_front(&IServerStats::AlterVolume, Stub.get());
+        const TString& folderId)>
+        AlterVolumeHandler =
+            std::bind_front(&IServerStats::AlterVolume, Stub.get());
 
-    std::function<ui32(const TString& diskId)> GetBlockSizeHandler
-        = std::bind_front(&IServerStats::GetBlockSize, Stub.get());
+    std::function<ui32(const TString& diskId)> GetBlockSizeHandler =
+        std::bind_front(&IServerStats::GetBlockSize, Stub.get());
 
     std::function<void(
         TMetricRequest& metricRequest,
@@ -47,56 +48,61 @@ public:
         TString diskId,
         ui64 startIndex,
         ui64 requestBytes,
-        bool unaligned)> PrepareMetricRequestHandler
-            = std::bind_front(&IServerStats::PrepareMetricRequest, Stub.get());
+        bool unaligned)>
+        PrepareMetricRequestHandler =
+            std::bind_front(&IServerStats::PrepareMetricRequest, Stub.get());
 
     std::function<void(
         TLog& log,
         TMetricRequest& metricRequest,
         TCallContext& callContext,
-        const TString& message)> RequestStartedHandler
-            = std::bind_front(&IServerStats::RequestStarted, Stub.get());
+        const TString& message)>
+        RequestStartedHandler =
+            std::bind_front(&IServerStats::RequestStarted, Stub.get());
 
-    std::function<void(
-        TMetricRequest& metricRequest,
-        TCallContext& callContext)> RequestAcquiredHandler
-            = std::bind_front(&IServerStats::RequestAcquired, Stub.get());
+    std::function<
+        void(TMetricRequest& metricRequest, TCallContext& callContext)>
+        RequestAcquiredHandler =
+            std::bind_front(&IServerStats::RequestAcquired, Stub.get());
 
-    std::function<void(
-        TMetricRequest& metricRequest,
-        TCallContext& callContext)> RequestSentHandler
-            = std::bind_front(&IServerStats::RequestSent, Stub.get());
+    std::function<
+        void(TMetricRequest& metricRequest, TCallContext& callContext)>
+        RequestSentHandler =
+            std::bind_front(&IServerStats::RequestSent, Stub.get());
 
-    std::function<void(
-        TMetricRequest& metricRequest,
-        TCallContext& callContext)> ResponseReceivedHandler
-            = std::bind_front(&IServerStats::ResponseReceived, Stub.get());
+    std::function<
+        void(TMetricRequest& metricRequest, TCallContext& callContext)>
+        ResponseReceivedHandler =
+            std::bind_front(&IServerStats::ResponseReceived, Stub.get());
 
-    std::function<void(
-        TMetricRequest& metricRequest,
-        TCallContext& callContext)> ResponseSentHandler
-            = std::bind_front(&IServerStats::ResponseSent, Stub.get());
+    std::function<
+        void(TMetricRequest& metricRequest, TCallContext& callContext)>
+        ResponseSentHandler =
+            std::bind_front(&IServerStats::ResponseSent, Stub.get());
 
     std::function<void(
         TLog& log,
         TMetricRequest& metricRequest,
         TCallContext& callContext,
-        const NProto::TError& error)> RequestCompletedHandler
-            = std::bind_front(&IServerStats::RequestCompleted, Stub.get());
+        const NProto::TError& error)>
+        RequestCompletedHandler =
+            std::bind_front(&IServerStats::RequestCompleted, Stub.get());
 
     std::function<void(
         const TString& diskId,
         const TString& clientId,
-        EBlockStoreRequest requestType)> RequestFastPathHitHandler
-            = std::bind_front(&IServerStats::RequestFastPathHit, Stub.get());
+        EBlockStoreRequest requestType)>
+        RequestFastPathHitHandler =
+            std::bind_front(&IServerStats::RequestFastPathHit, Stub.get());
 
     std::function<void(
         TLog& Log,
         EBlockStoreRequest requestType,
         ui64 requestId,
         const TString& diskId,
-        const TString& clientId)> ReportExceptionHandler
-            = std::bind_front(&IServerStats::ReportException, Stub.get());
+        const TString& clientId)>
+        ReportExceptionHandler =
+            std::bind_front(&IServerStats::ReportException, Stub.get());
 
     std::function<void(
         TLog& Log,
@@ -104,17 +110,18 @@ public:
         ui64 requestId,
         const TString& diskId,
         const TString& clientId,
-        const TString& message)> ReportInfoHandler
-            = std::bind_front(&IServerStats::ReportInfo, Stub.get());
+        const TString& message)>
+        ReportInfoHandler =
+            std::bind_front(&IServerStats::ReportInfo, Stub.get());
 
     std::function<void(
         TCallContext& callContext,
         IVolumeInfoPtr volumeInfo,
         NCloud::NProto::EStorageMediaKind mediaKind,
         EBlockStoreRequest requestType,
-        TRequestTime time)> AddIncompleteRequestHandler = std::bind_front(
-            &IServerStats::AddIncompleteRequest,
-            Stub.get());
+        TRequestTime time)>
+        AddIncompleteRequestHandler =
+            std::bind_front(&IServerStats::AddIncompleteRequest, Stub.get());
 
     std::function<void(
         TMetricRequest& metricRequest,
@@ -122,20 +129,20 @@ public:
         ui64 bytes,
         ui64 errors,
         std::span<TTimeBucket> timeHist,
-        std::span<TSizeBucket> sizeHist)> BatchCompletedHandler = std::bind_front(
-            &IServerStats::BatchCompleted,
-            Stub.get());
+        std::span<TSizeBucket> sizeHist)>
+        BatchCompletedHandler =
+            std::bind_front(&IServerStats::BatchCompleted, Stub.get());
 
-    std::function<void(bool updateIntervalFinished)> UpdateStatsHandler
-        = std::bind_front(&IServerStats::UpdateStats, Stub.get());
+    std::function<void(bool updateIntervalFinished)> UpdateStatsHandler =
+        std::bind_front(&IServerStats::UpdateStats, Stub.get());
 
     TExecutorCounters::TExecutorScope StartExecutor() override
     {
         return Stub->StartExecutor();
     }
 
-    NMonitoring::TDynamicCounters::TCounterPtr
-        GetEndpointCounter(NProto::EClientIpcType ipcType) override
+    NMonitoring::TDynamicCounters::TCounterPtr GetEndpointCounter(
+        NProto::EClientIpcType ipcType) override
     {
         return GetEndpointCounterHandler(ipcType);
     }
@@ -148,9 +155,7 @@ public:
         return MountVolumeHandler(volume, clientId, instanceId);
     }
 
-    void UnmountVolume(
-        const TString& diskId,
-        const TString& clientId) override
+    void UnmountVolume(const TString& diskId, const TString& clientId) override
     {
         return UnmountVolumeHandler(diskId, clientId);
     }
@@ -246,12 +251,7 @@ public:
         const TString& diskId,
         const TString& clientId) override
     {
-        ReportExceptionHandler(
-            Log,
-            requestType,
-            requestId,
-            diskId,
-            clientId);
+        ReportExceptionHandler(Log, requestType, requestId, diskId, clientId);
     }
 
     void ReportInfo(

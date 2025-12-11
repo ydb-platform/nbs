@@ -21,7 +21,7 @@ namespace {
 
 struct TFree
 {
-    void operator () (void* ptr) const
+    void operator()(void* ptr) const
     {
         std::free(ptr);
     }
@@ -40,11 +40,11 @@ TAlignedBuffer Allocate(size_t byteCount, int value = 0)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSafeDeallocator
-    : public std::enable_shared_from_this<TSafeDeallocator>
+class TSafeDeallocator: public std::enable_shared_from_this<TSafeDeallocator>
 {
 private:
-    static constexpr ui64 ValidatedBlocksRatio = 1000; // 0.1% of blocks in device
+    static constexpr ui64 ValidatedBlocksRatio =
+        1000;   // 0.1% of blocks in device
     static constexpr ui64 MaxDeallocateChunkSize = 1_GB;
 
     const TString Filename;
@@ -69,13 +69,13 @@ private:
 
 public:
     TSafeDeallocator(
-            TString filename,
-            TFileHandle fd,
-            IFileIOServicePtr fileIO,
-            ui64 startIndex,
-            ui64 blocksCount,
-            ui32 blockSize,
-            NNvme::INvmeManagerPtr nvmeManager)
+        TString filename,
+        TFileHandle fd,
+        IFileIOServicePtr fileIO,
+        ui64 startIndex,
+        ui64 blocksCount,
+        ui32 blockSize,
+        NNvme::INvmeManagerPtr nvmeManager)
         : Filename(std::move(filename))
         , Fd(std::move(fd))
         , StartIndex(startIndex)
@@ -119,15 +119,17 @@ private:
 
         DeallocateNextBlockIndex += deallocateBlockCount;
 
-        future.Subscribe([self = shared_from_this()] (auto& future) {
-            const auto& error = future.GetValue();
-            if (HasError(error)) {
-                self->Response.SetValue(error);
-                return;
-            }
+        future.Subscribe(
+            [self = shared_from_this()](auto& future)
+            {
+                const auto& error = future.GetValue();
+                if (HasError(error)) {
+                    self->Response.SetValue(error);
+                    return;
+                }
 
-            self->DeallocateNextChunk();
-        });
+                self->DeallocateNextChunk();
+            });
     }
 
     void ValidateNextBlock()
@@ -165,17 +167,19 @@ private:
         }
 
         if (bytes != BlockSize) {
-            Response.SetValue(
-                MakeError(E_IO, TStringBuilder() <<
-                    "dealloc validator read " << bytes << " bytes"));
+            Response.SetValue(MakeError(
+                E_IO,
+                TStringBuilder()
+                    << "dealloc validator read " << bytes << " bytes"));
             return;
         }
 
         if (!IsDeallocatedBlock()) {
-            Response.SetValue(
-                MakeError(E_IO, TStringBuilder() <<
-                    "read non 00/ff block after deallocate at index " <<
-                    ValidatedBlockIndex));
+            Response.SetValue(MakeError(
+                E_IO,
+                TStringBuilder()
+                    << "read non 00/ff block after deallocate at index "
+                    << ValidatedBlockIndex));
             return;
         }
 

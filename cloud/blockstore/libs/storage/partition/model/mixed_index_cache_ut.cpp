@@ -56,9 +56,11 @@ Y_UNIT_TEST_SUITE(TMixedIndexCache)
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
 
 template <>
-inline void Out<NCloud::NBlockStore::NStorage::NPartition::TMixedIndexCache::ERangeTemperature>(
+inline void Out<NCloud::NBlockStore::NStorage::NPartition::TMixedIndexCache::
+                    ERangeTemperature>(
     IOutputStream& out,
-    NCloud::NBlockStore::NStorage::NPartition::TMixedIndexCache::ERangeTemperature t)
+    NCloud::NBlockStore::NStorage::NPartition::TMixedIndexCache::
+        ERangeTemperature t)
 {
     out << ToString(t);
 }

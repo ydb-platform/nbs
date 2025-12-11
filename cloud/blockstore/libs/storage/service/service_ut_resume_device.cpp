@@ -19,7 +19,8 @@ Y_UNIT_TEST_SUITE(TServiceResumeDeviceTest)
         const TString agentId = "agent.yandex.cloud.net";
         const TString diskId = "local0";
 
-        auto createDevice = [&] (TString name, TString uuid) {
+        auto createDevice = [&](TString name, TString uuid)
+        {
             NProto::TDeviceConfig device;
 
             device.SetAgentId(agentId);
@@ -37,12 +38,11 @@ Y_UNIT_TEST_SUITE(TServiceResumeDeviceTest)
             createDevice("/dev/nvme3n1", "uuid-1"),
             createDevice("/dev/nvme3n2", "uuid-2"),
             createDevice("/dev/nvme3n3", "uuid-3"),
-            createDevice("/dev/nvme3n4", "uuid-4")
-        };
+            createDevice("/dev/nvme3n4", "uuid-4")};
 
-        TTestEnv env {1, 1, 4, 1, {diskRegistryState}};
+        TTestEnv env{1, 1, 4, 1, {diskRegistryState}};
 
-        TServiceClient service {env.GetRuntime(), SetupTestEnv(env)};
+        TServiceClient service{env.GetRuntime(), SetupTestEnv(env)};
 
         {
             auto response = service.ResumeDevice(agentId, "/dev/nvme3n3");

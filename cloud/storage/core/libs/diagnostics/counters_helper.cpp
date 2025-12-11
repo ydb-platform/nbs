@@ -24,4 +24,4 @@ TIntrusivePtr<TDynamicCounters> MakeVisibilitySubgroup(
     return subgroup;
 }
 
-}   // NCloud
+}   // namespace NCloud

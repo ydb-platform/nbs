@@ -16,8 +16,7 @@ public:
         ui16 securePort = 0,
         const TString& rootCertsFile = {},
         const TString& keyFile = {},
-        const TString& certFile = {}
-    );
+        const TString& certFile = {});
     ~TFakeBlockStoreServer();
 
 public:

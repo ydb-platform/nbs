@@ -10,8 +10,7 @@ namespace NCloud::NBlockStore::NStorage::NDiskRegistryTest {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestLogbrokerService
-    : public NLogbroker::IService
+class TTestLogbrokerService: public NLogbroker::IService
 {
 public:
     struct TItem

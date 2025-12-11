@@ -37,9 +37,8 @@ template <typename TTable>
 bool TDiskRegistryDatabase::LoadConfigs(
     TVector<typename TTable::Config::Type>& configs)
 {
-    auto it = Table<TTable>()
-        .Range()
-        .template Select<typename TTable::TColumns>();
+    auto it =
+        Table<TTable>().Range().template Select<typename TTable::TColumns>();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -56,23 +55,21 @@ bool TDiskRegistryDatabase::LoadConfigs(
     return true;
 }
 
-bool TDiskRegistryDatabase::ReadDirtyDevices(TVector<TDirtyDevice>& dirtyDevices)
+bool TDiskRegistryDatabase::ReadDirtyDevices(
+    TVector<TDirtyDevice>& dirtyDevices)
 {
     using TTable = TDiskRegistrySchema::DirtyDevices;
 
-    auto it = Table<TTable>()
-        .Range()
-        .Select<TTable::TColumns>();
+    auto it = Table<TTable>().Range().Select<TTable::TColumns>();
 
     if (!it.IsReady()) {
         return false;   // not ready
     }
 
     while (it.IsValid()) {
-        dirtyDevices.emplace_back(TDirtyDevice {
+        dirtyDevices.emplace_back(TDirtyDevice{
             it.GetValue<TTable::Id>(),
-            it.GetValue<TTable::DiskId>()
-        });
+            it.GetValue<TTable::DiskId>()});
 
         if (!it.Next()) {
             return false;   // not ready
@@ -92,18 +89,18 @@ bool TDiskRegistryDatabase::ReadDisks(TVector<NProto::TDiskConfig>& disks)
     return LoadConfigs<TDiskRegistrySchema::Disks>(disks);
 }
 
-bool TDiskRegistryDatabase::ReadPlacementGroups(TVector<NProto::TPlacementGroupConfig>& groups)
+bool TDiskRegistryDatabase::ReadPlacementGroups(
+    TVector<NProto::TPlacementGroupConfig>& groups)
 {
     return LoadConfigs<TDiskRegistrySchema::PlacementGroups>(groups);
 }
 
-bool TDiskRegistryDatabase::ReadDiskRegistryConfig(NProto::TDiskRegistryConfig& config)
+bool TDiskRegistryDatabase::ReadDiskRegistryConfig(
+    NProto::TDiskRegistryConfig& config)
 {
     using TTable = TDiskRegistrySchema::DiskRegistryConfig;
 
-    auto it = Table<TTable>()
-        .Key(DISK_REGISTRY_CONFIG)
-        .Select();
+    auto it = Table<TTable>().Key(DISK_REGISTRY_CONFIG).Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -120,17 +117,15 @@ bool TDiskRegistryDatabase::ReadLastDiskStateSeqNo(ui64& lastSeqNo)
 {
     using TTable = TDiskRegistrySchema::DiskRegistryConfig;
 
-    auto it = Table<TTable>()
-        .Key(LAST_DISK_STATE_SEQ_NO)
-        .Select();
+    auto it = Table<TTable>().Key(LAST_DISK_STATE_SEQ_NO).Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
     }
 
     lastSeqNo = it.IsValid()
-        ? it.GetValue<TTable::Config>().GetLastDiskStateSeqNo()
-        : 0;
+                    ? it.GetValue<TTable::Config>().GetLastDiskStateSeqNo()
+                    : 0;
 
     return true;
 }
@@ -140,9 +135,7 @@ void TDiskRegistryDatabase::WriteDiskRegistryConfig(
 {
     using TTable = TDiskRegistrySchema::DiskRegistryConfig;
 
-    Table<TTable>()
-        .Key(DISK_REGISTRY_CONFIG)
-        .Update<TTable::Config>(config);
+    Table<TTable>().Key(DISK_REGISTRY_CONFIG).Update<TTable::Config>(config);
 }
 
 void TDiskRegistryDatabase::WriteLastDiskStateSeqNo(ui64 lastSeqNo)
@@ -152,41 +145,31 @@ void TDiskRegistryDatabase::WriteLastDiskStateSeqNo(ui64 lastSeqNo)
     NProto::TDiskRegistryConfig config;
     config.SetLastDiskStateSeqNo(lastSeqNo);
 
-    Table<TTable>()
-        .Key(LAST_DISK_STATE_SEQ_NO)
-        .Update<TTable::Config>(config);
+    Table<TTable>().Key(LAST_DISK_STATE_SEQ_NO).Update<TTable::Config>(config);
 }
 
 void TDiskRegistryDatabase::UpdateDisk(const NProto::TDiskConfig& config)
 {
     using TTable = TDiskRegistrySchema::Disks;
-    Table<TTable>()
-        .Key(config.GetDiskId())
-        .Update<TTable::Config>(config);
+    Table<TTable>().Key(config.GetDiskId()).Update<TTable::Config>(config);
 }
 
 void TDiskRegistryDatabase::DeleteDisk(const TString& diskId)
 {
     using TTable = TDiskRegistrySchema::Disks;
-    Table<TTable>()
-        .Key(diskId)
-        .Delete();
+    Table<TTable>().Key(diskId).Delete();
 }
 
 void TDiskRegistryDatabase::UpdateAgent(const NProto::TAgentConfig& config)
 {
     using TTable = TDiskRegistrySchema::AgentById;
-    Table<TTable>()
-        .Key(config.GetAgentId())
-        .Update<TTable::Config>(config);
+    Table<TTable>().Key(config.GetAgentId()).Update<TTable::Config>(config);
 }
 
 void TDiskRegistryDatabase::DeleteAgent(const TString& id)
 {
     using TTable = TDiskRegistrySchema::AgentById;
-    Table<TTable>()
-        .Key(id)
-        .Delete();
+    Table<TTable>().Key(id).Delete();
 }
 
 void TDiskRegistryDatabase::UpdateDirtyDevice(
@@ -195,34 +178,27 @@ void TDiskRegistryDatabase::UpdateDirtyDevice(
 {
     using TTable = TDiskRegistrySchema::DirtyDevices;
 
-    Table<TTable>()
-        .Key(uuid)
-        .Update<TTable::DiskId>(diskId);
+    Table<TTable>().Key(uuid).Update<TTable::DiskId>(diskId);
 }
 
 void TDiskRegistryDatabase::DeleteDirtyDevice(const TString& uuid)
 {
     using TTable = TDiskRegistrySchema::DirtyDevices;
 
-    Table<TTable>()
-        .Key(uuid)
-        .Delete();
+    Table<TTable>().Key(uuid).Delete();
 }
 
-void TDiskRegistryDatabase::UpdatePlacementGroup(const NProto::TPlacementGroupConfig& config)
+void TDiskRegistryDatabase::UpdatePlacementGroup(
+    const NProto::TPlacementGroupConfig& config)
 {
     using TTable = TDiskRegistrySchema::PlacementGroups;
-    Table<TTable>()
-        .Key(config.GetGroupId())
-        .Update<TTable::Config>(config);
+    Table<TTable>().Key(config.GetGroupId()).Update<TTable::Config>(config);
 }
 
 void TDiskRegistryDatabase::DeletePlacementGroup(const TString& groupId)
 {
     using TTable = TDiskRegistrySchema::PlacementGroups;
-    Table<TTable>()
-        .Key(groupId)
-        .Delete();
+    Table<TTable>().Key(groupId).Delete();
 }
 
 void TDiskRegistryDatabase::UpdateDiskState(
@@ -230,9 +206,7 @@ void TDiskRegistryDatabase::UpdateDiskState(
     ui64 seqNo)
 {
     using TTable = TDiskRegistrySchema::DiskStateChanges;
-    Table<TTable>()
-        .Key(seqNo, state.GetDiskId())
-        .Update<TTable::State>(state);
+    Table<TTable>().Key(seqNo, state.GetDiskId()).Update<TTable::State>(state);
 }
 
 bool TDiskRegistryDatabase::ReadDiskStateChanges(
@@ -240,9 +214,8 @@ bool TDiskRegistryDatabase::ReadDiskStateChanges(
 {
     using TTable = TDiskRegistrySchema::DiskStateChanges;
 
-    auto it = Table<TTable>()
-        .Range()
-        .template Select<typename TTable::TColumns>();
+    auto it =
+        Table<TTable>().Range().template Select<typename TTable::TColumns>();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -261,12 +234,12 @@ bool TDiskRegistryDatabase::ReadDiskStateChanges(
     return true;
 }
 
-void TDiskRegistryDatabase::DeleteDiskStateChanges(const TString& diskId, ui64 seqNo)
+void TDiskRegistryDatabase::DeleteDiskStateChanges(
+    const TString& diskId,
+    ui64 seqNo)
 {
     using TTable = TDiskRegistrySchema::DiskStateChanges;
-    Table<TTable>()
-        .Key(seqNo, diskId)
-        .Delete();
+    Table<TTable>().Key(seqNo, diskId).Delete();
 }
 
 void TDiskRegistryDatabase::AddBrokenDisk(const TBrokenDiskInfo& diskInfo)
@@ -281,19 +254,17 @@ bool TDiskRegistryDatabase::ReadBrokenDisks(TVector<TBrokenDiskInfo>& diskInfos)
 {
     using TTable = TDiskRegistrySchema::BrokenDisks;
 
-    auto it = Table<TTable>()
-        .Range()
-        .template Select<typename TTable::TColumns>();
+    auto it =
+        Table<TTable>().Range().template Select<typename TTable::TColumns>();
 
     if (!it.IsReady()) {
         return false;   // not ready
     }
 
     while (it.IsValid()) {
-        diskInfos.push_back({
-            it.GetValue<TTable::Id>(),
-            TInstant::MicroSeconds(it.GetValue<TTable::TsToDestroy>())
-        });
+        diskInfos.push_back(
+            {it.GetValue<TTable::Id>(),
+             TInstant::MicroSeconds(it.GetValue<TTable::TsToDestroy>())});
 
         if (!it.Next()) {
             return false;   // not ready
@@ -303,10 +274,8 @@ bool TDiskRegistryDatabase::ReadBrokenDisks(TVector<TBrokenDiskInfo>& diskInfos)
     Sort(
         diskInfos.begin(),
         diskInfos.end(),
-        [] (const TBrokenDiskInfo& l, const TBrokenDiskInfo& r) {
-            return l.TsToDestroy < r.TsToDestroy;
-        }
-    );
+        [](const TBrokenDiskInfo& l, const TBrokenDiskInfo& r)
+        { return l.TsToDestroy < r.TsToDestroy; });
 
     return true;
 }
@@ -314,26 +283,21 @@ bool TDiskRegistryDatabase::ReadBrokenDisks(TVector<TBrokenDiskInfo>& diskInfos)
 void TDiskRegistryDatabase::DeleteBrokenDisk(const TString& diskId)
 {
     using TTable = TDiskRegistrySchema::BrokenDisks;
-    Table<TTable>()
-        .Key(diskId)
-        .Delete();
+    Table<TTable>().Key(diskId).Delete();
 }
 
 void TDiskRegistryDatabase::AddDiskToReallocate(const TString& diskId)
 {
     using TTable = TDiskRegistrySchema::DisksToNotify;
-    Table<TTable>()
-        .Key(diskId)
-        .Update();
+    Table<TTable>().Key(diskId).Update();
 }
 
 bool TDiskRegistryDatabase::ReadDisksToReallocate(TVector<TString>& diskIds)
 {
     using TTable = TDiskRegistrySchema::DisksToNotify;
 
-    auto it = Table<TTable>()
-        .Range()
-        .template Select<typename TTable::TColumns>();
+    auto it =
+        Table<TTable>().Range().template Select<typename TTable::TColumns>();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -353,33 +317,26 @@ bool TDiskRegistryDatabase::ReadDisksToReallocate(TVector<TString>& diskIds)
 void TDiskRegistryDatabase::DeleteDiskToReallocate(const TString& diskId)
 {
     using TTable = TDiskRegistrySchema::DisksToNotify;
-    Table<TTable>()
-        .Key(diskId)
-        .Delete();
+    Table<TTable>().Key(diskId).Delete();
 }
 
 void TDiskRegistryDatabase::AddDiskToCleanup(const TString& diskId)
 {
     using TTable = TDiskRegistrySchema::DisksToCleanup;
-    Table<TTable>()
-        .Key(diskId)
-        .Update();
+    Table<TTable>().Key(diskId).Update();
 }
 
 void TDiskRegistryDatabase::DeleteDiskToCleanup(const TString& diskId)
 {
     using TTable = TDiskRegistrySchema::DisksToCleanup;
-    Table<TTable>()
-        .Key(diskId)
-        .Delete();
+    Table<TTable>().Key(diskId).Delete();
 }
 
 bool TDiskRegistryDatabase::ReadDisksToCleanup(TVector<TString>& diskIds)
 {
     using TTable = TDiskRegistrySchema::DisksToCleanup;
-    auto it = Table<TTable>()
-        .Range()
-        .template Select<typename TTable::TColumns>();
+    auto it =
+        Table<TTable>().Range().template Select<typename TTable::TColumns>();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -400,17 +357,14 @@ bool TDiskRegistryDatabase::ReadWritableState(bool& state)
 {
     using TTable = TDiskRegistrySchema::DiskRegistryConfig;
 
-    auto it = Table<TTable>()
-        .Key(WRITABLE_STATE)
-        .Select();
+    auto it = Table<TTable>().Key(WRITABLE_STATE).Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
     }
 
-    state = it.IsValid()
-        ? it.GetValue<TTable::Config>().GetWritableState()
-        : false;
+    state =
+        it.IsValid() ? it.GetValue<TTable::Config>().GetWritableState() : false;
 
     return true;
 }
@@ -422,36 +376,29 @@ void TDiskRegistryDatabase::WriteWritableState(bool state)
     NProto::TDiskRegistryConfig config;
     config.SetWritableState(state);
 
-    Table<TTable>()
-        .Key(WRITABLE_STATE)
-        .Update<TTable::Config>(config);
+    Table<TTable>().Key(WRITABLE_STATE).Update<TTable::Config>(config);
 }
 
 void TDiskRegistryDatabase::AddErrorNotification(const TString& diskId)
 {
     using TTable = TDiskRegistrySchema::ErrorNotifications;
 
-    Table<TTable>()
-        .Key(diskId)
-        .Update();
+    Table<TTable>().Key(diskId).Update();
 }
 
 void TDiskRegistryDatabase::DeleteErrorNotification(const TString& diskId)
 {
     using TTable = TDiskRegistrySchema::ErrorNotifications;
 
-    Table<TTable>()
-        .Key(diskId)
-        .Delete();
+    Table<TTable>().Key(diskId).Delete();
 }
 
 bool TDiskRegistryDatabase::ReadErrorNotifications(TVector<TString>& diskIds)
 {
     using TTable = TDiskRegistrySchema::ErrorNotifications;
 
-    auto it = Table<TTable>()
-        .Range()
-        .template Select<typename TTable::TColumns>();
+    auto it =
+        Table<TTable>().Range().template Select<typename TTable::TColumns>();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -482,9 +429,7 @@ void TDiskRegistryDatabase::DeleteUserNotification(ui64 seqNo)
 {
     using TTable = TDiskRegistrySchema::UserNotifications;
 
-    Table<TTable>()
-        .Key(seqNo)
-        .Delete();
+    Table<TTable>().Key(seqNo).Delete();
 }
 
 bool TDiskRegistryDatabase::ReadUserNotifications(
@@ -492,9 +437,8 @@ bool TDiskRegistryDatabase::ReadUserNotifications(
 {
     using TTable = TDiskRegistrySchema::UserNotifications;
 
-    auto it = Table<TTable>()
-        .Range()
-        .template Select<typename TTable::TColumns>();
+    auto it =
+        Table<TTable>().Range().template Select<typename TTable::TColumns>();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -515,27 +459,22 @@ void TDiskRegistryDatabase::AddOutdatedVolumeConfig(const TString& diskId)
 {
     using TTable = TDiskRegistrySchema::OutdatedVolumeConfigs;
 
-    Table<TTable>()
-        .Key(diskId)
-        .Update();
+    Table<TTable>().Key(diskId).Update();
 }
 
 void TDiskRegistryDatabase::DeleteOutdatedVolumeConfig(const TString& diskId)
 {
     using TTable = TDiskRegistrySchema::OutdatedVolumeConfigs;
 
-    Table<TTable>()
-        .Key(diskId)
-        .Delete();
+    Table<TTable>().Key(diskId).Delete();
 }
 
 bool TDiskRegistryDatabase::ReadOutdatedVolumeConfigs(TVector<TString>& diskIds)
 {
     using TTable = TDiskRegistrySchema::OutdatedVolumeConfigs;
 
-    auto it = Table<TTable>()
-        .Range()
-        .template Select<typename TTable::TColumns>();
+    auto it =
+        Table<TTable>().Range().template Select<typename TTable::TColumns>();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -557,9 +496,7 @@ bool TDiskRegistryDatabase::ReadSuspendedDevices(
 {
     using TTable = TDiskRegistrySchema::SuspendedDevices;
 
-    auto it = Table<TTable>()
-        .Range()
-        .Select<TTable::TColumns>();
+    auto it = Table<TTable>().Range().Select<TTable::TColumns>();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -581,35 +518,28 @@ void TDiskRegistryDatabase::UpdateSuspendedDevice(
 {
     using TTable = TDiskRegistrySchema::SuspendedDevices;
 
-    Table<TTable>()
-        .Key(device.GetId())
-        .Update<TTable::Config>(device);
+    Table<TTable>().Key(device.GetId()).Update<TTable::Config>(device);
 }
 
 void TDiskRegistryDatabase::DeleteSuspendedDevice(const TString& uuid)
 {
     using TTable = TDiskRegistrySchema::SuspendedDevices;
 
-    Table<TTable>()
-        .Key(uuid)
-        .Delete();
+    Table<TTable>().Key(uuid).Delete();
 }
 
 bool TDiskRegistryDatabase::ReadRestoreState(bool& state)
 {
     using TTable = TDiskRegistrySchema::DiskRegistryConfig;
 
-    auto it = Table<TTable>()
-        .Key(RESTORE_STATE)
-        .Select();
+    auto it = Table<TTable>().Key(RESTORE_STATE).Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
     }
 
-    state = it.IsValid()
-        ? it.GetValue<TTable::Config>().GetRestoreState()
-        : false;
+    state =
+        it.IsValid() ? it.GetValue<TTable::Config>().GetRestoreState() : false;
 
     return true;
 }
@@ -621,27 +551,22 @@ void TDiskRegistryDatabase::WriteRestoreState(bool state)
     NProto::TDiskRegistryConfig config;
     config.SetRestoreState(state);
 
-    Table<TTable>()
-        .Key(RESTORE_STATE)
-        .Update<TTable::Config>(config);
+    Table<TTable>().Key(RESTORE_STATE).Update<TTable::Config>(config);
 }
 
 bool TDiskRegistryDatabase::ReadLastBackupTs(TInstant& time)
 {
     using TTable = TDiskRegistrySchema::DiskRegistryConfig;
 
-    auto it = Table<TTable>()
-        .Key(LAST_BACKUP_TS)
-        .Select();
+    auto it = Table<TTable>().Key(LAST_BACKUP_TS).Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
     }
 
-    time = it.IsValid()
-        ? TInstant::MilliSeconds(
-            it.GetValue<TTable::Config>().GetLastBackupTs())
-        : TInstant::Zero();
+    time = it.IsValid() ? TInstant::MilliSeconds(
+                              it.GetValue<TTable::Config>().GetLastBackupTs())
+                        : TInstant::Zero();
 
     return true;
 }
@@ -653,9 +578,7 @@ void TDiskRegistryDatabase::WriteLastBackupTs(TInstant time)
     NProto::TDiskRegistryConfig config;
     config.SetLastBackupTs(time.MilliSeconds());
 
-    Table<TTable>()
-        .Key(LAST_BACKUP_TS)
-        .Update<TTable::Config>(config);
+    Table<TTable>().Key(LAST_BACKUP_TS).Update<TTable::Config>(config);
 }
 
 void TDiskRegistryDatabase::AddAutomaticallyReplacedDevice(
@@ -672,19 +595,17 @@ bool TDiskRegistryDatabase::ReadAutomaticallyReplacedDevices(
 {
     using TTable = TDiskRegistrySchema::AutomaticallyReplacedDevices;
 
-    auto it = Table<TTable>()
-        .Range()
-        .template Select<typename TTable::TColumns>();
+    auto it =
+        Table<TTable>().Range().template Select<typename TTable::TColumns>();
 
     if (!it.IsReady()) {
         return false;   // not ready
     }
 
     while (it.IsValid()) {
-        deviceInfos.push_back({
-            it.GetValue<TTable::Id>(),
-            TInstant::MicroSeconds(it.GetValue<TTable::ReplacementTs>())
-        });
+        deviceInfos.push_back(
+            {it.GetValue<TTable::Id>(),
+             TInstant::MicroSeconds(it.GetValue<TTable::ReplacementTs>())});
 
         if (!it.Next()) {
             return false;   // not ready
@@ -694,10 +615,8 @@ bool TDiskRegistryDatabase::ReadAutomaticallyReplacedDevices(
     Sort(
         deviceInfos.begin(),
         deviceInfos.end(),
-        [] (const auto& l, const auto& r) {
-            return l.ReplacementTs < r.ReplacementTs;
-        }
-    );
+        [](const auto& l, const auto& r)
+        { return l.ReplacementTs < r.ReplacementTs; });
 
     return true;
 }
@@ -706,25 +625,25 @@ void TDiskRegistryDatabase::DeleteAutomaticallyReplacedDevice(
     const TString& deviceId)
 {
     using TTable = TDiskRegistrySchema::AutomaticallyReplacedDevices;
-    Table<TTable>()
-        .Key(deviceId)
-        .Delete();
+    Table<TTable>().Key(deviceId).Delete();
 }
 
-void TDiskRegistryDatabase::AddDiskRegistryAgentListParams(const TString& agentId, const NProto::TDiskRegistryAgentParams& params) {
+void TDiskRegistryDatabase::AddDiskRegistryAgentListParams(
+    const TString& agentId,
+    const NProto::TDiskRegistryAgentParams& params)
+{
     using TTable = TDiskRegistrySchema::DiskRegistryAgentListParams;
 
-    Table<TTable>()
-        .Key(agentId)
-        .Update<TTable::Params>(params);
+    Table<TTable>().Key(agentId).Update<TTable::Params>(params);
 }
 
-bool TDiskRegistryDatabase::ReadDiskRegistryAgentListParams(THashMap<TString, NProto::TDiskRegistryAgentParams>& params) {
+bool TDiskRegistryDatabase::ReadDiskRegistryAgentListParams(
+    THashMap<TString, NProto::TDiskRegistryAgentParams>& params)
+{
     using TTable = TDiskRegistrySchema::DiskRegistryAgentListParams;
 
-    auto it = Table<TTable>()
-        .Range()
-        .template Select<typename TTable::TColumns>();
+    auto it =
+        Table<TTable>().Range().template Select<typename TTable::TColumns>();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -742,12 +661,12 @@ bool TDiskRegistryDatabase::ReadDiskRegistryAgentListParams(THashMap<TString, NP
     return true;
 }
 
-void TDiskRegistryDatabase::DeleteDiskRegistryAgentListParams(const TString& agentId) {
+void TDiskRegistryDatabase::DeleteDiskRegistryAgentListParams(
+    const TString& agentId)
+{
     using TTable = TDiskRegistrySchema::DiskRegistryAgentListParams;
 
-    Table<TTable>()
-        .Key(agentId)
-        .Delete();
+    Table<TTable>().Key(agentId).Delete();
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

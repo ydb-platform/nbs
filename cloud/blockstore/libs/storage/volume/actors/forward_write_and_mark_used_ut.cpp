@@ -1,6 +1,7 @@
 #include "forward_write_and_mark_used.h"
 
 #include <contrib/ydb/library/actors/testlib/test_runtime.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -9,8 +10,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 Y_UNIT_TEST_SUITE(TForwardWriteAndMarkUsedTests)
 {
-    struct TActorSystem
-        : NActors::TTestActorRuntimeBase
+    struct TActorSystem: NActors::TTestActorRuntimeBase
     {
         void Start()
         {
@@ -23,8 +23,7 @@ Y_UNIT_TEST_SUITE(TForwardWriteAndMarkUsedTests)
         }
     };
 
-    struct TSetupEnvironment
-        : public TCurrentTestCase
+    struct TSetupEnvironment: public TCurrentTestCase
     {
         NActors::TActorId EdgeActor;
         TActorSystem ActorSystem;
@@ -36,8 +35,7 @@ Y_UNIT_TEST_SUITE(TForwardWriteAndMarkUsedTests)
         }
     };
 
-    struct TSetupParallelEnvironment
-        : public TSetupEnvironment
+    struct TSetupParallelEnvironment: public TSetupEnvironment
     {
         NActors::TActorId WriteActor;
 
@@ -64,8 +62,7 @@ Y_UNIT_TEST_SUITE(TForwardWriteAndMarkUsedTests)
         }
     };
 
-    struct TSetupConsistentlyEnvironment
-        : public TSetupEnvironment
+    struct TSetupConsistentlyEnvironment: public TSetupEnvironment
     {
         NActors::TActorId WriteActor;
 
@@ -105,7 +102,8 @@ Y_UNIT_TEST_SUITE(TForwardWriteAndMarkUsedTests)
         try {
             ActorSystem.GrabEdgeEvent<TEvVolume::TEvUpdateUsedBlocksRequest>();
             UNIT_ASSERT_C(0, "Exception hasn't been thrown");
-        } catch (...) {}
+        } catch (...) {
+        }
 
         ActorSystem.Send(new NActors::IEventHandle(
             WriteActor,
@@ -124,7 +122,8 @@ Y_UNIT_TEST_SUITE(TForwardWriteAndMarkUsedTests)
         ActorSystem.Send(new NActors::IEventHandle(
             WriteActor,
             EdgeActor,
-            new TEvService::TWriteBlocksMethod::TResponse(MakeError(E_REJECTED))));
+            new TEvService::TWriteBlocksMethod::TResponse(
+                MakeError(E_REJECTED))));
 
         ActorSystem.Send(new NActors::IEventHandle(
             WriteActor,
@@ -132,23 +131,29 @@ Y_UNIT_TEST_SUITE(TForwardWriteAndMarkUsedTests)
             new TEvVolume::TEvUpdateUsedBlocksResponse()));
 
         UNIT_ASSERT_EQUAL(
-            ActorSystem.GrabEdgeEvent<
-                TEvService::TWriteBlocksMethod::TResponse>()->GetError().code(),
+            ActorSystem
+                .GrabEdgeEvent<TEvService::TWriteBlocksMethod::TResponse>()
+                ->GetError()
+                .code(),
             E_REJECTED);
 
         UNIT_ASSERT_EQUAL(
-            ActorSystem.GrabEdgeEvent<
-                TEvVolumePrivate::TEvWriteOrZeroCompleted>()->ResultCode,
+            ActorSystem
+                .GrabEdgeEvent<TEvVolumePrivate::TEvWriteOrZeroCompleted>()
+                ->ResultCode,
             E_REJECTED);
     }
 
-    Y_UNIT_TEST_F(ConsistentlyShouldWriteAndMarkSuccess, TSetupConsistentlyEnvironment)
+    Y_UNIT_TEST_F(
+        ConsistentlyShouldWriteAndMarkSuccess,
+        TSetupConsistentlyEnvironment)
     {
         ActorSystem.GrabEdgeEvent<TEvService::TWriteBlocksMethod::TRequest>();
         try {
             ActorSystem.GrabEdgeEvent<TEvVolume::TEvUpdateUsedBlocksRequest>();
             UNIT_ASSERT_C(0, "Exception hasn't been thrown");
-        } catch (...) {}
+        } catch (...) {
+        }
 
         ActorSystem.Send(new NActors::IEventHandle(
             WriteActor,
@@ -166,28 +171,35 @@ Y_UNIT_TEST_SUITE(TForwardWriteAndMarkUsedTests)
         ActorSystem.GrabEdgeEvent<TEvVolumePrivate::TEvWriteOrZeroCompleted>();
     }
 
-    Y_UNIT_TEST_F(ConsistentlyShouldWriteAndMarkError, TSetupConsistentlyEnvironment)
+    Y_UNIT_TEST_F(
+        ConsistentlyShouldWriteAndMarkError,
+        TSetupConsistentlyEnvironment)
     {
         ActorSystem.GrabEdgeEvent<TEvService::TWriteBlocksMethod::TRequest>();
 
         ActorSystem.Send(new NActors::IEventHandle(
             WriteActor,
             EdgeActor,
-            new TEvService::TWriteBlocksMethod::TResponse(MakeError(E_REJECTED))));
+            new TEvService::TWriteBlocksMethod::TResponse(
+                MakeError(E_REJECTED))));
 
         try {
             ActorSystem.GrabEdgeEvent<TEvVolume::TEvUpdateUsedBlocksRequest>();
             UNIT_ASSERT_C(0, "Exception hasn't been thrown");
-        } catch (...) {}
+        } catch (...) {
+        }
 
         UNIT_ASSERT_EQUAL(
-            ActorSystem.GrabEdgeEvent<
-                TEvService::TWriteBlocksMethod::TResponse>()->GetError().code(),
+            ActorSystem
+                .GrabEdgeEvent<TEvService::TWriteBlocksMethod::TResponse>()
+                ->GetError()
+                .code(),
             E_REJECTED);
 
         UNIT_ASSERT_EQUAL(
-            ActorSystem.GrabEdgeEvent<
-                TEvVolumePrivate::TEvWriteOrZeroCompleted>()->ResultCode,
+            ActorSystem
+                .GrabEdgeEvent<TEvVolumePrivate::TEvWriteOrZeroCompleted>()
+                ->ResultCode,
             E_REJECTED);
     }
 }

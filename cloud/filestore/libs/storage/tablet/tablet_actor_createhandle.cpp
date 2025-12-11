@@ -51,8 +51,10 @@ void TIndexTabletActor::HandleCreateHandle(
 {
     using TResponse = TEvService::TEvCreateHandleResponse;
 
-    auto* session =
-        AcceptRequest<TEvService::TCreateHandleMethod>(ev, ctx, ValidateRequest);
+    auto* session = AcceptRequest<TEvService::TCreateHandleMethod>(
+        ev,
+        ctx,
+        ValidateRequest);
     if (!session) {
         return;
     }
@@ -60,8 +62,9 @@ void TIndexTabletActor::HandleCreateHandle(
     auto* msg = ev->Get();
     const auto requestId = GetRequestId(msg->Record);
     if (const auto* e = session->LookupDupEntry(requestId)) {
-        const bool shouldStoreHandles = BehaveAsShard(msg->Record.GetHeaders())
-            || GetFileSystem().GetShardFileSystemIds().empty();
+        const bool shouldStoreHandles =
+            BehaveAsShard(msg->Record.GetHeaders()) ||
+            GetFileSystem().GetShardFileSystemIds().empty();
         auto response = std::make_unique<TResponse>();
 
         // sometimes we may receive duplicate request ids - either due to
@@ -71,25 +74,30 @@ void TIndexTabletActor::HandleCreateHandle(
         if (!GetDupCacheEntry(e, response->Record)) {
             // invalid entry type - it's certainly a request id collision
             session->DropDupEntry(requestId);
-        } else if (msg->Record.GetName().empty() && msg->Record.GetNodeId()
-                != response->Record.GetNodeAttr().GetId())
+        } else if (
+            msg->Record.GetName().empty() &&
+            msg->Record.GetNodeId() != response->Record.GetNodeAttr().GetId())
         {
             // this handle relates to a different node id => it's certainly a
             // request id collision as well
-            ReportDuplicateRequestId(TStringBuilder() << "CreateHandle response"
+            ReportDuplicateRequestId(
+                TStringBuilder()
+                << "CreateHandle response"
                 << " for different NodeId found for RequestId=" << requestId
                 << ": " << response->Record.GetNodeAttr().GetId()
                 << " != " << msg->Record.GetNodeId());
             session->DropDupEntry(requestId);
-        } else if (shouldStoreHandles
-                && !HasError(response->Record.GetError())
-                && !FindHandle(response->Record.GetHandle()))
+        } else if (
+            shouldStoreHandles && !HasError(response->Record.GetError()) &&
+            !FindHandle(response->Record.GetHandle()))
         {
             // there is no open handle associated with this CreateHandleResponse
             // even though it may be an actual retry attempt of some old request
             // it's still safer to disregard this DupCache entry and try to
             // rerun this request
-            ReportDuplicateRequestId(TStringBuilder() << "CreateHandle response"
+            ReportDuplicateRequestId(
+                TStringBuilder()
+                << "CreateHandle response"
                 << " with stale handle found for RequestId=" << requestId
                 << ": ResponseNodeId=" << response->Record.GetNodeAttr().GetId()
                 << " NodeId=" << msg->Record.GetNodeId()
@@ -110,9 +118,10 @@ void TIndexTabletActor::HandleCreateHandle(
         }
 
         if (!found) {
-            auto error = MakeError(E_ARGUMENT, TStringBuilder() <<
-                "invalid shard id: "
-                << msg->Record.GetShardFileSystemId());
+            auto error = MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "invalid shard id: "
+                                 << msg->Record.GetShardFileSystemId());
             LOG_ERROR(
                 ctx,
                 TFileStoreComponents::TABLET,
@@ -126,10 +135,8 @@ void TIndexTabletActor::HandleCreateHandle(
         }
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TCreateHandleMethod>(*requestInfo);
@@ -151,12 +158,11 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
 
     FILESTORE_VALIDATE_DUPTX_SESSION(CreateHandle, args);
 
-    auto* session = FindSession(
-        args.ClientId,
-        args.SessionId,
-        args.SessionSeqNo);
+    auto* session =
+        FindSession(args.ClientId, args.SessionId, args.SessionSeqNo);
     if (!session) {
-        auto message = ReportSessionNotFoundInTx(TStringBuilder()
+        auto message = ReportSessionNotFoundInTx(
+            TStringBuilder()
             << "CreateHandle: " << args.Request.ShortDebugString());
         args.Error = MakeError(E_INVALID_STATE, std::move(message));
         return true;
@@ -180,7 +186,9 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
             return false;
         }
 
-        if (!args.ParentNode || args.ParentNode->Attrs.GetType() != NProto::E_DIRECTORY_NODE) {
+        if (!args.ParentNode ||
+            args.ParentNode->Attrs.GetType() != NProto::E_DIRECTORY_NODE)
+        {
             args.Error = ErrorIsNotDirectory(args.NodeId);
             return true;
         }
@@ -205,9 +213,9 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
             }
 
             auto shardId = args.RequestShardId;
-            if (!BehaveAsShard(args.Request.GetHeaders())
-                    && !GetFileSystem().GetShardFileSystemIds().empty()
-                    && Config->GetShardIdSelectionInLeaderEnabled())
+            if (!BehaveAsShard(args.Request.GetHeaders()) &&
+                !GetFileSystem().GetShardFileSystemIds().empty() &&
+                Config->GetShardIdSelectionInLeaderEnabled())
             {
                 args.Error = SelectShard(0 /*fileSize*/, &shardId);
                 if (HasError(args.Error)) {
@@ -223,7 +231,8 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
         } else {
             // if yes check whether O_EXCL was specified, assume O_CREAT is also
             // specified
-            if (HasFlag(args.Flags, NProto::TCreateHandleRequest::E_EXCLUSIVE)) {
+            if (HasFlag(args.Flags, NProto::TCreateHandleRequest::E_EXCLUSIVE))
+            {
                 args.Error = ErrorAlreadyExists(args.Name);
                 return true;
             }
@@ -238,13 +247,18 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
             args.Error = MakeError(
                 E_ARGUMENT,
                 TStringBuilder() << "CreateHandle request without Name and with"
-                " ShardId is not supported");
+                                    " ShardId is not supported");
             return true;
         }
     }
 
     if (args.TargetNodeId != InvalidNodeId) {
-        if (!ReadNode(db, args.TargetNodeId, args.ReadCommitId, args.TargetNode)) {
+        if (!ReadNode(
+                db,
+                args.TargetNodeId,
+                args.ReadCommitId,
+                args.TargetNode))
+        {
             return false;   // not ready
         }
 
@@ -274,7 +288,8 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
 
     auto* session = FindSession(args.SessionId);
     if (!session) {
-        auto message = ReportSessionNotFoundInTx(TStringBuilder()
+        auto message = ReportSessionNotFoundInTx(
+            TStringBuilder()
             << "CreateHandle: " << args.Request.ShortDebugString());
         args.Error = MakeError(E_INVALID_STATE, std::move(message));
         return;
@@ -288,18 +303,20 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
 
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
 
-    if (args.TargetNodeId == InvalidNodeId
-            && (args.ShardId.empty() || args.IsNewShardNode))
+    if (args.TargetNodeId == InvalidNodeId &&
+        (args.ShardId.empty() || args.IsNewShardNode))
     {
         if (args.TargetNode) {
-            auto message = ReportTargetNodeWithoutRef(TStringBuilder()
+            auto message = ReportTargetNodeWithoutRef(
+                TStringBuilder()
                 << "CreateHandle: " << args.Request.ShortDebugString());
             args.Error = MakeError(E_INVALID_STATE, std::move(message));
             return;
         }
 
         if (!args.ParentNode) {
-            auto message = ReportParentNodeIsNull(TStringBuilder()
+            auto message = ReportParentNodeIsNull(
+                TStringBuilder()
                 << "CreateHandle: " << args.Request.ShortDebugString());
             args.Error = MakeError(E_INVALID_STATE, std::move(message));
             return;
@@ -308,17 +325,13 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         if (args.ShardId.empty()) {
             NProto::TNode attrs =
                 CreateRegularAttrs(args.Mode, args.Uid, args.Gid);
-            args.TargetNodeId = CreateNode(
-                db,
-                args.WriteCommitId,
-                attrs);
+            args.TargetNodeId = CreateNode(db, args.WriteCommitId, attrs);
 
-            args.TargetNode = IIndexTabletDatabase::TNode {
+            args.TargetNode = IIndexTabletDatabase::TNode{
                 args.TargetNodeId,
                 attrs,
                 args.WriteCommitId,
-                InvalidCommitId
-            };
+                InvalidCommitId};
         }
 
         // TODO: support for O_TMPFILE
@@ -342,8 +355,9 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
             args.ParentNode->Attrs);
         args.UpdatedNodes.push_back(args.ParentNode->NodeId);
 
-    } else if (args.ShardId.empty()
-        && HasFlag(args.Flags, NProto::TCreateHandleRequest::E_TRUNCATE))
+    } else if (
+        args.ShardId.empty() &&
+        HasFlag(args.Flags, NProto::TCreateHandleRequest::E_TRUNCATE))
     {
         auto e = Truncate(
             db,
@@ -378,7 +392,8 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
             args.Flags);
 
         if (!handle) {
-            auto message = ReportFailedToCreateHandle(TStringBuilder()
+            auto message = ReportFailedToCreateHandle(
+                TStringBuilder()
                 << "CreateHandle: " << args.Request.ShortDebugString());
             args.Error = MakeError(E_INVALID_STATE, std::move(message));
             return;
@@ -458,7 +473,9 @@ void TIndexTabletActor::CompleteTx_CreateHandle(
     }
 
     if (args.OpLogEntry.HasCreateNodeRequest() && !HasError(args.Error)) {
-        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s Creating node in shard upon CreateHandle: %s, %s",
             LogTag.c_str(),
             args.ShardId.c_str(),

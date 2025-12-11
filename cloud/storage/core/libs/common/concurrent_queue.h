@@ -2,8 +2,9 @@
 
 #include "public.h"
 
-#include <util/generic/utility.h>
 #include <library/cpp/deprecated/atomic/atomic.h>
+
+#include <util/generic/utility.h>
 #include <util/system/spinlock.h>
 
 namespace NCloud {
@@ -30,7 +31,7 @@ class TConcurrentQueue
     static constexpr size_t SegmentCapacity =
         (PLATFORM_PAGE_SIZE - sizeof(TSegmentHeader)) / sizeof(T*);
 
-    struct TSegment : TSegmentHeader
+    struct TSegment: TSegmentHeader
     {
         // pointer could be published atomically,
         // but if you want to store more complex data -
@@ -181,7 +182,8 @@ private:
             if (Y_UNLIKELY(tail != prev)) {
                 return tail;
             }
-            // ... and then check for the next segment - it could be published already
+            // ... and then check for the next segment - it could be published
+            // already
             auto* next = AtomicGet(tail->Next);
             if (Y_UNLIKELY(next)) {
                 return next;
@@ -235,8 +237,9 @@ private:
         auto* head = AtomicGet(FreeList);
 
         if (AtomicDecrement(ActiveThreads) == 0) {
-            // there were no other threads running at the moment we catch the free-list head
-            // use CAS to grab the head AND ensure no segments removed since then
+            // there were no other threads running at the moment we catch the
+            // free-list head use CAS to grab the head AND ensure no segments
+            // removed since then
             if (head && AtomicCas(&FreeList, nullptr, head)) {
                 DeleteSegments(head);
             }

@@ -10,23 +10,24 @@
 
 namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
-#define COMPARE_MARKS(expected, marks, range) {                                \
-    UNIT_ASSERT_VALUES_EQUAL_C(                                                \
-        expected.size(),                                                       \
-        marks.size(),                                                          \
-        DescribeRange(range)                                                   \
-    );                                                                         \
-    for (size_t i = 0; i < marks.size(); ++i) {                                \
-        UNIT_ASSERT_VALUES_EQUAL_C(expected[i], marks[i], i);                  \
-    }                                                                          \
-}                                                                              \
+#define COMPARE_MARKS(expected, marks, range)                     \
+    {                                                             \
+        UNIT_ASSERT_VALUES_EQUAL_C(                               \
+            expected.size(),                                      \
+            marks.size(),                                         \
+            DescribeRange(range));                                \
+        for (size_t i = 0; i < marks.size(); ++i) {               \
+            UNIT_ASSERT_VALUES_EQUAL_C(expected[i], marks[i], i); \
+        }                                                         \
+    }
 
-#define CHECK_MARKS(m, range, maxMark, expected) {                             \
-    TVector<TDeletedBlock> marks;                                         \
-    m.FindMarks(range, maxMark, &marks);                                       \
-    COMPARE_MARKS(expected, marks, range)                                      \
-}                                                                              \
-// CHECK_MARKS
+#define CHECK_MARKS(m, range, maxMark, expected) \
+    {                                            \
+        TVector<TDeletedBlock> marks;            \
+        m.FindMarks(range, maxMark, &marks);     \
+        COMPARE_MARKS(expected, marks, range)    \
+    }                                            \
+    // CHECK_MARKS
 
 namespace {
 
@@ -40,8 +41,7 @@ struct TReferenceImplementation
     TReferenceImplementation(TBlockRange32 range)
         : Range(range)
         , Marks(range.Size())
-    {
-    }
+    {}
 
     void Mark(const TBlockRange32& blockRange, const ui64 mark)
     {
@@ -90,8 +90,7 @@ Y_UNIT_TEST_SUITE(TDisjointRangeMapTest)
             m,
             TBlockRange32::MakeClosedInterval(0, 100),
             0,
-            TVector<TDeletedBlock>{}
-        );
+            TVector<TDeletedBlock>{});
         CHECK_MARKS(
             m,
             TBlockRange32::MakeClosedInterval(0, 100),
@@ -100,8 +99,7 @@ Y_UNIT_TEST_SUITE(TDisjointRangeMapTest)
                 {1, 1},
                 {2, 1},
                 {3, 1},
-            })
-        );
+            }));
         CHECK_MARKS(
             m,
             TBlockRange32::MakeClosedInterval(0, 100),
@@ -110,8 +108,7 @@ Y_UNIT_TEST_SUITE(TDisjointRangeMapTest)
                 {1, 1},
                 {2, 1},
                 {3, 1},
-            })
-        );
+            }));
 
         m.Mark(TBlockRange32::MakeClosedInterval(2, 5), 2);
 
@@ -121,8 +118,7 @@ Y_UNIT_TEST_SUITE(TDisjointRangeMapTest)
             1,
             (TVector<TDeletedBlock>{
                 {1, 1},
-            })
-        );
+            }));
         CHECK_MARKS(
             m,
             TBlockRange32::MakeClosedInterval(0, 100),
@@ -133,8 +129,7 @@ Y_UNIT_TEST_SUITE(TDisjointRangeMapTest)
                 {3, 2},
                 {4, 2},
                 {5, 2},
-            })
-        );
+            }));
 
         m.Mark(TBlockRange32::MakeClosedInterval(2, 7), 4);
         m.Mark(TBlockRange32::MakeClosedInterval(19, 20), 6);
@@ -160,10 +155,11 @@ Y_UNIT_TEST_SUITE(TDisjointRangeMapTest)
                 {20, 6},
                 {21, 5},
                 {22, 5},
-            })
-        );
+            }));
 
-        m.Mark(TBlockRange32::MakeClosedInterval(65536 + 1024, 65536 + 1026), 8);
+        m.Mark(
+            TBlockRange32::MakeClosedInterval(65536 + 1024, 65536 + 1026),
+            8);
 
         CHECK_MARKS(
             m,
@@ -186,8 +182,7 @@ Y_UNIT_TEST_SUITE(TDisjointRangeMapTest)
                 {65536 + 1024, 8},
                 {65536 + 1025, 8},
                 {65536 + 1026, 8},
-            })
-        );
+            }));
 
         CHECK_MARKS(
             m,
@@ -197,15 +192,16 @@ Y_UNIT_TEST_SUITE(TDisjointRangeMapTest)
                 {65536 + 1024, 8},
                 {65536 + 1025, 8},
                 {65536 + 1026, 8},
-            })
-        );
+            }));
 
         TVector<ui32> visited;
-        m.Visit([&] (const TBlockRange32& range) {
-            for (ui32 i = range.Start; i <= range.End; ++i) {
-                visited.push_back(i);
-            }
-        });
+        m.Visit(
+            [&](const TBlockRange32& range)
+            {
+                for (ui32 i = range.Start; i <= range.End; ++i) {
+                    visited.push_back(i);
+                }
+            });
 
         UNIT_ASSERT_VALUES_EQUAL(16, visited.size());
         UNIT_ASSERT_VALUES_EQUAL(1, visited[0]);
@@ -266,9 +262,8 @@ Y_UNIT_TEST_SUITE(TDisjointRangeMapTest)
         }
 
         if (markedRanges < 100) {
-            m.Visit([] (const TBlockRange32& range) {
-                Cdbg << "VISIT: " << DescribeRange(range) << Endl;
-            });
+            m.Visit([](const TBlockRange32& range)
+                    { Cdbg << "VISIT: " << DescribeRange(range) << Endl; });
         }
 
         ui32 start = 0;
@@ -293,18 +288,22 @@ Y_UNIT_TEST_SUITE(TDisjointRangeMapTest)
 
         {
             TSet<ui32> visited;
-            m.Visit([&] (const TBlockRange32& range) {
-                for (auto b: xrange(range)) {
-                    visited.insert(b);
-                }
-            });
+            m.Visit(
+                [&](const TBlockRange32& range)
+                {
+                    for (auto b: xrange(range)) {
+                        visited.insert(b);
+                    }
+                });
 
             TSet<ui32> expected;
-            r.Visit([&] (const TBlockRange32& range) {
-                for (auto b: xrange(range)) {
-                    expected.insert(b);
-                }
-            });
+            r.Visit(
+                [&](const TBlockRange32& range)
+                {
+                    for (auto b: xrange(range)) {
+                        expected.insert(b);
+                    }
+                });
 
             auto it = visited.begin();
             auto eit = expected.begin();
@@ -323,24 +322,20 @@ Y_UNIT_TEST_SUITE(TDisjointRangeMapTest)
     {
         RandomizedMarkAndFindAndVisitTestImpl(
             EOptimizationMode::OptimizeForLongRanges,
-            32768
-        );
+            32768);
         RandomizedMarkAndFindAndVisitTestImpl(
             EOptimizationMode::OptimizeForLongRanges,
-            32
-        );
+            32);
     }
 
     Y_UNIT_TEST(RandomizedMarkAndFindTestForShortRangesMode)
     {
         RandomizedMarkAndFindAndVisitTestImpl(
             EOptimizationMode::OptimizeForShortRanges,
-            32768
-        );
+            32768);
         RandomizedMarkAndFindAndVisitTestImpl(
             EOptimizationMode::OptimizeForShortRanges,
-            32
-        );
+            32);
     }
 }
 

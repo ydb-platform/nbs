@@ -94,10 +94,10 @@ char* TMemoryTestStorage::GetPtr(ui32 blockIndex, ui32 blockSize)
     return Data.data() + blockSize * blockIndex;
 }
 
-TFuture<NProto::TWriteBlocksLocalResponse> TMemoryTestStorage::
-    DoWriteBlocksLocal(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+TFuture<NProto::TWriteBlocksLocalResponse>
+TMemoryTestStorage::DoWriteBlocksLocal(
+    TCallContextPtr callContext,
+    std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
 {
     Y_UNUSED(callContext);
 

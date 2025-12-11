@@ -23,7 +23,7 @@ struct TBlockComp
         }
 
         return l.Block.MinCommitId < r.Block.MinCommitId;
-    };
+    }
 };
 
 }   // namespace
@@ -32,13 +32,13 @@ struct TBlockComp
 
 Y_UNIT_TEST_SUITE(TMixedIndexTest)
 {
-    static const TPartialBlobId blobId0 = { 1, 0 };
-    static const TPartialBlobId blobId1 = { 2, 0 };
-    static const TPartialBlobId blobId2 = { 3, 0 };
-    static const TPartialBlobId blobId3 = { 4, 0 };
-    static const TPartialBlobId blobId4 = { 5, 0 };
-    static const TPartialBlobId blobId5 = { 6, 0 };
-    static const TPartialBlobId blobId6 = { 7, 0 };
+    static const TPartialBlobId blobId0 = {1, 0};
+    static const TPartialBlobId blobId1 = {2, 0};
+    static const TPartialBlobId blobId2 = {3, 0};
+    static const TPartialBlobId blobId3 = {4, 0};
+    static const TPartialBlobId blobId4 = {5, 0};
+    static const TPartialBlobId blobId5 = {6, 0};
+    static const TPartialBlobId blobId6 = {7, 0};
 
     Y_UNIT_TEST(ShouldStoreActualData)
     {
@@ -85,10 +85,8 @@ Y_UNIT_TEST_SUITE(TMixedIndexTest)
         }
 
         index.OnCheckpoint(1);
-        index.SetOrUpdateBlock({
-            {100, 1, InvalidCommitId, false},
-            {blobId1, 200}
-        });
+        index.SetOrUpdateBlock(
+            {{100, 1, InvalidCommitId, false}, {blobId1, 200}});
 
         for (ui32 i = 1; i < 11; ++i) {
             index.SetOrUpdateBlock(i, {blobId2, static_cast<ui16>(i + 20)});
@@ -119,12 +117,16 @@ Y_UNIT_TEST_SUITE(TMixedIndexTest)
                     UNIT_ASSERT_VALUES_EQUAL(blobId2, b.Location.BlobId);
                     UNIT_ASSERT_VALUES_EQUAL(i + 20, b.Location.BlobOffset);
                     UNIT_ASSERT_VALUES_EQUAL(3, b.Block.MinCommitId);
-                    UNIT_ASSERT_VALUES_EQUAL(InvalidCommitId, b.Block.MaxCommitId);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        InvalidCommitId,
+                        b.Block.MaxCommitId);
                 } else {
                     UNIT_ASSERT_VALUES_EQUAL(blobId1, b.Location.BlobId);
                     UNIT_ASSERT_VALUES_EQUAL(i + 10, b.Location.BlobOffset);
                     UNIT_ASSERT_VALUES_EQUAL(1, b.Block.MinCommitId);
-                    UNIT_ASSERT_VALUES_EQUAL(InvalidCommitId, b.Block.MaxCommitId);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        InvalidCommitId,
+                        b.Block.MaxCommitId);
                 }
             } else {
                 UNIT_ASSERT(!index.FindBlock(3, i, &b));
@@ -271,26 +273,14 @@ Y_UNIT_TEST_SUITE(TMixedIndexTest)
         TMixedIndex index;
 
         // cp 1
-        index.SetOrUpdateBlock({
-            {0, 1, InvalidCommitId, false},
-            {blobId1, 0}
-        });
-        index.SetOrUpdateBlock({
-            {1, 1, InvalidCommitId, false},
-            {blobId1, 1}
-        });
-        index.SetOrUpdateBlock({
-            {6, 1, InvalidCommitId, false},
-            {blobId1, 2}
-        });
+        index.SetOrUpdateBlock({{0, 1, InvalidCommitId, false}, {blobId1, 0}});
+        index.SetOrUpdateBlock({{1, 1, InvalidCommitId, false}, {blobId1, 1}});
+        index.SetOrUpdateBlock({{6, 1, InvalidCommitId, false}, {blobId1, 2}});
 
         index.OnCheckpoint(1);
 
         // lagging block
-        index.SetOrUpdateBlock({
-            {2, 1, InvalidCommitId, false},
-            {blobId2, 0}
-        });
+        index.SetOrUpdateBlock({{2, 1, InvalidCommitId, false}, {blobId2, 0}});
 
         // cp 1
         // 0 -> blobId1, 0
@@ -299,23 +289,14 @@ Y_UNIT_TEST_SUITE(TMixedIndexTest)
         // 6 -> blobId1, 2
 
         // cp 3
-        index.SetOrUpdateBlock({
-            {0, 2, InvalidCommitId, false},
-            {blobId2, 1}
-        });
+        index.SetOrUpdateBlock({{0, 2, InvalidCommitId, false}, {blobId2, 1}});
 
-        index.SetOrUpdateBlock({
-            {4, 3, InvalidCommitId, false},
-            {blobId2, 2}
-        });
+        index.SetOrUpdateBlock({{4, 3, InvalidCommitId, false}, {blobId2, 2}});
 
         index.OnCheckpoint(3);
 
         // lagging block
-        index.SetOrUpdateBlock({
-            {2, 3, InvalidCommitId, false},
-            {blobId3, 0}
-        });
+        index.SetOrUpdateBlock({{2, 3, InvalidCommitId, false}, {blobId3, 0}});
 
         // cp 3
         // 0 -> blobId2, 1
@@ -325,18 +306,9 @@ Y_UNIT_TEST_SUITE(TMixedIndexTest)
         // 6 -> blobId1, 2
 
         // actual state
-        index.SetOrUpdateBlock({
-            {1, 4, InvalidCommitId, false},
-            {blobId3, 1}
-        });
-        index.SetOrUpdateBlock({
-            {2, 7, InvalidCommitId, false},
-            {blobId3, 2}
-        });
-        index.SetOrUpdateBlock({
-            {5, 10, InvalidCommitId, false},
-            {blobId3, 3}
-        });
+        index.SetOrUpdateBlock({{1, 4, InvalidCommitId, false}, {blobId3, 1}});
+        index.SetOrUpdateBlock({{2, 7, InvalidCommitId, false}, {blobId3, 2}});
+        index.SetOrUpdateBlock({{5, 10, InvalidCommitId, false}, {blobId3, 3}});
 
         // actual state
         // 0 -> blobId2, 1
@@ -384,13 +356,13 @@ Y_UNIT_TEST_SUITE(TMixedIndexTest)
         index.OnCheckpointDeletion(3);
 
         {
-        // actual state
-        // 0 -> blobId2, 1
-        // 1 -> blobId3, 1
-        // 2 -> blobId3, 2
-        // 4 -> blobId2, 2
-        // 5 -> blobId3, 3
-        // 6 -> blobId1, 2
+            // actual state
+            // 0 -> blobId2, 1
+            // 1 -> blobId3, 1
+            // 2 -> blobId3, 2
+            // 4 -> blobId2, 2
+            // 5 -> blobId3, 3
+            // 6 -> blobId1, 2
             TBlockAndLocation b;
             UNIT_ASSERT(index.FindBlock(3, 0, &b));
             UNIT_ASSERT_VALUES_EQUAL(blobId2, b.Location.BlobId);
@@ -773,9 +745,8 @@ Y_UNIT_TEST_SUITE(TMixedIndexTest)
         Sort(blocks.begin(), blocks.end(), TBlockComp());
 
         for (const auto& b: blocks) {
-            Cdbg << b.Block.BlockIndex
-                << "@" << b.Block.MinCommitId
-                << "-" << b.Block.MaxCommitId << Endl;
+            Cdbg << b.Block.BlockIndex << "@" << b.Block.MinCommitId << "-"
+                 << b.Block.MaxCommitId << Endl;
             Cdbg << b.Location.BlobId << "+" << b.Location.BlobOffset << Endl;
         }
 
@@ -826,14 +797,8 @@ Y_UNIT_TEST_SUITE(TMixedIndexTest)
         auto blobIds = index->ExtractOverwrittenBlobIds();
         ASSERT_VECTOR_CONTENTS_EQUAL(
             TVector<TPartialBlobId>(blobIds.begin(), blobIds.end()),
-            TVector<TPartialBlobId>({
-                blobId0,
-                blobId1,
-                blobId2,
-                blobId3,
-                blobId4
-            })
-        );
+            TVector<TPartialBlobId>(
+                {blobId0, blobId1, blobId2, blobId3, blobId4}));
     }
 
     Y_UNIT_TEST(ShouldBuildIndexWithMultipleCheckpoints)
@@ -856,9 +821,8 @@ Y_UNIT_TEST_SUITE(TMixedIndexTest)
         Sort(blocks.begin(), blocks.end(), TBlockComp());
 
         for (const auto& b: blocks) {
-            Cdbg << b.Block.BlockIndex
-                << "@" << b.Block.MinCommitId
-                << "-" << b.Block.MaxCommitId << Endl;
+            Cdbg << b.Block.BlockIndex << "@" << b.Block.MinCommitId << "-"
+                 << b.Block.MaxCommitId << Endl;
             Cdbg << b.Location.BlobId << "+" << b.Location.BlobOffset << Endl;
         }
 
@@ -900,10 +864,7 @@ Y_UNIT_TEST_SUITE(TMixedIndexTest)
         index.SetOrUpdateBlock(3, {blobId4, 1});
         index.OnCheckpoint(2);
 
-        index.SetOrUpdateBlock({
-            {2, 2, InvalidCommitId, false},
-            {blobId3, 1}
-        });
+        index.SetOrUpdateBlock({{2, 2, InvalidCommitId, false}, {blobId3, 1}});
 
         index.SetOrUpdateBlock(0, {blobId5, 1});
         index.SetOrUpdateBlock(1, {blobId5, 2});
@@ -914,14 +875,8 @@ Y_UNIT_TEST_SUITE(TMixedIndexTest)
         auto blobIds = index.ExtractOverwrittenBlobIds();
         ASSERT_VECTOR_CONTENTS_EQUAL(
             TVector<TPartialBlobId>(blobIds.begin(), blobIds.end()),
-            TVector<TPartialBlobId>({
-                blobId0,
-                blobId2,
-                blobId3,
-                blobId4,
-                blobId5
-            })
-        );
+            TVector<TPartialBlobId>(
+                {blobId0, blobId2, blobId3, blobId4, blobId5}));
     }
 }
 

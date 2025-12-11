@@ -77,13 +77,13 @@ void ConfigureSignals()
     std::set_new_handler(abort);
 
     // make sure that errors can be seen by everybody :)
-    (void) setvbuf(stdout, nullptr, _IONBF, 0);
-    (void) setvbuf(stderr, nullptr, _IONBF, 0);
+    (void)setvbuf(stdout, nullptr, _IONBF, 0);
+    (void)setvbuf(stderr, nullptr, _IONBF, 0);
 
     // mask signals
-    (void) signal(SIGPIPE, SIG_IGN);
-    (void) signal(SIGINT, ProcessSignal);
-    (void) signal(SIGTERM, ProcessSignal);
+    (void)signal(SIGPIPE, SIG_IGN);
+    (void)signal(SIGINT, ProcessSignal);
+    (void)signal(SIGTERM, ProcessSignal);
 }
 
 int AppMain(const TOptions& options)

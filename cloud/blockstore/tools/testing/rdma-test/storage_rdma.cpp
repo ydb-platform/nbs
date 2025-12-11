@@ -3,12 +3,11 @@
 #include "probes.h"
 #include "protocol.h"
 
-#include <cloud/blockstore/tools/testing/rdma-test/protocol.pb.h>
-
 #include <cloud/blockstore/libs/rdma/iface/client.h>
-#include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
+#include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/service/context.h>
+#include <cloud/blockstore/tools/testing/rdma-test/protocol.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
@@ -25,7 +24,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr size_t MAX_PROTO_SIZE = 4*1024;
+constexpr size_t MAX_PROTO_SIZE = 4 * 1024;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -37,8 +36,7 @@ struct IRequestHandler: public NRdma::TNullContext
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TReadBlocksHandler final
-    : public IRequestHandler
+class TReadBlocksHandler final: public IRequestHandler
 {
 private:
     TCallContextPtr CallContext;
@@ -51,10 +49,10 @@ private:
 
 public:
     TReadBlocksHandler(
-            TCallContextPtr callContext,
-            TReadBlocksRequestPtr request,
-            TGuardedSgList guardedSgList,
-            TPromise<NProto::TError> response)
+        TCallContextPtr callContext,
+        TReadBlocksRequestPtr request,
+        TGuardedSgList guardedSgList,
+        TPromise<NProto::TError> response)
         : CallContext(std::move(callContext))
         , Request(std::move(request))
         , GuardedSgList(std::move(guardedSgList))
@@ -129,8 +127,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TWriteBlocksHandler final
-    : public IRequestHandler
+class TWriteBlocksHandler final: public IRequestHandler
 {
 private:
     TCallContextPtr CallContext;
@@ -143,10 +140,10 @@ private:
 
 public:
     TWriteBlocksHandler(
-            TCallContextPtr callContext,
-            TWriteBlocksRequestPtr request,
-            TGuardedSgList guardedSgList,
-            TPromise<NProto::TError> response)
+        TCallContextPtr callContext,
+        TWriteBlocksRequestPtr request,
+        TGuardedSgList guardedSgList,
+        TPromise<NProto::TError> response)
         : CallContext(std::move(callContext))
         , Request(std::move(request))
         , GuardedSgList(std::move(guardedSgList))
@@ -236,7 +233,8 @@ public:
         Endpoint = std::move(endpoint);
     }
 
-    void Start() override {}
+    void Start() override
+    {}
 
     void Stop() override
     {

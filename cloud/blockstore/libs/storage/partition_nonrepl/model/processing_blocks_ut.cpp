@@ -11,9 +11,9 @@ Y_UNIT_TEST_SUITE(TProcessingBlocksTest)
     Y_UNIT_TEST(ShouldStartProcessingFromInitialProcessingIndex)
     {
         TProcessingBlocks blocks(
-            4096, // blockCount
-            4096, // blockSize
-            1024  // initialProcessingIndex
+            4096,   // blockCount
+            4096,   // blockSize
+            1024    // initialProcessingIndex
         );
 
         auto range = blocks.BuildProcessingRange();
@@ -26,9 +26,9 @@ Y_UNIT_TEST_SUITE(TProcessingBlocksTest)
     Y_UNIT_TEST(ShouldProperlyAccountForProcessedPrefix)
     {
         TProcessingBlocks blocks(
-            4096, // blockCount
-            4096, // blockSize
-            0     // initialProcessingIndex
+            4096,   // blockCount
+            4096,   // blockSize
+            0       // initialProcessingIndex
         );
 
         blocks.MarkProcessed(TBlockRange64::WithLength(0, 1024));
@@ -58,9 +58,9 @@ Y_UNIT_TEST_SUITE(TProcessingBlocksTest)
     Y_UNIT_TEST(ShouldTestIfRangeProcessed)
     {
         TProcessingBlocks blocks(
-            4096, // blockCount
-            4096, // blockSize
-            0     // initialProcessingIndex
+            4096,   // blockCount
+            4096,   // blockSize
+            0       // initialProcessingIndex
         );
 
         auto range = TBlockRange64::MakeClosedInterval(100, 1199);
@@ -76,9 +76,9 @@ Y_UNIT_TEST_SUITE(TProcessingBlocksTest)
     Y_UNIT_TEST(ShouldSkipProcessedRanges)
     {
         TProcessingBlocks blocks(
-            1024 * 1024, // blockCount
-            4096,        // blockSize
-            0            // initialProcessingIndex
+            1024 * 1024,   // blockCount
+            4096,          // blockSize
+            0              // initialProcessingIndex
         );
 
         blocks.MarkProcessed(TBlockRange64::WithLength(1000, 500));

@@ -1,18 +1,18 @@
 #include "compute_client.h"
 
-#include <contrib/ydb/public/api/client/yc_private/compute/inner/disk_service.grpc.pb.h>
-#include <contrib/ydb/public/api/client/yc_private/compute/inner/disk_service.pb.h>
-
 #include <cloud/blockstore/libs/kms/iface/compute_client.h>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/grpc/init.h>
 #include <cloud/storage/core/libs/grpc/time_point_specialization.h>
 
 #include <contrib/libs/grpc/include/grpcpp/channel.h>
 #include <contrib/libs/grpc/include/grpcpp/client_context.h>
-#include <contrib/libs/grpc/include/grpcpp/create_channel.h>
 #include <contrib/libs/grpc/include/grpcpp/completion_queue.h>
+#include <contrib/libs/grpc/include/grpcpp/create_channel.h>
 #include <contrib/libs/grpc/include/grpcpp/security/credentials.h>
+#include <contrib/ydb/public/api/client/yc_private/compute/inner/disk_service.grpc.pb.h>
+#include <contrib/ydb/public/api/client/yc_private/compute/inner/disk_service.pb.h>
 
 #include <util/string/builder.h>
 #include <util/string/join.h>
@@ -36,7 +36,8 @@ const char AUTH_METHOD[] = "Bearer";
 class TRequestHandler final
 {
 private:
-    using TReader = grpc::ClientAsyncResponseReader<compute::CreateTokenResponse>;
+    using TReader =
+        grpc::ClientAsyncResponseReader<compute::CreateTokenResponse>;
     using TResult = TResultOrError<TString>;
 
     grpc::ClientContext ClientContext;
@@ -113,13 +114,10 @@ private:
     std::shared_ptr<compute::DiskService::Stub> Service;
 
 public:
-    TComputeClient(
-            ILoggingServicePtr logging,
-            NProto::TGrpcClientConfig config)
+    TComputeClient(ILoggingServicePtr logging, NProto::TGrpcClientConfig config)
         : Logging(std::move(logging))
         , Config(std::move(config))
-    {
-    }
+    {}
 
     ~TComputeClient()
     {
@@ -133,8 +131,8 @@ public:
         STORAGE_INFO("Connect to " << Config.GetAddress());
 
         auto creds = Config.GetInsecure()
-            ? grpc::InsecureChannelCredentials()
-            : grpc::SslCredentials(grpc::SslCredentialsOptions());
+                         ? grpc::InsecureChannelCredentials()
+                         : grpc::SslCredentials(grpc::SslCredentialsOptions());
 
         grpc::ChannelArguments args;
         if (Config.GetSslTargetNameOverride()) {
@@ -169,10 +167,8 @@ public:
             diskId,
             taskId);
 
-        auto future = requestHandler->Execute(
-            *Service,
-            &CQ,
-            requestHandler.get());
+        auto future =
+            requestHandler->Execute(*Service, &CQ, requestHandler.get());
 
         requestHandler.release();
         return future;
@@ -185,8 +181,7 @@ private:
         bool ok;
         while (CQ.Next(&tag, &ok)) {
             std::unique_ptr<TRequestHandler> requestHandler(
-                static_cast<TRequestHandler*>(tag)
-            );
+                static_cast<TRequestHandler*>(tag));
             requestHandler->Complete();
         }
         return nullptr;

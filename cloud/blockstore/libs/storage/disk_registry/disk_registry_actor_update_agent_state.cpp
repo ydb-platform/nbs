@@ -1,4 +1,5 @@
 #include "disk_registry_actor.h"
+
 #include "disk_registry_database.h"
 
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
@@ -21,10 +22,8 @@ void TDiskRegistryActor::HandleChangeAgentState(
 
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     LOG_INFO(
         ctx,
@@ -54,10 +53,8 @@ void TDiskRegistryActor::HandleDisableAgent(
 
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     LOG_INFO(
         ctx,
@@ -69,9 +66,12 @@ void TDiskRegistryActor::HandleDisableAgent(
 
     const auto* agent = State->FindAgent(msg->Record.GetAgentId());
     if (!agent) {
-        auto response = std::make_unique<TEvDiskRegistry::TEvDisableAgentResponse>(
-            MakeError(E_NOT_FOUND, TStringBuilder() << "no such agent: "
-                << msg->Record.GetAgentId()));
+        auto response =
+            std::make_unique<TEvDiskRegistry::TEvDisableAgentResponse>(
+                MakeError(
+                    E_NOT_FOUND,
+                    TStringBuilder()
+                        << "no such agent: " << msg->Record.GetAgentId()));
         NCloud::Reply(ctx, *requestInfo, std::move(response));
 
         return;
@@ -189,8 +189,9 @@ void TDiskRegistryActor::CompleteUpdateAgentState(
         response = std::make_unique<TEvDiskRegistry::TEvDisableAgentResponse>(
             std::move(args.Error));
     } else {
-        response = std::make_unique<TEvDiskRegistry::TEvChangeAgentStateResponse>(
-            std::move(args.Error));
+        response =
+            std::make_unique<TEvDiskRegistry::TEvChangeAgentStateResponse>(
+                std::move(args.Error));
     }
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));

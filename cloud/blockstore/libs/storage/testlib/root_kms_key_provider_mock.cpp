@@ -10,8 +10,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRootKmsKeyProviderMock
-    : IRootKmsKeyProvider
+struct TRootKmsKeyProviderMock: IRootKmsKeyProvider
 {
     auto GetKey(const NProto::TKmsKey& kmsKey, const TString& diskId)
         -> TFuture<TResultOrError<TEncryptionKey>> override

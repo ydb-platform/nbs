@@ -1,8 +1,10 @@
 #include "endpoint_manager.h"
+
 #include "listener.h"
 
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/endpoint.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -10,12 +12,12 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <google/protobuf/util/message_differencer.h>
-
+#include <util/folder/tempdir.h>
 #include <util/generic/guid.h>
 #include <util/generic/scope.h>
 #include <util/system/sysstat.h>
-#include <util/folder/tempdir.h>
+
+#include <google/protobuf/util/message_differencer.h>
 
 namespace NCloud::NFileStore::NServer {
 
@@ -30,12 +32,12 @@ static constexpr int MODE0660 = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestEndpoint:
-    public IEndpoint
+struct TTestEndpoint: public IEndpoint
 {
-    using TAlterHandler = std::function<
-        void(const TTestEndpoint* endpoint, bool isReadonly, ui64 mountSeqNumber)
-        >;
+    using TAlterHandler = std::function<void(
+        const TTestEndpoint* endpoint,
+        bool isReadonly,
+        ui64 mountSeqNumber)>;
 
     NProto::TEndpointConfig Config;
     TAlterHandler AlterHandler;
@@ -103,18 +105,15 @@ using TTestEndpointPtr = std::shared_ptr<TTestEndpoint>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestEndpointListener final
-    : public IEndpointListener
+struct TTestEndpointListener final: public IEndpointListener
 {
-    using TCreateEndpointHandler = std::function<
-        IEndpointPtr(const NProto::TEndpointConfig& config)
-        >;
+    using TCreateEndpointHandler =
+        std::function<IEndpointPtr(const NProto::TEndpointConfig& config)>;
 
     TCreateEndpointHandler CreateEndpointHandler;
     TVector<TTestEndpointPtr> Endpoints;
 
-    IEndpointPtr CreateEndpoint(
-        const NProto::TEndpointConfig& config) override
+    IEndpointPtr CreateEndpoint(const NProto::TEndpointConfig& config) override
     {
         if (CreateEndpointHandler) {
             return CreateEndpointHandler(config);
@@ -127,16 +126,17 @@ struct TTestEndpointListener final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TKickEndpointResponse KickEndpoint(IEndpointManager& service, ui32 keyringId)
+NProto::TKickEndpointResponse KickEndpoint(
+    IEndpointManager& service,
+    ui32 keyringId)
 {
     auto request = std::make_shared<NProto::TKickEndpointRequest>();
     request->SetKeyringId(keyringId);
 
-    auto future = service.KickEndpoint(
-        MakeIntrusive<TCallContext>(),
-        std::move(request));
+    auto future =
+        service.KickEndpoint(MakeIntrusive<TCallContext>(), std::move(request));
 
-     return future.GetValue(WaitTimeout);
+    return future.GetValue(WaitTimeout);
 }
 
 }   // namespace
@@ -162,11 +162,11 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         TTempDir endpointDir(dirPath);
         auto endpoint = std::make_shared<TTestEndpoint>(*config, false);
         auto listener = std::make_shared<TTestEndpointListener>();
-        listener->CreateEndpointHandler =
-            [&] (const NProto::TEndpointConfig&) {
-                listener->Endpoints.push_back(endpoint);
-                return endpoint;
-            };
+        listener->CreateEndpointHandler = [&](const NProto::TEndpointConfig&)
+        {
+            listener->Endpoints.push_back(endpoint);
+            return endpoint;
+        };
 
         auto service = CreateEndpointManager(
             CreateLoggingService("console"),
@@ -186,9 +186,8 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         auto request = std::make_shared<NProto::TKickEndpointRequest>();
         request->SetKeyringId(keyringId);
 
-        auto future = service->KickEndpoint(
-            MakeIntrusive<TCallContext>(),
-            request);
+        auto future =
+            service->KickEndpoint(MakeIntrusive<TCallContext>(), request);
 
         UNIT_ASSERT(!future.HasValue());
         endpoint->Start.SetValue(NProto::TError{});
@@ -208,7 +207,9 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         response = KickEndpoint(*service, wrongKeyringId);
 
         UNIT_ASSERT(HasError(response));
-        UNIT_ASSERT_VALUES_EQUAL(response.GetError().GetCode(), E_INVALID_STATE);
+        UNIT_ASSERT_VALUES_EQUAL(
+            response.GetError().GetCode(),
+            E_INVALID_STATE);
         UNIT_ASSERT_VALUES_EQUAL(listener->Endpoints.size(), 1);
 
         endpoint->Stop.SetValue();
@@ -234,11 +235,11 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         TTempDir endpointDir(dirPath);
         auto endpoint = std::make_shared<TTestEndpoint>(*config, false);
         auto listener = std::make_shared<TTestEndpointListener>();
-        listener->CreateEndpointHandler =
-            [&] (const NProto::TEndpointConfig&) {
-                listener->Endpoints.push_back(endpoint);
-                return endpoint;
-            };
+        listener->CreateEndpointHandler = [&](const NProto::TEndpointConfig&)
+        {
+            listener->Endpoints.push_back(endpoint);
+            return endpoint;
+        };
 
         auto service = CreateEndpointManager(
             CreateLoggingService("console"),
@@ -258,9 +259,8 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         auto request = std::make_shared<NProto::TKickEndpointRequest>();
         request->SetKeyringId(keyringId);
 
-        auto future = service->KickEndpoint(
-            MakeIntrusive<TCallContext>(),
-            request);
+        auto future =
+            service->KickEndpoint(MakeIntrusive<TCallContext>(), request);
 
         UNIT_ASSERT(!future.HasValue());
         endpoint->Start.SetValue(NProto::TError{});
@@ -291,7 +291,8 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             const TTestEndpoint* endpointInfo = nullptr;
 
             ui32 alterCalls = 0;
-            endpoint->AlterHandler = [&] (const TTestEndpoint* ep, bool, ui64) {
+            endpoint->AlterHandler = [&](const TTestEndpoint* ep, bool, ui64)
+            {
                 endpointInfo = ep;
                 ++alterCalls;
             };
@@ -308,15 +309,16 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             auto request = std::make_shared<NProto::TKickEndpointRequest>();
             request->SetKeyringId(keyringId);
 
-            auto future = service->KickEndpoint(
-                MakeIntrusive<TCallContext>(),
-                request);
+            auto future =
+                service->KickEndpoint(MakeIntrusive<TCallContext>(), request);
 
             UNIT_ASSERT(future.Wait(WaitTimeout));
 
             auto response = future.GetValue();
             UNIT_ASSERT_C(!HasError(response), response.ShortDebugString());
-            UNIT_ASSERT_VALUES_UNEQUAL(response.GetError().GetCode(), S_ALREADY);
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                response.GetError().GetCode(),
+                S_ALREADY);
             UNIT_ASSERT_VALUES_EQUAL(alterCalls, 1);
             UNIT_ASSERT_VALUES_UNEQUAL(endpointInfo, nullptr);
             UNIT_ASSERT_VALUES_EQUAL(listener->Endpoints.size(), 1);
@@ -347,11 +349,11 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
         endpoint->Start.SetValue(NProto::TError{});
 
         auto listener = std::make_shared<TTestEndpointListener>();
-        listener->CreateEndpointHandler =
-            [&] (const NProto::TEndpointConfig&) {
-                listener->Endpoints.push_back(endpoint);
-                return endpoint;
-            };
+        listener->CreateEndpointHandler = [&](const NProto::TEndpointConfig&)
+        {
+            listener->Endpoints.push_back(endpoint);
+            return endpoint;
+        };
 
         auto service = CreateEndpointManager(
             CreateLoggingService("console"),
@@ -360,19 +362,19 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
             MODE0660);
         service->Start();
 
-        Y_DEFER {
+        Y_DEFER
+        {
             endpoint->Stop.SetValue();
             UNIT_ASSERT_NO_EXCEPTION(service->Drain());
             UNIT_ASSERT_NO_EXCEPTION(service->Stop());
-        };
+        }
 
         auto idsOrError = endpointStorage->GetEndpointIds();
         UNIT_ASSERT_C(!HasError(idsOrError), idsOrError.GetError());
         UNIT_ASSERT_VALUES_EQUAL(idsOrError.GetResult().size(), 0);
 
-        auto future = service->StartEndpoint(
-            MakeIntrusive<TCallContext>(),
-            request);
+        auto future =
+            service->StartEndpoint(MakeIntrusive<TCallContext>(), request);
         auto response = future.GetValue(WaitTimeout);
         UNIT_ASSERT_C(!HasError(response), response.ShortDebugString());
 
@@ -407,11 +409,11 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         auto listener = std::make_shared<TTestEndpointListener>();
 
-        listener->CreateEndpointHandler =
-            [&] (const NProto::TEndpointConfig&) {
-                listener->Endpoints.push_back(endpoint);
-                return endpoint;
-            };
+        listener->CreateEndpointHandler = [&](const NProto::TEndpointConfig&)
+        {
+            listener->Endpoints.push_back(endpoint);
+            return endpoint;
+        };
 
         auto service = CreateEndpointManager(
             CreateLoggingService("console"),
@@ -450,10 +452,10 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
 
         auto listener = std::make_shared<TTestEndpointListener>();
 
-        listener->CreateEndpointHandler =
-            [&] (const NProto::TEndpointConfig&) {
-                return endpoint;
-            };
+        listener->CreateEndpointHandler = [&](const NProto::TEndpointConfig&)
+        {
+            return endpoint;
+        };
 
         auto service = CreateEndpointManager(
             CreateLoggingService("console"),
@@ -473,7 +475,8 @@ Y_UNIT_TEST_SUITE(TServiceEndpointTest)
     {
         TString id = "id";
         TTempDir socketDir("./" + CreateGuidAsString());
-        auto unixSocketPath = socketDir.Path() / TFsPath("socket1/disk1/fs1.sock");
+        auto unixSocketPath =
+            socketDir.Path() / TFsPath("socket1/disk1/fs1.sock");
         TString unixSocket = unixSocketPath.GetPath();
 
         UNIT_ASSERT(!unixSocketPath.Parent().Exists());

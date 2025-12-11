@@ -8,9 +8,9 @@
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/diagnostics/downtime_history.h>
 #include <cloud/blockstore/libs/storage/api/partition.h>
+#include <cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/compaction_map.h>
 #include <cloud/blockstore/libs/storage/core/compaction_type.h>
-#include <cloud/blockstore/libs/storage/core/bs_group_operation_tracker.h>
 #include <cloud/blockstore/libs/storage/core/request_buffer.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/core/ts_ring_buffer.h>
@@ -51,14 +51,14 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 // FreshBlocksFromChannel to support fresh channel
 // write requests, since there is no Tx on WriteFreshBlock to channel.
 
-#define BLOCKSTORE_PARTITION_PROTO_COUNTERS(xxx)                               \
-    xxx(MixedBlocksCount)                                                      \
-    xxx(MergedBlocksCount)                                                     \
-    xxx(MixedBlobsCount)                                                       \
-    xxx(MergedBlobsCount)                                                      \
-    xxx(UsedBlocksCount)                                                       \
-    xxx(LogicalUsedBlocksCount)                                                \
-// BLOCKSTORE_PARTITION_PROTO_COUNTERS
+#define BLOCKSTORE_PARTITION_PROTO_COUNTERS(xxx) \
+    xxx(MixedBlocksCount)                        \
+    xxx(MergedBlocksCount)                       \
+    xxx(MixedBlobsCount)                         \
+    xxx(MergedBlobsCount)                        \
+    xxx(UsedBlocksCount)                         \
+    xxx(LogicalUsedBlocksCount)                  \
+    // BLOCKSTORE_PARTITION_PROTO_COUNTERS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -118,8 +118,7 @@ struct TBlockCountProgress
 
     TBlockCountProgress(ui64 totalBlobs)
         : TotalBlobs(totalBlobs)
-    {
-    }
+    {}
 
     void UpdateProgress(ui32 blobsRead, ui64 mixedBlocks, ui64 mergedBlocks)
     {
@@ -277,8 +276,8 @@ struct TQueuedRequest
 
 struct TChannelState
 {
-    EChannelPermissions Permissions = EChannelPermission::UserWritesAllowed
-        | EChannelPermission::SystemWritesAllowed;
+    EChannelPermissions Permissions = EChannelPermission::UserWritesAllowed |
+                                      EChannelPermission::SystemWritesAllowed;
     double ApproximateFreeSpaceShare = 0;
     double FreeSpaceScore = 0;
     bool ReassignRequestedByBlobStorage = false;
@@ -407,9 +406,8 @@ public:
 
     ui32 GetMaxBlocksInBlob() const
     {
-        return Config.GetMaxBlocksInBlob()
-            ? Config.GetMaxBlocksInBlob()
-            : MaxBlocksCount;
+        return Config.GetMaxBlocksInBlob() ? Config.GetMaxBlocksInBlob()
+                                           : MaxBlocksCount;
     }
 
     ui64 GetBlocksCount() const
@@ -643,7 +641,10 @@ private:
 
             Blocks.GetCommitIds(blockIndex, existingCommitIds);
 
-            NCloud::NStorage::FindGarbageVersions(checkpoints, existingCommitIds, garbage);
+            NCloud::NStorage::FindGarbageVersions(
+                checkpoints,
+                existingCommitIds,
+                garbage);
             for (auto garbageCommitId: garbage) {
                 // This block is being flushed; we'll remove it on AddBlobs
                 // and we'll release barrier on FlushCompleted
@@ -657,7 +658,7 @@ private:
                 bool removed = Blocks.RemoveBlock(
                     blockIndex,
                     garbageCommitId,
-                    true);  // isStoredInDb
+                    true);   // isStoredInDb
 
                 if (removed) {
                     db.DeleteFreshBlock(blockIndex, garbageCommitId);
@@ -668,7 +669,7 @@ private:
             Blocks.AddBlock(
                 blockIndex,
                 commitId,
-                true,  // isStoredInDb
+                true,   // isStoredInDb
                 blockContent.AsStringBuf());
 
             db.WriteFreshBlock(blockIndex, commitId, blockContent);
@@ -698,7 +699,10 @@ private:
 
             Blocks.GetCommitIds(blockIndex, existingCommitIds);
 
-            NCloud::NStorage::FindGarbageVersions(checkpoints, existingCommitIds, garbage);
+            NCloud::NStorage::FindGarbageVersions(
+                checkpoints,
+                existingCommitIds,
+                garbage);
             for (auto garbageCommitId: garbage) {
                 // This block is being flushed; we'll remove it on AddBlobs
                 // and we'll release barrier on FlushCompleted
@@ -712,7 +716,7 @@ private:
                 auto removed = Blocks.RemoveBlock(
                     blockIndex,
                     garbageCommitId,
-                    false);  // isStoredInDb
+                    false);   // isStoredInDb
 
                 if (removed) {
                     DecrementUnflushedFreshBlocksFromChannelCount(1);
@@ -723,7 +727,7 @@ private:
             Blocks.AddBlock(
                 blockIndex,
                 commitId,
-                false,  // isStoredInDb
+                false,   // isStoredInDb
                 blockContent.AsStringBuf());
 
             existingCommitIds.clear();
@@ -757,18 +761,12 @@ public:
         const TBlockRange32& zeroRange,
         ui64 commitId);
 
-    void ZeroFreshBlocks(
-        const TBlockRange32& zeroRange,
-        ui64 commitId);
+    void ZeroFreshBlocks(const TBlockRange32& zeroRange, ui64 commitId);
 
-    void DeleteFreshBlock(
-        TPartitionDatabase& db,
-        ui32 blockIndex,
-        ui64 commitId);
+    void
+    DeleteFreshBlock(TPartitionDatabase& db, ui32 blockIndex, ui64 commitId);
 
-    void DeleteFreshBlock(
-        ui32 blockIndex,
-        ui64 commitId);
+    void DeleteFreshBlock(ui32 blockIndex, ui64 commitId);
 
     ui32 GetUnflushedFreshBlocksCount() const
     {
@@ -796,10 +794,8 @@ public:
         const TPartialBlobId& blobId,
         const TVector<ui32>& blockIndices);
 
-    void DeleteMixedBlock(
-        TPartitionDatabase& db,
-        ui32 blockIndex,
-        ui64 commitId);
+    void
+    DeleteMixedBlock(TPartitionDatabase& db, ui32 blockIndex, ui64 commitId);
 
     bool FindMixedBlocksForCompaction(
         TPartitionDatabase& db,
@@ -854,8 +850,7 @@ public:
         // last second
         return Min(
             LastCompactionExecTime,
-            TDuration::Seconds(1) - (now - LastCompactionFinishTs)
-        );
+            TDuration::Seconds(1) - (now - LastCompactionFinishTs));
     }
 
     void SetCompactionDelay(const TDuration d)
@@ -875,7 +870,8 @@ public:
 
     ui32 GetCompactionGarbageScore() const
     {
-        return CompactionMap.GetTopByGarbageBlockCount().Stat.GarbageBlockCount();
+        return CompactionMap.GetTopByGarbageBlockCount()
+            .Stat.GarbageBlockCount();
     }
 
     float GetCompactionScore() const
@@ -913,7 +909,8 @@ public:
         --CompactionRangeCountPerRun;
     }
 
-    ui32 GetMaxBlobsPerRange() const {
+    ui32 GetMaxBlobsPerRange() const
+    {
         return MaxBlobsPerRange;
     }
 
@@ -927,7 +924,10 @@ public:
         return LastCompactionRangeCountPerRunTs;
     }
 
-    void SetUsedBlocks(TPartitionDatabase& db, const TBlockRange32& range, ui32 skipCount);
+    void SetUsedBlocks(
+        TPartitionDatabase& db,
+        const TBlockRange32& range,
+        ui32 skipCount);
     void SetUsedBlocks(TPartitionDatabase& db, const TVector<ui32>& blocks);
     void UnsetUsedBlocks(TPartitionDatabase& db, const TBlockRange32& range);
     void UnsetUsedBlocks(TPartitionDatabase& db, const TVector<ui32>& blocks);
@@ -994,8 +994,7 @@ public:
 
     void StartRebuildUsedBlocks()
     {
-        RebuildState.StartRebuildUsedBlocks(
-            GetBlocksCount());
+        RebuildState.StartRebuildUsedBlocks(GetBlocksCount());
     }
 
     void StartRebuildBlockCount()
@@ -1046,9 +1045,7 @@ public:
 
     void StartScanDisk()
     {
-        ScanDiskState.Start(
-            GetMixedBlobsCount(),
-            GetMergedBlobsCount());
+        ScanDiskState.Start(GetMixedBlobsCount(), GetMergedBlobsCount());
     }
 
     TScanDiskProgress GetScanDiskProgress() const
@@ -1066,7 +1063,8 @@ public:
         ScanDiskState.UpdateBlobsToBeProcessed(toBeProcessed);
     }
 
-    void SetBrokenBlobs(TVector<NKikimr::TLogoBlobID> blobIds) {
+    void SetBrokenBlobs(TVector<NKikimr::TLogoBlobID> blobIds)
+    {
         ScanDiskState.SetBrokenBlobs(std::move(blobIds));
     }
 
@@ -1106,8 +1104,8 @@ public:
 
     ui32 GetBlobCountToCleanup(ui64 commitId, ui32 maxBlobs) const
     {
-        if (commitId < BlobCountToCleanupCommitId
-                || BlobCountToCleanup < maxBlobs)
+        if (commitId < BlobCountToCleanupCommitId ||
+            BlobCountToCleanup < maxBlobs)
         {
             BlobCountToCleanup = CleanupQueue.GetCount(commitId);
             BlobCountToCleanupCommitId = commitId;
@@ -1147,8 +1145,7 @@ public:
         // last second
         return Min(
             LastCleanupExecTime,
-            TDuration::Seconds(1) - (now - LastCleanupFinishTs)
-        );
+            TDuration::Seconds(1) - (now - LastCleanupFinishTs));
     }
 
     void SetCleanupDelay(const TDuration d)
@@ -1204,10 +1201,9 @@ public:
 
     void RegisterCollectError()
     {
-        CollectTimeout = Min(
-            TDuration::Seconds(5),
-            Max(TDuration::MilliSeconds(100), CollectTimeout * 2)
-        );
+        CollectTimeout =
+            Min(TDuration::Seconds(5),
+                Max(TDuration::MilliSeconds(100), CollectTimeout * 2));
     }
 
     void RegisterCollectSuccess()
@@ -1227,7 +1223,9 @@ public:
 
     ui32 NextCollectPerGenerationCounter()
     {
-        if (LastCollectPerGenerationCounter == InvalidCollectPerGenerationCounter) {
+        if (LastCollectPerGenerationCounter ==
+            InvalidCollectPerGenerationCounter)
+        {
             return InvalidCollectPerGenerationCounter;
         }
         return ++LastCollectPerGenerationCounter;
@@ -1269,7 +1267,8 @@ public:
     ui64 GetTrimFreshLogToCommitId() const
     {
         return Min(
-            // if there are no fresh blocks, we should trim up to current commitId
+            // if there are no fresh blocks, we should trim up to current
+            // commitId
             GetLastCommitId(),
             // if there are some fresh blocks, we should trim till the lowest
             // fresh commitId minus 1
@@ -1374,9 +1373,9 @@ public:
 
     void BlobsConfirmed(ui64 commitId, TVector<TBlobToConfirm> blobs);
 
-   //
-   // WriteBlob
-   //
+    //
+    // WriteBlob
+    //
 
 private:
     ui32 WriteBlobErrorCount = 0;
@@ -1434,15 +1433,15 @@ public:
         return *Meta.MutableStats();
     }
 
-#define BLOCKSTORE_PARTITION_DECLARE_COUNTER(name)                             \
-    ui64 Get##name() const                                                     \
-    {                                                                          \
-        return GetStats().Get##name();                                         \
-    }                                                                          \
-                                                                               \
-    ui64 Increment##name(size_t value);                                        \
-    ui64 Decrement##name(size_t value);                                        \
-// BLOCKSTORE_PARTITION_DECLARE_COUNTER
+#define BLOCKSTORE_PARTITION_DECLARE_COUNTER(name) \
+    ui64 Get##name() const                         \
+    {                                              \
+        return GetStats().Get##name();             \
+    }                                              \
+                                                   \
+    ui64 Increment##name(size_t value);            \
+    ui64 Decrement##name(size_t value);            \
+    // BLOCKSTORE_PARTITION_DECLARE_COUNTER
 
     BLOCKSTORE_PARTITION_PROTO_COUNTERS(BLOCKSTORE_PARTITION_DECLARE_COUNTER)
 

@@ -43,12 +43,11 @@ constexpr TDuration COMPLETION_STATS_WAIT_DURATION = TDuration::Seconds(1);
 
 void LogStderr(LogLevel level, const char* fmt, ...)
 {
-    static ELogPriority levelToPriority[] {
+    static ELogPriority levelToPriority[]{
         TLOG_ERR,
         TLOG_WARNING,
         TLOG_INFO,
-        TLOG_DEBUG
-    };
+        TLOG_DEBUG};
 
     auto priority = levelToPriority[level];
 
@@ -83,8 +82,7 @@ void DeleteSocket(const TString& path)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TServer final
-    : public IServer
+class TServer final: public IServer
 {
 private:
     const ILoggingServicePtr Logging;
@@ -181,9 +179,10 @@ void TServer::Stop()
     STORAGE_INFO("Stopping the server");
 
     auto promise = NewPromise();
-    vhd_unregister_blockdev(Handler, [] (void* opaque) {
-        static_cast<TPromise<void>*>(opaque)->SetValue();
-    }, &promise);
+    vhd_unregister_blockdev(
+        Handler,
+        [](void* opaque) { static_cast<TPromise<void>*>(opaque)->SetValue(); },
+        &promise);
 
     promise.GetFuture().Wait();
 

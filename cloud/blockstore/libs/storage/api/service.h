@@ -15,12 +15,12 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_SERVICE_REQUESTS(xxx, ...)                                  \
-    xxx(ChangeVolumeBinding,     __VA_ARGS__)                                  \
-    xxx(GetVolumeStats,          __VA_ARGS__)                                  \
-    xxx(RunVolumesLivenessCheck, __VA_ARGS__)                                  \
-    xxx(AddTags,                 __VA_ARGS__)                                  \
-// BLOCKSTORE_SERVICE_REQUESTS
+#define BLOCKSTORE_SERVICE_REQUESTS(xxx, ...) \
+    xxx(ChangeVolumeBinding, __VA_ARGS__)     \
+    xxx(GetVolumeStats, __VA_ARGS__)          \
+    xxx(RunVolumesLivenessCheck, __VA_ARGS__) \
+    xxx(AddTags, __VA_ARGS__)                 \
+    // BLOCKSTORE_SERVICE_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -43,9 +43,9 @@ struct TEvService
         const NProto::EPreemptionSource Source;
 
         TChangeVolumeBindingRequest(
-                TString diskId,
-                EChangeBindingOp action,
-                NProto::EPreemptionSource source)
+            TString diskId,
+            EChangeBindingOp action,
+            NProto::EPreemptionSource source)
             : DiskId(std::move(diskId))
             , Action(action)
             , Source(source)
@@ -77,7 +77,8 @@ struct TEvService
 
         TGetVolumeStatsResponse() = default;
 
-        TGetVolumeStatsResponse(TVector<NProto::TVolumeBalancerDiskStats> volumeStats)
+        TGetVolumeStatsResponse(
+            TVector<NProto::TVolumeBalancerDiskStats> volumeStats)
             : VolumeStats(std::move(volumeStats))
         {}
     };
@@ -92,10 +93,7 @@ struct TEvService
         const ui64 TabletId;
         const NProto::TVolume Config;
 
-        TRegisterVolume(
-                TString diskId,
-                ui64 tabletId,
-                NProto::TVolume config)
+        TRegisterVolume(TString diskId, ui64 tabletId, NProto::TVolume config)
             : DiskId(std::move(diskId))
             , TabletId(tabletId)
             , Config(std::move(config))
@@ -126,9 +124,7 @@ struct TEvService
         const TString DiskId;
         const NProto::TVolume Config;
 
-        TVolumeConfigUpdated(
-                TString diskId,
-                NProto::TVolume config)
+        TVolumeConfigUpdated(TString diskId, NProto::TVolume config)
             : DiskId(std::move(diskId))
             , Config(std::move(config))
         {}
@@ -154,8 +150,8 @@ struct TEvService
         TRunVolumesLivenessCheckResponse() = default;
 
         TRunVolumesLivenessCheckResponse(
-                TVector<TString> deletedVolumes,
-                TVector<TString> liveVolumes)
+            TVector<TString> deletedVolumes,
+            TVector<TString> liveVolumes)
             : DeletedVolumes(std::move(deletedVolumes))
             , LiveVolumes(std::move(liveVolumes))
         {}
@@ -172,16 +168,15 @@ struct TEvService
 
         TAddTagsRequest() = default;
 
-        TAddTagsRequest(
-                TString diskId,
-                TVector<TString> tags)
+        TAddTagsRequest(TString diskId, TVector<TString> tags)
             : DiskId(std::move(diskId))
             , Tags(std::move(tags))
         {}
     };
 
     struct TAddTagsResponse
-    {};
+    {
+    };
 
     //
     // VolumeMountStateChanged
@@ -192,9 +187,7 @@ struct TEvService
         const TString DiskId;
         const bool HasLocalMount = false;
 
-        explicit TVolumeMountStateChanged(
-                TString diskId,
-                bool value)
+        explicit TVolumeMountStateChanged(TString diskId, bool value)
             : DiskId(std::move(diskId))
             , HasLocalMount(value)
         {}
@@ -352,31 +345,23 @@ struct TEvService
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TBlockStoreEvents::SERVICE_END,
+    static_assert(
+        EvEnd < (int)TBlockStoreEvents::SERVICE_END,
         "EvEnd expected to be < TBlockStoreEvents::SERVICE_END");
 
     BLOCKSTORE_STORAGE_SERVICE(BLOCKSTORE_DECLARE_PROTO_EVENTS)
     BLOCKSTORE_SERVICE_REQUESTS(BLOCKSTORE_DECLARE_EVENTS)
 
-    using TEvRegisterVolume = TRequestEvent<
-        TRegisterVolume,
-        EvRegisterVolume
-    >;
+    using TEvRegisterVolume = TRequestEvent<TRegisterVolume, EvRegisterVolume>;
 
-    using TEvUnregisterVolume = TRequestEvent<
-        TUnregisterVolume,
-        EvUnregisterVolume
-    >;
+    using TEvUnregisterVolume =
+        TRequestEvent<TUnregisterVolume, EvUnregisterVolume>;
 
-    using TEvVolumeConfigUpdated = TRequestEvent<
-        TVolumeConfigUpdated,
-        EvVolumeConfigUpdated
-    >;
+    using TEvVolumeConfigUpdated =
+        TRequestEvent<TVolumeConfigUpdated, EvVolumeConfigUpdated>;
 
-    using TEvVolumeMountStateChanged = TRequestEvent<
-        TVolumeMountStateChanged,
-        EvVolumeMountStateChanged
-    >;
+    using TEvVolumeMountStateChanged =
+        TRequestEvent<TVolumeMountStateChanged, EvVolumeMountStateChanged>;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

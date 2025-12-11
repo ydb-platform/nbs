@@ -40,7 +40,7 @@ void TVolumeActor::ExecuteCleanupHistory(
 {
     TVolumeDatabase db(tx.DB);
 
-    for (const auto& o : args.OutdatedHistory) {
+    for (const auto& o: args.OutdatedHistory) {
         db.DeleteHistoryEntry(o);
     }
 

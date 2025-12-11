@@ -33,8 +33,7 @@ ui64 RandomCoprime(ui64 x, ui64 min)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TConfigHolder final
-    : public IConfigHolder
+class TConfigHolder final: public IConfigHolder
 {
 private:
     TTestConfig Config;
@@ -99,7 +98,8 @@ void TConfigHolder::GenerateMissingFields()
         Config.SetTestId(RandomNumber<ui64>());
     }
     if (!Config.HasRangeBlockCount()) {
-        Config.SetRangeBlockCount(Config.GetFileSize() /
+        Config.SetRangeBlockCount(
+            Config.GetFileSize() /
             (static_cast<ui64>(Config.GetIoDepth()) * Config.GetBlockSize()));
     }
 
@@ -111,11 +111,13 @@ void TConfigHolder::GenerateMissingFields()
         if (!range.HasRequestBlockCount()) {
             range.SetRequestBlockCount(1);
         }
-        range.SetRequestCount(Config.GetRangeBlockCount() / range.GetRequestBlockCount());
+        range.SetRequestCount(
+            Config.GetRangeBlockCount() / range.GetRequestBlockCount());
         range.SetStartOffset(i * Config.GetRangeBlockCount());
         if (!range.HasStep()) {
-            range.SetStep(RandomCoprime(range.GetRequestCount(), 1_GB
-                / (range.GetRequestBlockCount() * Config.GetBlockSize())));
+            range.SetStep(RandomCoprime(
+                range.GetRequestCount(),
+                1_GB / (range.GetRequestBlockCount() * Config.GetBlockSize())));
         }
         if (!range.HasStartBlockIdx()) {
             range.SetStartBlockIdx(i);
@@ -144,7 +146,7 @@ void TConfigHolder::DumpConfig(const TString& filePath)
     file.Write(config.data(), config.length());
 }
 
-}    //  namespace
+}   //  namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

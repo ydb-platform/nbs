@@ -41,8 +41,7 @@ void BuildUnmountVolumeButton(
 
 TString GetIpcTypeName(NProto::EClientIpcType ipcType)
 {
-    switch (ipcType)
-    {
+    switch (ipcType) {
         case NProto::IPC_GRPC:
             return "GRPC";
 
@@ -71,20 +70,41 @@ void BuildHtmlResponse(
     const TClientInfoList& clientInfos,
     TStringStream& out)
 {
-    HTML(out) {
-        TAG(TH3) { out << "Volume " << diskId << " clients"; }
-        TABLE_SORTABLE_CLASS("table table-bordered") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "Client ID"; }
-                    TABLEH() { out << "Access mode"; }
-                    TABLEH() { out << "Mount mode"; }
-                    TABLEH() { out << "Throttling"; }
-                    TABLEH() { out << "Force write"; }
-                    TABLEH() { out << "Last activity time"; }
-                    TABLEH() { out << "IPC type"; }
-                    TABLEH() { out << "Version"; }
-                    TABLEH() { out << "Unmount"; }
+    HTML (out) {
+        TAG (TH3) {
+            out << "Volume " << diskId << " clients";
+        }
+        TABLE_SORTABLE_CLASS("table table-bordered")
+        {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "Client ID";
+                    }
+                    TABLEH () {
+                        out << "Access mode";
+                    }
+                    TABLEH () {
+                        out << "Mount mode";
+                    }
+                    TABLEH () {
+                        out << "Throttling";
+                    }
+                    TABLEH () {
+                        out << "Force write";
+                    }
+                    TABLEH () {
+                        out << "Last activity time";
+                    }
+                    TABLEH () {
+                        out << "IPC type";
+                    }
+                    TABLEH () {
+                        out << "Version";
+                    }
+                    TABLEH () {
+                        out << "Unmount";
+                    }
                 }
             }
             ui64 clientNo = 0;
@@ -95,26 +115,36 @@ void BuildHtmlResponse(
                 bool throttlingDisabled = HasProtoFlag(
                     clientInfo.MountFlags,
                     NProto::MF_THROTTLING_DISABLED);
-                bool forceWrite = HasProtoFlag(
-                    clientInfo.MountFlags,
-                    NProto::MF_FORCE_WRITE);
+                bool forceWrite =
+                    HasProtoFlag(clientInfo.MountFlags, NProto::MF_FORCE_WRITE);
                 auto ipcTypeName = GetIpcTypeName(clientInfo.IpcType);
-                TABLER() {
-                    TABLED() { out << clientInfo.ClientId; }
-                    TABLED() { out << (readOnly ? "Read only" : "Read/Write"); }
-                    TABLED() { out << (mountLocal ? "Local" : "Remote"); }
-                    TABLED() {
+                TABLER () {
+                    TABLED () {
+                        out << clientInfo.ClientId;
+                    }
+                    TABLED () {
+                        out << (readOnly ? "Read only" : "Read/Write");
+                    }
+                    TABLED () {
+                        out << (mountLocal ? "Local" : "Remote");
+                    }
+                    TABLED () {
                         out << (throttlingDisabled ? "Disabled" : "Enabled");
                     }
-                    TABLED() {
+                    TABLED () {
                         out << (forceWrite ? "On" : "Off");
                     }
-                    TABLED() {
-                        out << (clientInfo.LastActivityTime.ToStringLocalUpToSeconds());
+                    TABLED () {
+                        out << (clientInfo.LastActivityTime
+                                    .ToStringLocalUpToSeconds());
                     }
-                    TABLED() { out << ipcTypeName; }
-                    TABLED() { out << clientInfo.ClientVersionInfo; }
-                    TABLED() {
+                    TABLED () {
+                        out << ipcTypeName;
+                    }
+                    TABLED () {
+                        out << clientInfo.ClientVersionInfo;
+                    }
+                    TABLED () {
                         BuildUnmountVolumeButton(
                             out,
                             clientNo++,

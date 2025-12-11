@@ -41,8 +41,7 @@ using TDiskAgentStatePtr = std::shared_ptr<TDiskAgentState>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDiskAgentMock final
-    : public NActors::TActor<TDiskAgentMock>
+class TDiskAgentMock final: public NActors::TActor<TDiskAgentMock>
 {
     struct TDeviceState
     {
@@ -56,8 +55,8 @@ private:
 
 public:
     TDiskAgentMock(
-            google::protobuf::RepeatedPtrField<NProto::TDeviceConfig> devices,
-            TDiskAgentStatePtr state = {})
+        google::protobuf::RepeatedPtrField<NProto::TDeviceConfig> devices,
+        TDiskAgentStatePtr state = {})
         : TActor(&TThis::StateWork)
         , State(std::move(state))
     {
@@ -106,13 +105,27 @@ private:
         switch (ev->GetTypeRewrite()) {
             HFunc(NActors::TEvents::TEvPoisonPill, HandlePoisonPill);
 
-            HFunc(TEvDiskAgent::TEvReadDeviceBlocksRequest, HandleReadDeviceBlocks);
-            HFunc(TEvDiskAgent::TEvWriteDeviceBlocksRequest, HandleWriteDeviceBlocks);
-            HFunc(TEvDiskAgent::TEvZeroDeviceBlocksRequest, HandleZeroDeviceBlocks);
-            HFunc(TEvDiskAgent::TEvChecksumDeviceBlocksRequest, HandleChecksumDeviceBlocks);
-            HFunc(TEvDiskAgent::TEvDirectCopyBlocksRequest, HandleDirectCopyBlocks);
-            HFunc(TEvDiskAgent::TEvAcquireDevicesRequest, HandleAcquireDevicesRequest);
-            HFunc(TEvDiskAgent::TEvReleaseDevicesRequest, HandleReleaseDevicesRequest);
+            HFunc(
+                TEvDiskAgent::TEvReadDeviceBlocksRequest,
+                HandleReadDeviceBlocks);
+            HFunc(
+                TEvDiskAgent::TEvWriteDeviceBlocksRequest,
+                HandleWriteDeviceBlocks);
+            HFunc(
+                TEvDiskAgent::TEvZeroDeviceBlocksRequest,
+                HandleZeroDeviceBlocks);
+            HFunc(
+                TEvDiskAgent::TEvChecksumDeviceBlocksRequest,
+                HandleChecksumDeviceBlocks);
+            HFunc(
+                TEvDiskAgent::TEvDirectCopyBlocksRequest,
+                HandleDirectCopyBlocks);
+            HFunc(
+                TEvDiskAgent::TEvAcquireDevicesRequest,
+                HandleAcquireDevicesRequest);
+            HFunc(
+                TEvDiskAgent::TEvReleaseDevicesRequest,
+                HandleReleaseDevicesRequest);
 
             default:
                 Y_ABORT(
@@ -276,9 +289,9 @@ private:
         const auto k = request.GetBlockSize() / config.GetBlockSize();
 
         const auto startIndex = request.GetStartIndex() * k;
-        const auto endIndex = Min(
-            startIndex + request.GetBlocksCount() * k,
-            config.GetBlocksCount());
+        const auto endIndex =
+            Min(startIndex + request.GetBlocksCount() * k,
+                config.GetBlocksCount());
 
         for (ui32 i = startIndex; i != endIndex; ++i) {
             device.Content[i] = TString(config.GetBlockSize(), 0);

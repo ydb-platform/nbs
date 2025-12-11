@@ -10,16 +10,15 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IBlockStore
-    : public IStartable
+struct IBlockStore: public IStartable
 {
     virtual TStorageBuffer AllocateBuffer(size_t bytesCount) = 0;
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
-    virtual NThreading::TFuture<NProto::T##name##Response> name(               \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) = 0;                \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)                     \
+    virtual NThreading::TFuture<NProto::T##name##Response> name( \
+        TCallContextPtr callContext,                             \
+        std::shared_ptr<NProto::T##name##Request> request) = 0;  \
+    // BLOCKSTORE_DECLARE_METHOD
 
     BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 

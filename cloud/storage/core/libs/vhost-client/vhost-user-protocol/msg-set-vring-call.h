@@ -6,8 +6,7 @@ namespace NVHostUser {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSetVringCall
-    : public IMessage
+class TSetVringCall: public IMessage
 {
 private:
     uint64_t Index;
@@ -44,4 +43,4 @@ public:
     }
 };
 
-} // namespace NVHostUser
+}   // namespace NVHostUser

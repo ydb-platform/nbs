@@ -22,15 +22,15 @@ struct TFakeConductor::TImpl
 
     TImpl(ui16 port)
         : Port(port)
-    {
-    }
+    {}
 
     ~TImpl()
     {
         if (Loop) {
             with_lock (Lock) {
-                for (auto& droppedRequest : DroppedRequests) {
-                    droppedRequest->SendError(NNeh::IRequest::ServiceUnavailable);
+                for (auto& droppedRequest: DroppedRequests) {
+                    droppedRequest->SendError(
+                        NNeh::IRequest::ServiceUnavailable);
                 }
 
                 DroppedRequests.clear();
@@ -57,7 +57,7 @@ struct TFakeConductor::TImpl
                     return;
                 }
 
-                for (const auto& hostInfo : HostInfo) {
+                for (const auto& hostInfo: HostInfo) {
                     if (hostInfo.Group == group) {
                         ds << hostInfo.Host << Endl;
                     }
@@ -89,12 +89,10 @@ struct TFakeConductor::TImpl
 
 TFakeConductor::TFakeConductor(ui16 port)
     : Impl(new TImpl(port))
-{
-}
+{}
 
 TFakeConductor::~TFakeConductor()
-{
-}
+{}
 
 void TFakeConductor::ForkStart()
 {

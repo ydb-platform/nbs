@@ -50,8 +50,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TEndpoint final
-    : public TEndpointBase
+class TEndpoint final: public TEndpointBase
 {
 private:
     const ISpdkEnvPtr Env;
@@ -63,10 +62,10 @@ private:
 
 public:
     TEndpoint(
-            ISpdkEnvPtr env,
-            ISpdkDevicePtr device,
-            IBlockStorePtr volumeClient,
-            ui32 blockSize)
+        ISpdkEnvPtr env,
+        ISpdkDevicePtr device,
+        IBlockStorePtr volumeClient,
+        ui32 blockSize)
         : Env(std::move(env))
         , Device(std::move(device))
         , VolumeClient(std::move(volumeClient))
@@ -148,12 +147,13 @@ TFuture<NProto::TReadBlocksLocalResponse> TEndpoint::ReadBlocksLocal(
     const ui32 totalBlockCount = request->GetBlocksCount();
 
     // std::function can't work with move only objects
-    auto guard = std::make_shared<TGuardedSgList::TGuard>(
-        request->Sglist.Acquire());
+    auto guard =
+        std::make_shared<TGuardedSgList::TGuard>(request->Sglist.Acquire());
 
     if (!*guard) {
         return MakeFuture<NProto::TReadBlocksLocalResponse>(TErrorResponse(
-            E_CANCELLED, "failed to acquire sglist in SpdkClient"));
+            E_CANCELLED,
+            "failed to acquire sglist in SpdkClient"));
     }
 
     auto result = Device->Read(
@@ -161,14 +161,16 @@ TFuture<NProto::TReadBlocksLocalResponse> TEndpoint::ReadBlocksLocal(
         startIndex * BlockSize,
         totalBlockCount * BlockSize);
 
-    return result.Apply([request, guard] (const auto& future) mutable {
-        guard.reset();
+    return result.Apply(
+        [request, guard](const auto& future) mutable
+        {
+            guard.reset();
 
-        NProto::TReadBlocksLocalResponse response;
-        *response.MutableError() = future.GetValue();
+            NProto::TReadBlocksLocalResponse response;
+            *response.MutableError() = future.GetValue();
 
-        return response;
-    });
+            return response;
+        });
 }
 
 TFuture<NProto::TWriteBlocksLocalResponse> TEndpoint::WriteBlocksLocal(
@@ -181,8 +183,8 @@ TFuture<NProto::TWriteBlocksLocalResponse> TEndpoint::WriteBlocksLocal(
     const ui32 totalBlockCount = request->BlocksCount;
 
     // std::function can't work with move only objects
-    auto guard = std::make_shared<TGuardedSgList::TGuard>(
-        request->Sglist.Acquire());
+    auto guard =
+        std::make_shared<TGuardedSgList::TGuard>(request->Sglist.Acquire());
 
     if (!*guard) {
         return MakeFuture<NProto::TWriteBlocksLocalResponse>(TErrorResponse(
@@ -195,14 +197,16 @@ TFuture<NProto::TWriteBlocksLocalResponse> TEndpoint::WriteBlocksLocal(
         startIndex * BlockSize,
         totalBlockCount * BlockSize);
 
-    return result.Apply([request, guard] (const auto& future) mutable {
-        guard.reset();
+    return result.Apply(
+        [request, guard](const auto& future) mutable
+        {
+            guard.reset();
 
-        NProto::TWriteBlocksLocalResponse response;
-        *response.MutableError() = future.GetValue();
+            NProto::TWriteBlocksLocalResponse response;
+            *response.MutableError() = future.GetValue();
 
-        return response;
-    });
+            return response;
+        });
 }
 
 TFuture<NProto::TZeroBlocksResponse> TEndpoint::ZeroBlocks(
@@ -218,12 +222,14 @@ TFuture<NProto::TZeroBlocksResponse> TEndpoint::ZeroBlocks(
         startIndex * BlockSize,
         totalBlockCount * BlockSize);
 
-    return result.Apply([] (const auto& future) {
-        NProto::TZeroBlocksResponse response;
-        *response.MutableError() = future.GetValue();
+    return result.Apply(
+        [](const auto& future)
+        {
+            NProto::TZeroBlocksResponse response;
+            *response.MutableError() = future.GetValue();
 
-        return response;
-    });
+            return response;
+        });
 }
 
 TStorageBuffer TEndpoint::AllocateBuffer(size_t bytesCount)
@@ -235,9 +241,12 @@ TStorageBuffer TEndpoint::AllocateBuffer(size_t bytesCount)
 
     Y_ABORT_UNLESS(std::align(BlockSize, bytesCount, p, space));
 
-    return { static_cast<char*>(p), [=, this] (auto*) {
-        Allocator->Release(block);
-    }};
+    return {
+        static_cast<char*>(p),
+        [=, this](auto*)
+        {
+            Allocator->Release(block);
+        }};
 }
 
 }   // namespace
@@ -249,11 +258,9 @@ IBlockStorePtr CreateSpdkEndpointClient(
     IBlockStorePtr volumeClient,
     const TString& deviceName)
 {
-    auto stats = env->QueryDeviceStats(deviceName)
-        .GetValue(WaitTimeout);
+    auto stats = env->QueryDeviceStats(deviceName).GetValue(WaitTimeout);
 
-    auto device = env->OpenDevice(deviceName, true)
-        .GetValue(WaitTimeout);
+    auto device = env->OpenDevice(deviceName, true).GetValue(WaitTimeout);
 
     return std::make_shared<TEndpoint>(
         std::move(env),

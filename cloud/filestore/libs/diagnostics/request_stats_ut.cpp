@@ -17,8 +17,7 @@ using namespace NMonitoring;
 
 using namespace NCloud::NStorage::NUserStats;
 
-namespace
-{
+namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -57,15 +56,15 @@ struct TBootstrap
         : Counters{MakeIntrusive<TDynamicCounters>()}
         , Timer{CreateWallClockTimer()}
         , Registry{CreateRequestStatsRegistry(
-            METRIC_COMPONENT,
-            std::make_shared<TDiagnosticsConfig>(),
-            Counters,
-            Timer,
-            CreateUserCounterSupplierStub())}
+              METRIC_COMPONENT,
+              std::make_shared<TDiagnosticsConfig>(),
+              Counters,
+              Timer,
+              CreateUserCounterSupplierStub())}
     {}
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -75,14 +74,14 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
     {
         TBootstrap bootstrap;
 
-        auto componentCounters = bootstrap.Counters
-            ->FindSubgroup("component", METRIC_COMPONENT);
+        auto componentCounters =
+            bootstrap.Counters->FindSubgroup("component", METRIC_COMPONENT);
         UNIT_ASSERT(componentCounters);
         UNIT_ASSERT(componentCounters->FindSubgroup("type", "ssd"));
         UNIT_ASSERT(componentCounters->FindSubgroup("type", "hdd"));
 
-        auto counters = bootstrap.Counters
-            ->FindSubgroup("component", METRIC_FS_COMPONENT);
+        auto counters =
+            bootstrap.Counters->FindSubgroup("component", METRIC_FS_COMPONENT);
         UNIT_ASSERT(counters);
         counters = counters->FindSubgroup("host", "cluster");
         UNIT_ASSERT(counters);
@@ -109,14 +108,16 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
     {
         TBootstrap bootstrap;
 
-        auto componentCounters = bootstrap.Counters
-            ->FindSubgroup("component", METRIC_COMPONENT);
+        auto componentCounters =
+            bootstrap.Counters->FindSubgroup("component", METRIC_COMPONENT);
         auto ssdCounters = componentCounters->FindSubgroup("type", "ssd");
-
 
         UNIT_ASSERT(
             bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER));
-        bootstrap.Registry->SetFileSystemMediaKind(FS, CLIENT, NProto::STORAGE_MEDIA_SSD);
+        bootstrap.Registry->SetFileSystemMediaKind(
+            FS,
+            CLIENT,
+            NProto::STORAGE_MEDIA_SSD);
 
         auto stats = bootstrap.Registry->GetRequestStats();
 
@@ -125,7 +126,8 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
         stats->RequestStarted(*context);
         stats->RequestCompleted(*context, {});
 
-        auto counters = componentCounters->FindSubgroup("request", "CreateHandle");
+        auto counters =
+            componentCounters->FindSubgroup("request", "CreateHandle");
         UNIT_ASSERT_EQUAL(1, counters->GetCounter("Count")->GetAtomic());
 
         counters = ssdCounters->FindSubgroup("request", "CreateHandle");
@@ -138,8 +140,8 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
 
         TBootstrap bootstrap;
 
-        auto counters = bootstrap.Counters
-            ->FindSubgroup("component", METRIC_FS_COMPONENT);
+        auto counters =
+            bootstrap.Counters->FindSubgroup("component", METRIC_FS_COMPONENT);
         UNIT_ASSERT(counters);
         counters = counters->FindSubgroup("host", "cluster");
         UNIT_ASSERT(counters);
@@ -168,11 +170,10 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
     {
         const TString COUNTER = "MaxPredictedPostponeTime";
 
-
         TBootstrap bootstrap;
 
-        auto counters = bootstrap.Counters
-            ->FindSubgroup("component", METRIC_FS_COMPONENT);
+        auto counters =
+            bootstrap.Counters->FindSubgroup("component", METRIC_FS_COMPONENT);
         UNIT_ASSERT(counters);
         counters = counters->FindSubgroup("host", "cluster");
         UNIT_ASSERT(counters);
@@ -198,14 +199,12 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(0, predictedCounter->GetAtomic());
 
             const auto inflightTime = context->CalcRequestTime(
-                context->GetRequestStartedCycles()
-                    + DurationToCyclesSafe(TDuration::MicroSeconds(10'500)));
+                context->GetRequestStartedCycles() +
+                DurationToCyclesSafe(TDuration::MicroSeconds(10'500)));
             UNIT_ASSERT_VALUES_EQUAL(
                 10,
                 inflightTime.ExecutionTime.MilliSeconds());
-            UNIT_ASSERT_VALUES_EQUAL(
-                10,
-                inflightTime.TotalTime.MilliSeconds());
+            UNIT_ASSERT_VALUES_EQUAL(10, inflightTime.TotalTime.MilliSeconds());
 
             context->AddTime(
                 EProcessingStage::Postponed,
@@ -215,14 +214,12 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             stats->UpdateStats(false);
 
             const auto totalTime = context->CalcRequestTime(
-                context->GetRequestStartedCycles()
-                    + DurationToCyclesSafe(TDuration::MicroSeconds(60'500)));
+                context->GetRequestStartedCycles() +
+                DurationToCyclesSafe(TDuration::MicroSeconds(60'500)));
             UNIT_ASSERT_VALUES_EQUAL(
                 10,
                 totalTime.ExecutionTime.MilliSeconds());
-            UNIT_ASSERT_VALUES_EQUAL(
-                60,
-                totalTime.TotalTime.MilliSeconds());
+            UNIT_ASSERT_VALUES_EQUAL(60, totalTime.TotalTime.MilliSeconds());
         }
 
         {
@@ -237,8 +234,8 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(50'000, predictedCounter->GetAtomic());
 
             const auto inflightTimeFirst = context->CalcRequestTime(
-                context->GetRequestStartedCycles()
-                    + DurationToCyclesSafe(TDuration::MicroSeconds(25'500)));
+                context->GetRequestStartedCycles() +
+                DurationToCyclesSafe(TDuration::MicroSeconds(25'500)));
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
                 inflightTimeFirst.ExecutionTime.MilliSeconds());
@@ -247,8 +244,8 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
                 inflightTimeFirst.TotalTime.MilliSeconds());
 
             const auto inflightTimeSecond = context->CalcRequestTime(
-                context->GetRequestStartedCycles()
-                    + DurationToCyclesSafe(TDuration::MicroSeconds(65'500)));
+                context->GetRequestStartedCycles() +
+                DurationToCyclesSafe(TDuration::MicroSeconds(65'500)));
             UNIT_ASSERT_VALUES_EQUAL(
                 15,
                 inflightTimeSecond.ExecutionTime.MilliSeconds());
@@ -264,14 +261,12 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             stats->UpdateStats(true);
 
             const auto totalTime = context->CalcRequestTime(
-                context->GetRequestStartedCycles()
-                    + DurationToCyclesSafe(TDuration::MicroSeconds(75'500)));
+                context->GetRequestStartedCycles() +
+                DurationToCyclesSafe(TDuration::MicroSeconds(75'500)));
             UNIT_ASSERT_VALUES_EQUAL(
                 55,
                 totalTime.ExecutionTime.MilliSeconds());
-            UNIT_ASSERT_VALUES_EQUAL(
-                75,
-                totalTime.TotalTime.MilliSeconds());
+            UNIT_ASSERT_VALUES_EQUAL(75, totalTime.TotalTime.MilliSeconds());
         }
 
         {
@@ -286,8 +281,8 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(50'000, predictedCounter->GetAtomic());
 
             const auto inflightTimeFirst = context->CalcRequestTime(
-                context->GetRequestStartedCycles()
-                    + DurationToCyclesSafe(TDuration::MicroSeconds(25'500)));
+                context->GetRequestStartedCycles() +
+                DurationToCyclesSafe(TDuration::MicroSeconds(25'500)));
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
                 inflightTimeFirst.ExecutionTime.MilliSeconds());
@@ -296,8 +291,8 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
                 inflightTimeFirst.TotalTime.MilliSeconds());
 
             const auto inflightTimeSecond = context->CalcRequestTime(
-                context->GetRequestStartedCycles()
-                    + DurationToCyclesSafe(TDuration::MicroSeconds(65'500)));
+                context->GetRequestStartedCycles() +
+                DurationToCyclesSafe(TDuration::MicroSeconds(65'500)));
             UNIT_ASSERT_VALUES_EQUAL(
                 30,
                 inflightTimeSecond.ExecutionTime.MilliSeconds());
@@ -313,19 +308,18 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             stats->UpdateStats(true);
 
             const auto totalTime = context->CalcRequestTime(
-                context->GetRequestStartedCycles()
-                    + DurationToCyclesSafe(TDuration::MicroSeconds(80'500)));
+                context->GetRequestStartedCycles() +
+                DurationToCyclesSafe(TDuration::MicroSeconds(80'500)));
             UNIT_ASSERT_VALUES_EQUAL(
                 80,
                 totalTime.ExecutionTime.MilliSeconds());
-            UNIT_ASSERT_VALUES_EQUAL(
-                80,
-                totalTime.TotalTime.MilliSeconds());
+            UNIT_ASSERT_VALUES_EQUAL(80, totalTime.TotalTime.MilliSeconds());
         }
 
         {
             auto context = MakeIntrusive<TCallContext>(FS, ui64(4));
-            context->RequestType = EFileStoreRequest::CreateHandle;  // Index op
+            context->RequestType =
+                EFileStoreRequest::CreateHandle;   // Index op
             stats->RequestStarted(*context);
             stats->UpdateStats(false);
 
@@ -335,14 +329,12 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(50'000, predictedCounter->GetAtomic());
 
             const auto inflightTime = context->CalcRequestTime(
-                context->GetRequestStartedCycles()
-                    + DurationToCyclesSafe(TDuration::MicroSeconds(10'500)));
+                context->GetRequestStartedCycles() +
+                DurationToCyclesSafe(TDuration::MicroSeconds(10'500)));
             UNIT_ASSERT_VALUES_EQUAL(
                 10,
                 inflightTime.ExecutionTime.MilliSeconds());
-            UNIT_ASSERT_VALUES_EQUAL(
-                10,
-                inflightTime.TotalTime.MilliSeconds());
+            UNIT_ASSERT_VALUES_EQUAL(10, inflightTime.TotalTime.MilliSeconds());
 
             context->AddTime(
                 EProcessingStage::Postponed,
@@ -352,14 +344,12 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             stats->UpdateStats(false);
 
             const auto totalTime = context->CalcRequestTime(
-                context->GetRequestStartedCycles()
-                    + DurationToCyclesSafe(TDuration::MicroSeconds(60'500)));
+                context->GetRequestStartedCycles() +
+                DurationToCyclesSafe(TDuration::MicroSeconds(60'500)));
             UNIT_ASSERT_VALUES_EQUAL(
                 10,
                 totalTime.ExecutionTime.MilliSeconds());
-            UNIT_ASSERT_VALUES_EQUAL(
-                60,
-                totalTime.TotalTime.MilliSeconds());
+            UNIT_ASSERT_VALUES_EQUAL(60, totalTime.TotalTime.MilliSeconds());
         }
 
         {
@@ -374,8 +364,8 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(50'000, predictedCounter->GetAtomic());
 
             const auto inflightTimeFirst = context->CalcRequestTime(
-                context->GetRequestStartedCycles()
-                    + DurationToCyclesSafe(TDuration::MicroSeconds(25'500)));
+                context->GetRequestStartedCycles() +
+                DurationToCyclesSafe(TDuration::MicroSeconds(25'500)));
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
                 inflightTimeFirst.ExecutionTime.MilliSeconds());
@@ -384,8 +374,8 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
                 inflightTimeFirst.TotalTime.MilliSeconds());
 
             const auto inflightTimeSecond = context->CalcRequestTime(
-                context->GetRequestStartedCycles()
-                    + DurationToCyclesSafe(TDuration::MicroSeconds(65'500)));
+                context->GetRequestStartedCycles() +
+                DurationToCyclesSafe(TDuration::MicroSeconds(65'500)));
             UNIT_ASSERT_VALUES_EQUAL(
                 30,
                 inflightTimeSecond.ExecutionTime.MilliSeconds());
@@ -401,18 +391,17 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             stats->UpdateStats(true);
 
             const auto totalTime = context->CalcRequestTime(
-                context->GetRequestStartedCycles()
-                    + DurationToCyclesSafe(TDuration::MicroSeconds(80'500)));
+                context->GetRequestStartedCycles() +
+                DurationToCyclesSafe(TDuration::MicroSeconds(80'500)));
             UNIT_ASSERT_VALUES_EQUAL(
                 80,
                 totalTime.ExecutionTime.MilliSeconds());
-            UNIT_ASSERT_VALUES_EQUAL(
-                80,
-                totalTime.TotalTime.MilliSeconds());
+            UNIT_ASSERT_VALUES_EQUAL(80, totalTime.TotalTime.MilliSeconds());
         }
     }
 
-    Y_UNIT_TEST(ShouldReportReportMaxPredictedPostponeTimeForDataRequestsViaFsExclusively)
+    Y_UNIT_TEST(
+        ShouldReportReportMaxPredictedPostponeTimeForDataRequestsViaFsExclusively)
     {
         const TString COUNTER = "MaxPredictedPostponeTime";
         const TString FS_1 = "test_1";
@@ -420,8 +409,8 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
 
         TBootstrap bootstrap;
 
-        auto counters = bootstrap.Counters
-            ->FindSubgroup("component", METRIC_FS_COMPONENT);
+        auto counters =
+            bootstrap.Counters->FindSubgroup("component", METRIC_FS_COMPONENT);
         UNIT_ASSERT(counters);
         counters = counters->FindSubgroup("host", "cluster");
         UNIT_ASSERT(counters);
@@ -457,14 +446,12 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(0, predictedCounterFirst->GetAtomic());
 
             const auto inflightTime = context->CalcRequestTime(
-                context->GetRequestStartedCycles()
-                    + DurationToCyclesSafe(TDuration::MicroSeconds(10'500)));
+                context->GetRequestStartedCycles() +
+                DurationToCyclesSafe(TDuration::MicroSeconds(10'500)));
             UNIT_ASSERT_VALUES_EQUAL(
                 10,
                 inflightTime.ExecutionTime.MilliSeconds());
-            UNIT_ASSERT_VALUES_EQUAL(
-                10,
-                inflightTime.TotalTime.MilliSeconds());
+            UNIT_ASSERT_VALUES_EQUAL(10, inflightTime.TotalTime.MilliSeconds());
 
             context->AddTime(
                 EProcessingStage::Postponed,
@@ -474,14 +461,12 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             statsFirst->UpdateStats(false);
 
             const auto totalTime = context->CalcRequestTime(
-                context->GetRequestStartedCycles()
-                    + DurationToCyclesSafe(TDuration::MicroSeconds(60'500)));
+                context->GetRequestStartedCycles() +
+                DurationToCyclesSafe(TDuration::MicroSeconds(60'500)));
             UNIT_ASSERT_VALUES_EQUAL(
                 10,
                 totalTime.ExecutionTime.MilliSeconds());
-            UNIT_ASSERT_VALUES_EQUAL(
-                60,
-                totalTime.TotalTime.MilliSeconds());
+            UNIT_ASSERT_VALUES_EQUAL(60, totalTime.TotalTime.MilliSeconds());
         }
 
         {
@@ -493,11 +478,13 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 50'000,
                 context->GetPossiblePostponeDuration().MicroSeconds());
-            UNIT_ASSERT_VALUES_EQUAL(50'000, predictedCounterFirst->GetAtomic());
+            UNIT_ASSERT_VALUES_EQUAL(
+                50'000,
+                predictedCounterFirst->GetAtomic());
 
             const auto inflightTimeFirst = context->CalcRequestTime(
-                context->GetRequestStartedCycles()
-                    + DurationToCyclesSafe(TDuration::MicroSeconds(25'500)));
+                context->GetRequestStartedCycles() +
+                DurationToCyclesSafe(TDuration::MicroSeconds(25'500)));
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
                 inflightTimeFirst.ExecutionTime.MilliSeconds());
@@ -506,8 +493,8 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
                 inflightTimeFirst.TotalTime.MilliSeconds());
 
             const auto inflightTimeSecond = context->CalcRequestTime(
-                context->GetRequestStartedCycles()
-                    + DurationToCyclesSafe(TDuration::MicroSeconds(65'500)));
+                context->GetRequestStartedCycles() +
+                DurationToCyclesSafe(TDuration::MicroSeconds(65'500)));
             UNIT_ASSERT_VALUES_EQUAL(
                 15,
                 inflightTimeSecond.ExecutionTime.MilliSeconds());
@@ -523,14 +510,12 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             statsFirst->UpdateStats(true);
 
             const auto totalTime = context->CalcRequestTime(
-                context->GetRequestStartedCycles()
-                    + DurationToCyclesSafe(TDuration::MicroSeconds(75'500)));
+                context->GetRequestStartedCycles() +
+                DurationToCyclesSafe(TDuration::MicroSeconds(75'500)));
             UNIT_ASSERT_VALUES_EQUAL(
                 55,
                 totalTime.ExecutionTime.MilliSeconds());
-            UNIT_ASSERT_VALUES_EQUAL(
-                75,
-                totalTime.TotalTime.MilliSeconds());
+            UNIT_ASSERT_VALUES_EQUAL(75, totalTime.TotalTime.MilliSeconds());
         }
 
         {
@@ -545,14 +530,12 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(0, predictedCounterSecond->GetAtomic());
 
             const auto inflightTime = context->CalcRequestTime(
-                context->GetRequestStartedCycles()
-                    + DurationToCyclesSafe(TDuration::MicroSeconds(25'500)));
+                context->GetRequestStartedCycles() +
+                DurationToCyclesSafe(TDuration::MicroSeconds(25'500)));
             UNIT_ASSERT_VALUES_EQUAL(
                 25,
                 inflightTime.ExecutionTime.MilliSeconds());
-            UNIT_ASSERT_VALUES_EQUAL(
-                25,
-                inflightTime.TotalTime.MilliSeconds());
+            UNIT_ASSERT_VALUES_EQUAL(25, inflightTime.TotalTime.MilliSeconds());
 
             context->AddTime(
                 EProcessingStage::Postponed,
@@ -562,26 +545,24 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             statsSecond->UpdateStats(true);
 
             const auto totalTime = context->CalcRequestTime(
-                context->GetRequestStartedCycles()
-                    + DurationToCyclesSafe(TDuration::MicroSeconds(35'500)));
+                context->GetRequestStartedCycles() +
+                DurationToCyclesSafe(TDuration::MicroSeconds(35'500)));
             UNIT_ASSERT_VALUES_EQUAL(
                 10,
                 totalTime.ExecutionTime.MilliSeconds());
-            UNIT_ASSERT_VALUES_EQUAL(
-                35,
-                totalTime.TotalTime.MilliSeconds());
+            UNIT_ASSERT_VALUES_EQUAL(35, totalTime.TotalTime.MilliSeconds());
         }
     }
 
-    Y_UNIT_TEST(ShouldNotReportReportMaxPredictedPostponeTimeForNotDataRequestsViaFs)
+    Y_UNIT_TEST(
+        ShouldNotReportReportMaxPredictedPostponeTimeForNotDataRequestsViaFs)
     {
         const TString COUNTER = "MaxPredictedPostponeTime";
 
-
         TBootstrap bootstrap;
 
-        auto counters = bootstrap.Counters
-            ->FindSubgroup("component", METRIC_FS_COMPONENT);
+        auto counters =
+            bootstrap.Counters->FindSubgroup("component", METRIC_FS_COMPONENT);
         UNIT_ASSERT(counters);
         counters = counters->FindSubgroup("host", "cluster");
         UNIT_ASSERT(counters);
@@ -598,7 +579,8 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
 
         {
             auto context = MakeIntrusive<TCallContext>(FS, ui64(1));
-            context->RequestType = EFileStoreRequest::CreateHandle;  // Index op
+            context->RequestType =
+                EFileStoreRequest::CreateHandle;   // Index op
             stats->RequestStarted(*context);
             stats->UpdateStats(false);
 
@@ -608,14 +590,12 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(0, predictedCounter->GetAtomic());
 
             const auto inflightTime = context->CalcRequestTime(
-                context->GetRequestStartedCycles()
-                    + DurationToCyclesSafe(TDuration::MicroSeconds(10'500)));
+                context->GetRequestStartedCycles() +
+                DurationToCyclesSafe(TDuration::MicroSeconds(10'500)));
             UNIT_ASSERT_VALUES_EQUAL(
                 10,
                 inflightTime.ExecutionTime.MilliSeconds());
-            UNIT_ASSERT_VALUES_EQUAL(
-                10,
-                inflightTime.TotalTime.MilliSeconds());
+            UNIT_ASSERT_VALUES_EQUAL(10, inflightTime.TotalTime.MilliSeconds());
 
             context->AddTime(
                 EProcessingStage::Postponed,
@@ -625,19 +605,18 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             stats->UpdateStats(false);
 
             const auto totalTime = context->CalcRequestTime(
-                context->GetRequestStartedCycles()
-                    + DurationToCyclesSafe(TDuration::MicroSeconds(60'500)));
+                context->GetRequestStartedCycles() +
+                DurationToCyclesSafe(TDuration::MicroSeconds(60'500)));
             UNIT_ASSERT_VALUES_EQUAL(
                 10,
                 totalTime.ExecutionTime.MilliSeconds());
-            UNIT_ASSERT_VALUES_EQUAL(
-                60,
-                totalTime.TotalTime.MilliSeconds());
+            UNIT_ASSERT_VALUES_EQUAL(60, totalTime.TotalTime.MilliSeconds());
         }
 
         {
             auto context = MakeIntrusive<TCallContext>(FS, ui64(2));
-            context->RequestType = EFileStoreRequest::DestroyHandle;  // Index op
+            context->RequestType =
+                EFileStoreRequest::DestroyHandle;   // Index op
             stats->RequestStarted(*context);
             stats->UpdateStats(true);
 
@@ -647,14 +626,12 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(0, predictedCounter->GetAtomic());
 
             const auto inflightTime = context->CalcRequestTime(
-                context->GetRequestStartedCycles()
-                    + DurationToCyclesSafe(TDuration::MicroSeconds(25'500)));
+                context->GetRequestStartedCycles() +
+                DurationToCyclesSafe(TDuration::MicroSeconds(25'500)));
             UNIT_ASSERT_VALUES_EQUAL(
                 25,
                 inflightTime.ExecutionTime.MilliSeconds());
-            UNIT_ASSERT_VALUES_EQUAL(
-                25,
-                inflightTime.TotalTime.MilliSeconds());
+            UNIT_ASSERT_VALUES_EQUAL(25, inflightTime.TotalTime.MilliSeconds());
 
             context->AddTime(
                 EProcessingStage::Postponed,
@@ -664,19 +641,18 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             stats->UpdateStats(true);
 
             const auto totalTime = context->CalcRequestTime(
-                context->GetRequestStartedCycles()
-                    + DurationToCyclesSafe(TDuration::MicroSeconds(75'500)));
+                context->GetRequestStartedCycles() +
+                DurationToCyclesSafe(TDuration::MicroSeconds(75'500)));
             UNIT_ASSERT_VALUES_EQUAL(
                 55,
                 totalTime.ExecutionTime.MilliSeconds());
-            UNIT_ASSERT_VALUES_EQUAL(
-                75,
-                totalTime.TotalTime.MilliSeconds());
+            UNIT_ASSERT_VALUES_EQUAL(75, totalTime.TotalTime.MilliSeconds());
         }
 
         {
             auto context = MakeIntrusive<TCallContext>(FS, ui64(3));
-            context->RequestType = EFileStoreRequest::CreateNode;  // Control op
+            context->RequestType =
+                EFileStoreRequest::CreateNode;   // Control op
             stats->RequestStarted(*context);
             stats->UpdateStats(true);
 
@@ -686,14 +662,12 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(0, predictedCounter->GetAtomic());
 
             const auto inflightTime = context->CalcRequestTime(
-                context->GetRequestStartedCycles()
-                    + DurationToCyclesSafe(TDuration::MicroSeconds(25'500)));
+                context->GetRequestStartedCycles() +
+                DurationToCyclesSafe(TDuration::MicroSeconds(25'500)));
             UNIT_ASSERT_VALUES_EQUAL(
                 25,
                 inflightTime.ExecutionTime.MilliSeconds());
-            UNIT_ASSERT_VALUES_EQUAL(
-                25,
-                inflightTime.TotalTime.MilliSeconds());
+            UNIT_ASSERT_VALUES_EQUAL(25, inflightTime.TotalTime.MilliSeconds());
 
             context->AddTime(
                 EProcessingStage::Postponed,
@@ -703,14 +677,12 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
             stats->UpdateStats(true);
 
             const auto totalTime = context->CalcRequestTime(
-                context->GetRequestStartedCycles()
-                    + DurationToCyclesSafe(TDuration::MicroSeconds(80'500)));
+                context->GetRequestStartedCycles() +
+                DurationToCyclesSafe(TDuration::MicroSeconds(80'500)));
             UNIT_ASSERT_VALUES_EQUAL(
                 80,
                 totalTime.ExecutionTime.MilliSeconds());
-            UNIT_ASSERT_VALUES_EQUAL(
-                80,
-                totalTime.TotalTime.MilliSeconds());
+            UNIT_ASSERT_VALUES_EQUAL(80, totalTime.TotalTime.MilliSeconds());
         }
     }
 
@@ -718,21 +690,24 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
     {
         TBootstrap bootstrap;
 
-        auto componentCounters = bootstrap.Counters
-            ->FindSubgroup("component", METRIC_COMPONENT);
+        auto componentCounters =
+            bootstrap.Counters->FindSubgroup("component", METRIC_COMPONENT);
         auto ssdCounters = componentCounters->FindSubgroup("type", "ssd");
-
 
         auto stats =
             bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
-        bootstrap.Registry->SetFileSystemMediaKind(FS, CLIENT, NProto::STORAGE_MEDIA_SSD);
+        bootstrap.Registry->SetFileSystemMediaKind(
+            FS,
+            CLIENT,
+            NProto::STORAGE_MEDIA_SSD);
 
         auto context = MakeIntrusive<TCallContext>(FS, ui64(1));
         context->RequestType = EFileStoreRequest::CreateHandle;
         stats->RequestStarted(*context);
         stats->RequestCompleted(*context, {});
 
-        auto counters = componentCounters->FindSubgroup("request", "CreateHandle");
+        auto counters =
+            componentCounters->FindSubgroup("request", "CreateHandle");
         UNIT_ASSERT_EQUAL(1, counters->GetCounter("Count")->GetAtomic());
 
         counters = ssdCounters->FindSubgroup("request", "CreateHandle");
@@ -743,13 +718,12 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
     {
         TBootstrap bootstrap;
 
-        auto fsComponentCounters = bootstrap.Counters
-            ->FindSubgroup("component", METRIC_FS_COMPONENT);
+        auto fsComponentCounters =
+            bootstrap.Counters->FindSubgroup("component", METRIC_FS_COMPONENT);
         UNIT_ASSERT(fsComponentCounters);
-        fsComponentCounters = fsComponentCounters
-            ->FindSubgroup("host", "cluster");
+        fsComponentCounters =
+            fsComponentCounters->FindSubgroup("host", "cluster");
         UNIT_ASSERT(fsComponentCounters);
-
 
         auto firstStats =
             bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
@@ -787,12 +761,10 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
 
     Y_UNIT_TEST(ShouldNotReportZeroCounters)
     {
-
-
         TBootstrap bootstrap;
 
-        auto counters = bootstrap.Counters
-            ->FindSubgroup("component", METRIC_FS_COMPONENT);
+        auto counters =
+            bootstrap.Counters->FindSubgroup("component", METRIC_FS_COMPONENT);
         UNIT_ASSERT(counters);
         counters = counters->FindSubgroup("host", "cluster");
         UNIT_ASSERT(counters);
@@ -861,18 +833,18 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
     {
         TBootstrap bootstrap;
 
-        auto counters = bootstrap.Counters
-            ->FindSubgroup("component", METRIC_FS_COMPONENT);
+        auto counters =
+            bootstrap.Counters->FindSubgroup("component", METRIC_FS_COMPONENT);
         UNIT_ASSERT(counters);
         counters = counters->FindSubgroup("host", "cluster");
         UNIT_ASSERT(counters);
-
 
         auto stats =
             bootstrap.Registry->GetFileSystemStats(FS, CLIENT, CLOUD, FOLDER);
 
         {
-            auto fsCounters = GetFsCounters(counters, FS, CLIENT, CLOUD, FOLDER);
+            auto fsCounters =
+                GetFsCounters(counters, FS, CLIENT, CLOUD, FOLDER);
             UNIT_ASSERT(fsCounters);
         }
     }
@@ -881,19 +853,17 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
     {
         TBootstrap bootstrap;
 
-        auto rootCounters = bootstrap.Counters
-            ->FindSubgroup("component", METRIC_FS_COMPONENT);
+        auto rootCounters =
+            bootstrap.Counters->FindSubgroup("component", METRIC_FS_COMPONENT);
         UNIT_ASSERT(rootCounters);
         rootCounters = rootCounters->FindSubgroup("host", "cluster");
         UNIT_ASSERT(rootCounters);
-
 
         const TString oldCloud = "";
         const TString oldFolder = "";
         const TString newCloud = CLOUD;
         const TString newFolder = FOLDER;
-        auto stats =
-            bootstrap.Registry->GetFileSystemStats(FS, CLIENT, "", "");
+        auto stats = bootstrap.Registry->GetFileSystemStats(FS, CLIENT, "", "");
 
         // emulating first CreateSession request in vfs loop (it is performed
         // with empty cloud and folder)
@@ -978,4 +948,4 @@ Y_UNIT_TEST_SUITE(TRequestStatRegistryTest)
     }
 }
 
-} // namespace NCloud::NFileStore::NStorage
+}   // namespace NCloud::NFileStore::NStorage

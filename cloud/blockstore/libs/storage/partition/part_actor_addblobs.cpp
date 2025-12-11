@@ -30,8 +30,8 @@ namespace {
 TString DescribeFreshRange(const TVector<TBlock>& blocks)
 {
     if (blocks) {
-        return TStringBuilder()
-            << "[" << blocks.front().BlockIndex << ".." << blocks.back().BlockIndex << "]";
+        return TStringBuilder() << "[" << blocks.front().BlockIndex << ".."
+                                << blocks.back().BlockIndex << "]";
     }
     return "<none>";
 }
@@ -76,13 +76,13 @@ private:
 
 public:
     TAddBlobsExecutor(
-            TPartitionState& state,
-            TTxPartition::TAddBlobs& args,
-            ui64 tabletId,
-            TString diskId,
-            ui64 deletionCommitId,
-            ui32 maxBlocksInBlob,
-            TChildLogTitle logTitle)
+        TPartitionState& state,
+        TTxPartition::TAddBlobs& args,
+        ui64 tabletId,
+        TString diskId,
+        ui64 deletionCommitId,
+        ui32 maxBlocksInBlob,
+        TChildLogTitle logTitle)
         : State(state)
         , Args(args)
         , TabletId(tabletId)
@@ -96,8 +96,7 @@ public:
     {
         if (Args.Mode == ADD_COMPACTION_RESULT) {
             Y_ABORT_UNLESS(
-                Args.MixedBlobs.size() ==
-                Args.MixedBlobCompactionInfos.size());
+                Args.MixedBlobs.size() == Args.MixedBlobCompactionInfos.size());
         }
 
         for (ui32 i = 0; i < Args.MixedBlobs.size(); ++i) {
@@ -211,9 +210,8 @@ private:
         // write blocks mask
         TBlockMask blockMask;
 
-        for (ui16 blobOffset = blob.Blocks.size();
-            blobOffset < MaxBlocksInBlob;
-            ++blobOffset)
+        for (ui16 blobOffset = blob.Blocks.size(); blobOffset < MaxBlocksInBlob;
+             ++blobOffset)
         {
             blockMask.Set(blobOffset);
         }
@@ -275,8 +273,8 @@ private:
         TBlockMask blockMask;
 
         for (ui16 blobOffset = blob.BlockRange.Size() - skipped;
-            blobOffset < MaxBlocksInBlob;
-            ++blobOffset)
+             blobOffset < MaxBlocksInBlob;
+             ++blobOffset)
         {
             blockMask.Set(blobOffset);
         }
@@ -343,9 +341,8 @@ private:
         // write blocks mask
         TBlockMask blockMask;
 
-        for (ui16 blobOffset = blob.Blocks.size();
-            blobOffset < MaxBlocksInBlob;
-            ++blobOffset)
+        for (ui16 blobOffset = blob.Blocks.size(); blobOffset < MaxBlocksInBlob;
+             ++blobOffset)
         {
             blockMask.Set(blobOffset);
         }
@@ -366,17 +363,15 @@ private:
             // blob already could be garbage, but we should keep it
             // as there could be active readers (or even checkpoint)
             db.WriteCleanupQueue(blob.BlobId, DeletionCommitId);
-            State.GetCleanupQueue().Add({ blob.BlobId, DeletionCommitId });
+            State.GetCleanupQueue().Add({blob.BlobId, DeletionCommitId});
         }
 
         // move blocks from FreshBlocks to MixedBlocks
         blobOffset = 0;
         for (const auto& block: blob.Blocks) {
-            State.WriteMixedBlock(db, {
-                blob.BlobId,
-                block.CommitId,
-                block.BlockIndex,
-                blobOffset++});
+            State.WriteMixedBlock(
+                db,
+                {blob.BlobId, block.CommitId, block.BlockIndex, blobOffset++});
 
             if (block.IsStoredInDb) {
                 State.DeleteFreshBlock(db, block.BlockIndex, block.CommitId);
@@ -416,7 +411,7 @@ private:
         }
 
         return rangeInfo.Stat;
-    };
+    }
 
     void UpdateCompactionCounters(const TAddMergedBlob& blob)
     {
@@ -431,16 +426,17 @@ private:
 
             TCompactionMap::UpdateCompactionCounter(
                 rangeStat.BlobCount + 1,
-                &rangeStat.BlobCount
-            );
+                &rangeStat.BlobCount);
 
             if (IsDeletionMarker(blob.BlobId)) {
                 continue;
             }
 
-            const auto firstBlock = Max<ui64>(blockIndex, blob.BlockRange.Start);
-            const auto lastBlock =
-                Min<ui64>(blockIndex + cm.GetRangeSize() - 1, blob.BlockRange.End);
+            const auto firstBlock =
+                Max<ui64>(blockIndex, blob.BlockRange.Start);
+            const auto lastBlock = Min<ui64>(
+                blockIndex + cm.GetRangeSize() - 1,
+                blob.BlockRange.End);
             ui32 skipped = 0;
             for (ui64 b = firstBlock; b <= lastBlock; ++b) {
                 auto pos = b - blob.BlockRange.Start;
@@ -450,8 +446,7 @@ private:
             }
             TCompactionMap::UpdateCompactionCounter(
                 rangeStat.BlockCount + (lastBlock - firstBlock + 1 - skipped),
-                &rangeStat.BlockCount
-            );
+                &rangeStat.BlockCount);
         }
     }
 
@@ -483,15 +478,13 @@ private:
                 rangeStat = &AccessRangeStat(blockIndex);
                 TCompactionMap::UpdateCompactionCounter(
                     rangeStat->BlobCount + 1,
-                    &rangeStat->BlobCount
-                );
+                    &rangeStat->BlobCount);
             }
 
             if (!IsDeletionMarker(blob.BlobId)) {
                 TCompactionMap::UpdateCompactionCounter(
                     rangeStat->BlockCount + 1,
-                    &rangeStat->BlockCount
-                );
+                    &rangeStat->BlockCount);
             }
         }
     }
@@ -501,25 +494,20 @@ private:
         for (const auto& kv: CompactionCounters) {
             const auto usedBlockCount = State.GetUsedBlocks().Count(
                 kv.first,
-                Min(
-                    static_cast<ui64>(
-                        kv.first + State.GetCompactionMap().GetRangeSize()
-                    ),
-                    State.GetUsedBlocks().Capacity()
-                )
-            );
+                Min(static_cast<ui64>(
+                        kv.first + State.GetCompactionMap().GetRangeSize()),
+                    State.GetUsedBlocks().Capacity()));
             db.WriteCompactionMap(
                 kv.first,
                 kv.second.Stat.BlobCount + kv.second.BlobsSkippedByCompaction,
-                kv.second.Stat.BlockCount + kv.second.BlocksSkippedByCompaction
-            );
+                kv.second.Stat.BlockCount +
+                    kv.second.BlocksSkippedByCompaction);
             State.GetCompactionMap().Update(
                 kv.first,
                 kv.second.Stat.BlobCount + kv.second.BlobsSkippedByCompaction,
                 kv.second.Stat.BlockCount + kv.second.BlocksSkippedByCompaction,
                 usedBlockCount,
-                Args.Mode == ADD_COMPACTION_RESULT
-            );
+                Args.Mode == ADD_COMPACTION_RESULT);
         }
     }
 
@@ -574,7 +562,7 @@ private:
 
             if (IsBlockMaskFull(blockMask, MaxBlocksInBlob)) {
                 db.WriteCleanupQueue(kv.first, DeletionCommitId);
-                State.GetCleanupQueue().Add({ kv.first, DeletionCommitId });
+                State.GetCleanupQueue().Add({kv.first, DeletionCommitId});
             }
         }
     }
@@ -610,7 +598,8 @@ private:
         TVector<ui64> commitIds;
         TVector<ui64> garbage;
 
-        auto processGroup = [&] {
+        auto processGroup = [&]
+        {
             FindGarbageVersions(checkpoints, commitIds, garbage);
 
             for (ui64 commitId: garbage) {
@@ -668,10 +657,8 @@ void TPartitionActor::HandleAddBlobs(
         }
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -734,8 +721,7 @@ void TPartitionActor::ExecuteAddBlobs(
         PartitionConfig.GetDiskId(),
         args.DeletionCommitId,
         State->GetMaxBlocksInBlob(),
-        LogTitle.GetChild(GetCycleCount())
-    );
+        LogTitle.GetChild(GetCycleCount()));
     executor.Execute(ctx, db);
 }
 
@@ -745,7 +731,8 @@ void TPartitionActor::CompleteAddBlobs(
 {
     TRequestScope timer(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvPartitionPrivate::TEvAddBlobsResponse>();
+    auto response =
+        std::make_unique<TEvPartitionPrivate::TEvAddBlobsResponse>();
     response->ExecCycles = args.RequestInfo->GetExecCycles();
 
     LWTRACK(
@@ -762,7 +749,8 @@ void TPartitionActor::CompleteAddBlobs(
     EnqueueCompactionIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
 
-    auto time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
+    auto time =
+        CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
     PartCounters->RequestCounters.AddBlobs.AddRequest(time);
 }
 

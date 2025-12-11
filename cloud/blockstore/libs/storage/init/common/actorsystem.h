@@ -9,9 +9,9 @@
 #include <contrib/ydb/core/driver_lib/run/config.h>
 #include <contrib/ydb/core/driver_lib/run/run.h>
 #include <contrib/ydb/core/driver_lib/run/service_initializer.h>
-
 #include <contrib/ydb/library/actors/core/defs.h>
 #include <contrib/ydb/library/actors/util/should_continue.h>
+
 #include <library/cpp/logger/log.h>
 #include <library/cpp/monlib/service/pages/index_mon_page.h>
 
@@ -28,11 +28,10 @@ struct TActorSystemArgs
     NActors::TScopeId ScopeId;
     NKikimrConfig::TAppConfigPtr AppConfig;
     IAsyncLoggerPtr AsyncLogger;
-    std::function<void(
-        NKikimr::TKikimrRunConfig&,
-        NKikimr::TServiceInitializersList&)> OnInitialize;
-    std::function<void(
-        NKikimr::TKikimrRunConfig&)> PrepareKikimrRunConfig;
+    std::function<
+        void(NKikimr::TKikimrRunConfig&, NKikimr::TServiceInitializersList&)>
+        OnInitialize;
+    std::function<void(NKikimr::TKikimrRunConfig&)> PrepareKikimrRunConfig;
     NKikimr::TBasicKikimrServicesMask ServicesMask;
     std::function<void(IActorSystem&)> OnStart;
 };

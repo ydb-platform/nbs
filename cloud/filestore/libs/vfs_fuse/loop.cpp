@@ -1,11 +1,12 @@
 #include "loop.h"
 
 #include "config.h"
+#include "directory_handles_storage.h"
 #include "fs.h"
 #include "fuse.h"
 #include "handle_ops_queue.h"
-#include "directory_handles_storage.h"
 #include "log.h"
+#include "util/system/file_lock.h"
 
 #include <cloud/filestore/libs/client/session.h>
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
@@ -31,15 +32,15 @@
 #include <util/folder/path.h>
 #include <util/generic/string.h>
 #include <util/generic/yexception.h>
-#include "util/system/file_lock.h"
 #include <util/system/fs.h>
 #include <util/system/info.h>
 #include <util/system/rwlock.h>
 #include <util/system/thread.h>
 #include <util/thread/factory.h>
 
-#include <cerrno>
 #include <pthread.h>
+
+#include <cerrno>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -55,7 +56,8 @@ namespace {
 
 static constexpr TStringBuf HandleOpsQueueFileName = "handle_ops_queue";
 static constexpr TStringBuf WriteBackCacheFileName = "write_back_cache";
-static constexpr TStringBuf DirectoryHandlesStorageFileName = "directory_handles_storage";
+static constexpr TStringBuf DirectoryHandlesStorageFileName =
+    "directory_handles_storage";
 
 NProto::TError CreateAndLockFile(
     const TString& dir,
@@ -90,8 +92,8 @@ NProto::TError UnlockAndDeleteFile(
     } catch (const TSystemError& err) {
         return MakeError(
             E_FAIL,
-            TStringBuilder() << "Failed to remove dir"
-                             << ", reason: " << err.AsStrBuf());
+            TStringBuilder()
+                << "Failed to remove dir" << ", reason: " << err.AsStrBuf());
     }
     return {};
 }
@@ -108,7 +110,9 @@ private:
     TLog Log;
     const NProto::EStorageMediaKind RequestMediaKind;
 
-    enum fuse_cancelation_code CancelCode{};
+    enum fuse_cancelation_code CancelCode
+    {
+    };
     NAtomic::TBool ShouldStop = false;
     TAtomicCounter CompletingCount = {0};
 
@@ -119,16 +123,15 @@ private:
 
 public:
     TCompletionQueue(
-            TString fileSystemId,
-            IRequestStatsPtr stats,
-            TLog& log,
-            NProto::EStorageMediaKind requestMediaKind)
+        TString fileSystemId,
+        IRequestStatsPtr stats,
+        TLog& log,
+        NProto::EStorageMediaKind requestMediaKind)
         : FileSystemId(std::move(fileSystemId))
         , RequestStats(std::move(stats))
         , Log(log)
         , RequestMediaKind(requestMediaKind)
-    {
-    }
+    {}
 
     TMaybe<enum fuse_cancelation_code> Enqueue(
         fuse_req_t req,
@@ -158,7 +161,8 @@ public:
         bool noCompleting = completingCount == 0;
 
         if (ShouldStop) {
-            STORAGE_INFO("[f:%s] Complete: completing left: %ld",
+            STORAGE_INFO(
+                "[f:%s] Complete: completing left: %ld",
                 FileSystemId.c_str(),
                 completingCount);
 
@@ -168,13 +172,14 @@ public:
                 with_lock (RequestsLock) {
                     noInflight = Requests.empty();
                     requestsSize = Requests.size();
-                    // double-checking needed because inflight count and completing
-                    // count should be checked together atomically
+                    // double-checking needed because inflight count and
+                    // completing count should be checked together atomically
                     completingCount = CompletingCount.Val();
                     noCompleting = completingCount == 0;
                 }
 
-                STORAGE_INFO("[f:%s] Complete: completing left: %ld"
+                STORAGE_INFO(
+                    "[f:%s] Complete: completing left: %ld"
                     ", requests left: %u",
                     FileSystemId.c_str(),
                     completingCount,
@@ -233,12 +238,11 @@ public:
         TGuard g{RequestsLock};
         for (auto&& [_, context]: Requests) {
             if (const auto time = context->CalcRequestTime(now); time) {
-                collector.Collect(
-                    TIncompleteRequest(
-                        RequestMediaKind,
-                        context->RequestType,
-                        time.ExecutionTime,
-                        time.TotalTime));
+                collector.Collect(TIncompleteRequest(
+                    RequestMediaKind,
+                    context->RequestType,
+                    time.ExecutionTime,
+                    time.TotalTime));
             }
         }
     }
@@ -260,7 +264,7 @@ private:
 public:
     TArgs(const TVFSConfig& config, ui32 threadsCount)
     {
-        AddArg(""); // fuse_opt_parse starts with 1
+        AddArg("");   // fuse_opt_parse starts with 1
 
         if (config.GetDebug()) {
             AddArg("-odebug");
@@ -293,7 +297,7 @@ public:
         fuse_opt_add_arg(&Args, arg.c_str());
     }
 
-    operator fuse_args* ()
+    operator fuse_args*()
     {
         return &Args;
     }
@@ -313,11 +317,11 @@ private:
 
 public:
     TSession(
-            const TVFSConfig& config,
-            ui32 threadsCount,
-            const fuse_lowlevel_ops& ops,
-            const TString& state,
-            void* context)
+        const TVFSConfig& config,
+        ui32 threadsCount,
+        const fuse_lowlevel_ops& ops,
+        const TString& state,
+        void* context)
         : Args(config, threadsCount)
     {
         Session = fuse_session_new(Args, &ops, sizeof(ops), context);
@@ -367,7 +371,7 @@ public:
         }
     }
 
-    operator fuse_session* ()
+    operator fuse_session*()
     {
         return Session;
     }
@@ -414,11 +418,11 @@ private:
 
 public:
     TSession(
-            const TVFSConfig& config,
-            ui32 threadsCount,
-            const fuse_lowlevel_ops& ops,
-            const TString& state,
-            void* context)
+        const TVFSConfig& config,
+        ui32 threadsCount,
+        const fuse_lowlevel_ops& ops,
+        const TString& state,
+        void* context)
         : Args(config, threadsCount)
         , MountPath(config.GetMountPath())
     {
@@ -448,7 +452,7 @@ public:
         }
     }
 
-    operator fuse_session* ()
+    operator fuse_session*()
     {
         return Session;
     }
@@ -459,16 +463,14 @@ public:
     }
 
     void Suspend()
-    {
-    }
+    {}
 };
 
 #endif
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFuseLoopThread final
-    : public ISimpleThread
+class TFuseLoopThread final: public ISimpleThread
 {
 private:
     TSession& Session;
@@ -481,10 +483,10 @@ private:
 
 public:
     TFuseLoopThread(
-            TSession& session,
-            ui32 fuseLoopIndex,
-            ui32 frontendQueueIndex,
-            TLog log)
+        TSession& session,
+        ui32 fuseLoopIndex,
+        ui32 frontendQueueIndex,
+        TLog log)
         : Session(session)
         , FuseLoopIndex(fuseLoopIndex)
         , FrontendQueueIndex(frontendQueueIndex)
@@ -549,12 +551,12 @@ private:
 
 public:
     TFuseLoop(
-            TLog log,
-            const TVFSConfig& config,
-            ui32 threadsCount,
-            const fuse_lowlevel_ops& ops,
-            const TString& state,
-            void* context)
+        TLog log,
+        const TVFSConfig& config,
+        ui32 threadsCount,
+        const fuse_lowlevel_ops& ops,
+        const TString& state,
+        void* context)
         : Log(std::move(log))
         , Session(config, threadsCount, ops, state, context)
         , FrontendQueueThreads(threadsCount)
@@ -562,12 +564,15 @@ public:
         static std::atomic<ui64> NextFuseLoopIndex = 0;
         ui64 fuseLoopIndex = NextFuseLoopIndex++;
 
-        for (ui32 queueIndex = 0; queueIndex < FrontendQueueThreads.size(); queueIndex++) {
-            FrontendQueueThreads[queueIndex] = std::make_unique<TFuseLoopThread>(
-                Session,
-                fuseLoopIndex,
-                queueIndex,
-                Log);
+        for (ui32 queueIndex = 0; queueIndex < FrontendQueueThreads.size();
+             queueIndex++)
+        {
+            FrontendQueueThreads[queueIndex] =
+                std::make_unique<TFuseLoopThread>(
+                    Session,
+                    fuseLoopIndex,
+                    queueIndex,
+                    Log);
         }
     }
 
@@ -652,13 +657,13 @@ private:
 
 public:
     TFileSystemLoop(
-            TVFSConfigPtr config,
-            ILoggingServicePtr logging,
-            IRequestStatsRegistryPtr statsRegistry,
-            ISchedulerPtr scheduler,
-            ITimerPtr timer,
-            IProfileLogPtr profileLog,
-            ISessionPtr session)
+        TVFSConfigPtr config,
+        ILoggingServicePtr logging,
+        IRequestStatsRegistryPtr statsRegistry,
+        ISchedulerPtr scheduler,
+        ITimerPtr timer,
+        IProfileLogPtr profileLog,
+        ISessionPtr session)
         : Config(std::move(config))
         , Logging(std::move(logging))
         , StatsRegistry(std::move(statsRegistry))
@@ -675,8 +680,8 @@ public:
         RequestStats = StatsRegistry->GetFileSystemStats(
             Config->GetFileSystemId(),
             Config->GetClientId(),
-            "", // folderId, empty until the session is created
-            ""); // cloudId
+            "",    // folderId, empty until the session is created
+            "");   // cloudId
 
         auto callContext = MakeIntrusive<TCallContext>(
             Config->GetFileSystemId(),
@@ -685,27 +690,29 @@ public:
         RequestStats->RequestStarted(Log, *callContext);
 
         auto weakPtr = weak_from_this();
-        return Session->CreateSession(
-            Config->GetReadOnly(),
-            Config->GetMountSeqNumber()).Apply([=] (const auto& future) {
-                if (auto p = weakPtr.lock()) {
-                    const auto& response = future.GetValue();
-                    p->RequestStats->RequestCompleted(
-                        p->Log,
-                        *callContext,
-                        response.GetError());
-                    // After the session is established, we update existing
-                    // TFileStats with newly known cloudId and folderId
-                    p->StatsRegistry->UpdateCloudAndFolder(
-                        p->Config->GetFileSystemId(),
-                        p->Config->GetClientId(),
-                        response.GetFileStore().GetCloudId(),
-                        response.GetFileStore().GetFolderId());
+        return Session
+            ->CreateSession(Config->GetReadOnly(), Config->GetMountSeqNumber())
+            .Apply(
+                [=](const auto& future)
+                {
+                    if (auto p = weakPtr.lock()) {
+                        const auto& response = future.GetValue();
+                        p->RequestStats->RequestCompleted(
+                            p->Log,
+                            *callContext,
+                            response.GetError());
+                        // After the session is established, we update existing
+                        // TFileStats with newly known cloudId and folderId
+                        p->StatsRegistry->UpdateCloudAndFolder(
+                            p->Config->GetFileSystemId(),
+                            p->Config->GetClientId(),
+                            response.GetFileStore().GetCloudId(),
+                            response.GetFileStore().GetFolderId());
 
-                    return p->StartWithSessionState(future);
-                }
-                return MakeError(E_INVALID_STATE, "Driver is destroyed");
-            });
+                        return p->StartWithSessionState(future);
+                    }
+                    return MakeError(E_INVALID_STATE, "Driver is destroyed");
+                });
     }
 
     TFuture<void> StopAsync() override
@@ -717,7 +724,8 @@ public:
         auto w = weak_from_this();
         auto s = NewPromise<void>();
 
-        auto onStop = [w = std::move(w), s] (const TFuture<void>& f) mutable {
+        auto onStop = [w = std::move(w), s](const TFuture<void>& f) mutable
+        {
             f.GetValue();
 
             auto p = w.lock();
@@ -728,17 +736,19 @@ public:
             p->StopAsyncOnCompletionQueueStopped(std::move(s));
         };
 
-        CompletionQueue->StopAsync(FUSE_ERROR).Subscribe(
-            [onStop = std::move(onStop)] (TFuture<void> f) mutable {
-                // this callback may be called from the same thread where the
-                // returned future is set => we shouldn't call onStop inside
-                // this callback directly to avoid a deadlock caused by the
-                // Join call which is done by SessionThread->Unmount()
-                SystemThreadFactory()->Run(
-                    [onStop = std::move(onStop), f = std::move(f)] () mutable {
-                        onStop(f);
-                    });
-            });
+        CompletionQueue->StopAsync(FUSE_ERROR)
+            .Subscribe(
+                [onStop = std::move(onStop)](TFuture<void> f) mutable
+                {
+                    // this callback may be called from the same thread where
+                    // the returned future is set => we shouldn't call onStop
+                    // inside this callback directly to avoid a deadlock caused
+                    // by the Join call which is done by
+                    // SessionThread->Unmount()
+                    SystemThreadFactory()->Run(
+                        [onStop = std::move(onStop), f = std::move(f)]() mutable
+                        { onStop(f); });
+                });
 
         return s;
     }
@@ -751,7 +761,8 @@ public:
 
         auto w = weak_from_this();
         auto s = NewPromise<void>();
-        auto onStop = [w = std::move(w), s] (const auto& f) mutable {
+        auto onStop = [w = std::move(w), s](const auto& f) mutable
+        {
             f.GetValue();
 
             auto p = w.lock();
@@ -772,17 +783,19 @@ public:
             s.SetValue();
         };
 
-        CompletionQueue->StopAsync(FUSE_SUSPEND).Subscribe(
-            [onStop = std::move(onStop)] (TFuture<void> f) mutable {
-                // this callback may be called from the same thread where the
-                // returned future is set => we shouldn't call onStop inside
-                // this callback directly to avoid a deadlock caused by the
-                // Join call which is done by SessionThread->StopThread()
-                SystemThreadFactory()->Run(
-                    [onStop = std::move(onStop), f = std::move(f)] () mutable {
-                        onStop(f);
-                    });
-            });
+        CompletionQueue->StopAsync(FUSE_SUSPEND)
+            .Subscribe(
+                [onStop = std::move(onStop)](TFuture<void> f) mutable
+                {
+                    // this callback may be called from the same thread where
+                    // the returned future is set => we shouldn't call onStop
+                    // inside this callback directly to avoid a deadlock caused
+                    // by the Join call which is done by
+                    // SessionThread->StopThread()
+                    SystemThreadFactory()->Run(
+                        [onStop = std::move(onStop), f = std::move(f)]() mutable
+                        { onStop(f); });
+                });
 
         return s;
     }
@@ -799,41 +812,50 @@ public:
 
         auto weakPtr = weak_from_this();
         return Session->AlterSession(isReadonly, mountSeqNumber)
-            .Apply([=] (const auto& future) {
-                if (auto p = weakPtr.lock()) {
-                    NProto::TError error;
-                    try {
-                        const auto& response = future.GetValue();
-                        p->RequestStats->RequestCompleted(
-                            p->Log,
-                            *callContext,
-                            response.GetError());
-                        if (HasError(response)) {
-                            STORAGE_ERROR("[f:%s][c:%s] failed to create session: %s",
+            .Apply(
+                [=](const auto& future)
+                {
+                    if (auto p = weakPtr.lock()) {
+                        NProto::TError error;
+                        try {
+                            const auto& response = future.GetValue();
+                            p->RequestStats->RequestCompleted(
+                                p->Log,
+                                *callContext,
+                                response.GetError());
+                            if (HasError(response)) {
+                                STORAGE_ERROR(
+                                    "[f:%s][c:%s] failed to create session: %s",
+                                    p->Config->GetFileSystemId()
+                                        .Quote()
+                                        .c_str(),
+                                    p->Config->GetClientId().Quote().c_str(),
+                                    FormatError(response.GetError()).c_str());
+
+                                return response.GetError();
+                            }
+                        } catch (const TServiceError& e) {
+                            error =
+                                MakeError(e.GetCode(), TString(e.GetMessage()));
+
+                            STORAGE_ERROR(
+                                "[f:%s][c:%s] failed to alter: %s",
                                 p->Config->GetFileSystemId().Quote().c_str(),
                                 p->Config->GetClientId().Quote().c_str(),
-                                FormatError(response.GetError()).c_str());
-
-                            return response.GetError();
+                                FormatError(error).c_str());
+                        } catch (...) {
+                            error =
+                                MakeError(E_FAIL, CurrentExceptionMessage());
+                            STORAGE_ERROR(
+                                "[f:%s][c:%s] failed to alter: %s",
+                                p->Config->GetFileSystemId().Quote().c_str(),
+                                p->Config->GetClientId().Quote().c_str(),
+                                FormatError(error).c_str());
                         }
-                    } catch (const TServiceError& e) {
-                        error = MakeError(e.GetCode(), TString(e.GetMessage()));
-
-                        STORAGE_ERROR("[f:%s][c:%s] failed to alter: %s",
-                            p->Config->GetFileSystemId().Quote().c_str(),
-                            p->Config->GetClientId().Quote().c_str(),
-                            FormatError(error).c_str());
-                    } catch (...) {
-                        error = MakeError(E_FAIL, CurrentExceptionMessage());
-                        STORAGE_ERROR("[f:%s][c:%s] failed to alter: %s",
-                            p->Config->GetFileSystemId().Quote().c_str(),
-                            p->Config->GetClientId().Quote().c_str(),
-                            FormatError(error).c_str());
+                        return error;
                     }
-                    return error;
-                }
-                return MakeError(E_INVALID_STATE, "Driver is destroyed");
-            });
+                    return MakeError(E_INVALID_STATE, "Driver is destroyed");
+                });
     }
 
 private:
@@ -845,7 +867,8 @@ private:
         try {
             auto response = future.GetValue();
             if (HasError(response)) {
-                STORAGE_ERROR("[f:%s][c:%s] failed to create session: %s",
+                STORAGE_ERROR(
+                    "[f:%s][c:%s] failed to create session: %s",
                     Config->GetFileSystemId().Quote().c_str(),
                     Config->GetClientId().Quote().c_str(),
                     FormatError(response.GetError()).c_str());
@@ -856,7 +879,8 @@ private:
             const auto& filestore = response.GetFileStore();
             ui64 rawMedia = filestore.GetStorageMediaKind();
             if (!NProto::EStorageMediaKind_IsValid(rawMedia)) {
-                STORAGE_WARN("[f:%s][c:%s] got unsupported media kind %lu",
+                STORAGE_WARN(
+                    "[f:%s][c:%s] got unsupported media kind %lu",
                     Config->GetFileSystemId().Quote().c_str(),
                     Config->GetClientId().Quote().c_str(),
                     rawMedia);
@@ -893,8 +917,7 @@ private:
             if (FileSystemConfig->GetAsyncDestroyHandleEnabled()) {
                 if (Config->GetHandleOpsQueuePath()) {
                     auto path = TFsPath(Config->GetHandleOpsQueuePath()) /
-                        FileSystemConfig->GetFileSystemId() /
-                        SessionId;
+                                FileSystemConfig->GetFileSystemId() / SessionId;
 
                     auto error = CreateAndLockFile(
                         path,
@@ -927,8 +950,7 @@ private:
             if (FileSystemConfig->GetServerWriteBackCacheEnabled()) {
                 if (Config->GetWriteBackCachePath()) {
                     auto path = TFsPath(Config->GetWriteBackCachePath()) /
-                        FileSystemConfig->GetFileSystemId() /
-                        SessionId;
+                                FileSystemConfig->GetFileSystemId() / SessionId;
 
                     auto error = CreateAndLockFile(
                         path,
@@ -960,8 +982,7 @@ private:
                         Config->GetWriteBackCacheFlushMaxWriteRequestSize(),
                         Config->GetWriteBackCacheFlushMaxWriteRequestsCount(),
                         Config->GetWriteBackCacheFlushMaxSumWriteRequestsSize(),
-                        FileSystemConfig->GetZeroCopyWriteEnabled()
-                    );
+                        FileSystemConfig->GetZeroCopyWriteEnabled());
                 } else {
                     ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
                         "[f:%s][c:%s] Error initializing WriteBackCache: "
@@ -1017,7 +1038,8 @@ private:
             fuse_lowlevel_ops ops = {};
             InitOps(ops);
 
-            STORAGE_INFO("[f:%s][c:%s] starting %s session",
+            STORAGE_INFO(
+                "[f:%s][c:%s] starting %s session",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str(),
                 SessionState.empty() ? "new" : "existing");
@@ -1050,13 +1072,15 @@ private:
         } catch (const TServiceError& e) {
             error = MakeError(e.GetCode(), TString(e.GetMessage()));
 
-            STORAGE_ERROR("[f:%s][c:%s] failed to start: %s",
+            STORAGE_ERROR(
+                "[f:%s][c:%s] failed to start: %s",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str(),
                 FormatError(error).c_str());
         } catch (...) {
             error = MakeError(E_FAIL, CurrentExceptionMessage());
-            STORAGE_ERROR("[f:%s][c:%s] failed to start: %s",
+            STORAGE_ERROR(
+                "[f:%s][c:%s] failed to start: %s",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str(),
                 FormatError(error).c_str());
@@ -1065,7 +1089,8 @@ private:
         return error;
     }
 
-    TFileSystemConfigPtr MakeFileSystemConfig(const NProto::TFileStore& filestore)
+    TFileSystemConfigPtr MakeFileSystemConfig(
+        const NProto::TFileStore& filestore)
     {
         NProto::TFileSystemConfig config;
         config.SetFileSystemId(filestore.GetFileSystemId());
@@ -1146,7 +1171,8 @@ private:
         // see CLOUD-75329 for details
         const size_t maxWrite = NSystemInfo::GetPageSize() * maxPages;
         if (maxWrite < conn->max_write) {
-            STORAGE_DEBUG("[f:%s][c:%s] setting max write pages %u -> %lu",
+            STORAGE_DEBUG(
+                "[f:%s][c:%s] setting max write pages %u -> %lu",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str(),
                 conn->max_write,
@@ -1247,10 +1273,7 @@ private:
         const NProto::TDestroySessionResponse& response,
         TPromise<void> stopCompleted)
     {
-        RequestStats->RequestCompleted(
-            Log,
-            callContext,
-            response.GetError());
+        RequestStats->RequestCompleted(Log, callContext, response.GetError());
 
         StatsRegistry->Unregister(
             Config->GetFileSystemId(),
@@ -1298,7 +1321,8 @@ private:
 
     void Destroy()
     {
-        STORAGE_INFO("[f:%s][c:%s] got destroy request",
+        STORAGE_INFO(
+            "[f:%s][c:%s] got destroy request",
             Config->GetFileSystemId().Quote().c_str(),
             Config->GetClientId().Quote().c_str());
         // in case of unmount we should cleanup everything
@@ -1307,7 +1331,8 @@ private:
 
     void ResetSessionState(const TString& state)
     {
-        STORAGE_INFO("[f:%s][c:%s][l:%lu] resetting session state",
+        STORAGE_INFO(
+            "[f:%s][c:%s][l:%lu] resetting session state",
             Config->GetFileSystemId().Quote().c_str(),
             Config->GetClientId().Quote().c_str(),
             state.size());
@@ -1321,13 +1346,13 @@ private:
         auto request = std::make_shared<NProto::TResetSessionRequest>();
         request->SetSessionState(state);
 
-        auto response = Session->ResetSession(
-            std::move(callContext),
-            std::move(request));
+        auto response =
+            Session->ResetSession(std::move(callContext), std::move(request));
 
         // TODO: CRIT EVENT, though no way to interrupt mount
         auto result = response.GetValueSync();
-        STORAGE_INFO("[f:%s][c:%s] session reset completed: %s",
+        STORAGE_INFO(
+            "[f:%s][c:%s] session reset completed: %s",
             Config->GetFileSystemId().Quote().c_str(),
             Config->GetClientId().Quote().c_str(),
             FormatError(result.GetError()).c_str());
@@ -1353,14 +1378,11 @@ private:
         callContext->RequestType = requestType;
         callContext->RequestSize = requestSize;
 
-        if (auto cancelCode = pThis->CompletionQueue->Enqueue(req, callContext)) {
+        if (auto cancelCode = pThis->CompletionQueue->Enqueue(req, callContext))
+        {
             STORAGE_DEBUG("driver is stopping, cancel request");
             callContext->CancellationCode = *cancelCode;
-            CancelRequest(
-                pThis->Log,
-                *pThis->RequestStats,
-                *callContext,
-                req);
+            CancelRequest(pThis->Log, *pThis->RequestStats, *callContext, req);
             return;
         }
 
@@ -1377,8 +1399,9 @@ private:
             auto* fs = pThis->FileSystem.get();
             (fs->*m)(callContext, req, std::forward<Args>(args)...);
         } catch (const TServiceError& e) {
-            STORAGE_ERROR("unexpected error: "
-                << FormatResultCode(e.GetCode()) << " " << e.GetMessage());
+            STORAGE_ERROR(
+                "unexpected error: " << FormatResultCode(e.GetCode()) << " "
+                                     << e.GetMessage());
             ReplyError(
                 pThis->Log,
                 *pThis->RequestStats,
@@ -1400,24 +1423,25 @@ private:
 
     static void InitOps(fuse_lowlevel_ops& ops)
     {
-#define CALL(m, requestType, requestSize, req, ...)                            \
-    TFileSystemLoop::Call(                                                     \
-        &IFileSystem::m,                                                       \
-        #m,                                                                    \
-        requestType,                                                           \
-        requestSize,                                                           \
-        req,                                                                   \
-        __VA_ARGS__)                                                           \
-// CALL
+#define CALL(m, requestType, requestSize, req, ...) \
+    TFileSystemLoop::Call(                          \
+        &IFileSystem::m,                            \
+        #m,                                         \
+        requestType,                                \
+        requestSize,                                \
+        req,                                        \
+        __VA_ARGS__)   // CALL
 
         //
         // Initialization
         //
 
-        ops.init = [] (void* userdata, fuse_conn_info* conn) {
+        ops.init = [](void* userdata, fuse_conn_info* conn)
+        {
             static_cast<TFileSystemLoop*>(userdata)->Init(conn);
         };
-        ops.destroy = [] (void* userdata) {
+        ops.destroy = [](void* userdata)
+        {
             static_cast<TFileSystemLoop*>(userdata)->Destroy();
         };
 
@@ -1425,7 +1449,8 @@ private:
         // Filesystem information
         //
 
-        ops.statfs = [] (fuse_req_t req, fuse_ino_t ino) {
+        ops.statfs = [](fuse_req_t req, fuse_ino_t ino)
+        {
             CALL(StatFs, EFileStoreRequest::StatFileStore, 0, req, ino);
         };
 
@@ -1433,43 +1458,123 @@ private:
         // Nodes
         //
 
-        ops.lookup = [] (fuse_req_t req, fuse_ino_t parent, const char* name) {
+        ops.lookup = [](fuse_req_t req, fuse_ino_t parent, const char* name)
+        {
             CALL(Lookup, EFileStoreRequest::GetNodeAttr, 0, req, parent, name);
         };
-        ops.forget = [] (fuse_req_t req, fuse_ino_t ino, unsigned long nlookup) {
+        ops.forget = [](fuse_req_t req, fuse_ino_t ino, unsigned long nlookup)
+        {
             CALL(Forget, EFileStoreRequest::MAX, 0, req, ino, nlookup);
         };
-        ops.forget_multi = [] (fuse_req_t req, size_t count, fuse_forget_data* forgets) {
+        ops.forget_multi =
+            [](fuse_req_t req, size_t count, fuse_forget_data* forgets)
+        {
             CALL(ForgetMulti, EFileStoreRequest::MAX, 0, req, count, forgets);
         };
-        ops.mkdir = [] (fuse_req_t req, fuse_ino_t parent, const char* name, mode_t mode) {
-            CALL(MkDir, EFileStoreRequest::CreateNode, 0, req, parent, name, mode);
+        ops.mkdir =
+            [](fuse_req_t req, fuse_ino_t parent, const char* name, mode_t mode)
+        {
+            CALL(
+                MkDir,
+                EFileStoreRequest::CreateNode,
+                0,
+                req,
+                parent,
+                name,
+                mode);
         };
-        ops.rmdir = [] (fuse_req_t req, fuse_ino_t parent, const char* name) {
+        ops.rmdir = [](fuse_req_t req, fuse_ino_t parent, const char* name)
+        {
             CALL(RmDir, EFileStoreRequest::UnlinkNode, 0, req, parent, name);
         };
-        ops.mknod = [] (fuse_req_t req, fuse_ino_t parent, const char* name, mode_t mode, dev_t rdev) {
-            CALL(MkNode, EFileStoreRequest::CreateNode, 0, req, parent, name, mode, rdev);
+        ops.mknod = [](fuse_req_t req,
+                       fuse_ino_t parent,
+                       const char* name,
+                       mode_t mode,
+                       dev_t rdev)
+        {
+            CALL(
+                MkNode,
+                EFileStoreRequest::CreateNode,
+                0,
+                req,
+                parent,
+                name,
+                mode,
+                rdev);
         };
-        ops.unlink = [] (fuse_req_t req, fuse_ino_t parent, const char* name) {
+        ops.unlink = [](fuse_req_t req, fuse_ino_t parent, const char* name)
+        {
             CALL(Unlink, EFileStoreRequest::UnlinkNode, 0, req, parent, name);
         };
 #if defined(FUSE_VIRTIO)
-        ops.rename = [] (fuse_req_t req, fuse_ino_t parent, const char* name, fuse_ino_t newparent, const char* newname, uint32_t flags) {
-            CALL(Rename, EFileStoreRequest::RenameNode, 0, req, parent, name, newparent, newname, flags);
+        ops.rename = [](fuse_req_t req,
+                        fuse_ino_t parent,
+                        const char* name,
+                        fuse_ino_t newparent,
+                        const char* newname,
+                        uint32_t flags)
+        {
+            CALL(
+                Rename,
+                EFileStoreRequest::RenameNode,
+                0,
+                req,
+                parent,
+                name,
+                newparent,
+                newname,
+                flags);
         };
 #else
-        ops.rename = [] (fuse_req_t req, fuse_ino_t parent, const char* name, fuse_ino_t newparent, const char* newname) {
-            CALL(Rename, EFileStoreRequest::RenameNode, 0, req, parent, name, newparent, newname, 0);
+        ops.rename = [](fuse_req_t req,
+                        fuse_ino_t parent,
+                        const char* name,
+                        fuse_ino_t newparent,
+                        const char* newname)
+        {
+            CALL(
+                Rename,
+                EFileStoreRequest::RenameNode,
+                0,
+                req,
+                parent,
+                name,
+                newparent,
+                newname,
+                0);
         };
 #endif
-        ops.symlink = [] (fuse_req_t req, const char* link, fuse_ino_t parent, const char* name) {
-            CALL(SymLink, EFileStoreRequest::CreateNode, 0, req, link, parent, name);
+        ops.symlink = [](fuse_req_t req,
+                         const char* link,
+                         fuse_ino_t parent,
+                         const char* name)
+        {
+            CALL(
+                SymLink,
+                EFileStoreRequest::CreateNode,
+                0,
+                req,
+                link,
+                parent,
+                name);
         };
-        ops.link = [] (fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent, const char* newname) {
-            CALL(Link, EFileStoreRequest::CreateNode, 0, req, ino, newparent, newname);
+        ops.link = [](fuse_req_t req,
+                      fuse_ino_t ino,
+                      fuse_ino_t newparent,
+                      const char* newname)
+        {
+            CALL(
+                Link,
+                EFileStoreRequest::CreateNode,
+                0,
+                req,
+                ino,
+                newparent,
+                newname);
         };
-        ops.readlink = [] (fuse_req_t req, fuse_ino_t ino) {
+        ops.readlink = [](fuse_req_t req, fuse_ino_t ino)
+        {
             CALL(ReadLink, EFileStoreRequest::ReadLink, 0, req, ino);
         };
 
@@ -1477,13 +1582,28 @@ private:
         // Node attributes
         //
 
-        ops.setattr = [] (fuse_req_t req, fuse_ino_t ino, struct stat* attr, int to_set, fuse_file_info* fi) {
-            CALL(SetAttr, EFileStoreRequest::SetNodeAttr, 0, req, ino, attr, to_set, fi);
+        ops.setattr = [](fuse_req_t req,
+                         fuse_ino_t ino,
+                         struct stat* attr,
+                         int to_set,
+                         fuse_file_info* fi)
+        {
+            CALL(
+                SetAttr,
+                EFileStoreRequest::SetNodeAttr,
+                0,
+                req,
+                ino,
+                attr,
+                to_set,
+                fi);
         };
-        ops.getattr = [] (fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi) {
+        ops.getattr = [](fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi)
+        {
             CALL(GetAttr, EFileStoreRequest::GetNodeAttr, 0, req, ino, fi);
         };
-        ops.access = [] (fuse_req_t req, fuse_ino_t ino, int mask) {
+        ops.access = [](fuse_req_t req, fuse_ino_t ino, int mask)
+        {
             CALL(Access, EFileStoreRequest::AccessNode, 0, req, ino, mask);
         };
 
@@ -1491,36 +1611,101 @@ private:
         // Extended node attributes
         //
 
-        ops.setxattr = [] (fuse_req_t req, fuse_ino_t ino, const char* name, const char* value, size_t size, int flags) {
-            CALL(SetXAttr, EFileStoreRequest::SetNodeXAttr, 0, req, ino, name, TString{value, size}, flags);
+        ops.setxattr = [](fuse_req_t req,
+                          fuse_ino_t ino,
+                          const char* name,
+                          const char* value,
+                          size_t size,
+                          int flags)
+        {
+            CALL(
+                SetXAttr,
+                EFileStoreRequest::SetNodeXAttr,
+                0,
+                req,
+                ino,
+                name,
+                TString{value, size},
+                flags);
         };
-        ops.getxattr = [] (fuse_req_t req, fuse_ino_t ino, const char* name, size_t size) {
-            CALL(GetXAttr, EFileStoreRequest::GetNodeXAttr, 0, req, ino, name, size);
+        ops.getxattr =
+            [](fuse_req_t req, fuse_ino_t ino, const char* name, size_t size)
+        {
+            CALL(
+                GetXAttr,
+                EFileStoreRequest::GetNodeXAttr,
+                0,
+                req,
+                ino,
+                name,
+                size);
         };
-        ops.listxattr = [] (fuse_req_t req, fuse_ino_t ino, size_t size) {
-            CALL(ListXAttr, EFileStoreRequest::ListNodeXAttr, 0, req, ino, size);
+        ops.listxattr = [](fuse_req_t req, fuse_ino_t ino, size_t size)
+        {
+            CALL(
+                ListXAttr,
+                EFileStoreRequest::ListNodeXAttr,
+                0,
+                req,
+                ino,
+                size);
         };
-        ops.removexattr = [] (fuse_req_t req, fuse_ino_t ino, const char* name) {
-            CALL(RemoveXAttr, EFileStoreRequest::RemoveNodeXAttr, 0, req, ino, name);
+        ops.removexattr = [](fuse_req_t req, fuse_ino_t ino, const char* name)
+        {
+            CALL(
+                RemoveXAttr,
+                EFileStoreRequest::RemoveNodeXAttr,
+                0,
+                req,
+                ino,
+                name);
         };
 
         //
         // Directory listing
         //
 
-        ops.opendir = [] (fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi) {
+        ops.opendir = [](fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi)
+        {
             CALL(OpenDir, EFileStoreRequest::MAX, 0, req, ino, fi);
         };
 #if defined(FUSE_VIRTIO)
-        ops.readdirplus = [] (fuse_req_t req, fuse_ino_t ino, size_t size, off_t offset, fuse_file_info* fi) {
-            CALL(ReadDir, EFileStoreRequest::ListNodes, 0, req, ino, size, offset, fi);
+        ops.readdirplus = [](fuse_req_t req,
+                             fuse_ino_t ino,
+                             size_t size,
+                             off_t offset,
+                             fuse_file_info* fi)
+        {
+            CALL(
+                ReadDir,
+                EFileStoreRequest::ListNodes,
+                0,
+                req,
+                ino,
+                size,
+                offset,
+                fi);
         };
 #else
-        ops.readdir = [] (fuse_req_t req, fuse_ino_t ino, size_t size, off_t offset, fuse_file_info* fi) {
-            CALL(ReadDir, EFileStoreRequest::ListNodes, 0, req, ino, size, offset, fi);
+        ops.readdir = [](fuse_req_t req,
+                         fuse_ino_t ino,
+                         size_t size,
+                         off_t offset,
+                         fuse_file_info* fi)
+        {
+            CALL(
+                ReadDir,
+                EFileStoreRequest::ListNodes,
+                0,
+                req,
+                ino,
+                size,
+                offset,
+                fi);
         };
 #endif
-        ops.releasedir = [] (fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi) {
+        ops.releasedir = [](fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi)
+        {
             CALL(ReleaseDir, EFileStoreRequest::MAX, 0, req, ino, fi);
         };
 
@@ -1528,34 +1713,109 @@ private:
         // Read  write files
         //
 
-        ops.create = [] (fuse_req_t req, fuse_ino_t parent, const char* name, mode_t mode, fuse_file_info* fi) {
-            CALL(Create, EFileStoreRequest::CreateHandle, 0, req, parent, name, mode, fi);
+        ops.create = [](fuse_req_t req,
+                        fuse_ino_t parent,
+                        const char* name,
+                        mode_t mode,
+                        fuse_file_info* fi)
+        {
+            CALL(
+                Create,
+                EFileStoreRequest::CreateHandle,
+                0,
+                req,
+                parent,
+                name,
+                mode,
+                fi);
         };
-        ops.open = [] (fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi) {
+        ops.open = [](fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi)
+        {
             CALL(Open, EFileStoreRequest::CreateHandle, 0, req, ino, fi);
         };
-        ops.read = [] (fuse_req_t req, fuse_ino_t ino, size_t size, off_t offset, fuse_file_info* fi) {
-            CALL(Read, EFileStoreRequest::ReadData, size, req, ino, size, offset, fi);
+        ops.read = [](fuse_req_t req,
+                      fuse_ino_t ino,
+                      size_t size,
+                      off_t offset,
+                      fuse_file_info* fi)
+        {
+            CALL(
+                Read,
+                EFileStoreRequest::ReadData,
+                size,
+                req,
+                ino,
+                size,
+                offset,
+                fi);
         };
-        ops.write = [] (fuse_req_t req, fuse_ino_t ino, const char* buf, size_t size, off_t offset, fuse_file_info* fi) {
-            CALL(Write, EFileStoreRequest::WriteData, size, req, ino, TStringBuf{buf, size}, offset, fi);
+        ops.write = [](fuse_req_t req,
+                       fuse_ino_t ino,
+                       const char* buf,
+                       size_t size,
+                       off_t offset,
+                       fuse_file_info* fi)
+        {
+            CALL(
+                Write,
+                EFileStoreRequest::WriteData,
+                size,
+                req,
+                ino,
+                TStringBuf{buf, size},
+                offset,
+                fi);
         };
-        ops.write_buf = [] (fuse_req_t req, fuse_ino_t ino, fuse_bufvec* bufv, off_t offset, fuse_file_info* fi) {
-            CALL(WriteBuf, EFileStoreRequest::WriteData, fuse_buf_size(bufv), req, ino, bufv, offset, fi);
+        ops.write_buf = [](fuse_req_t req,
+                           fuse_ino_t ino,
+                           fuse_bufvec* bufv,
+                           off_t offset,
+                           fuse_file_info* fi)
+        {
+            CALL(
+                WriteBuf,
+                EFileStoreRequest::WriteData,
+                fuse_buf_size(bufv),
+                req,
+                ino,
+                bufv,
+                offset,
+                fi);
         };
-        ops.fallocate = [] (fuse_req_t req, fuse_ino_t ino, int mode, off_t offset, off_t length, fuse_file_info* fi) {
-            CALL(FAllocate, EFileStoreRequest::AllocateData, length, req, ino, mode, offset, length, fi);
+        ops.fallocate = [](fuse_req_t req,
+                           fuse_ino_t ino,
+                           int mode,
+                           off_t offset,
+                           off_t length,
+                           fuse_file_info* fi)
+        {
+            CALL(
+                FAllocate,
+                EFileStoreRequest::AllocateData,
+                length,
+                req,
+                ino,
+                mode,
+                offset,
+                length,
+                fi);
         };
-        ops.flush = [] (fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi) {
+        ops.flush = [](fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi)
+        {
             CALL(Flush, EFileStoreRequest::MAX, 0, req, ino, fi);
         };
-        ops.fsync = [] (fuse_req_t req, fuse_ino_t ino, int datasync, fuse_file_info* fi) {
+        ops.fsync =
+            [](fuse_req_t req, fuse_ino_t ino, int datasync, fuse_file_info* fi)
+        {
             CALL(FSync, EFileStoreRequest::MAX, 0, req, ino, datasync, fi);
         };
-        ops.fsyncdir = [] (fuse_req_t req, fuse_ino_t ino, int datasync, fuse_file_info* fi) {
+        ops.fsyncdir =
+            [](fuse_req_t req, fuse_ino_t ino, int datasync, fuse_file_info* fi)
+        {
             CALL(FSyncDir, EFileStoreRequest::MAX, 0, req, ino, datasync, fi);
         };
-        ops.release = [] (fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi) {
+        ops.release = [](fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi)
+        {
             CALL(Release, EFileStoreRequest::DestroyHandle, 0, req, ino, fi);
         };
 
@@ -1563,13 +1823,39 @@ private:
         // Locking
         //
 
-        ops.getlk = [] (fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi, struct flock* lock) {
-            CALL(GetLock, EFileStoreRequest::TestLock, lock->l_len, req, ino, fi, lock);
+        ops.getlk = [](fuse_req_t req,
+                       fuse_ino_t ino,
+                       fuse_file_info* fi,
+                       struct flock* lock)
+        {
+            CALL(
+                GetLock,
+                EFileStoreRequest::TestLock,
+                lock->l_len,
+                req,
+                ino,
+                fi,
+                lock);
         };
-        ops.setlk = [] (fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi, struct flock* lock, int sleep) {
-            CALL(SetLock, GetLockRequestType(lock), lock->l_len, req, ino, fi, lock, sleep != 0);
+        ops.setlk = [](fuse_req_t req,
+                       fuse_ino_t ino,
+                       fuse_file_info* fi,
+                       struct flock* lock,
+                       int sleep)
+        {
+            CALL(
+                SetLock,
+                GetLockRequestType(lock),
+                lock->l_len,
+                req,
+                ino,
+                fi,
+                lock,
+                sleep != 0);
         };
-        ops.flock = [] (fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi, int op) {
+        ops.flock =
+            [](fuse_req_t req, fuse_ino_t ino, fuse_file_info* fi, int op)
+        {
             CALL(FLock, GetLockRequestType(op), 0, req, ino, fi, op);
         };
 #undef CALL
@@ -1578,19 +1864,20 @@ private:
 private:
     static EFileStoreRequest GetLockRequestType(int op)
     {
-        return (op & LOCK_UN) ? EFileStoreRequest::ReleaseLock : EFileStoreRequest::AcquireLock;
+        return (op & LOCK_UN) ? EFileStoreRequest::ReleaseLock
+                              : EFileStoreRequest::AcquireLock;
     }
 
     static EFileStoreRequest GetLockRequestType(struct flock* lock)
     {
-        return (lock->l_type == F_UNLCK) ? EFileStoreRequest::ReleaseLock : EFileStoreRequest::AcquireLock;
+        return (lock->l_type == F_UNLCK) ? EFileStoreRequest::ReleaseLock
+                                         : EFileStoreRequest::AcquireLock;
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFileSystemLoopFactory
-    : public IFileSystemLoopFactory
+struct TFileSystemLoopFactory: public IFileSystemLoopFactory
 {
     const ILoggingServicePtr Logging;
     const ITimerPtr Timer;
@@ -1599,11 +1886,11 @@ struct TFileSystemLoopFactory
     const IProfileLogPtr ProfileLog;
 
     TFileSystemLoopFactory(
-            ILoggingServicePtr logging,
-            ITimerPtr timer,
-            ISchedulerPtr scheduler,
-            IRequestStatsRegistryPtr requestStats,
-            IProfileLogPtr profileLog)
+        ILoggingServicePtr logging,
+        ITimerPtr timer,
+        ISchedulerPtr scheduler,
+        IRequestStatsRegistryPtr requestStats,
+        IProfileLogPtr profileLog)
         : Logging(std::move(logging))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
@@ -1658,7 +1945,8 @@ IFileSystemLoopFactoryPtr CreateFuseLoopFactory(
     IRequestStatsRegistryPtr requestStats,
     IProfileLogPtr profileLog)
 {
-    struct TInitializer {
+    struct TInitializer
+    {
         TInitializer(const ILoggingServicePtr& logging)
         {
             InitLog(logging);

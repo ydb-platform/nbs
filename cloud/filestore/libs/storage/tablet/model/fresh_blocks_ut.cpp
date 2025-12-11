@@ -12,8 +12,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFreshBlockVisitor final
-    : public IFreshBlockVisitor
+class TFreshBlockVisitor final: public IFreshBlockVisitor
 {
 private:
     TVector<TBlock> Blocks;
@@ -149,8 +148,12 @@ Y_UNIT_TEST_SUITE(TFreshBlocksTest)
         UNIT_ASSERT_VALUES_EQUAL(block->BlockIndex, blockIndex);
         UNIT_ASSERT_VALUES_EQUAL(block->MinCommitId, 1);
         UNIT_ASSERT_VALUES_EQUAL(block->MaxCommitId, InvalidCommitId);
-        UNIT_ASSERT_VALUES_EQUAL(block->BlockData, "x" + TString(DefaultBlockSize - 1, 0));
-        UNIT_ASSERT_VALUES_EQUAL(block->BlockData, "x" + TString(DefaultBlockSize - 1, 0));
+        UNIT_ASSERT_VALUES_EQUAL(
+            block->BlockData,
+            "x" + TString(DefaultBlockSize - 1, 0));
+        UNIT_ASSERT_VALUES_EQUAL(
+            block->BlockData,
+            "x" + TString(DefaultBlockSize - 1, 0));
 
         block = freshBlocks.FindBlock(nodeId, blockIndex + 1, 1);
         UNIT_ASSERT(!block);
@@ -168,7 +171,9 @@ Y_UNIT_TEST_SUITE(TFreshBlocksTest)
         UNIT_ASSERT_VALUES_EQUAL(block->BlockIndex, blockIndex);
         UNIT_ASSERT_VALUES_EQUAL(block->MinCommitId, 1);
         UNIT_ASSERT_VALUES_EQUAL(block->MaxCommitId, InvalidCommitId);
-        UNIT_ASSERT_VALUES_EQUAL(block->BlockData, "y" + TString(DefaultBlockSize - 1, 0));
+        UNIT_ASSERT_VALUES_EQUAL(
+            block->BlockData,
+            "y" + TString(DefaultBlockSize - 1, 0));
 
         UNIT_ASSERT(freshBlocks.FindBlock(nodeId + 2, blockIndex));
     }

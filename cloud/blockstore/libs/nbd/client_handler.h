@@ -7,8 +7,8 @@
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/service/context.h>
 
-#include <cloud/storage/core/libs/common/guarded_sglist.h>
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/guarded_sglist.h>
 
 #include <library/cpp/threading/future/future.h>
 
@@ -30,8 +30,7 @@ enum class EClientRequestType
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TClientRequest
-    : public TAtomicRefCount<TClientRequest>
+struct TClientRequest: public TAtomicRefCount<TClientRequest>
 {
     const EClientRequestType RequestType;
     const ui64 RequestId;
@@ -61,13 +60,9 @@ struct IClientHandler
 
     virtual const TExportInfo& GetExportInfo() = 0;
 
-    virtual bool NegotiateClient(
-        IInputStream& in,
-        IOutputStream& out) = 0;
+    virtual bool NegotiateClient(IInputStream& in, IOutputStream& out) = 0;
 
-    virtual void SendRequest(
-        IOutputStream& out,
-        TClientRequestPtr request) = 0;
+    virtual void SendRequest(IOutputStream& out, TClientRequestPtr request) = 0;
 
     virtual void ProcessRequests(IInputStream& in) = 0;
 

@@ -4,10 +4,10 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <google/protobuf/util/message_differencer.h>
-
 #include <util/generic/guid.h>
 #include <util/generic/scope.h>
+
+#include <google/protobuf/util/message_differencer.h>
 
 namespace NCloud {
 
@@ -51,9 +51,8 @@ TStorages InitKeyringStorages()
         endpointsDesc,
         true /* notImplementedErrorIsFatal */);
 
-    auto mutableEndpointStorage = CreateKeyringMutableEndpointStorage(
-        nbsDesc,
-        endpointsDesc);
+    auto mutableEndpointStorage =
+        CreateKeyringMutableEndpointStorage(nbsDesc, endpointsDesc);
 
     return {endpointStorage, mutableEndpointStorage};
 }
@@ -72,10 +71,11 @@ Y_UNIT_TEST_SUITE(TKeyringEndpointsTest)
         auto error = mutableStorage->Init();
         UNIT_ASSERT_C(!HasError(error), error);
 
-        Y_DEFER {
+        Y_DEFER
+        {
             auto error = mutableStorage->Remove();
             UNIT_ASSERT_C(!HasError(error), error);
-        };
+        }
 
         THashMap<TString, TProtoMessage> loadedEndpoints;
         for (size_t i = 0; i < 3; ++i) {
@@ -84,9 +84,8 @@ Y_UNIT_TEST_SUITE(TKeyringEndpointsTest)
             auto strOrError = SerializeEndpoint(request);
             UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
-            auto keyOrError = mutableStorage->AddEndpoint(
-                diskId,
-                strOrError.GetResult());
+            auto keyOrError =
+                mutableStorage->AddEndpoint(diskId, strOrError.GetResult());
             UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetResult());
             loadedEndpoints.emplace(diskId, request);
         }
@@ -99,9 +98,11 @@ Y_UNIT_TEST_SUITE(TKeyringEndpointsTest)
 
         for (auto keyringId: endpointIds) {
             auto endpointOrError = endpointStorage->GetEndpoint(keyringId);
-            UNIT_ASSERT_C(!HasError(endpointOrError), endpointOrError.GetError());
-            auto endpoint = DeserializeEndpoint<TProtoMessage>(
-                endpointOrError.GetResult());
+            UNIT_ASSERT_C(
+                !HasError(endpointOrError),
+                endpointOrError.GetError());
+            auto endpoint =
+                DeserializeEndpoint<TProtoMessage>(endpointOrError.GetResult());
             UNIT_ASSERT(endpoint);
 
             auto it = loadedEndpoints.find(GetProtoMessageId(*endpoint));
@@ -125,10 +126,11 @@ Y_UNIT_TEST_SUITE(TKeyringEndpointsTest)
         auto initError = mutableStorage->Init();
         UNIT_ASSERT_C(!HasError(initError), initError);
 
-        Y_DEFER {
+        Y_DEFER
+        {
             auto error = mutableStorage->Remove();
             UNIT_ASSERT_C(!HasError(error), error);
-        };
+        }
 
         const TString diskId = "TestDiskId";
 
@@ -136,16 +138,15 @@ Y_UNIT_TEST_SUITE(TKeyringEndpointsTest)
         auto strOrError = SerializeEndpoint(request);
         UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
-        auto keyOrError = mutableStorage->AddEndpoint(
-            diskId,
-            strOrError.GetResult());
+        auto keyOrError =
+            mutableStorage->AddEndpoint(diskId, strOrError.GetResult());
         UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
 
-        auto requestOrError = endpointStorage->GetEndpoint(
-            ToString(keyOrError.GetResult()));
+        auto requestOrError =
+            endpointStorage->GetEndpoint(ToString(keyOrError.GetResult()));
         UNIT_ASSERT_C(!HasError(requestOrError), requestOrError.GetError());
-        auto storedRequest = DeserializeEndpoint<TProtoMessage>(
-            requestOrError.GetResult());
+        auto storedRequest =
+            DeserializeEndpoint<TProtoMessage>(requestOrError.GetResult());
         UNIT_ASSERT(storedRequest);
 
         google::protobuf::util::MessageDifferencer comparator;
@@ -165,10 +166,11 @@ Y_UNIT_TEST_SUITE(TKeyringEndpointsTest)
         auto initError = mutableStorage->Init();
         UNIT_ASSERT_C(!HasError(initError), initError);
 
-        Y_DEFER {
+        Y_DEFER
+        {
             auto error = mutableStorage->Remove();
             UNIT_ASSERT_C(!HasError(error), error);
-        };
+        }
 
         const TString diskId = "TestDiskId";
 
@@ -176,15 +178,14 @@ Y_UNIT_TEST_SUITE(TKeyringEndpointsTest)
         auto strOrError = SerializeEndpoint(request);
         UNIT_ASSERT_C(!HasError(strOrError), strOrError.GetError());
 
-        auto keyOrError = mutableStorage->AddEndpoint(
-            diskId,
-            strOrError.GetResult());
+        auto keyOrError =
+            mutableStorage->AddEndpoint(diskId, strOrError.GetResult());
         UNIT_ASSERT_C(!HasError(keyOrError), keyOrError.GetError());
 
         auto wrongKeyringId = keyOrError.GetResult() + 42;
 
-        auto requestOrError = endpointStorage->GetEndpoint(
-            ToString(wrongKeyringId));
+        auto requestOrError =
+            endpointStorage->GetEndpoint(ToString(wrongKeyringId));
         UNIT_ASSERT_VALUES_EQUAL_C(
             E_INVALID_STATE,
             requestOrError.GetError().GetCode(),

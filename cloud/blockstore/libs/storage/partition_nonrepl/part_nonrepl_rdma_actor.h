@@ -36,10 +36,10 @@ struct TDeviceReadRequestContext: public TDeviceRequestRdmaContext
     const ui32 RequestIndex = 0;
 
     TDeviceReadRequestContext(
-            ui32 deviceIdx,
-            ui64 startIndexOffset,
-            ui64 blockCount,
-            ui32 requestIndex)
+        ui32 deviceIdx,
+        ui64 startIndexOffset,
+        ui64 blockCount,
+        ui32 requestIndex)
         : TDeviceRequestRdmaContext(deviceIdx)
         , StartIndexOffset(startIndexOffset)
         , BlockCount(blockCount)

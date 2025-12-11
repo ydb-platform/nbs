@@ -1,7 +1,6 @@
 #include "service_kikimr.h"
 
 #include <cloud/blockstore/config/server.pb.h>
-
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/service/context.h>
@@ -9,6 +8,7 @@
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 
@@ -31,18 +31,19 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
-    struct T##name##Method                                                     \
-    {                                                                          \
-        static constexpr EBlockStoreRequest Request = EBlockStoreRequest::name;\
-                                                                               \
-        using TRequest = TEvService::TEv##name##Request;                       \
-        using TRequestProto = NProto::T##name##Request;                        \
-                                                                               \
-        using TResponse = TEvService::TEv##name##Response;                     \
-        using TResponseProto = NProto::T##name##Response;                      \
-    };                                                                         \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)               \
+    struct T##name##Method                                 \
+    {                                                      \
+        static constexpr EBlockStoreRequest Request =      \
+            EBlockStoreRequest::name;                      \
+                                                           \
+        using TRequest = TEvService::TEv##name##Request;   \
+        using TRequestProto = NProto::T##name##Request;    \
+                                                           \
+        using TResponse = TEvService::TEv##name##Response; \
+        using TResponseProto = NProto::T##name##Response;  \
+    };                                                     \
+    // BLOCKSTORE_DECLARE_METHOD
 
 BLOCKSTORE_STORAGE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
@@ -51,8 +52,7 @@ BLOCKSTORE_STORAGE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-class TRequestActor final
-    : public TActorBootstrapped<TRequestActor<T>>
+class TRequestActor final: public TActorBootstrapped<TRequestActor<T>>
 {
     using TThis = TRequestActor<T>;
     using TBase = TActorBootstrapped<TThis>;
@@ -79,10 +79,10 @@ public:
 
 public:
     TRequestActor(
-            std::shared_ptr<TRequestProto> request,
-            TPromise<TResponseProto> response,
-            TCallContextPtr callContext,
-            TDuration requestTimeout)
+        std::shared_ptr<TRequestProto> request,
+        TPromise<TResponseProto> response,
+        TCallContextPtr callContext,
+        TDuration requestTimeout)
         : Request(std::move(request))
         , Response(std::move(response))
         , CallContext(std::move(callContext))
@@ -118,13 +118,14 @@ public:
 private:
     void SendRequest(const TActorContext& ctx)
     {
-        LOG_TRACE_S(ctx, TBlockStoreComponents::SERVICE_PROXY,
+        LOG_TRACE_S(
+            ctx,
+            TBlockStoreComponents::SERVICE_PROXY,
             TRequestInfo(T::Request, CallContext->RequestId, DiskId)
-            << " sending request");
+                << " sending request");
 
-        auto request = std::make_unique<TRequest>(
-            CallContext,
-            std::move(*Request));
+        auto request =
+            std::make_unique<TRequest>(CallContext, std::move(*Request));
 
         LWTRACK(
             RequestSent_Proxy,
@@ -132,10 +133,7 @@ private:
             GetBlockStoreRequestName(T::Request),
             CallContext->RequestId);
 
-        NCloud::Send(
-            ctx,
-            MakeStorageServiceId(),
-            std::move(request));
+        NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
 
         if (RequestTimeout && RequestTimeout != TDuration::Max()) {
             ctx.Schedule(RequestTimeout, new TEvents::TEvWakeup());
@@ -147,9 +145,11 @@ private:
         try {
             Response.SetValue(std::move(response));
         } catch (...) {
-            LOG_ERROR_S(ctx, TBlockStoreComponents::SERVICE_PROXY,
+            LOG_ERROR_S(
+                ctx,
+                TBlockStoreComponents::SERVICE_PROXY,
                 TRequestInfo(T::Request, CallContext->RequestId, DiskId)
-                << " exception in callback: " << CurrentExceptionMessage());
+                    << " exception in callback: " << CurrentExceptionMessage());
         }
 
         RequestCompleted = true;
@@ -183,9 +183,11 @@ private:
             GetBlockStoreRequestName(T::Request),
             CallContext->RequestId);
 
-        LOG_TRACE_S(ctx, TBlockStoreComponents::SERVICE_PROXY,
+        LOG_TRACE_S(
+            ctx,
+            TBlockStoreComponents::SERVICE_PROXY,
             TRequestInfo(T::Request, CallContext->RequestId, DiskId)
-            << " response received");
+                << " response received");
 
         CompleteRequest(ctx, std::move(msg->Record));
 
@@ -198,9 +200,11 @@ private:
     {
         Y_UNUSED(ev);
 
-        LOG_WARN_S(ctx, TBlockStoreComponents::SERVICE_PROXY,
+        LOG_WARN_S(
+            ctx,
+            TBlockStoreComponents::SERVICE_PROXY,
             TRequestInfo(T::Request, CallContext->RequestId, DiskId)
-            << " request wakeup timer hit");
+                << " request wakeup timer hit");
 
         if constexpr (IsWriteRequest(T::Request)) {
             ReportServiceProxyWakeupTimerHit(
@@ -222,8 +226,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TKikimrService final
-    : public IBlockStore
+class TKikimrService final: public IBlockStore
 {
 private:
     const IActorSystemPtr ActorSystem;
@@ -231,14 +234,16 @@ private:
 
 public:
     TKikimrService(
-            IActorSystemPtr actorSystem,
-            const NProto::TKikimrServiceConfig& config)
+        IActorSystemPtr actorSystem,
+        const NProto::TKikimrServiceConfig& config)
         : ActorSystem(std::move(actorSystem))
         , Config(config)
     {}
 
-    void Start() override {}
-    void Stop() override {}
+    void Start() override
+    {}
+    void Stop() override
+    {}
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
     {
@@ -246,34 +251,36 @@ public:
         return nullptr;
     }
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr ctx,                                                   \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        auto response = NewPromise<NProto::T##name##Response>();               \
-        ExecuteRequest<T##name##Method>(                                       \
-            std::move(ctx), std::move(request), response);                     \
-        return response.GetFuture();                                           \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
+#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                      \
+    TFuture<NProto::T##name##Response> name(                        \
+        TCallContextPtr ctx,                                        \
+        std::shared_ptr<NProto::T##name##Request> request) override \
+    {                                                               \
+        auto response = NewPromise<NProto::T##name##Response>();    \
+        ExecuteRequest<T##name##Method>(                            \
+            std::move(ctx),                                         \
+            std::move(request),                                     \
+            response);                                              \
+        return response.GetFuture();                                \
+    }                                                               \
+    // BLOCKSTORE_IMPLEMENT_METHOD
 
     BLOCKSTORE_STORAGE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
 
 #undef BLOCKSTORE_IMPLEMENT_METHOD
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr ctx,                                                   \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        Y_UNUSED(ctx);                                                         \
-        Y_UNUSED(request);                                                     \
-        return MakeFuture<NProto::T##name##Response>(TErrorResponse(           \
-            E_NOT_IMPLEMENTED,                                                 \
-            "Method " #name " not implemeted"));                               \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
+#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                       \
+    TFuture<NProto::T##name##Response> name(                         \
+        TCallContextPtr ctx,                                         \
+        std::shared_ptr<NProto::T##name##Request> request) override  \
+    {                                                                \
+        Y_UNUSED(ctx);                                               \
+        Y_UNUSED(request);                                           \
+        return MakeFuture<NProto::T##name##Response>(TErrorResponse( \
+            E_NOT_IMPLEMENTED,                                       \
+            "Method " #name " not implemeted"));                     \
+    }                                                                \
+    // BLOCKSTORE_IMPLEMENT_METHOD
 
     BLOCKSTORE_ENDPOINT_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
 
@@ -305,9 +312,7 @@ IBlockStorePtr CreateKikimrService(
     IActorSystemPtr actorSystem,
     const NProto::TKikimrServiceConfig& config)
 {
-    return std::make_shared<TKikimrService>(
-        std::move(actorSystem),
-        config);
+    return std::make_shared<TKikimrService>(std::move(actorSystem), config);
 }
 
 }   // namespace NCloud::NBlockStore::NServer

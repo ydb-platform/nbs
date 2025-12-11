@@ -39,18 +39,17 @@ using namespace NMonitoringUtils;
 
 TStringBuf AlertClassFromLevel(EAlertLevel alertLevel)
 {
-    switch (alertLevel)
-    {
-    case EAlertLevel::SUCCESS:
-        return "alert-success";
-    case EAlertLevel::INFO:
-        return "alert-info";
-    case EAlertLevel::WARNING:
-        return "alert-warning";
-    case EAlertLevel::DANGER:
-        return "alert-danger";
-    default:
-        return {};
+    switch (alertLevel) {
+        case EAlertLevel::SUCCESS:
+            return "alert-success";
+        case EAlertLevel::INFO:
+            return "alert-info";
+        case EAlertLevel::WARNING:
+            return "alert-warning";
+        case EAlertLevel::DANGER:
+            return "alert-danger";
+        default:
+            return {};
     }
 }
 
@@ -279,26 +278,27 @@ void BuildDeleteCheckpointButton(
     const TString& checkpointId)
 {
     out << "<center>"
-        << "<span class='glyphicon glyphicon-trash' data-toggle='modal' data-target='#delete-checkpoint-"
+        << "<span class='glyphicon glyphicon-trash' data-toggle='modal' "
+           "data-target='#delete-checkpoint-"
         << checkpointId << "'>";
 
-    out << "<form method='POST' name='DeleteCheckpoint_" << checkpointId << "' style='display:none'>"
+    out << "<form method='POST' name='DeleteCheckpoint_" << checkpointId
+        << "' style='display:none'>"
         << "<input type='hidden' name='TabletID' value='" << tabletId << "'/>"
-        << "<input type='hidden' name='checkpointid' value='" << checkpointId << "'/>"
+        << "<input type='hidden' name='checkpointid' value='" << checkpointId
+        << "'/>"
         << "<input type='hidden' name='action' value='deleteCheckpoint'/>"
         << "<input class='btn btn-primary' type='button' value='Delete'"
-        << " data-toggle='modal' data-target='#delete-checkpoint-" << checkpointId << "'/>"
-        << "</form>" << Endl;
+        << " data-toggle='modal' data-target='#delete-checkpoint-"
+        << checkpointId << "'/>" << "</form>" << Endl;
 
     BuildConfirmActionDialog(
         out,
         TStringBuilder() << "delete-checkpoint-" << checkpointId,
         "Delete checkpoint",
-        TStringBuilder()
-            << "Are you sure you want to delete checkpoint "
-            << checkpointId << "?",
-        TStringBuilder()
-            << "deleteCheckpoint(\"" << checkpointId << "\");");
+        TStringBuilder() << "Are you sure you want to delete checkpoint "
+                         << checkpointId << "?",
+        TStringBuilder() << "deleteCheckpoint(\"" << checkpointId << "\");");
 
     out << "</center>";
 }
@@ -306,31 +306,31 @@ void BuildDeleteCheckpointButton(
 void BuildMenuButton(IOutputStream& out, const TString& menuItems)
 {
     out << "<span class='glyphicon glyphicon-list'"
-        << " data-toggle='collapse' data-target='#"
-        << menuItems << "' style='padding-right: 5px'>"
-        << "</span>";
+        << " data-toggle='collapse' data-target='#" << menuItems
+        << "' style='padding-right: 5px'>" << "</span>";
 }
 
 void BuildVolumeTabs(IOutputStream& out)
 {
     out << "<ul class='nav nav-tabs' id='Tabs'>"
-        << "<li class='active'><a  href='#Overview' data-toggle='tab'>Overview</a></li>"
+        << "<li class='active'><a  href='#Overview' "
+           "data-toggle='tab'>Overview</a></li>"
         << "<li><a href='#History' data-toggle='tab'>History</a></li>"
         << "<li><a href='#Checkpoints' data-toggle='tab'>Checkpoints</a></li>"
         << "<li><a href='#Links' data-toggle='tab'>Links</a></li>"
         << "<li><a href='#Latency' data-toggle='tab'>Latency</a></li>"
         << "<li><a href='#Transactions' data-toggle='tab'>Transactions</a></li>"
         << "<li><a href='#Traces' data-toggle='tab'>Traces</a></li>"
-        << "<li><a href='#StorageConfig' data-toggle='tab'>StorageConfig</a></li>"
-        << "<li><a href='#DeviceLatency' data-toggle='tab'>DeviceLatency</a></li></ul>";
+        << "<li><a href='#StorageConfig' "
+           "data-toggle='tab'>StorageConfig</a></li>"
+        << "<li><a href='#DeviceLatency' "
+           "data-toggle='tab'>DeviceLatency</a></li></ul>";
 }
 
 void BuildPartitionTabs(IOutputStream& out)
 {
-    out << "<ul class='nav nav-tabs' id='Tabs'>"
-        << "<li class='active'>"
-        << "<a  href='#Overview' data-toggle='tab'>Overview</a>"
-        << "</li>"
+    out << "<ul class='nav nav-tabs' id='Tabs'>" << "<li class='active'>"
+        << "<a  href='#Overview' data-toggle='tab'>Overview</a>" << "</li>"
         << "<li><a href='#Tables' data-toggle='tab'>Tables</a>" << "</li>"
         << "<li><a href='#Channels' data-toggle='tab'>Channels</a>" << "</li>"
         << "<li><a href='#Latency' data-toggle='tab'>Latency</a>" << "</li>"
@@ -341,18 +341,13 @@ void BuildPartitionTabs(IOutputStream& out)
 
 void GeneratePartitionTabsJs(IOutputStream& out)
 {
-    out << "<script>"
-        << "$('#Tabs a').click(function(e) {"
-        << "  e.preventDefault();"
-        << "  $(this).tab('show');"
-        << "});"
+    out << "<script>" << "$('#Tabs a').click(function(e) {"
+        << "  e.preventDefault();" << "  $(this).tab('show');" << "});"
         << "$('ul.nav-tabs > li > a').on('shown.bs.tab', function(e) {"
         << "  var id = $(e.target).attr('href').substr(1);"
-        << "  window.location.hash = id;"
-        << "});"
+        << "  window.location.hash = id;" << "});"
         << "var hash = window.location.hash;"
-        << "$('#Tabs a[href=\"' + hash + '\"]').tab('show');"
-        << "</script>";
+        << "$('#Tabs a[href=\"' + hash + '\"]').tab('show');" << "</script>";
 }
 
 void BuildAddGarbageButton(IOutputStream& out, ui64 tabletId)
@@ -362,8 +357,8 @@ void BuildAddGarbageButton(IOutputStream& out, ui64 tabletId)
         << "<input type='text' name='blobs'/>"
         << "<input type='hidden' name='action' value='addGarbage'/>"
         << "<input class='btn btn-primary' type='button' value='Add'"
-        << " data-toggle='modal' data-target='#add-garbage'/>"
-        << "</form>" << Endl;
+        << " data-toggle='modal' data-target='#add-garbage'/>" << "</form>"
+        << Endl;
 
     BuildConfirmActionDialog(
         out,
@@ -380,8 +375,8 @@ void BuildCollectGarbageButton(IOutputStream& out, ui64 tabletId)
         << "<input type='hidden' name='action' value='collectGarbage'/>"
         << "<input type='hidden' name='type' value=''/>"
         << "<input class='btn btn-primary' type='button' value='Collect'"
-        << " data-toggle='modal' data-target='#collect-garbage'/>"
-        << "</form>" << Endl;
+        << " data-toggle='modal' data-target='#collect-garbage'/>" << "</form>"
+        << Endl;
 
     BuildConfirmActionDialog(
         out,
@@ -414,22 +409,16 @@ void BuildReassignChannelsButton(
     ui64 hiveTabletId,
     ui64 tabletId)
 {
-    out << "<a"
-        << " href=''"
-        << " data-toggle='modal'"
-        << " data-target='#reassign-channels'"
-        << ">Reassign ALL Channels</a>";
+    out << "<a" << " href=''" << " data-toggle='modal'"
+        << " data-target='#reassign-channels'" << ">Reassign ALL Channels</a>";
 
     BuildConfirmActionDialog(
         out,
         "reassign-channels",
         "Reassign ALL channels",
         "Are you sure you want to reassign groups for ALL channels?",
-        TStringBuilder()
-            << "reassignChannels"
-            << "(\"" << hiveTabletId << "\""
-            << ",\"" << tabletId << "\""
-            << ");");
+        TStringBuilder() << "reassignChannels" << "(\"" << hiveTabletId << "\""
+                         << ",\"" << tabletId << "\"" << ");");
 }
 
 void BuildReassignChannelButton(
@@ -438,9 +427,7 @@ void BuildReassignChannelButton(
     ui64 tabletId,
     ui32 channel)
 {
-    out << "<a"
-        << " href=''"
-        << " data-toggle='modal'"
+    out << "<a" << " href=''" << " data-toggle='modal'"
         << " data-target='#reassign-channel-" << channel << "'"
         << ">Reassign</a>";
 
@@ -451,21 +438,20 @@ void BuildReassignChannelButton(
         TStringBuilder()
             << "Are you sure you want to reassign groups for channel "
             << channel << "?",
-        TStringBuilder()
-            << "reassignChannel"
-            << "(\"" << hiveTabletId << "\""
-            << ",\"" << tabletId << "\""
-            << ",\"" << channel << "\""
-            << ");");
+        TStringBuilder() << "reassignChannel" << "(\"" << hiveTabletId << "\""
+                         << ",\"" << tabletId << "\"" << ",\"" << channel
+                         << "\"" << ");");
 }
 
 void BuildForceCompactionButton(IOutputStream& out, ui64 tabletId)
 {
-    out << "<p><a href='' data-toggle='modal' data-target='#force-compaction'>Force Full Compaction</a></p>"
+    out << "<p><a href='' data-toggle='modal' "
+           "data-target='#force-compaction'>Force Full Compaction</a></p>"
         << "<form method='POST' name='ForceCompaction' style='display:none'>"
         << "<input type='hidden' name='TabletID' value='" << tabletId << "'/>"
         << "<input type='hidden' name='action' value='compactAll'/>"
-        << "<input class='btn btn-primary' type='button' value='Compact ALL ranges'"
+        << "<input class='btn btn-primary' type='button' value='Compact ALL "
+           "ranges'"
         << " data-toggle='modal' data-target='#force-compaction'/>"
         << "</form>";
 
@@ -477,19 +463,22 @@ void BuildForceCompactionButton(IOutputStream& out, ui64 tabletId)
         "forceCompactionAll();");
 }
 
-void BuildForceCompactionButton(IOutputStream& out, ui64 tabletId, ui32 blockIndex)
+void BuildForceCompactionButton(
+    IOutputStream& out,
+    ui64 tabletId,
+    ui32 blockIndex)
 {
     out << "<p><a href='' data-toggle='modal' data-target='#force-compaction-"
-        << blockIndex
-        << "'>Compact</a></p>";
+        << blockIndex << "'>Compact</a></p>";
 
-    out << "<form method='POST' name='ForceCompaction_" << blockIndex << "' style='display:none'>"
+    out << "<form method='POST' name='ForceCompaction_" << blockIndex
+        << "' style='display:none'>"
         << "<input type='hidden' name='TabletID' value='" << tabletId << "'/>"
-        << "<input type='hidden' name='BlockIndex' value='" << blockIndex << "'/>"
-        << "<input type='hidden' name='action' value='compact'/>"
+        << "<input type='hidden' name='BlockIndex' value='" << blockIndex
+        << "'/>" << "<input type='hidden' name='action' value='compact'/>"
         << "<input class='btn btn-primary' type='button' value='Compact'"
-        << " data-toggle='modal' data-target='#force-compaction-" << blockIndex << "'/>"
-        << "</form>";
+        << " data-toggle='modal' data-target='#force-compaction-" << blockIndex
+        << "'/>" << "</form>";
 
     BuildConfirmActionDialog(
         out,
@@ -503,13 +492,13 @@ void BuildForceCompactionButton(IOutputStream& out, ui64 tabletId, ui32 blockInd
 
 void BuildForceCleanupButton(IOutputStream& out, ui64 tabletId)
 {
-    out << "<p><a href='' data-toggle='modal' data-target='#force-cleanup'>Force Full Cleanup</a></p>"
+    out << "<p><a href='' data-toggle='modal' "
+           "data-target='#force-cleanup'>Force Full Cleanup</a></p>"
         << "<form method='POST' name='ForceCleanup' style='display:none'>"
         << "<input type='hidden' name='TabletID' value='" << tabletId << "'/>"
         << "<input type='hidden' name='action' value='cleanupAll'/>"
         << "<input class='btn btn-primary' type='button' value='Cleanup'"
-        << " data-toggle='modal' data-target='#force-cleanup'/>"
-        << "</form>";
+        << " data-toggle='modal' data-target='#force-cleanup'/>" << "</form>";
 
     BuildConfirmActionDialog(
         out,
@@ -519,51 +508,57 @@ void BuildForceCleanupButton(IOutputStream& out, ui64 tabletId)
         "forceCleanupAll();");
 }
 
-void BuildRebuildMetadataButton(IOutputStream& out, ui64 tabletId, ui32 rangesPerBatch)
+void BuildRebuildMetadataButton(
+    IOutputStream& out,
+    ui64 tabletId,
+    ui32 rangesPerBatch)
 {
     out << "<p><a href='' data-toggle='modal' data-target='#rebuild-metadata-"
-        << rangesPerBatch
-        << "'>Rebuild Metadata in batches of " << rangesPerBatch << " each</a></p>";
+        << rangesPerBatch << "'>Rebuild Metadata in batches of "
+        << rangesPerBatch << " each</a></p>";
 
-    out << "<form method='POST' name='RebuildMetadata_" << rangesPerBatch << "' style='display:none'>"
+    out << "<form method='POST' name='RebuildMetadata_" << rangesPerBatch
+        << "' style='display:none'>"
         << "<input type='hidden' name='TabletID' value='" << tabletId << "'/>"
-        << "<input type='hidden' name='BatchSize' value='" << rangesPerBatch << "'/>"
+        << "<input type='hidden' name='BatchSize' value='" << rangesPerBatch
+        << "'/>"
         << "<input type='hidden' name='action' value='rebuildMetadata'/>"
-        << "<input class='btn btn-primary' type='button' value='Rebuild Metadata'"
-        << " data-toggle='modal' data-target='#rebuild-metadata-" << rangesPerBatch << "'/>"
-        << "</form>";
+        << "<input class='btn btn-primary' type='button' value='Rebuild "
+           "Metadata'"
+        << " data-toggle='modal' data-target='#rebuild-metadata-"
+        << rangesPerBatch << "'/>" << "</form>";
 
     BuildConfirmActionDialog(
         out,
         TStringBuilder() << "rebuild-metadata-" << rangesPerBatch,
         "Rebuild Metadata",
-        TStringBuilder()
-            << "Are you sure you want to rebuild partition metadata in batches of "
-            << rangesPerBatch << " ranges each?",
+        TStringBuilder() << "Are you sure you want to rebuild partition "
+                            "metadata in batches of "
+                         << rangesPerBatch << " ranges each?",
         TStringBuilder() << "rebuildMetadata(\"" << rangesPerBatch << "\");");
 }
 
 void BuildScanDiskButton(IOutputStream& out, ui64 tabletId, ui32 blobsPerBatch)
 {
     out << "<p><a href='' data-toggle='modal' data-target='#scan-disk-"
-        << blobsPerBatch
-        << "'>Scan Disk in batches of " << blobsPerBatch << " blobs each</a></p>";
+        << blobsPerBatch << "'>Scan Disk in batches of " << blobsPerBatch
+        << " blobs each</a></p>";
 
-    out << "<form method='POST' name='ScanDisk_" << blobsPerBatch << "' style='display:none'>"
+    out << "<form method='POST' name='ScanDisk_" << blobsPerBatch
+        << "' style='display:none'>"
         << "<input type='hidden' name='TabletID' value='" << tabletId << "'/>"
-        << "<input type='hidden' name='BatchSize' value='" << blobsPerBatch << "'/>"
-        << "<input type='hidden' name='action' value='scanDisk'/>"
+        << "<input type='hidden' name='BatchSize' value='" << blobsPerBatch
+        << "'/>" << "<input type='hidden' name='action' value='scanDisk'/>"
         << "<input class='btn btn-primary' type='button' value='Scan Disk'"
-        << " data-toggle='modal' data-target='#scan-disk-" << blobsPerBatch << "'/>"
-        << "</form>";
+        << " data-toggle='modal' data-target='#scan-disk-" << blobsPerBatch
+        << "'/>" << "</form>";
 
     BuildConfirmActionDialog(
         out,
         TStringBuilder() << "scan-disk-" << blobsPerBatch,
         "Scan Disk",
-        TStringBuilder()
-            << "Are you sure you want to scan disk in batches of "
-            << blobsPerBatch << " blobs each?",
+        TStringBuilder() << "Are you sure you want to scan disk in batches of "
+                         << blobsPerBatch << " blobs each?",
         TStringBuilder() << "scanDisk(\"" << blobsPerBatch << "\");");
 }
 
@@ -620,48 +615,50 @@ void DumpDefaultHeader(
     ui32 nodeId,
     const TDiagnosticsConfig& config)
 {
-    HTML(out) {
-        TAG(TH3) {
+    HTML (out) {
+        TAG (TH3) {
             out << "Tablet <a href='../tablets?TabletID=" << storage.TabletID
                 << "'>" << storage.TabletID << "</a>"
                 << " running on node <a href='"
                 << GetExternalHostUrl(HostName(), EHostService::Nbs, config)
-                << "'>" << nodeId << "</a>"
-                ;
+                << "'>" << nodeId << "</a>";
         }
     }
 }
 
-void DumpDescribeHeader(
-    IOutputStream& out,
-    const TTabletStorageInfo& storage)
+void DumpDescribeHeader(IOutputStream& out, const TTabletStorageInfo& storage)
 {
     static constexpr ui32 startBlockIndex = 0;
     static constexpr ui32 endBlockIndex = 1000;
 
-    HTML(out) {
-        TAG(TH3) { out << "DescribeIndex"; }
-        DIV() {
-            out << "Range: <a href='../tablets/app?TabletID=" << storage.TabletID
-                << "&action=describe&range=" << startBlockIndex << ":" << endBlockIndex
-                << "'>"<< startBlockIndex << ":" << endBlockIndex << "</a>";
+    HTML (out) {
+        TAG (TH3) {
+            out << "DescribeIndex";
+        }
+        DIV () {
+            out << "Range: <a href='../tablets/app?TabletID="
+                << storage.TabletID
+                << "&action=describe&range=" << startBlockIndex << ":"
+                << endBlockIndex << "'>" << startBlockIndex << ":"
+                << endBlockIndex << "</a>";
         }
     }
 }
 
-void DumpCheckHeader(
-    IOutputStream& out,
-    const TTabletStorageInfo& storage)
+void DumpCheckHeader(IOutputStream& out, const TTabletStorageInfo& storage)
 {
     static constexpr ui32 startBlockIndex = 0;
     static constexpr ui32 endBlockIndex = 1000000;
 
-    HTML(out) {
-        TAG(TH3) { out << "CheckIndex"; }
-        DIV() {
-            out << "Range: <a href='../tablets/app?TabletID=" << storage.TabletID
-                << "&action=check&range=" << startBlockIndex << ":" << endBlockIndex
-                << "'>"<< startBlockIndex << ":" << endBlockIndex << "</a>";
+    HTML (out) {
+        TAG (TH3) {
+            out << "CheckIndex";
+        }
+        DIV () {
+            out << "Range: <a href='../tablets/app?TabletID="
+                << storage.TabletID << "&action=check&range=" << startBlockIndex
+                << ":" << endBlockIndex << "'>" << startBlockIndex << ":"
+                << endBlockIndex << "</a>";
         }
     }
 }
@@ -672,25 +669,34 @@ void DumpBlockIndex(
     ui32 blockIndex,
     ui64 commitId)
 {
-    HTML(out) {
-        DIV_CLASS("row") {
-            DIV_CLASS("col-lg-6") {
+    HTML (out) {
+        DIV_CLASS ("row") {
+            DIV_CLASS ("col-lg-6") {
                 out << "<a href='../tablets/app?TabletID=" << storage.TabletID
-                    << "&action=describe&range=" << blockIndex
-                    << "'>" << blockIndex << "</a>";
+                    << "&action=describe&range=" << blockIndex << "'>"
+                    << blockIndex << "</a>";
             }
-            DIV_CLASS_ID("col-lg-6", "actions") {
-                TAG_CLASS_STYLE(TDiv, "col-lg-6", "text-align:right;padding-right:0") {
-                    out << "<a href='../tablets/app?TabletID=" << storage.TabletID
+            DIV_CLASS_ID("col-lg-6", "actions")
+            {
+                TAG_CLASS_STYLE(
+                    TDiv,
+                    "col-lg-6",
+                    "text-align:right;padding-right:0")
+                {
+                    out << "<a href='../tablets/app?TabletID="
+                        << storage.TabletID
                         << "&action=view&block=" << blockIndex
-                        << "&commitid=" << commitId
-                        << "'>View</a>";
+                        << "&commitid=" << commitId << "'>View</a>";
                 }
-                TAG_CLASS_STYLE(TDiv, "col-lg-6", "text-align:left;padding-right:0") {
-                    out << "<a href='../tablets/app?TabletID=" << storage.TabletID
+                TAG_CLASS_STYLE(
+                    TDiv,
+                    "col-lg-6",
+                    "text-align:left;padding-right:0")
+                {
+                    out << "<a href='../tablets/app?TabletID="
+                        << storage.TabletID
                         << "&action=view&block=" << blockIndex
-                        << "&commitid=" << commitId
-                        << "&binary=1'>Raw</a>";
+                        << "&commitid=" << commitId << "&binary=1'>Raw</a>";
                 }
             }
         }
@@ -703,8 +709,8 @@ void DumpBlockIndex(
     ui32 blockIndex)
 {
     out << "<a href='../tablets/app?TabletID=" << storage.TabletID
-        << "&action=describe&range=" << blockIndex
-        << "'>" << blockIndex << "</a>";
+        << "&action=describe&range=" << blockIndex << "'>" << blockIndex
+        << "</a>";
 }
 
 void DumpBlobId(
@@ -713,22 +719,34 @@ void DumpBlobId(
     const TPartialBlobId& blobId)
 {
     if (blobId) {
-        HTML(out) {
-            DIV_CLASS("row") {
+        HTML (out) {
+            DIV_CLASS ("row") {
                 auto fullBlobId = MakeBlobId(storage.TabletID, blobId);
-                DIV_CLASS("col-lg-9") {
-                    out << "<a href='../tablets/app?TabletID=" << storage.TabletID
-                        << "&action=describe&blob=" << fullBlobId
-                        << "'>" << fullBlobId << "</a>";
+                DIV_CLASS ("col-lg-9") {
+                    out << "<a href='../tablets/app?TabletID="
+                        << storage.TabletID
+                        << "&action=describe&blob=" << fullBlobId << "'>"
+                        << fullBlobId << "</a>";
                 }
 
-                DIV_CLASS_ID("col-lg-3", "actions") {
-                    auto groupId = storage.GroupFor(blobId.Channel(), blobId.Generation());
-                    TAG_CLASS_STYLE(TDiv, "col-lg-6", "text-align:right;padding-right:0") {
+                DIV_CLASS_ID("col-lg-3", "actions")
+                {
+                    auto groupId =
+                        storage.GroupFor(blobId.Channel(), blobId.Generation());
+                    TAG_CLASS_STYLE(
+                        TDiv,
+                        "col-lg-6",
+                        "text-align:right;padding-right:0")
+                    {
                         out << "<a href='../get_blob?groupId=" << groupId
-                            << "&blob=" << fullBlobId << "&debugInfo=1'>View</a>";
+                            << "&blob=" << fullBlobId
+                            << "&debugInfo=1'>View</a>";
                     }
-                    TAG_CLASS_STYLE(TDiv, "col-lg-6", "text-align:left;padding-right:0") {
+                    TAG_CLASS_STYLE(
+                        TDiv,
+                        "col-lg-6",
+                        "text-align:left;padding-right:0")
+                    {
                         out << "<a href='../get_blob?groupId=" << groupId
                             << "&blob=" << fullBlobId << "&binary=1'>Raw</a>";
                     }
@@ -765,19 +783,30 @@ void DumpBlobs(
     const TTabletStorageInfo& storage,
     const TVector<TPartialBlobId>& blobs)
 {
-    HTML(out) {
-        TABLE_SORTABLE() {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLED() { out << "CommitId"; }
-                    TABLED() { out << "BlobId"; }
+    HTML (out) {
+        TABLE_SORTABLE()
+        {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLED () {
+                        out << "CommitId";
+                    }
+                    TABLED () {
+                        out << "BlobId";
+                    }
                 }
             }
-            TABLEBODY() {
+            TABLEBODY()
+            {
                 for (const auto& blobId: blobs) {
-                    TABLER() {
-                        TABLED() { DumpCommitId(out, blobId.CommitId()); }
-                        TABLED_CLASS("view") { DumpBlobId(out, storage, blobId); }
+                    TABLER () {
+                        TABLED () {
+                            DumpCommitId(out, blobId.CommitId());
+                        }
+                        TABLED_CLASS("view")
+                        {
+                            DumpBlobId(out, storage, blobId);
+                        }
                     }
                 }
             }
@@ -792,105 +821,188 @@ void DumpPartitionConfig(
     auto blockSize = config.GetBlockSize();
     auto blocksCount = config.GetBlocksCount();
 
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
-                TABLER() {
-                    TABLED() { out << "DiskId"; }
-                    TABLED() { out << config.GetDiskId(); }
-                }
-                TABLER() {
-                    TABLED() { out << "BaseDiskId"; }
-                    TABLED() { out << config.GetBaseDiskId(); }
-                }
-                TABLER() {
-                    TABLED() { out << "BaseDiskCheckpointId"; }
-                    TABLED() { out << config.GetBaseDiskCheckpointId(); }
-                }
-                TABLER() {
-                    TABLED() { out << "ProjectId"; }
-                    TABLED() { out << config.GetProjectId(); }
-                }
-                TABLER() {
-                    TABLED() { out << "InstanceId"; }
-                    TABLED() { out << config.GetInstanceId(); }
-                }
-                TABLER() {
-                    TABLED() { out << "Block size"; }
-                    TABLED() { out << blockSize; }
-                }
-                TABLER() {
-                    TABLED() { out << "Blocks count"; }
-                    TABLED() {
-                        out << blocksCount << " ("
-                            << FormatByteSize(blockSize * blocksCount)
-                            << ")";
+    HTML (out) {
+        TABLE_CLASS ("table table-condensed") {
+            TABLEBODY()
+            {
+                TABLER () {
+                    TABLED () {
+                        out << "DiskId";
+                    }
+                    TABLED () {
+                        out << config.GetDiskId();
                     }
                 }
-                TABLER() {
-                    TABLED() { out << "Channels count"; }
-                    TABLED() { out << config.GetChannelsCount(); }
+                TABLER () {
+                    TABLED () {
+                        out << "BaseDiskId";
+                    }
+                    TABLED () {
+                        out << config.GetBaseDiskId();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "Storage media kind"; }
-                    TABLED() {
+                TABLER () {
+                    TABLED () {
+                        out << "BaseDiskCheckpointId";
+                    }
+                    TABLED () {
+                        out << config.GetBaseDiskCheckpointId();
+                    }
+                }
+                TABLER () {
+                    TABLED () {
+                        out << "ProjectId";
+                    }
+                    TABLED () {
+                        out << config.GetProjectId();
+                    }
+                }
+                TABLER () {
+                    TABLED () {
+                        out << "InstanceId";
+                    }
+                    TABLED () {
+                        out << config.GetInstanceId();
+                    }
+                }
+                TABLER () {
+                    TABLED () {
+                        out << "Block size";
+                    }
+                    TABLED () {
+                        out << blockSize;
+                    }
+                }
+                TABLER () {
+                    TABLED () {
+                        out << "Blocks count";
+                    }
+                    TABLED () {
+                        out << blocksCount << " ("
+                            << FormatByteSize(blockSize * blocksCount) << ")";
+                    }
+                }
+                TABLER () {
+                    TABLED () {
+                        out << "Channels count";
+                    }
+                    TABLED () {
+                        out << config.GetChannelsCount();
+                    }
+                }
+                TABLER () {
+                    TABLED () {
+                        out << "Storage media kind";
+                    }
+                    TABLED () {
                         out << NCloud::NProto::EStorageMediaKind_Name(
                             config.GetStorageMediaKind());
                     }
                 }
-                TABLER() {
-                    TABLED() { out << "Folder Id"; }
-                    TABLED() { out << config.GetFolderId(); }
+                TABLER () {
+                    TABLED () {
+                        out << "Folder Id";
+                    }
+                    TABLED () {
+                        out << config.GetFolderId();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "Cloud Id"; }
-                    TABLED() { out << config.GetCloudId(); }
+                TABLER () {
+                    TABLED () {
+                        out << "Cloud Id";
+                    }
+                    TABLED () {
+                        out << config.GetCloudId();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "PerformanceProfile"; }
-                    TABLED() {
+                TABLER () {
+                    TABLED () {
+                        out << "PerformanceProfile";
+                    }
+                    TABLED () {
                         const auto& pp = config.GetPerformanceProfile();
-                        TABLE_CLASS("table table-condensed") {
-                            TABLEBODY() {
-                                TABLER() {
-                                    TABLED() { out << "MaxReadBandwidth"; }
-                                    TABLED() { out << pp.GetMaxReadBandwidth(); }
+                        TABLE_CLASS ("table table-condensed") {
+                            TABLEBODY()
+                            {
+                                TABLER () {
+                                    TABLED () {
+                                        out << "MaxReadBandwidth";
+                                    }
+                                    TABLED () {
+                                        out << pp.GetMaxReadBandwidth();
+                                    }
                                 }
-                                TABLER() {
-                                    TABLED() { out << "MaxWriteBandwidth"; }
-                                    TABLED() { out << pp.GetMaxWriteBandwidth(); }
+                                TABLER () {
+                                    TABLED () {
+                                        out << "MaxWriteBandwidth";
+                                    }
+                                    TABLED () {
+                                        out << pp.GetMaxWriteBandwidth();
+                                    }
                                 }
-                                TABLER() {
-                                    TABLED() { out << "MaxReadIops"; }
-                                    TABLED() { out << pp.GetMaxReadIops(); }
+                                TABLER () {
+                                    TABLED () {
+                                        out << "MaxReadIops";
+                                    }
+                                    TABLED () {
+                                        out << pp.GetMaxReadIops();
+                                    }
                                 }
-                                TABLER() {
-                                    TABLED() { out << "MaxWriteIops"; }
-                                    TABLED() { out << pp.GetMaxWriteIops(); }
+                                TABLER () {
+                                    TABLED () {
+                                        out << "MaxWriteIops";
+                                    }
+                                    TABLED () {
+                                        out << pp.GetMaxWriteIops();
+                                    }
                                 }
-                                TABLER() {
-                                    TABLED() { out << "BurstPercentage"; }
-                                    TABLED() { out << pp.GetBurstPercentage(); }
+                                TABLER () {
+                                    TABLED () {
+                                        out << "BurstPercentage";
+                                    }
+                                    TABLED () {
+                                        out << pp.GetBurstPercentage();
+                                    }
                                 }
-                                TABLER() {
-                                    TABLED() { out << "MaxPostponedWeight"; }
-                                    TABLED() { out << pp.GetMaxPostponedWeight(); }
+                                TABLER () {
+                                    TABLED () {
+                                        out << "MaxPostponedWeight";
+                                    }
+                                    TABLED () {
+                                        out << pp.GetMaxPostponedWeight();
+                                    }
                                 }
-                                TABLER() {
-                                    TABLED() { out << "BoostTime"; }
-                                    TABLED() { out << pp.GetBoostTime(); }
+                                TABLER () {
+                                    TABLED () {
+                                        out << "BoostTime";
+                                    }
+                                    TABLED () {
+                                        out << pp.GetBoostTime();
+                                    }
                                 }
-                                TABLER() {
-                                    TABLED() { out << "BoostRefillTime"; }
-                                    TABLED() { out << pp.GetBoostRefillTime(); }
+                                TABLER () {
+                                    TABLED () {
+                                        out << "BoostRefillTime";
+                                    }
+                                    TABLED () {
+                                        out << pp.GetBoostRefillTime();
+                                    }
                                 }
-                                TABLER() {
-                                    TABLED() { out << "BoostPercentage"; }
-                                    TABLED() { out << pp.GetBoostPercentage(); }
+                                TABLER () {
+                                    TABLED () {
+                                        out << "BoostPercentage";
+                                    }
+                                    TABLED () {
+                                        out << pp.GetBoostPercentage();
+                                    }
                                 }
-                                TABLER() {
-                                    TABLED() { out << "ThrottlingEnabled"; }
-                                    TABLED() { out << pp.GetThrottlingEnabled(); }
+                                TABLER () {
+                                    TABLED () {
+                                        out << "ThrottlingEnabled";
+                                    }
+                                    TABLED () {
+                                        out << pp.GetThrottlingEnabled();
+                                    }
                                 }
                             }
                         }
@@ -901,19 +1013,33 @@ void DumpPartitionConfig(
     }
 }
 
-void DumpStatsCounters(
-    IOutputStream& out,
-    const NProto::TIOCounters& counters)
+void DumpStatsCounters(IOutputStream& out, const NProto::TIOCounters& counters)
 {
-    HTML(out) {
-        TABLED() { out << "Request count"; }
-        TABLED() { out << counters.GetRequestsCount(); }
-        TABLED() { out << "Blocks count"; }
-        TABLED() { out << counters.GetBlocksCount(); }
-        TABLED() { out << "Exec time"; }
-        TABLED() { out << counters.GetExecTime(); }
-        TABLED() { out << "Wait time"; }
-        TABLED() { out << counters.GetWaitTime(); }
+    HTML (out) {
+        TABLED () {
+            out << "Request count";
+        }
+        TABLED () {
+            out << counters.GetRequestsCount();
+        }
+        TABLED () {
+            out << "Blocks count";
+        }
+        TABLED () {
+            out << counters.GetBlocksCount();
+        }
+        TABLED () {
+            out << "Exec time";
+        }
+        TABLED () {
+            out << counters.GetExecTime();
+        }
+        TABLED () {
+            out << "Wait time";
+        }
+        TABLED () {
+            out << counters.GetWaitTime();
+        }
     }
 }
 
@@ -925,62 +1051,89 @@ void DumpPartitionStats(
 {
     auto blockSize = config.GetBlockSize();
 
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
-                TABLER() {
-                    TABLED() { out << "Fresh blocks count"; }
-                    TABLED() {
+    HTML (out) {
+        TABLE_CLASS ("table table-condensed") {
+            TABLEBODY()
+            {
+                TABLER () {
+                    TABLED () {
+                        out << "Fresh blocks count";
+                    }
+                    TABLED () {
                         out << freshBlocksCount << " ("
                             << FormatByteSize(blockSize * freshBlocksCount)
                             << ")";
                     }
                 }
-                TABLER() {
-                    TABLED() { out << "Mixed blobs count"; }
-                    TABLED() { out << stats.GetMixedBlobsCount(); }
+                TABLER () {
+                    TABLED () {
+                        out << "Mixed blobs count";
+                    }
+                    TABLED () {
+                        out << stats.GetMixedBlobsCount();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "Mixed blocks count"; }
-                    TABLED() {
+                TABLER () {
+                    TABLED () {
+                        out << "Mixed blocks count";
+                    }
+                    TABLED () {
                         out << stats.GetMixedBlocksCount() << " ("
-                            << FormatByteSize(blockSize * stats.GetMixedBlocksCount())
+                            << FormatByteSize(
+                                   blockSize * stats.GetMixedBlocksCount())
                             << ")";
                     }
                 }
-                TABLER() {
-                    TABLED() { out << "Merged blobs count"; }
-                    TABLED() { out << stats.GetMergedBlobsCount(); }
+                TABLER () {
+                    TABLED () {
+                        out << "Merged blobs count";
+                    }
+                    TABLED () {
+                        out << stats.GetMergedBlobsCount();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "Merged blocks count"; }
-                    TABLED() {
+                TABLER () {
+                    TABLED () {
+                        out << "Merged blocks count";
+                    }
+                    TABLED () {
                         out << stats.GetMergedBlocksCount() << " ("
-                            << FormatByteSize(blockSize * stats.GetMergedBlocksCount())
+                            << FormatByteSize(
+                                   blockSize * stats.GetMergedBlocksCount())
                             << ")";
                     }
                 }
-                TABLER() {
-                    TABLED() { out << "Used blocks count"; }
-                    TABLED() {
+                TABLER () {
+                    TABLED () {
+                        out << "Used blocks count";
+                    }
+                    TABLED () {
                         out << stats.GetUsedBlocksCount() << " ("
-                            << FormatByteSize(blockSize * stats.GetUsedBlocksCount())
+                            << FormatByteSize(
+                                   blockSize * stats.GetUsedBlocksCount())
                             << ")";
                     }
                 }
-                TABLER() {
-                    TABLED() { out << "Logical used blocks count"; }
-                    TABLED() {
+                TABLER () {
+                    TABLED () {
+                        out << "Logical used blocks count";
+                    }
+                    TABLED () {
                         out << stats.GetLogicalUsedBlocksCount() << " ("
-                            << FormatByteSize(blockSize * stats.GetLogicalUsedBlocksCount())
+                            << FormatByteSize(
+                                   blockSize *
+                                   stats.GetLogicalUsedBlocksCount())
                             << ")";
                     }
                 }
-                TABLER() {
-                    TABLED() { out << "Garbage blocks count"; }
-                    TABLED() {
+                TABLER () {
+                    TABLED () {
+                        out << "Garbage blocks count";
+                    }
+                    TABLED () {
                         out << stats.GetGarbageBlocksCount() << " ("
-                            << FormatByteSize(blockSize * stats.GetGarbageBlocksCount())
+                            << FormatByteSize(
+                                   blockSize * stats.GetGarbageBlocksCount())
                             << ")";
                     }
                 }
@@ -993,23 +1146,32 @@ void DumpPartitionCounters(
     IOutputStream& out,
     const NProto::TPartitionStats& stats)
 {
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
-                TABLER() {
-                    TABLED() { out << "User read counters"; }
+    HTML (out) {
+        TABLE_CLASS ("table table-condensed") {
+            TABLEBODY()
+            {
+                TABLER () {
+                    TABLED () {
+                        out << "User read counters";
+                    }
                     DumpStatsCounters(out, stats.GetUserReadCounters());
                 }
-                TABLER() {
-                    TABLED() { out << "User write counters"; }
+                TABLER () {
+                    TABLED () {
+                        out << "User write counters";
+                    }
                     DumpStatsCounters(out, stats.GetUserWriteCounters());
                 }
-                TABLER() {
-                    TABLED() { out << "Sys read counters"; }
+                TABLER () {
+                    TABLED () {
+                        out << "Sys read counters";
+                    }
                     DumpStatsCounters(out, stats.GetSysReadCounters());
                 }
-                TABLER() {
-                    TABLED() { out << "Sys write counters"; }
+                TABLER () {
+                    TABLED () {
+                        out << "Sys write counters";
+                    }
                     DumpStatsCounters(out, stats.GetSysWriteCounters());
                 }
             }
@@ -1023,40 +1185,79 @@ void DumpCompactionMap(
     const TVector<TCompactionCounter>& items,
     const ui32 rangeSize)
 {
-    HTML(out) {
-        TABLE_SORTABLE() {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLED() { out << "BlockIndex"; }
-                    TABLED() { out << "Blobs"; }
-                    TABLED() { out << "Blocks"; }
-                    TABLED() { out << "UsedBlocks"; }
-                    TABLED() { out << "ReadCount"; }
-                    TABLED() { out << "BlobsRead"; }
-                    TABLED() { out << "BlocksRead"; }
-                    TABLED() { out << "Score"; }
-                    TABLED() { out << "Compacted"; }
-                    TABLED() { out << "Compact"; }
+    HTML (out) {
+        TABLE_SORTABLE()
+        {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLED () {
+                        out << "BlockIndex";
+                    }
+                    TABLED () {
+                        out << "Blobs";
+                    }
+                    TABLED () {
+                        out << "Blocks";
+                    }
+                    TABLED () {
+                        out << "UsedBlocks";
+                    }
+                    TABLED () {
+                        out << "ReadCount";
+                    }
+                    TABLED () {
+                        out << "BlobsRead";
+                    }
+                    TABLED () {
+                        out << "BlocksRead";
+                    }
+                    TABLED () {
+                        out << "Score";
+                    }
+                    TABLED () {
+                        out << "Compacted";
+                    }
+                    TABLED () {
+                        out << "Compact";
+                    }
                 }
             }
-            TABLEBODY() {
+            TABLEBODY()
+            {
                 for (const auto& item: items) {
-                    TABLER() {
-                        TABLED() {
-                            out << "<a href='../tablets/app?TabletID=" << storage.TabletID
-                                << "&action=describe&range="
-                                << item.BlockIndex << ":" << item.BlockIndex + rangeSize
-                                << "'>" << item.BlockIndex << "</a>";
+                    TABLER () {
+                        TABLED () {
+                            out << "<a href='../tablets/app?TabletID="
+                                << storage.TabletID
+                                << "&action=describe&range=" << item.BlockIndex
+                                << ":" << item.BlockIndex + rangeSize << "'>"
+                                << item.BlockIndex << "</a>";
                         }
-                        TABLED() { out << item.Stat.BlobCount; }
-                        TABLED() { out << item.Stat.BlockCount; }
-                        TABLED() { out << item.Stat.UsedBlockCount; }
-                        TABLED() { out << item.Stat.ReadRequestCount; }
-                        TABLED() { out << item.Stat.ReadRequestBlobCount; }
-                        TABLED() { out << item.Stat.ReadRequestBlockCount; }
-                        TABLED() { out << item.Stat.CompactionScore.Score; }
-                        TABLED() { out << item.Stat.Compacted; }
-                        TABLED() {
+                        TABLED () {
+                            out << item.Stat.BlobCount;
+                        }
+                        TABLED () {
+                            out << item.Stat.BlockCount;
+                        }
+                        TABLED () {
+                            out << item.Stat.UsedBlockCount;
+                        }
+                        TABLED () {
+                            out << item.Stat.ReadRequestCount;
+                        }
+                        TABLED () {
+                            out << item.Stat.ReadRequestBlobCount;
+                        }
+                        TABLED () {
+                            out << item.Stat.ReadRequestBlockCount;
+                        }
+                        TABLED () {
+                            out << item.Stat.CompactionScore.Score;
+                        }
+                        TABLED () {
+                            out << item.Stat.Compacted;
+                        }
+                        TABLED () {
                             BuildForceCompactionButton(
                                 out,
                                 storage.TabletID,
@@ -1074,8 +1275,8 @@ void DumpMonitoringVolumeLink(
     const TDiagnosticsConfig& config,
     const TString& diskId)
 {
-    HTML(out) {
-        TAG(TH3) {
+    HTML (out) {
+        TAG (TH3) {
             out << "<a href='" << GetMonitoringVolumeUrl(config, diskId)
                 << "'>Volume dashboards</a>";
         }
@@ -1145,8 +1346,8 @@ void DumpDataHash(IOutputStream& out, const TString& data)
 
 void DumpTabletNotReady(IOutputStream& out)
 {
-    HTML(out) {
-        TAG(TH3) {
+    HTML (out) {
+        TAG (TH3) {
             out << "Tablet not ready yet";
         }
     }
@@ -1237,10 +1438,18 @@ void DumpLatency(
                 ToString(tabletId),
             "Inflight");
 
-        DIV_CLASS_ID(" ", containerId) {
-            TAG (TH3) { out << "Transactions"; }
-            DumpLatencyForTransactions(out, columnCount, transactionTimeTracker);
-            TAG (TH3) { out << "Groups"; }
+        DIV_CLASS_ID(" ", containerId)
+        {
+            TAG (TH3) {
+                out << "Transactions";
+            }
+            DumpLatencyForTransactions(
+                out,
+                columnCount,
+                transactionTimeTracker);
+            TAG (TH3) {
+                out << "Groups";
+            }
         }
 
         out << R"(<script>
@@ -1264,8 +1473,7 @@ void DumpLatency(
             "getTransactionsLatency",
             tabletId,
             1000,
-            "updateTransactionsData"
-        );
+            "updateTransactionsData");
     }
 }
 
@@ -1275,7 +1483,7 @@ TCgiParameters GatherHttpParameters(const TEvRemoteHttpInfo& msg)
     if (const auto& ext = msg.ExtendedQuery;
         ext && ext->GetMethod() == HTTP_METHOD_POST)
     {
-        for (const auto& param : ext->GetPostParams()) {
+        for (const auto& param: ext->GetPostParams()) {
             params.emplace(param.GetKey(), param.GetValue());
         }
     }
@@ -1292,18 +1500,17 @@ TCgiParameters GetHttpMethodParameters(const TEvRemoteHttpInfo& msg)
     if (const auto& ext = msg.ExtendedQuery;
         ext && ext->GetMethod() == HTTP_METHOD_POST)
     {
-        for (const auto& param : ext->GetPostParams()) {
+        for (const auto& param: ext->GetPostParams()) {
             params.emplace(param.GetKey(), param.GetValue());
         }
     }
 
-   return params;
+    return params;
 }
 
 HTTP_METHOD GetHttpMethodType(const NActors::NMon::TEvRemoteHttpInfo& msg)
 {
-    if (const auto& ext = msg.ExtendedQuery; ext)
-    {
+    if (const auto& ext = msg.ExtendedQuery; ext) {
         return static_cast<HTTP_METHOD>(ext->GetMethod());
     }
     return msg.GetMethod();
@@ -1450,8 +1657,7 @@ void RenderAutoRefreshScript(
 
 void AddGroupLatencyCSS(IOutputStream& out)
 {
-    out << "<style>"
-        << R"(
+    out << "<style>" << R"(
         #latency-table-Read th,
         #latency-table-Write th,
         #latency-table-Patch th {
@@ -1973,16 +2179,15 @@ void RenderStyledPostButton(
     const TString& text,
     TStringBuf style)
 {
-    out << "<button style='" << style << "' "
-        << "onclick=\"fetch('" << url << "', {method:'POST'})"
+    out << "<button style='" << style << "' " << "onclick=\"fetch('" << url
+        << "', {method:'POST'})"
         << ".catch(e => alert('Error: ' + e.message))\">" << text
         << "</button>";
 }
 
 void AddDeviceOperationLatencyCSS(IOutputStream& out)
 {
-    out << "<style>"
-        << R"(
+    out << "<style>" << R"(
         .table-latency {
             border-collapse: collapse;
             table-layout: auto;

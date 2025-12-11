@@ -29,11 +29,11 @@ struct TCheckpoint
     TCheckpoint() = default;
 
     TCheckpoint(
-            TString checkpointId,
-            ui64 commitId,
-            TString idempotenceId,
-            TInstant dateCreated,
-            NProto::TPartitionStats stats)
+        TString checkpointId,
+        ui64 commitId,
+        TString idempotenceId,
+        TInstant dateCreated,
+        NProto::TPartitionStats stats)
         : CheckpointId(std::move(checkpointId))
         , CommitId(commitId)
         , IdempotenceId(std::move(idempotenceId))
@@ -50,7 +50,7 @@ class TCheckpointStore
 {
     struct ExtractKey
     {
-        const TString& operator ()(const TCheckpoint& x) const
+        const TString& operator()(const TCheckpoint& x) const
         {
             return x.CheckpointId;
         }
@@ -62,8 +62,7 @@ class TCheckpointStore
         THash<TString>,
         ExtractKey,
         TEqualTo<TString>,
-        std::allocator<TCheckpoint>
-    >;
+        std::allocator<TCheckpoint>>;
 
 private:
     TCheckpointMap Items;
@@ -76,10 +75,13 @@ public:
     bool Delete(const TString& checkpointId);
 
     bool AddCheckpointMapping(const TCheckpoint& checkpoint);
-    void SetCheckpointMappings(const THashMap<TString, ui64>& checkpointId2CommitId);
+    void SetCheckpointMappings(
+        const THashMap<TString, ui64>& checkpointId2CommitId);
     bool DeleteCheckpointMapping(const TString& checkpointId);
 
-    ui64 GetCommitId(const TString& checkpointId, bool allowCheckpointWithoutData) const;
+    ui64 GetCommitId(
+        const TString& checkpointId,
+        bool allowCheckpointWithoutData) const;
     TString GetIdempotenceId(const TString& checkpointId) const;
 
     TVector<TCheckpoint> Get() const;

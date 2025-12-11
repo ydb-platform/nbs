@@ -34,14 +34,12 @@ Y_UNIT_TEST_SUITE(TServiceDescribeVolumeModelTest)
 
         auto response = service.DescribeVolumeModel(
             5_GB / DefaultBlockSize,
-            NCloud::NProto::STORAGE_MEDIA_HYBRID
-        );
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
 
         const auto& vm = response->Record.GetVolumeModel();
         UNIT_ASSERT_VALUES_EQUAL(
-                6,
-                vm.GetMixedChannelsCount() +
-                vm.GetMergedChannelsCount() +
+            6,
+            vm.GetMixedChannelsCount() + vm.GetMergedChannelsCount() +
                 vm.GetFreshChannelsCount());
         const auto& pp = vm.GetPerformanceProfile();
         UNIT_ASSERT_VALUES_EQUAL(true, pp.GetThrottlingEnabled());

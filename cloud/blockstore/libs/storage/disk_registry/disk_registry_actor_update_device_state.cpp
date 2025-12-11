@@ -16,10 +16,8 @@ void TDiskRegistryActor::HandleChangeDeviceState(
 
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     LOG_INFO(
         ctx,
@@ -94,8 +92,9 @@ void TDiskRegistryActor::CompleteUpdateDeviceState(
     SecureErase(ctx);
     StartMigration(ctx);
 
-    auto response = std::make_unique<TEvDiskRegistry::TEvChangeDeviceStateResponse>(
-        std::move(args.Error));
+    auto response =
+        std::make_unique<TEvDiskRegistry::TEvChangeDeviceStateResponse>(
+            std::move(args.Error));
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
 

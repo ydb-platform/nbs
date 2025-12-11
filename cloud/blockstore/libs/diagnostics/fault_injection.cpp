@@ -39,8 +39,7 @@ TString GetMessage(const NLWTrace::TCustomAction& action)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TServiceErrorActionExecutor final
-    : public NLWTrace::TCustomActionExecutor
+class TServiceErrorActionExecutor final: public NLWTrace::TCustomActionExecutor
 {
 private:
     const ui32 Code;
@@ -48,9 +47,9 @@ private:
 
 public:
     TServiceErrorActionExecutor(
-            NLWTrace::TProbe* probe,
-            const NLWTrace::TCustomAction& action,
-            NLWTrace::TSession* session)
+        NLWTrace::TProbe* probe,
+        const NLWTrace::TCustomAction& action,
+        NLWTrace::TSession* session)
         : NLWTrace::TCustomActionExecutor(probe, true /* destructive */)
         , Code(GetCode(action))
         , Message(GetMessage(action))
@@ -60,7 +59,9 @@ public:
     }
 
 private:
-    bool DoExecute(NLWTrace::TOrbit& orbit, const NLWTrace::TParams& params) override
+    bool DoExecute(
+        NLWTrace::TOrbit& orbit,
+        const NLWTrace::TParams& params) override
     {
         Y_UNUSED(orbit);
         Y_UNUSED(params);

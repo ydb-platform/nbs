@@ -88,10 +88,8 @@ template <typename TVolume>
 bool NeedToSetEncryptionKeyHash(const TVolume& volume, const TString& keyHash)
 {
     const auto& volumeEncryption = volume.GetEncryptionDesc();
-    return
-        volumeEncryption.GetMode() != NProto::NO_ENCRYPTION &&
-        !volumeEncryption.GetKeyHash() &&
-        keyHash;
+    return volumeEncryption.GetMode() != NProto::NO_ENCRYPTION &&
+           !volumeEncryption.GetKeyHash() && keyHash;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -157,8 +155,7 @@ struct TMountRequestParams
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TMountRequestActor final
-    : public TActorBootstrapped<TMountRequestActor>
+class TMountRequestActor final: public TActorBootstrapped<TMountRequestActor>
 {
 private:
     const TChildLogTitle LogTitle;
@@ -258,13 +255,13 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TMountRequestActor::TMountRequestActor(
-        TChildLogTitle logTitle,
-        TStorageConfigPtr config,
-        TRequestInfoPtr requestInfo,
-        NProto::TMountVolumeRequest request,
-        TString sessionId,
-        const TMountRequestParams& params,
-        bool mountOptionsChanged)
+    TChildLogTitle logTitle,
+    TStorageConfigPtr config,
+    TRequestInfoPtr requestInfo,
+    NProto::TMountVolumeRequest request,
+    TString sessionId,
+    const TMountRequestParams& params,
+    bool mountOptionsChanged)
     : LogTitle(std::move(logTitle))
     , Config(std::move(config))
     , RequestInfo(std::move(requestInfo))
@@ -276,9 +273,9 @@ TMountRequestActor::TMountRequestActor(
     MountMode = Request.GetVolumeMountMode();
     if (Params.BindingType == NProto::BINDING_REMOTE) {
         MountMode = NProto::VOLUME_MOUNT_REMOTE;
-    // XXX the following 'else if' seems correct but breaks test
-    //} else if (Params.BindingType == TVolumeInfo::LOCAL) {
-    //    MountMode = NProto::VOLUME_MOUNT_LOCAL;
+        // XXX the following 'else if' seems correct but breaks test
+        //} else if (Params.BindingType == TVolumeInfo::LOCAL) {
+        //    MountMode = NProto::VOLUME_MOUNT_LOCAL;
     }
 }
 
@@ -342,8 +339,8 @@ void TMountRequestActor::HandleDescribeVolumeResponse(
     if (IsDataChannel(requestSource)) {
         // Requests coming from data channel are authorized with mount token.
         TMountToken publicToken;
-        auto parseStatus = publicToken.ParseString(
-            volumeDescription.GetMountToken());
+        auto parseStatus =
+            publicToken.ParseString(volumeDescription.GetMountToken());
 
         if (parseStatus != TMountToken::EStatus::OK) {
             LOG_DEBUG(
@@ -353,8 +350,10 @@ void TMountRequestActor::HandleDescribeVolumeResponse(
                 LogTitle.GetWithTime().c_str(),
                 volumeDescription.GetMountToken().Quote().c_str());
 
-            auto error = MakeError(E_FAIL, TStringBuilder()
-                << "Cannot parse mount token (" << parseStatus << ")");
+            auto error = MakeError(
+                E_FAIL,
+                TStringBuilder()
+                    << "Cannot parse mount token (" << parseStatus << ")");
             HandleDescribeVolumeError(ctx, error);
             return;
         }
@@ -385,7 +384,8 @@ void TMountRequestActor::HandleDescribeVolumeResponse(
                     LogTitle.GetWithTime().c_str());
             }
 
-            auto error = MakeError(E_ARGUMENT, "Mount token verification failed");
+            auto error =
+                MakeError(E_ARGUMENT, "Mount token verification failed");
             HandleDescribeVolumeError(ctx, error);
             return;
         }
@@ -416,17 +416,22 @@ void TMountRequestActor::HandleDescribeVolumeResponse(
     if (requestEncryption.GetMode() != NProto::NO_ENCRYPTION) {
         auto requestMode = static_cast<ui32>(requestEncryption.GetMode());
         if (requestMode != volumeEncryption.GetMode()) {
-            HandleDescribeVolumeError(ctx, MakeError(E_ARGUMENT, TStringBuilder()
-                << "Different encryption modes"
-                << " in request (" << requestMode << ")"
-                << " and in volume (" << volumeEncryption.GetMode() << ")"));
+            HandleDescribeVolumeError(
+                ctx,
+                MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder()
+                        << "Different encryption modes" << " in request ("
+                        << requestMode << ")" << " and in volume ("
+                        << volumeEncryption.GetMode() << ")"));
             return;
         }
 
         const auto& requestKeyHash = requestEncryption.GetKeyHash();
         if (NeedToSetEncryptionKeyHash(volumeConfig, requestKeyHash)) {
             const auto& clientId = Request.GetHeaders().GetClientId();
-            auto request = std::make_unique<TEvService::TEvAlterVolumeRequest>();
+            auto request =
+                std::make_unique<TEvService::TEvAlterVolumeRequest>();
             request->Record.MutableHeaders()->SetClientId(clientId);
             request->Record.SetDiskId(volumeConfig.GetDiskId());
             request->Record.SetProjectId(volumeConfig.GetProjectId());
@@ -440,10 +445,14 @@ void TMountRequestActor::HandleDescribeVolumeResponse(
         }
 
         if (volumeEncryption.GetKeyHash() != requestKeyHash) {
-            HandleDescribeVolumeError(ctx, MakeError(E_ARGUMENT, TStringBuilder()
-                << "Different encryption key hashes"
-                << " in request (" << requestKeyHash << ")"
-                << " and in volume (" << volumeEncryption.GetKeyHash() << ")"));
+            HandleDescribeVolumeError(
+                ctx,
+                MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder()
+                        << "Different encryption key hashes" << " in request ("
+                        << requestKeyHash << ")" << " and in volume ("
+                        << volumeEncryption.GetKeyHash() << ")"));
             return;
         }
     }
@@ -540,17 +549,21 @@ void TMountRequestActor::AddClient(const TActorContext& ctx, TDuration timeout)
         RequestInfo->Cookie,
         RequestInfo->CallContext);
 
-    NCloud::Register(ctx, CreateAddClientActor(
-        std::move(request),
-        std::move(requestInfo),
-        timeout,
-        Config->GetAddClientRetryTimeoutIncrement(),
-        Params.VolumeClient));
+    NCloud::Register(
+        ctx,
+        CreateAddClientActor(
+            std::move(request),
+            std::move(requestInfo),
+            timeout,
+            Config->GetAddClientRetryTimeoutIncrement(),
+            Params.VolumeClient));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TMountRequestActor::WaitForVolume(const TActorContext& ctx, TDuration timeout)
+void TMountRequestActor::WaitForVolume(
+    const TActorContext& ctx,
+    TDuration timeout)
 {
     const auto& diskId = Request.GetDiskId();
     const auto& clientId = Request.GetHeaders().GetClientId();
@@ -564,12 +577,14 @@ void TMountRequestActor::WaitForVolume(const TActorContext& ctx, TDuration timeo
         RequestInfo->Cookie,
         RequestInfo->CallContext);
 
-    NCloud::Register(ctx, CreateWaitReadyActor(
-        std::move(request),
-        std::move(requestInfo),
-        timeout,
-        Config->GetAddClientRetryTimeoutIncrement(),
-        Params.VolumeClient));
+    NCloud::Register(
+        ctx,
+        CreateWaitReadyActor(
+            std::move(request),
+            std::move(requestInfo),
+            timeout,
+            Config->GetAddClientRetryTimeoutIncrement(),
+            Params.VolumeClient));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -602,7 +617,7 @@ void TMountRequestActor::LockVolume(const TActorContext& ctx)
     NCloud::Send<TEvHiveProxy::TEvLockTabletRequest>(
         ctx,
         MakeHiveProxyServiceId(),
-        0,  // cookie
+        0,   // cookie
         VolumeTabletId);
 }
 
@@ -611,7 +626,7 @@ void TMountRequestActor::UnlockVolume(const TActorContext& ctx)
     NCloud::Send<TEvHiveProxy::TEvUnlockTabletRequest>(
         ctx,
         MakeHiveProxyServiceId(),
-        0,  // cookie
+        0,   // cookie
         VolumeTabletId);
 }
 
@@ -676,16 +691,17 @@ void TMountRequestActor::HandleVolumeAddClientResponse(
         const bool volumeStarted = Params.StartVolumeActor || VolumeStarted;
 
         // the following expression describes the situation when local mounter
-        // mounts volume for the first time but is forced to start volume remotely.
+        // mounts volume for the first time but is forced to start volume
+        // remotely.
         const bool newPreemptedLocalMounter =
             Request.GetVolumeMountMode() == NProto::VOLUME_MOUNT_LOCAL &&
-            MountMode == NProto::VOLUME_MOUNT_REMOTE &&
-            !Params.IsLocalMounter;
+            MountMode == NProto::VOLUME_MOUNT_REMOTE && !Params.IsLocalMounter;
 
         // NBS-3481
-        // we should acquire lock for tablet in hive if it is not already running
-        // at host and local mount cannot be satisfied because of remote binding.
-        // if we don't do this, tablet will stay at previous local mount host.
+        // we should acquire lock for tablet in hive if it is not already
+        // running at host and local mount cannot be satisfied because of remote
+        // binding. if we don't do this, tablet will stay at previous local
+        // mount host.
         if (!IsTabletAcquired && !volumeStarted && newPreemptedLocalMounter) {
             LockVolume(ctx);
             return;
@@ -701,7 +717,9 @@ void TMountRequestActor::HandleVolumeAddClientResponse(
         RequestVolumeStop(ctx);
         return;
     } else if (error.GetCode() == E_REJECTED) {
-        NCloud::Send<TEvServicePrivate::TEvResetPipeClient>(ctx, Params.VolumeClient);
+        NCloud::Send<TEvServicePrivate::TEvResetPipeClient>(
+            ctx,
+            Params.VolumeClient);
 
         if (!Params.RejectOnAddClientTimeout) {
             RequestVolumeStart(ctx);
@@ -789,7 +807,9 @@ void TMountRequestActor::HandleStartVolumeResponse(
     Error = error;
     if (SUCCEEDED(error.GetCode())) {
         VolumeStarted = true;
-        if (AddClientRequestCompleted && mountMode == NProto::VOLUME_MOUNT_LOCAL) {
+        if (AddClientRequestCompleted &&
+            mountMode == NProto::VOLUME_MOUNT_LOCAL)
+        {
             NotifyAndDie(ctx);
             return;
         }
@@ -831,16 +851,24 @@ void TMountRequestActor::HandleStopVolumeResponse(
 STFUNC(TMountRequestActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvSSProxy::TEvDescribeVolumeResponse, HandleDescribeVolumeResponse);
+        HFunc(
+            TEvSSProxy::TEvDescribeVolumeResponse,
+            HandleDescribeVolumeResponse);
         HFunc(TEvService::TEvAlterVolumeResponse, HandleAlterVolumeResponse);
 
         HFunc(TEvVolume::TEvAddClientResponse, HandleVolumeAddClientResponse);
         HFunc(TEvVolume::TEvWaitReadyResponse, HandleWaitReadyResponse);
 
-        HFunc(TEvServicePrivate::TEvStartVolumeResponse, HandleStartVolumeResponse);
-        HFunc(TEvServicePrivate::TEvStopVolumeResponse, HandleStopVolumeResponse);
+        HFunc(
+            TEvServicePrivate::TEvStartVolumeResponse,
+            HandleStartVolumeResponse);
+        HFunc(
+            TEvServicePrivate::TEvStopVolumeResponse,
+            HandleStopVolumeResponse);
 
-        HFunc(TEvHiveProxy::TEvUnlockTabletResponse, HandleUnlockTabletResponse);
+        HFunc(
+            TEvHiveProxy::TEvUnlockTabletResponse,
+            HandleUnlockTabletResponse);
         HFunc(TEvHiveProxy::TEvLockTabletResponse, HandleLockTabletResponse);
 
         IgnoreFunc(TEvHiveProxy::TEvTabletLockLost);
@@ -878,9 +906,8 @@ void TVolumeSessionActor::LogNewClient(
         ctx,
         TBlockStoreComponents::SERVICE,
         LogTitle.GetWithTime()
-            << " Mounting volume: " << diskId.Quote()
-            << " (client: "<< clientId.Quote()
-            << " instance: " << instanceId.Quote()
+            << " Mounting volume: " << diskId.Quote() << " (client: "
+            << clientId.Quote() << " instance: " << instanceId.Quote()
             << " access: " << AccessModeToString(accessMode)
             << " mount mode: " << EVolumeMountMode_Name(mountMode)
             << " throttling: " << throttlingStr
@@ -893,7 +920,8 @@ void TVolumeSessionActor::LogNewClient(
             << ") ts: " << tick);
 }
 
-TVolumeSessionActor::TMountRequestProcResult TVolumeSessionActor::ProcessMountRequest(
+TVolumeSessionActor::TMountRequestProcResult
+TVolumeSessionActor::ProcessMountRequest(
     const TActorContext& ctx,
     const TEvServicePrivate::TEvInternalMountVolumeRequest::TPtr& ev,
     ui64 tick)
@@ -903,7 +931,8 @@ TVolumeSessionActor::TMountRequestProcResult TVolumeSessionActor::ProcessMountRe
     const auto& accessMode = msg->Record.GetVolumeAccessMode();
     const auto& mountMode = msg->Record.GetVolumeMountMode();
     const auto& mountSeqNumber = msg->Record.GetMountSeqNumber();
-    const auto& encryptionKeyHash = msg->Record.GetEncryptionSpec().GetKeyHash();
+    const auto& encryptionKeyHash =
+        msg->Record.GetEncryptionSpec().GetKeyHash();
     const auto& fillSeqNumber = msg->Record.GetFillSeqNumber();
     const auto& fillGeneration = msg->Record.GetFillGeneration();
 
@@ -917,18 +946,19 @@ TVolumeSessionActor::TMountRequestProcResult TVolumeSessionActor::ProcessMountRe
         IsThrottlingDisabled(msg->Record) ? "disabled" : "enabled";
 
     TStringBuilder mountParamsStr =
-        TStringBuilder() <<
-        " (client: " << clientId.Quote() <<
-        " access: " << AccessModeToString(accessMode) <<
-        " mount mode: " << EVolumeMountMode_Name(mountMode) <<
-        " throttling: " << throttlingStr <<
-        " seq_num: " << mountSeqNumber <<
-        " binding: " << EVolumeBinding_Name(msg->BindingType) <<
-        " source: " << EPreemptionSource_Name(msg->PreemptionSource) <<
-        " cur binding: " << EVolumeBinding_Name(VolumeInfo->BindingType) <<
-        " cur source: " << EPreemptionSource_Name(VolumeInfo->PreemptionSource) <<
-        " key_hash: " << encryptionKeyHash.Quote() <<
-        ") ts: " << tick;
+        TStringBuilder() << " (client: " << clientId.Quote()
+                         << " access: " << AccessModeToString(accessMode)
+                         << " mount mode: " << EVolumeMountMode_Name(mountMode)
+                         << " throttling: " << throttlingStr
+                         << " seq_num: " << mountSeqNumber << " binding: "
+                         << EVolumeBinding_Name(msg->BindingType) << " source: "
+                         << EPreemptionSource_Name(msg->PreemptionSource)
+                         << " cur binding: "
+                         << EVolumeBinding_Name(VolumeInfo->BindingType)
+                         << " cur source: "
+                         << EPreemptionSource_Name(VolumeInfo->PreemptionSource)
+                         << " key_hash: " << encryptionKeyHash.Quote()
+                         << ") ts: " << tick;
 
     LOG_DEBUG(
         ctx,
@@ -968,8 +998,7 @@ TVolumeSessionActor::TMountRequestProcResult TVolumeSessionActor::ProcessMountRe
         return {{}, true};
     }
 
-    if (mountMode == NProto::VOLUME_MOUNT_LOCAL &&
-        !StartVolumeActor &&
+    if (mountMode == NProto::VOLUME_MOUNT_LOCAL && !StartVolumeActor &&
         VolumeInfo->BindingType != NProto::BINDING_REMOTE)
     {
         // Remount for locally mounted volume and volume has gone.
@@ -1021,14 +1050,16 @@ void TVolumeSessionActor::AddClientToVolume(
     const TProtoRequest& mountRequest,
     ui64 mountTick)
 {
-    auto* clientInfo = VolumeInfo->AddClientInfo(mountRequest.GetHeaders().GetClientId());
+    auto* clientInfo =
+        VolumeInfo->AddClientInfo(mountRequest.GetHeaders().GetClientId());
     clientInfo->VolumeAccessMode = mountRequest.GetVolumeAccessMode();
     clientInfo->VolumeMountMode = mountRequest.GetVolumeMountMode();
     clientInfo->MountFlags = mountRequest.GetMountFlags();
     clientInfo->IpcType = mountRequest.GetIpcType();
     clientInfo->LastActivityTime = ctx.Now();
     clientInfo->LastMountTick = mountTick;
-    clientInfo->ClientVersionInfo = std::move(mountRequest.GetClientVersionInfo());
+    clientInfo->ClientVersionInfo =
+        std::move(mountRequest.GetClientVersionInfo());
     clientInfo->MountSeqNumber = mountRequest.GetMountSeqNumber();
     clientInfo->FillSeqNumber = mountRequest.GetFillSeqNumber();
     clientInfo->FillGeneration = mountRequest.GetFillGeneration();
@@ -1066,10 +1097,8 @@ void TVolumeSessionActor::HandleInternalMountVolume(
         return;
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     auto tick = GetCycleCount();
     auto procResult = ProcessMountRequest(ctx, ev, tick);
@@ -1089,7 +1118,8 @@ void TVolumeSessionActor::HandleInternalMountVolume(
     if (!shouldReply) {
         clientInfo = VolumeInfo->GetClientInfo(clientId);
         if (isBindingChanging &&
-            (!clientInfo || VolumeInfo->GetLocalMountClientInfo() != clientInfo))
+            (!clientInfo ||
+             VolumeInfo->GetLocalMountClientInfo() != clientInfo))
         {
             error = MakeError(E_ARGUMENT, "No local mounter found");
             shouldReply = true;
@@ -1100,11 +1130,9 @@ void TVolumeSessionActor::HandleInternalMountVolume(
                 msg->BindingType,
                 msg->Record.GetVolumeMountMode(),
                 !IsDiskRegistryMediaKind(VolumeInfo->StorageMediaKind));
-            shouldReply =
-                (bindingType == VolumeInfo->BindingType) &&
-                clientInfo &&
-                !procResult.MountOptionsChanged &&
-                error.Defined();
+            shouldReply = (bindingType == VolumeInfo->BindingType) &&
+                          clientInfo && !procResult.MountOptionsChanged &&
+                          error.Defined();
             if (shouldReply) {
                 VolumeInfo->OnMountCancelled(
                     *SharedCounters,
@@ -1136,7 +1164,7 @@ void TVolumeSessionActor::HandleInternalMountVolume(
         timeout = Config->GetInitialAddClientTimeout();
     }
 
-    TMountRequestParams params {
+    TMountRequestParams params{
         .MountStartTick = tick,
         .InitialAddClientTimeout = timeout,
         .SessionActorId = SelfId(),
@@ -1144,8 +1172,8 @@ void TVolumeSessionActor::HandleInternalMountVolume(
         .StartVolumeActor = StartVolumeActor,
         .BindingType = bindingType,
         .PreemptionSource = msg->PreemptionSource,
-        .IsLocalMounter = clientInfo &&
-            clientInfo->VolumeMountMode == NProto::VOLUME_MOUNT_LOCAL,
+        .IsLocalMounter = clientInfo && clientInfo->VolumeMountMode ==
+                                            NProto::VOLUME_MOUNT_LOCAL,
         .RejectOnAddClientTimeout = Config->GetRejectMountOnAddClientTimeout(),
         .KnownTabletId = TabletId};
 
@@ -1165,10 +1193,8 @@ void TVolumeSessionActor::PostponeMountVolume(
     const TActorContext& ctx)
 {
     if (ShuttingDown) {
-        const auto requestInfo = CreateRequestInfo(
-            ev->Sender,
-            ev->Cookie,
-            ev->Get()->CallContext);
+        const auto requestInfo =
+            CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
 
         SendInternalMountVolumeResponse(
             ctx,
@@ -1195,12 +1221,13 @@ void TVolumeSessionActor::HandleMountRequestProcessed(
 
     VolumeInfo->TabletId = msg->VolumeTabletId;
 
-    TStringBuilder mountStr =
-        TStringBuilder() <<
-        "Mount completed for client " << clientId.Quote() <<
-        ", msg binding " << EVolumeBinding_Name(msg->BindingType) <<
-        ", msg source " << EPreemptionSource_Name(msg->PreemptionSource) <<
-        ", time " << ToString(mountStartTick).Quote();
+    TStringBuilder mountStr = TStringBuilder()
+                              << "Mount completed for client "
+                              << clientId.Quote() << ", msg binding "
+                              << EVolumeBinding_Name(msg->BindingType)
+                              << ", msg source "
+                              << EPreemptionSource_Name(msg->PreemptionSource)
+                              << ", time " << ToString(mountStartTick).Quote();
 
     if (HasError(msg->GetError())) {
         VolumeInfo->RemoveClientInfo(clientId);
@@ -1253,10 +1280,7 @@ void TVolumeSessionActor::HandleMountRequestProcessed(
 
     VolumeInfo->VolumeInfo = msg->Volume;
 
-    AddClientToVolume(
-        ctx,
-        mountRequest,
-        mountStartTick);
+    AddClientToVolume(ctx, mountRequest, mountStartTick);
 
     VolumeInfo->OnMountFinished(
         *SharedCounters,

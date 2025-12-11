@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -14,8 +15,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TStopEndpointCommand final
-    : public TCommand
+class TStopEndpointCommand final: public TCommand
 {
 private:
     TString UnixSocketPath;
@@ -91,7 +91,7 @@ private:
             const auto* otherArgument = DiskId ? "ClientId" : "DiskId";
             STORAGE_ERROR(
                 "There is no sense to pass " << passedArgument << " without "
-                                            << otherArgument);
+                                             << otherArgument);
             return false;
         }
 

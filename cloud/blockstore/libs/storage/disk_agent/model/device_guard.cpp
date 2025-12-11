@@ -62,8 +62,7 @@ bool TDeviceGuard::Lock(const TString& path)
 
         TFileHandle fileHandle(
             pp,
-            EOpenModeFlag::OpenExisting |
-                EOpenModeFlag::RdOnly |
+            EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly |
                 EOpenModeFlag::WrOnly);
         if (!fileHandle.IsOpen() || fileHandle.Flock(LOCK_EX | LOCK_NB)) {
             break;
@@ -101,7 +100,7 @@ bool TDeviceGuard::Unlock(const TString& path)
     if (unlockedFiles.size() == prefixPaths.size()) {
         return true;
     }
-    
+
     for (size_t i = 0; i < unlockedFiles.size(); ++i) {
         Storage.emplace(std::move(prefixPaths[i]), std::move(unlockedFiles[i]));
     }

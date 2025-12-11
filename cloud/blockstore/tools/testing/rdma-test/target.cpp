@@ -6,17 +6,17 @@
 #include "runnable.h"
 #include "storage.h"
 
-#include <cloud/blockstore/tools/testing/rdma-test/protocol.pb.h>
-
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
 #include <cloud/blockstore/libs/rdma/iface/server.h>
 #include <cloud/blockstore/libs/service/context.h>
+#include <cloud/blockstore/tools/testing/rdma-test/protocol.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 
-#include <util/string/builder.h>
 #include <library/cpp/deprecated/atomic/atomic.h>
+
+#include <util/string/builder.h>
 #include <util/system/condvar.h>
 #include <util/system/mutex.h>
 
@@ -28,11 +28,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define Y_ENSURE_RETURN(expr, message)                                         \
-    if (Y_UNLIKELY(!(expr))) {                                                 \
-        return MakeError(E_ARGUMENT, TStringBuilder() << message);             \
-    }                                                                          \
-// Y_ENSURE_RETURN
+#define Y_ENSURE_RETURN(expr, message)                             \
+    if (Y_UNLIKELY(!(expr))) {                                     \
+        return MakeError(E_ARGUMENT, TStringBuilder() << message); \
+    }                                                              \
+    // Y_ENSURE_RETURN
 
 template <typename T>
 auto CreateRequest(NRdma::TProtoMessagePtr proto)
@@ -42,8 +42,7 @@ auto CreateRequest(NRdma::TProtoMessagePtr proto)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRequestHandler final
-    : public NRdma::IServerHandler
+class TRequestHandler final: public NRdma::IServerHandler
 {
 private:
     const TOptionsPtr Options;
@@ -51,13 +50,14 @@ private:
     const IStoragePtr Storage;
 
     NRdma::IServerEndpointPtr Endpoint;
-    NRdma::TProtoMessageSerializer* Serializer = TBlockStoreProtocol::Serializer();
+    NRdma::TProtoMessageSerializer* Serializer =
+        TBlockStoreProtocol::Serializer();
 
 public:
     TRequestHandler(
-            TOptionsPtr options,
-            ITaskQueuePtr taskQueue,
-            IStoragePtr storage)
+        TOptionsPtr options,
+        ITaskQueuePtr taskQueue,
+        IStoragePtr storage)
         : Options(std::move(options))
         , TaskQueue(std::move(taskQueue))
         , Storage(std::move(storage))
@@ -74,18 +74,20 @@ public:
         TStringBuf in,
         TStringBuf out) override
     {
-        TaskQueue->ExecuteSimple([=, this] {
-            auto error = SafeExecute<NProto::TError>([=, this] {
-                return DoHandleRequest(context, callContext, in, out);
-            });
+        TaskQueue->ExecuteSimple(
+            [=, this]
+            {
+                auto error = SafeExecute<NProto::TError>(
+                    [=, this]
+                    { return DoHandleRequest(context, callContext, in, out); });
 
-            if (HasError(error)) {
-                Endpoint->SendError(
-                    context,
-                    error.GetCode(),
-                    error.GetMessage());
-            }
-        });
+                if (HasError(error)) {
+                    Endpoint->SendError(
+                        context,
+                        error.GetCode(),
+                        error.GetMessage());
+                }
+            });
     }
 
 private:
@@ -106,7 +108,8 @@ private:
                 return HandleReadBlocksRequest(
                     context,
                     callContext,
-                    CreateRequest<NProto::TReadBlocksRequest>(std::move(request.Proto)),
+                    CreateRequest<NProto::TReadBlocksRequest>(
+                        std::move(request.Proto)),
                     request.Data,
                     out);
 
@@ -114,13 +117,16 @@ private:
                 return HandleWriteBlocksRequest(
                     context,
                     callContext,
-                    CreateRequest<NProto::TWriteBlocksRequest>(std::move(request.Proto)),
+                    CreateRequest<NProto::TWriteBlocksRequest>(
+                        std::move(request.Proto)),
                     request.Data,
                     out);
 
             default:
-                return MakeError(E_NOT_IMPLEMENTED, TStringBuilder()
-                    << "request message not supported: " << request.MsgId);
+                return MakeError(
+                    E_NOT_IMPLEMENTED,
+                    TStringBuilder()
+                        << "request message not supported: " << request.MsgId);
         }
     }
 
@@ -131,43 +137,46 @@ private:
         TStringBuf requestData,
         TStringBuf out)
     {
-        size_t dataSize = static_cast<ui64>(request->GetBlocksCount()) * request->GetBlockSize();
+        size_t dataSize = static_cast<ui64>(request->GetBlocksCount()) *
+                          request->GetBlockSize();
         Y_ENSURE_RETURN(dataSize && dataSize < 16_MB, "invalid request");
         Y_ENSURE_RETURN(requestData.length() == 0, "invalid request");
 
         // TODO: remove extra memcpy
         auto buffer = Storage->AllocateBuffer(dataSize);
 
-        TGuardedSgList guardedSgList({
-            { buffer.get(), dataSize }
-        });
+        TGuardedSgList guardedSgList({{buffer.get(), dataSize}});
 
         auto future = Storage->ReadBlocks(
             std::move(callContext),
             std::move(request),
             guardedSgList);
 
-        future.Subscribe([=, this] (auto future) {
-            auto response = ExtractResponse(future);
+        future.Subscribe(
+            [=, this](auto future)
+            {
+                auto response = ExtractResponse(future);
 
-            TaskQueue->ExecuteSimple([=, this] {
-                Y_UNUSED(buffer);
+                TaskQueue->ExecuteSimple(
+                    [=, this]
+                    {
+                        Y_UNUSED(buffer);
 
-                auto guard = guardedSgList.Acquire();
-                Y_ABORT_UNLESS(guard);
+                        auto guard = guardedSgList.Acquire();
+                        Y_ABORT_UNLESS(guard);
 
-                const auto& sglist = guard.Get();
-                size_t responseBytes =
-                    NRdma::TProtoMessageSerializer::SerializeWithData(
-                        out,
-                        TBlockStoreProtocol::ReadBlocksResponse,
-                        0,   // flags
-                        response,
-                        sglist);
+                        const auto& sglist = guard.Get();
+                        size_t responseBytes =
+                            NRdma::TProtoMessageSerializer::SerializeWithData(
+                                out,
+                                TBlockStoreProtocol::ReadBlocksResponse,
+                                0,   // flags
+                                response,
+                                sglist);
 
-                Endpoint->SendResponse(context, responseBytes);
+                        Endpoint->SendResponse(context, responseBytes);
+                    });
             });
-        });
 
         return {};
     }
@@ -179,35 +188,39 @@ private:
         TStringBuf requestData,
         TStringBuf out)
     {
-        size_t dataSize = static_cast<ui64>(request->GetBlocksCount()) * request->GetBlockSize();
+        size_t dataSize = static_cast<ui64>(request->GetBlocksCount()) *
+                          request->GetBlockSize();
         Y_ENSURE_RETURN(dataSize && dataSize < 16_MB, "invalid request");
         Y_ENSURE_RETURN(requestData.length() == dataSize, "invalid request");
 
-        TGuardedSgList guardedSgList({
-            { requestData.data(), requestData.length() }
-        });
+        TGuardedSgList guardedSgList(
+            {{requestData.data(), requestData.length()}});
 
         auto future = Storage->WriteBlocks(
             std::move(callContext),
             std::move(request),
             guardedSgList);
 
-        future.Subscribe([=, this] (auto future) {
-            auto response = ExtractResponse(future);
+        future.Subscribe(
+            [=, this](auto future)
+            {
+                auto response = ExtractResponse(future);
 
-            TaskQueue->ExecuteSimple([=, this] {
-                Y_UNUSED(guardedSgList);
+                TaskQueue->ExecuteSimple(
+                    [=, this]
+                    {
+                        Y_UNUSED(guardedSgList);
 
-                size_t responseBytes =
-                    NRdma::TProtoMessageSerializer::Serialize(
-                        out,
-                        TBlockStoreProtocol::WriteBlocksResponse,
-                        0,   // flags
-                        response);
+                        size_t responseBytes =
+                            NRdma::TProtoMessageSerializer::Serialize(
+                                out,
+                                TBlockStoreProtocol::WriteBlocksResponse,
+                                0,   // flags
+                                response);
 
-                Endpoint->SendResponse(context, responseBytes);
+                        Endpoint->SendResponse(context, responseBytes);
+                    });
             });
-        });
 
         return {};
     }
@@ -217,8 +230,7 @@ using TRequestHandlerPtr = std::shared_ptr<TRequestHandler>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestTarget final
-    : public IRunnable
+class TTestTarget final: public IRunnable
 {
 private:
     const TOptionsPtr Options;
@@ -236,24 +248,20 @@ private:
 
 public:
     TTestTarget(
-            TOptionsPtr options,
-            ITaskQueuePtr taskQueue,
-            IStoragePtr storage,
-            NRdma::IServerPtr server)
+        TOptionsPtr options,
+        ITaskQueuePtr taskQueue,
+        IStoragePtr storage,
+        NRdma::IServerPtr server)
         : Options(std::move(options))
         , TaskQueue(std::move(taskQueue))
         , Storage(std::move(storage))
         , Server(std::move(server))
     {
-        RequestHandler = std::make_shared<TRequestHandler>(
-            Options,
-            TaskQueue,
-            Storage);
+        RequestHandler =
+            std::make_shared<TRequestHandler>(Options, TaskQueue, Storage);
 
-        auto serverEndpoint = Server->StartEndpoint(
-            Options->Host,
-            Options->Port,
-            RequestHandler);
+        auto serverEndpoint =
+            Server->StartEndpoint(Options->Host, Options->Port, RequestHandler);
 
         RequestHandler->SetEndpoint(std::move(serverEndpoint));
     }

@@ -8,7 +8,6 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
 #include <contrib/ydb/core/tablet/tablet_setup.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/generic/deque.h>
@@ -26,7 +25,7 @@ namespace {
 using EChangeBindingOp =
     TEvService::TEvChangeVolumeBindingRequest::EChangeBindingOp;
 
-}  // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -44,7 +43,7 @@ void TVolumeSessionActor::HandleChangeVolumeBindingRequest(
 {
     auto* msg = ev->Get();
 
-    auto replyError = [&] (NProto::TError result)
+    auto replyError = [&](NProto::TError result)
     {
         using TResponse = TEvService::TEvChangeVolumeBindingResponse;
         auto response = std::make_unique<TResponse>(std::move(result));
@@ -90,13 +89,9 @@ void TVolumeSessionActor::HandleChangeVolumeBindingRequest(
     request->PreemptionSource = msg->Source;
     request->CallContext = std::move(msg->CallContext);
 
-    using TEventType =
-        TEvServicePrivate::TEvInternalMountVolumeRequest::TPtr;
-    auto event =
-        static_cast<TEventType::TValueType*>(new IEventHandle(
-            SelfId(),
-            ev->Sender,
-            request.release()));
+    using TEventType = TEvServicePrivate::TEvInternalMountVolumeRequest::TPtr;
+    auto event = static_cast<TEventType::TValueType*>(
+        new IEventHandle(SelfId(), ev->Sender, request.release()));
 
     HandleInternalMountVolume(event, ctx);
 }

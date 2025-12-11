@@ -53,14 +53,16 @@ void TIndexTabletActor::HandleGetNodeAttr(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-    if (!AcceptRequest<TEvService::TGetNodeAttrMethod>(ev, ctx, ValidateRequest)) {
+    if (!AcceptRequest<TEvService::TGetNodeAttrMethod>(
+            ev,
+            ctx,
+            ValidateRequest))
+    {
         return;
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     if (msg->Record.GetName()) {
@@ -94,10 +96,7 @@ void TIndexTabletActor::HandleGetNodeAttr(
 
     AddTransaction<TEvService::TGetNodeAttrMethod>(*requestInfo);
 
-    ExecuteTx<TGetNodeAttr>(
-        ctx,
-        std::move(requestInfo),
-        msg->Record);
+    ExecuteTx<TGetNodeAttr>(ctx, std::move(requestInfo), msg->Record);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -108,10 +107,8 @@ bool TIndexTabletActor::ValidateTx_GetNodeAttr(
 {
     Y_UNUSED(ctx);
 
-    auto* session = FindSession(
-        args.ClientId,
-        args.SessionId,
-        args.SessionSeqNo);
+    auto* session =
+        FindSession(args.ClientId, args.SessionId, args.SessionSeqNo);
     if (!session) {
         args.Error = ErrorInvalidSession(
             args.ClientId,
@@ -197,7 +194,8 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
 {
     RemoveTransaction(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvService::TEvGetNodeAttrResponse>(args.Error);
+    auto response =
+        std::make_unique<TEvService::TEvGetNodeAttrResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
         auto* node = response->Record.MutableNode();
         if (args.ShardId) {
@@ -248,10 +246,8 @@ void TIndexTabletActor::HandleGetNodeAttrBatch(
         return;
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     ui32 cacheHits = 0;
@@ -305,10 +301,8 @@ bool TIndexTabletActor::ValidateTx_GetNodeAttrBatch(
 {
     Y_UNUSED(ctx);
 
-    auto* session = FindSession(
-        args.ClientId,
-        args.SessionId,
-        args.SessionSeqNo);
+    auto* session =
+        FindSession(args.ClientId, args.SessionId, args.SessionSeqNo);
     if (!session) {
         args.Error = ErrorInvalidSession(
             args.ClientId,
@@ -404,9 +398,9 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttrBatch(
 
     for (ui32 i = 0; i < args.Request.NamesSize(); ++i) {
         auto* nodeResult = args.Response.MutableResponses(i);
-        if (nodeResult->GetNode().GetId() != InvalidNodeId
-                || HasError(nodeResult->GetError())
-                || nodeResult->GetNode().GetShardFileSystemId())
+        if (nodeResult->GetNode().GetId() != InvalidNodeId ||
+            HasError(nodeResult->GetError()) ||
+            nodeResult->GetNode().GetShardFileSystemId())
         {
             continue;
         }
@@ -417,9 +411,8 @@ bool TIndexTabletActor::PrepareTx_GetNodeAttrBatch(
                 refs[i]->ChildNodeId,
                 nodes[i]->Attrs);
         } else {
-            *nodeResult->MutableError() = ErrorInvalidTarget(
-                refs[i]->NodeId,
-                args.Request.GetNames(i));
+            *nodeResult->MutableError() =
+                ErrorInvalidTarget(refs[i]->NodeId, args.Request.GetNames(i));
         }
     }
 

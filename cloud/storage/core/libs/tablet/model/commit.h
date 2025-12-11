@@ -20,7 +20,7 @@ constexpr std::pair<ui32, ui32> ParseCommitId(ui64 commitId)
 {
     ui32 gen = static_cast<ui32>(commitId >> 32ull);
     ui32 step = static_cast<ui32>(commitId);
-    return { gen, step };
+    return {gen, step};
 }
 
 constexpr ui64 ReverseCommitId(ui64 commitId)
@@ -28,7 +28,8 @@ constexpr ui64 ReverseCommitId(ui64 commitId)
     return InvalidCommitId - commitId;
 }
 
-constexpr bool VisibleCommitId(ui64 commitId, ui64 minCommitId, ui64 maxCommitId)
+constexpr bool
+VisibleCommitId(ui64 commitId, ui64 minCommitId, ui64 maxCommitId)
 {
     return minCommitId <= commitId && commitId < maxCommitId;
 }

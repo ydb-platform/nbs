@@ -38,18 +38,13 @@ void TIndexTabletActor::HandleDestroyHandle(
         return;
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TDestroyHandleMethod>(*requestInfo);
 
-    ExecuteTx<TDestroyHandle>(
-        ctx,
-        std::move(requestInfo),
-        request);
+    ExecuteTx<TDestroyHandle>(ctx, std::move(requestInfo), request);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -102,21 +97,18 @@ void TIndexTabletActor::ExecuteTx_DestroyHandle(
         return RebootTabletOnCommitOverflow(ctx, "DestroyHandle");
     }
 
-    if (args.Node->Attrs.GetLinks() == 0 &&
-        !HasOpenHandles(args.Node->NodeId))
+    if (args.Node->Attrs.GetLinks() == 0 && !HasOpenHandles(args.Node->NodeId))
     {
-        auto e = RemoveNode(
-            db,
-            *args.Node,
-            args.Node->MinCommitId,
-            commitId);
+        auto e = RemoveNode(db, *args.Node, args.Node->MinCommitId, commitId);
 
         if (HasError(e)) {
-            WriteOrphanNode(db, TStringBuilder()
-                << "DestroyHandle: " << args.SessionId
-                << ", Handle: " << args.Request.GetHandle()
-                << ", RemoveNode: " << args.Node->NodeId
-                << ", Error: " << FormatError(e), args.Node->NodeId);
+            WriteOrphanNode(
+                db,
+                TStringBuilder() << "DestroyHandle: " << args.SessionId
+                                 << ", Handle: " << args.Request.GetHandle()
+                                 << ", RemoveNode: " << args.Node->NodeId
+                                 << ", Error: " << FormatError(e),
+                args.Node->NodeId);
         }
     }
 

@@ -27,10 +27,8 @@ struct IDeviceHandler
         ui64 length,
         TGuardedSgList sgList) = 0;
 
-    virtual NThreading::TFuture<NProto::TZeroBlocksResponse> Zero(
-        TCallContextPtr callContext,
-        ui64 from,
-        ui64 length) = 0;
+    virtual NThreading::TFuture<NProto::TZeroBlocksResponse>
+    Zero(TCallContextPtr callContext, ui64 from, ui64 length) = 0;
 
     virtual TStorageBuffer AllocateBuffer(size_t bytesCount) = 0;
 };

@@ -36,4 +36,4 @@ inline int EventFromTag(void* tag)
     return reinterpret_cast<uintptr_t>(tag) & EVENT_MASK;
 }
 
-}   // NCloud::NBlockStore::NRdma
+}   // namespace NCloud::NBlockStore::NRdma

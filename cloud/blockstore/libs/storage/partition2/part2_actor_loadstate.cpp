@@ -45,9 +45,10 @@ bool TPartitionActor::PrepareLoadState(
     // TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
 
-    LOG_INFO_S(ctx, TBlockStoreComponents::PARTITION,
-        "[" << TabletID() << "]"
-        << " Reading state from local db");
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[" << TabletID() << "]" << " Reading state from local db");
 
     bool ready = db.ReadMeta(args.Meta);
     ready &= db.ReadGlobalBlobs(args.Blobs);
@@ -64,8 +65,7 @@ bool TPartitionActor::PrepareLoadState(
     if (args.Meta.Defined()) {
         ready &= db.ReadAllZoneBlobIds(
             args.ZoneBlobIds,
-            args.Meta->GetLastCollectCommitId()
-        );
+            args.Meta->GetLastCollectCommitId());
     }
 
     if (!db.ReadCheckpoints(args.Checkpoints)) {
@@ -76,14 +76,14 @@ bool TPartitionActor::PrepareLoadState(
         if (meta.GetDateDeleted()) {
             ready &= db.ReadCheckpointBlobs(
                 meta.GetCommitId(),
-                args.DeletedCheckpointBlobIds.emplace_back()
-            );
+                args.DeletedCheckpointBlobIds.emplace_back());
         }
     }
 
-    LOG_INFO_S(ctx, TBlockStoreComponents::PARTITION,
-        "[" << TabletID() << "]"
-        << " State read");
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[" << TabletID() << "]" << " State read");
 
     return ready;
 }
@@ -93,7 +93,9 @@ void TPartitionActor::ExecuteLoadState(
     TTransactionContext& tx,
     TTxPartition::TLoadState& args)
 {
-    LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%lu] State data loaded",
         TabletID());
 
@@ -116,7 +118,7 @@ void TPartitionActor::CompleteLoadState(
     TTxPartition::TLoadState& args)
 {
     // initialize state
-    TBackpressureFeaturesConfig bpConfig {
+    TBackpressureFeaturesConfig bpConfig{
         {
             Config->GetCompactionScoreLimitForBackpressure(),
             Config->GetCompactionScoreThresholdForBackpressure(),
@@ -134,12 +136,12 @@ void TPartitionActor::CompleteLoadState(
         },
     };
 
-    TFreeSpaceConfig fsConfig {
+    TFreeSpaceConfig fsConfig{
         Config->GetChannelFreeSpaceThreshold() / 100.,
         Config->GetChannelMinFreeSpace() / 100.,
     };
 
-    TIndexCachingConfig indexCachingConfig {
+    TIndexCachingConfig indexCachingConfig{
         Config->GetHotZoneRequestCountFactor(),
         Config->GetColdZoneRequestCountFactor(),
         Config->GetBlockListCacheSizePercentage() / 100.,
@@ -152,13 +154,13 @@ void TPartitionActor::CompleteLoadState(
     }
 
     ui32 tabletChannelCount = Info()->Channels.size();
-    ui32 configChannelCount = args.Meta->GetConfig().ExplicitChannelProfilesSize();
+    ui32 configChannelCount =
+        args.Meta->GetConfig().ExplicitChannelProfilesSize();
 
     if (tabletChannelCount != configChannelCount) {
         ReportInvalidTabletConfig(
             TStringBuilder()
-            << "[" << TabletID() << "] "
-            << "tablet info differs from config: "
+            << "[" << TabletID() << "] " << "tablet info differs from config: "
             << "tabletChannelCount != configChannelCount ("
             << tabletChannelCount << " != " << configChannelCount << ")");
 
@@ -171,7 +173,7 @@ void TPartitionActor::CompleteLoadState(
         *args.Meta,
         TabletID(),
         Executor()->Generation(),
-        Min(tabletChannelCount, configChannelCount),  // channelCount
+        Min(tabletChannelCount, configChannelCount),   // channelCount
         Config->GetMaxBlobSize(),
         Config->GetMaxRangesPerBlob(),
         Config->GetOptimizeForShortRanges()
@@ -186,45 +188,43 @@ void TPartitionActor::CompleteLoadState(
         Config->GetReassignFreshChannelsPercentageThreshold(),
         Config->GetReassignMixedChannelsPercentageThreshold(),
         Config->GetReassignSystemChannelsImmediately(),
-        0
-    );
+        0);
 
-    LOG_INFO_S(ctx, TBlockStoreComponents::PARTITION,
-        "[" << TabletID() << "]"
-        << " Initializing State object");
-
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[" << TabletID() << "]" << " Initializing State object");
 
     State->InitCheckpoints(args.Checkpoints, args.DeletedCheckpointBlobIds);
     State->SetFreshBlockUpdates(std::move(args.FreshBlockUpdates));
 
-    LOG_INFO_S(ctx, TBlockStoreComponents::PARTITION,
-        "[" << TabletID() << "]"
-        << " UpdateIndex begin");
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[" << TabletID() << "]" << " UpdateIndex begin");
     State->UpdateIndex(args.Blobs, args.BlobUpdates, args.BlobGarbage);
     State->GetBlobs().FinishGlobalDataInitialization();
-    LOG_INFO_S(ctx, TBlockStoreComponents::PARTITION,
-        "[" << TabletID() << "]"
-        << " UpdateIndex end");
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::PARTITION,
+        "[" << TabletID() << "]" << " UpdateIndex end");
     State->InitCompactionMap(args.CompactionMap);
 
     {
         TVector<TPartialBlobId> knownBlobIds = std::move(args.ZoneBlobIds);
         for (const auto& blob: args.Blobs) {
             const auto& blobId = blob.BlobId;
-            if (!IsDeletionMarker(blobId)
-                    && blobId.CommitId() >= args.Meta->GetLastCollectCommitId())
+            if (!IsDeletionMarker(blobId) &&
+                blobId.CommitId() >= args.Meta->GetLastCollectCommitId())
             {
                 knownBlobIds.push_back(blobId);
             }
         }
-        State->InitGarbage(
-            knownBlobIds,
-            args.GarbageBlobs
-        );
+        State->InitGarbage(knownBlobIds, args.GarbageBlobs);
     }
 
-    auto totalBlockCount = State->GetFreshBlockCount()
-        + State->GetMergedBlockCount();
+    auto totalBlockCount =
+        State->GetFreshBlockCount() + State->GetMergedBlockCount();
     UpdateStorageStats(ctx, totalBlockCount * State->GetBlockSize());
 
     LoadFreshBlobs(ctx);

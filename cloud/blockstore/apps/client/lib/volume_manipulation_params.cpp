@@ -32,47 +32,69 @@ TVolumeParams::TVolumeParams(NLastGetopt::TOpts& opts)
 
 TVolumeModelParams::TVolumeModelParams(NLastGetopt::TOpts& opts)
 {
-    opts.AddLongOption("blocks-count", "maximum number of blocks stored in volume")
+    opts.AddLongOption(
+            "blocks-count",
+            "maximum number of blocks stored in volume")
         .RequiredArgument("NUM")
         .StoreResult(&BlocksCount);
 
-    opts.AddLongOption("performance-profile-max-read-bandwidth", "Volume performance profile max read bandwidth")
+    opts.AddLongOption(
+            "performance-profile-max-read-bandwidth",
+            "Volume performance profile max read bandwidth")
         .RequiredArgument("NUM")
         .StoreResult(&PerformanceProfileMaxReadBandwidth);
 
-    opts.AddLongOption("performance-profile-max-write-bandwidth", "Volume performance profile max write bandwidth")
+    opts.AddLongOption(
+            "performance-profile-max-write-bandwidth",
+            "Volume performance profile max write bandwidth")
         .RequiredArgument("NUM")
         .StoreResult(&PerformanceProfileMaxWriteBandwidth);
 
-    opts.AddLongOption("performance-profile-max-read-iops", "Volume performance profile max read iops")
+    opts.AddLongOption(
+            "performance-profile-max-read-iops",
+            "Volume performance profile max read iops")
         .RequiredArgument("NUM")
         .StoreResult(&PerformanceProfileMaxReadIops);
 
-    opts.AddLongOption("performance-profile-max-write-iops", "Volume performance profile max write iops")
+    opts.AddLongOption(
+            "performance-profile-max-write-iops",
+            "Volume performance profile max write iops")
         .RequiredArgument("NUM")
         .StoreResult(&PerformanceProfileMaxWriteIops);
 
-    opts.AddLongOption("performance-profile-burst-percentage", "Volume performance profile burst percentage")
+    opts.AddLongOption(
+            "performance-profile-burst-percentage",
+            "Volume performance profile burst percentage")
         .RequiredArgument("NUM")
         .StoreResult(&PerformanceProfileBurstPercentage);
 
-    opts.AddLongOption("performance-profile-max-postponed-weight", "Volume performance profile max postponed weight")
+    opts.AddLongOption(
+            "performance-profile-max-postponed-weight",
+            "Volume performance profile max postponed weight")
         .RequiredArgument("NUM")
         .StoreResult(&PerformanceProfileMaxPostponedWeight);
 
-    opts.AddLongOption("performance-profile-boost-time", "Volume performance profile boost time")
+    opts.AddLongOption(
+            "performance-profile-boost-time",
+            "Volume performance profile boost time")
         .RequiredArgument("NUM")
         .StoreResult(&PerformanceProfileBoostTime);
 
-    opts.AddLongOption("performance-profile-boost-refill-time", "Volume performance profile boost refill time")
+    opts.AddLongOption(
+            "performance-profile-boost-refill-time",
+            "Volume performance profile boost refill time")
         .RequiredArgument("NUM")
         .StoreResult(&PerformanceProfileBoostRefillTime);
 
-    opts.AddLongOption("performance-profile-boost-percentage", "Volume performance profile boost percentage")
+    opts.AddLongOption(
+            "performance-profile-boost-percentage",
+            "Volume performance profile boost percentage")
         .RequiredArgument("NUM")
         .StoreResult(&PerformanceProfileBoostPercentage);
 
-    opts.AddLongOption("performance-profile-throttling-enabled", "Enables/disables throttling")
+    opts.AddLongOption(
+            "performance-profile-throttling-enabled",
+            "Enables/disables throttling")
         .RequiredArgument("NUM")
         .NoArgument()
         .SetFlag(&PerformanceProfileThrottlingEnabled);

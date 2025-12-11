@@ -33,7 +33,9 @@ void TIndexTabletActor::HandleDeleteGarbage(
 {
     auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s DeleteGarbage started (collect: %lu, new: %lu, garbage: %lu)",
         LogTag.c_str(),
         msg->CollectCommitId,
@@ -47,10 +49,8 @@ void TIndexTabletActor::HandleDeleteGarbage(
         msg->CallContext->FileSystemId,
         GetFileSystem().GetStorageMediaKind());
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     ExecuteTx<TDeleteGarbage>(
@@ -94,11 +94,7 @@ void TIndexTabletActor::ExecuteTx_DeleteGarbage(
         args.GarbageBlobs.size(),
         args.ProfileLogRequest);
 
-    DeleteGarbage(
-        db,
-        args.CollectCommitId,
-        args.NewBlobs,
-        args.GarbageBlobs);
+    DeleteGarbage(db, args.CollectCommitId, args.NewBlobs, args.GarbageBlobs);
 }
 
 void TIndexTabletActor::CompleteTx_DeleteGarbage(
@@ -113,7 +109,9 @@ void TIndexTabletActor::CompleteTx_DeleteGarbage(
         {},
         ProfileLog);
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s DeleteGarbage completed",
         LogTag.c_str());
 
@@ -123,7 +121,9 @@ void TIndexTabletActor::CompleteTx_DeleteGarbage(
         "DeleteGarbage");
 
     if (args.RemainingNewBlobs || args.RemainingGarbageBlobs) {
-        LOG_WARN(ctx, TFileStoreComponents::TABLET,
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s Garbage queue too big, splitting into multiple DeleteGarbage"
             " txs (next: collect: %lu, new: %u, garbage: %u)",
             LogTag.c_str(),

@@ -2,9 +2,9 @@
 
 #include "private.h"
 
-#include <cloud/blockstore/tools/testing/rdma-test/protocol.pb.h>
 #include <cloud/blockstore/libs/rdma/iface/public.h>
 #include <cloud/blockstore/libs/service/public.h>
+#include <cloud/blockstore/tools/testing/rdma-test/protocol.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/guarded_sglist.h>
@@ -26,8 +26,7 @@ using TWriteBlocksRequestPtr = std::shared_ptr<NProto::TWriteBlocksRequest>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IStorage
-    : public IStartable
+struct IStorage: public IStartable
 {
     virtual ~IStorage() = default;
 
@@ -52,15 +51,11 @@ IStoragePtr CreateNullStorage();
 
 IStoragePtr CreateMemoryStorage(ui32 blockSize, ui32 blocksCount);
 
-IStoragePtr CreateLocalAIOStorage(
-    const TString& path,
-    ui32 blockSize,
-    ui32 blocksCount);
+IStoragePtr
+CreateLocalAIOStorage(const TString& path, ui32 blockSize, ui32 blocksCount);
 
-IStoragePtr CreateLocalURingStorage(
-    const TString& path,
-    ui32 blockSize,
-    ui32 blocksCount);
+IStoragePtr
+CreateLocalURingStorage(const TString& path, ui32 blockSize, ui32 blocksCount);
 
 IStoragePtr CreateRdmaStorage(
     NRdma::IClientPtr client,

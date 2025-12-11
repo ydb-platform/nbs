@@ -2,9 +2,9 @@
 
 #include "public.h"
 
-#include <google/protobuf/message.h>
-
 #include <util/generic/string.h>
+
+#include <google/protobuf/message.h>
 
 namespace NCloud {
 

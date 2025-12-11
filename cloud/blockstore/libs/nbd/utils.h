@@ -21,7 +21,7 @@ constexpr TStringBuf DEVICE_PREFIX = "/dev/nbd";
 
 inline TStringBuf AsStringBuf(const TBuffer& buffer)
 {
-    return { buffer.Data(), buffer.Size() };
+    return {buffer.Data(), buffer.Size()};
 }
 
 inline TBlockDataRef AsBlockDataRef(const TBuffer& buffer)
@@ -29,7 +29,7 @@ inline TBlockDataRef AsBlockDataRef(const TBuffer& buffer)
     if (buffer.Empty()) {
         return {};
     }
-    return { buffer.Data(), buffer.Size() };
+    return {buffer.Data(), buffer.Size()};
 }
 
 bool IsTcpAddress(const NAddr::IRemoteAddr& addr);

@@ -42,15 +42,15 @@ public:
     using TResponseProto = NProto::TReadDeviceBlocksResponse;
 
     TRdmaRequestReadBlocksHandler(
-            TActorSystem* actorSystem,
-            TNonreplicatedPartitionConfigPtr partConfig,
-            TRequestInfoPtr requestInfo,
-            size_t requestCount,
-            ui32 blockCount,
-            NActors::TActorId volumeActorId,
-            NActors::TActorId parentActorId,
-            ui64 requestId,
-            bool checkVoidBlocks)
+        TActorSystem* actorSystem,
+        TNonreplicatedPartitionConfigPtr partConfig,
+        TRequestInfoPtr requestInfo,
+        size_t requestCount,
+        ui32 blockCount,
+        NActors::TActorId volumeActorId,
+        NActors::TActorId parentActorId,
+        ui64 requestId,
+        bool checkVoidBlocks)
         : TBase(
               actorSystem,
               std::move(partConfig),
@@ -88,8 +88,7 @@ public:
         while (offset < data.size()) {
             ui64 targetBlock = ctx.StartIndexOffset + b;
             Y_ABORT_UNLESS(targetBlock < static_cast<ui64>(blocks.size()));
-            ui64 bytes =
-                Min(data.size() - offset, blocks[targetBlock].size());
+            ui64 bytes = Min(data.size() - offset, blocks[targetBlock].size());
             Y_ABORT_UNLESS(bytes);
 
             char* dst = const_cast<char*>(blocks[targetBlock].data());

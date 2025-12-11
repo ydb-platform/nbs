@@ -55,7 +55,7 @@ public:
 protected:
     void SendRequest(const NActors::TActorContext& ctx) override;
     NActors::IEventBasePtr MakeResponse(NProto::TError error) override;
-     TCompletionEventAndBody MakeCompletionResponse(ui32 blocks) override;
+    TCompletionEventAndBody MakeCompletionResponse(ui32 blocks) override;
     bool OnMessage(TAutoPtr<NActors::IEventHandle>& ev) override;
 
 private:
@@ -71,14 +71,14 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDiskAgentReadActor::TDiskAgentReadActor(
-        TRequestInfoPtr requestInfo,
-        NProto::TReadBlocksRequest request,
-        TRequestTimeoutPolicy timeoutPolicy,
-        TVector<TDeviceRequest> deviceRequests,
-        TNonreplicatedPartitionConfigPtr partConfig,
-        TActorId volumeActorId,
-        const TActorId& part,
-        TChildLogTitle logTitle)
+    TRequestInfoPtr requestInfo,
+    NProto::TReadBlocksRequest request,
+    TRequestTimeoutPolicy timeoutPolicy,
+    TVector<TDeviceRequest> deviceRequests,
+    TNonreplicatedPartitionConfigPtr partConfig,
+    TActorId volumeActorId,
+    const TActorId& part,
+    TChildLogTitle logTitle)
     : TDiskAgentBaseRequestActor(
           std::move(requestInfo),
           GetRequestId(request),
@@ -101,8 +101,7 @@ void TDiskAgentReadActor::SendRequest(const TActorContext& ctx)
 {
     const auto blockRange = TBlockRange64::WithLength(
         Request.GetStartIndex(),
-        Request.GetBlocksCount()
-    );
+        Request.GetBlocksCount());
 
     const auto blockSize = PartConfig->GetBlockSize();
 
@@ -141,8 +140,7 @@ void TDiskAgentReadActor::SendRequest(const TActorContext& ctx)
     }
 }
 
-NActors::IEventBasePtr TDiskAgentReadActor::MakeResponse(
-    NProto::TError error)
+NActors::IEventBasePtr TDiskAgentReadActor::MakeResponse(NProto::TError error)
 {
     return std::make_unique<TEvService::TEvReadBlocksResponse>(
         std::move(error));
@@ -319,8 +317,9 @@ void TNonreplicatedPartitionActor::HandleReadBlocksCompleted(
 
     UpdateStats(msg->Stats);
 
-    const auto requestBytes = msg->Stats.GetUserReadCounters().GetBlocksCount()
-        * PartConfig->GetBlockSize();
+    const auto requestBytes =
+        msg->Stats.GetUserReadCounters().GetBlocksCount() *
+        PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ReadBlocks.AddRequest(time, requestBytes);
 

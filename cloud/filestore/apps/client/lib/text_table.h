@@ -1,8 +1,8 @@
 #pragma once
 
-#include <google/protobuf/message.h>
-
 #include <util/generic/vector.h>
+
+#include <google/protobuf/message.h>
 
 namespace NCloud::NFileStore::NClient::NTextTable {
 
@@ -28,7 +28,6 @@ private:
     TRows Rows;
 
 public:
-
     explicit TTextTable(TColumns columns, TRows rows = {});
 
     void AddRow(TRow row);

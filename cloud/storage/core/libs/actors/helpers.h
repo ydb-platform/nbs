@@ -40,19 +40,19 @@ inline NActors::TActorId RegisterLocal(
     return ctx.RegisterWithSameMailbox(actor.release());
 }
 
-template <typename T, typename ...TArgs>
+template <typename T, typename... TArgs>
 inline NActors::TActorId Register(
     const NActors::TActorContext& ctx,
-    TArgs&& ...args)
+    TArgs&&... args)
 {
     auto actor = std::make_unique<T>(std::forward<TArgs>(args)...);
     return Register(ctx, std::move(actor));
 }
 
-template <typename T, typename ...TArgs>
+template <typename T, typename... TArgs>
 inline NActors::TActorId RegisterLocal(
     const NActors::TActorContext& ctx,
-    TArgs&& ...args)
+    TArgs&&... args)
 {
     auto actor = std::make_unique<T>(std::forward<TArgs>(args)...);
     return RegisterLocal(ctx, std::move(actor));
@@ -67,7 +67,7 @@ inline void Send(
     ctx.Send(
         recipient,
         event.release(),
-        0,  // flags
+        0,   // flags
         cookie);
 }
 
@@ -81,9 +81,9 @@ inline void SendWithUndeliveryTracking(
         recipient,
         ctx.SelfID,
         event.release(),
-        NActors::IEventHandle::FlagForwardOnNondelivery,    // flags
-        cookie,  // cookie
-        &ctx.SelfID    // forwardOnNondelivery
+        NActors::IEventHandle::FlagForwardOnNondelivery,   // flags
+        cookie,                                            // cookie
+        &ctx.SelfID   // forwardOnNondelivery
     );
 
     ctx.Send(ev.release());
@@ -98,12 +98,12 @@ inline void Send(
     Send(ctx, recipient, std::make_unique<T>(), cookie);
 }
 
-template <typename T, typename ...TArgs>
+template <typename T, typename... TArgs>
 inline void Send(
     const NActors::TActorContext& ctx,
     const NActors::TActorId& recipient,
     ui64 cookie,
-    TArgs&& ...args)
+    TArgs&&... args)
 {
     auto event = std::make_unique<T>(std::forward<TArgs>(args)...);
     Send(ctx, recipient, std::move(event), cookie);
@@ -118,15 +118,13 @@ inline void Reply(
     ctx.Send(
         request.Sender,
         response.release(),
-        0,  // flags
+        0,   // flags
         request.Cookie);
 }
 
 template <typename T, typename... TArgs>
-inline void Schedule(
-    const NActors::TActorContext& ctx,
-    TDuration delta,
-    TArgs&&... args)
+inline void
+Schedule(const NActors::TActorContext& ctx, TDuration delta, TArgs&&... args)
 {
     auto event = std::make_unique<T>(std::forward<TArgs>(args)...);
     ctx.Schedule(delta, event.release());
@@ -134,27 +132,27 @@ inline void Schedule(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define STORAGE_IMPLEMENT_REQUEST(name, ns)                                    \
-    void Handle##name(                                                         \
-        const ns::TEv##name##Request::TPtr& ev,                                \
-        const NActors::TActorContext& ctx);                                    \
-                                                                               \
-    void Reject##name(                                                         \
-        const ns::TEv##name##Request::TPtr& ev,                                \
-        const NActors::TActorContext& ctx)                                     \
-    {                                                                          \
-        auto response = std::make_unique<ns::TEv##name##Response>(             \
-            MakeError(E_REJECTED, #name " request rejected"));                 \
-        NCloud::Reply(ctx, *ev, std::move(response));                          \
-    }                                                                          \
-// STORAGE_IMPLEMENT_REQUEST
+#define STORAGE_IMPLEMENT_REQUEST(name, ns)                        \
+    void Handle##name(                                             \
+        const ns::TEv##name##Request::TPtr& ev,                    \
+        const NActors::TActorContext& ctx);                        \
+                                                                   \
+    void Reject##name(                                             \
+        const ns::TEv##name##Request::TPtr& ev,                    \
+        const NActors::TActorContext& ctx)                         \
+    {                                                              \
+        auto response = std::make_unique<ns::TEv##name##Response>( \
+            MakeError(E_REJECTED, #name " request rejected"));     \
+        NCloud::Reply(ctx, *ev, std::move(response));              \
+    }                                                              \
+    // STORAGE_IMPLEMENT_REQUEST
 
-#define STORAGE_HANDLE_REQUEST(name, ns)                                       \
-    HFunc(ns::TEv##name##Request, Handle##name);                               \
-// STORAGE_HANDLE_REQUEST
+#define STORAGE_HANDLE_REQUEST(name, ns)         \
+    HFunc(ns::TEv##name##Request, Handle##name); \
+    // STORAGE_HANDLE_REQUEST
 
-#define STORAGE_REJECT_REQUEST(name, ns)                                       \
-    HFunc(ns::TEv##name##Request, Reject##name);                               \
-// STORAGE_REJECT_REQUEST
+#define STORAGE_REJECT_REQUEST(name, ns)         \
+    HFunc(ns::TEv##name##Request, Reject##name); \
+    // STORAGE_REJECT_REQUEST
 
 }   // namespace NCloud

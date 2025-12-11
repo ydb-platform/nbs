@@ -46,9 +46,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TCreateVolumeLinkActor::TCreateVolumeLinkActor(
-        TRequestInfoPtr requestInfo,
-        TString leaderDiskId,
-        TString followerDiskId)
+    TRequestInfoPtr requestInfo,
+    TString leaderDiskId,
+    TString followerDiskId)
     : RequestInfo(std::move(requestInfo))
     , LeaderDiskId(std::move(leaderDiskId))
     , FollowerDiskId(std::move(followerDiskId))

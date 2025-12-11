@@ -1,6 +1,5 @@
-#include "write_back_cache_impl.h"
-
 #include "read_write_range_lock.h"
+#include "write_back_cache_impl.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/context.h>
@@ -11,12 +10,12 @@
 #include <library/cpp/threading/future/subscription/wait_all.h>
 
 #include <util/generic/hash_set.h>
-#include <util/generic/mem_copy.h>
 #include <util/generic/intrlist.h>
+#include <util/generic/mem_copy.h>
 #include <util/generic/strbuf.h>
 #include <util/generic/vector.h>
-#include <util/system/mutex.h>
 #include <util/stream/mem.h>
+#include <util/system/mutex.h>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -264,9 +263,7 @@ private:
     ui64 RemainingSize = 0;
 
 public:
-    TContiguousWriteDataEntryPartsReader(
-            TIterator begin,
-            TIterator end)
+    TContiguousWriteDataEntryPartsReader(TIterator begin, TIterator end)
         : Current(begin)
     {
         if (begin < end) {
@@ -357,8 +354,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TWriteBackCache::TImpl final
-    : public std::enable_shared_from_this<TImpl>
+class TWriteBackCache::TImpl final: public std::enable_shared_from_this<TImpl>
 {
 private:
     using TWriteDataEntry = TWriteBackCache::TWriteDataEntry;
@@ -425,16 +421,16 @@ private:
 
 public:
     TImpl(
-            IFileStorePtr session,
-            ISchedulerPtr scheduler,
-            ITimerPtr timer,
-            IWriteBackCacheStatsPtr stats,
-            TLog log,
-            const TString& fileSystemId,
-            const TString& clientId,
-            const TString& filePath,
-            ui64 capacityBytes,
-            TFlushConfig flushConfig)
+        IFileStorePtr session,
+        ISchedulerPtr scheduler,
+        ITimerPtr timer,
+        IWriteBackCacheStatsPtr stats,
+        TLog log,
+        const TString& fileSystemId,
+        const TString& clientId,
+        const TString& filePath,
+        ui64 capacityBytes,
+        TFlushConfig flushConfig)
         : Session(std::move(session))
         , Scheduler(std::move(scheduler))
         , Timer(std::move(timer))
@@ -442,7 +438,7 @@ public:
         , FlushConfig(flushConfig)
         , Log(std::move(log))
         , LogTag(
-            Sprintf("[f:%s][c:%s]", fileSystemId.c_str(), clientId.c_str()))
+              Sprintf("[f:%s][c:%s]", fileSystemId.c_str(), clientId.c_str()))
         , FileSystemId(fileSystemId)
         , CachedEntriesPersistentQueue(filePath, capacityBytes)
     {
@@ -484,26 +480,26 @@ public:
 
         STORAGE_INFO(
             LogTag << " WriteBackCache has been initialized "
-            << "{\"FilePath\": " << filePath.Quote()
-            << ", \"RawCapacityBytes\": "
-            << CachedEntriesPersistentQueue.GetRawCapacity()
-            << ", \"RawUsedBytesCount\": "
-            << CachedEntriesPersistentQueue.GetRawUsedBytesCount()
-            << ", \"WriteDataRequestCount\": "
-            << CachedEntriesPersistentQueue.Size() << "}");
+                   << "{\"FilePath\": " << filePath.Quote()
+                   << ", \"RawCapacityBytes\": "
+                   << CachedEntriesPersistentQueue.GetRawCapacity()
+                   << ", \"RawUsedBytesCount\": "
+                   << CachedEntriesPersistentQueue.GetRawUsedBytesCount()
+                   << ", \"WriteDataRequestCount\": "
+                   << CachedEntriesPersistentQueue.Size() << "}");
 
         if (deserializationStats.HasFailed()) {
             // Each deserialization failure event has been already reported
             // as a critical error - just write statistics to the log
             STORAGE_ERROR(
                 LogTag << " WriteBackCache request deserialization failure "
-                << "{\"ChecksumMismatchCount\": "
-                << deserializationStats.ChecksumMismatchCount
-                << ", \"EntrySizeMismatchCount\": "
-                << deserializationStats.EntrySizeMismatchCount
-                << ", \"ProtobufDeserializationErrorCount\": "
-                << deserializationStats.ProtobufDeserializationErrorCount
-                << "}");
+                       << "{\"ChecksumMismatchCount\": "
+                       << deserializationStats.ChecksumMismatchCount
+                       << ", \"EntrySizeMismatchCount\": "
+                       << deserializationStats.EntrySizeMismatchCount
+                       << ", \"ProtobufDeserializationErrorCount\": "
+                       << deserializationStats.ProtobufDeserializationErrorCount
+                       << "}");
         }
 
         if (CachedEntriesPersistentQueue.IsCorrupted()) {
@@ -522,7 +518,8 @@ public:
 
         Scheduler->Schedule(
             Timer->Now() + FlushConfig.AutomaticFlushPeriod,
-            [ptr = weak_from_this()] () {
+            [ptr = weak_from_this()]()
+            {
                 if (auto self = ptr.lock()) {
                     self->RequestAutomaticFlush();
                 }
@@ -666,8 +663,7 @@ public:
 
         auto* entryPtr = entry.release();
 
-        auto locker =
-            [ptr = weak_from_this(), entry = entryPtr]() mutable
+        auto locker = [ptr = weak_from_this(), entry = entryPtr]() mutable
         {
             auto self = ptr.lock();
             // Lock action is invoked immediately or from
@@ -1103,8 +1099,8 @@ private:
         }
 
         auto cacheState = state.Parts.empty()
-            ? EReadDataRequestCacheStatus::Miss
-            : EReadDataRequestCacheStatus::PartialHit;
+                              ? EReadDataRequestCacheStatus::Miss
+                              : EReadDataRequestCacheStatus::PartialHit;
 
         Stats->AddReadDataStats(cacheState, waitDuration);
 
@@ -1144,7 +1140,8 @@ private:
 
         Y_ABORT_UNLESS(
             responseBufferLength <= state.Length,
-            "response buffer length %lu is expected to be <= request length %lu",
+            "response buffer length %lu is expected to be <= request length "
+            "%lu",
             responseBufferLength,
             state.Length);
 
@@ -1238,8 +1235,9 @@ private:
 
             if (entryCount == 0) {
                 STORAGE_WARN(
-                    LogTag << " WriteBackCache WriteData request size exceeds "
-                    "flush limits, flushing anyway "
+                    LogTag
+                    << " WriteBackCache WriteData request size exceeds "
+                       "flush limits, flushing anyway "
                     << "{\"MaxWriteRequestSize\": "
                     << FlushConfig.MaxWriteRequestSize
                     << ", \"MaxWriteRequestsCount\": "
@@ -1490,38 +1488,37 @@ private:
 TWriteBackCache::TWriteBackCache() = default;
 
 TWriteBackCache::TWriteBackCache(
-        IFileStorePtr session,
-        ISchedulerPtr scheduler,
-        ITimerPtr timer,
-        IWriteBackCacheStatsPtr stats,
-        TLog log,
-        const TString& fileSystemId,
-        const TString& clientId,
-        const TString& filePath,
-        ui64 capacityBytes,
-        TDuration automaticFlushPeriod,
-        TDuration flushRetryPeriod,
-        ui32 maxWriteRequestSize,
-        ui32 maxWriteRequestsCount,
-        ui32 maxSumWriteRequestsSize,
-        bool zeroCopyWriteEnabled)
-    : Impl(
-        new TImpl(
-            std::move(session),
-            std::move(scheduler),
-            std::move(timer),
-            std::move(stats),
-            std::move(log),
-            fileSystemId,
-            clientId,
-            filePath,
-            capacityBytes,
-            {.AutomaticFlushPeriod = automaticFlushPeriod,
-             .FlushRetryPeriod = flushRetryPeriod,
-             .MaxWriteRequestSize = maxWriteRequestSize,
-             .MaxWriteRequestsCount = maxWriteRequestsCount,
-             .MaxSumWriteRequestsSize = maxSumWriteRequestsSize,
-             .ZeroCopyWriteEnabled = zeroCopyWriteEnabled}))
+    IFileStorePtr session,
+    ISchedulerPtr scheduler,
+    ITimerPtr timer,
+    IWriteBackCacheStatsPtr stats,
+    TLog log,
+    const TString& fileSystemId,
+    const TString& clientId,
+    const TString& filePath,
+    ui64 capacityBytes,
+    TDuration automaticFlushPeriod,
+    TDuration flushRetryPeriod,
+    ui32 maxWriteRequestSize,
+    ui32 maxWriteRequestsCount,
+    ui32 maxSumWriteRequestsSize,
+    bool zeroCopyWriteEnabled)
+    : Impl(new TImpl(
+          std::move(session),
+          std::move(scheduler),
+          std::move(timer),
+          std::move(stats),
+          std::move(log),
+          fileSystemId,
+          clientId,
+          filePath,
+          capacityBytes,
+          {.AutomaticFlushPeriod = automaticFlushPeriod,
+           .FlushRetryPeriod = flushRetryPeriod,
+           .MaxWriteRequestSize = maxWriteRequestSize,
+           .MaxWriteRequestsCount = maxWriteRequestsCount,
+           .MaxSumWriteRequestsSize = maxSumWriteRequestsSize,
+           .ZeroCopyWriteEnabled = zeroCopyWriteEnabled}))
 {
     Impl->ScheduleAutomaticFlushIfNeeded();
 }
@@ -1560,7 +1557,7 @@ bool TWriteBackCache::IsEmpty() const
 ////////////////////////////////////////////////////////////////////////////////
 
 TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
-        std::shared_ptr<NProto::TWriteDataRequest> request)
+    std::shared_ptr<NProto::TWriteDataRequest> request)
     : PendingRequest(std::move(request))
     , ByteCount(
           NStorage::CalculateByteCount(*PendingRequest) -
@@ -1571,10 +1568,10 @@ TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
 }
 
 TWriteBackCache::TWriteDataEntry::TWriteDataEntry(
-        ui32 checksum,
-        TStringBuf serializedRequest,
-        TWriteDataEntryDeserializationStats& deserializationStats,
-        TImpl* impl)
+    ui32 checksum,
+    TStringBuf serializedRequest,
+    TWriteDataEntryDeserializationStats& deserializationStats,
+    TImpl* impl)
     : ByteCount(SaturationSub(
           serializedRequest.size(),
           sizeof(TCachedWriteDataRequest)))
@@ -1680,8 +1677,7 @@ void TWriteBackCache::TWriteDataEntry::StartFlush(TImpl* impl)
     SetStatus(EWriteDataRequestStatus::Flushing, impl);
 }
 
-void TWriteBackCache::TWriteDataEntry::FinishFlush(
-    TImpl* impl)
+void TWriteBackCache::TWriteDataEntry::FinishFlush(TImpl* impl)
 {
     Y_ABORT_UNLESS(Status == EWriteDataRequestStatus::Flushing);
     SetStatus(EWriteDataRequestStatus::Flushed, impl);
@@ -1789,8 +1785,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDummyWriteBackCacheStats
-    : public IWriteBackCacheStats
+class TDummyWriteBackCacheStats: public IWriteBackCacheStats
 {
 public:
     void ResetNonDerivativeCounters() override

@@ -18,7 +18,8 @@ void TStatsServiceActor::HandleUploadClientMetrics(
 
     ClientStatsAggregator->AddStats(clientId, metrics, ctx.Now());
 
-    auto response = std::make_unique<TEvService::TEvUploadClientMetricsResponse>();
+    auto response =
+        std::make_unique<TEvService::TEvUploadClientMetricsResponse>();
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 

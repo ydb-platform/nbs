@@ -13,14 +13,18 @@ void TVolumeInfos::UpdateAgentIds(TStringBuf diskId, TVector<TString> agentIds)
     }
 }
 
-void TVolumeInfos::UpdateDevices(TStringBuf diskId, TVector<TDeviceAddress> devices)
+void TVolumeInfos::UpdateDevices(
+    TStringBuf diskId,
+    TVector<TDeviceAddress> devices)
 {
     with_lock (Lock) {
         DiskId2Info[diskId].Devices = std::move(devices);
     }
 }
 
-bool TVolumeInfos::GetVolumeInfo(TStringBuf diskId, TVolumeInfo* volumeInfo) const
+bool TVolumeInfos::GetVolumeInfo(
+    TStringBuf diskId,
+    TVolumeInfo* volumeInfo) const
 {
     with_lock (Lock) {
         if (auto* ptr = DiskId2Info.FindPtr(diskId)) {

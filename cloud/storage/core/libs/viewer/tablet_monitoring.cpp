@@ -20,21 +20,33 @@ void DumpChannel(
     const TBuildReassignChannelButton& buildReassignButton,
     ui64 hiveTabletId)
 {
-    HTML(out) {
-        TABLER() {
-            TABLED() { out << "Channel: " << channel.Channel; }
-            TABLED() { out << "StoragePool: " << channel.StoragePool; }
+    HTML (out) {
+        TABLER () {
+            TABLED () {
+                out << "Channel: " << channel.Channel;
+            }
+            TABLED () {
+                out << "StoragePool: " << channel.StoragePool;
+            }
 
             auto latestEntry = channel.LatestEntry();
             if (!latestEntry) {
                 return;
             }
 
-            TABLED() { out << "Id: " << latestEntry->GroupID; }
-            TABLED() { out << "Gen: " << latestEntry->FromGeneration; }
-            TABLED() { out << "PoolKind: " << channelInfo.PoolKind; }
-            TABLED() { out << "DataKind: " << channelInfo.DataKind; }
-            TABLED() {
+            TABLED () {
+                out << "Id: " << latestEntry->GroupID;
+            }
+            TABLED () {
+                out << "Gen: " << latestEntry->FromGeneration;
+            }
+            TABLED () {
+                out << "PoolKind: " << channelInfo.PoolKind;
+            }
+            TABLED () {
+                out << "DataKind: " << channelInfo.DataKind;
+            }
+            TABLED () {
                 TStringBuf label;
                 TStringBuf color;
                 if (channelInfo.SystemWritable) {
@@ -67,19 +79,17 @@ void DumpChannel(
                     }
                 }
             }
-            TABLED() {
+            TABLED () {
                 out << "<a href='"
                     << "../actors/blobstorageproxies/blobstorageproxy"
-                    << latestEntry->GroupID
-                    << "'>Status</a>";
+                    << latestEntry->GroupID << "'>Status</a>";
             }
             const auto groupUrl = getGroupUrl(
                 latestEntry->GroupID,
                 channel.StoragePool,
                 channelInfo.DataKind);
             if (groupUrl) {
-                TABLED()
-                {
+                TABLED () {
                     out << "<a href='" << groupUrl << "'>Graphs</a>";
                     const auto dashboardGroupUrl =
                         getDashboardUrl(latestEntry->GroupID);
@@ -89,7 +99,7 @@ void DumpChannel(
                     }
                 }
             }
-            TABLED() {
+            TABLED () {
                 buildReassignButton(
                     out,
                     hiveTabletId,
@@ -113,16 +123,16 @@ void DumpChannels(
     const TBuildReassignChannelButton& buildReassignButton,
     ui64 hiveTabletId)
 {
-    HTML(out) {
-        DIV() {
-            out << "<p><a href='app?TabletID=" << hiveTabletId
-                << "&page=Groups"
+    HTML (out) {
+        DIV () {
+            out << "<p><a href='app?TabletID=" << hiveTabletId << "&page=Groups"
                 << "&tablet_id=" << storage.TabletID
                 << "'>Channel history</a></p>";
         }
 
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
+        TABLE_CLASS ("table table-condensed") {
+            TABLEBODY()
+            {
                 for (const auto& channel: storage.Channels) {
                     TChannelMonInfo channelInfo;
                     // we need this check for legacy volumes

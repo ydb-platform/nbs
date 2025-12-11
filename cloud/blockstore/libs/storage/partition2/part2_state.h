@@ -118,8 +118,8 @@ struct TForcedCleanupState
 
 struct TChannelState
 {
-    EChannelPermissions Permissions = EChannelPermission::UserWritesAllowed
-        | EChannelPermission::SystemWritesAllowed;
+    EChannelPermissions Permissions = EChannelPermission::UserWritesAllowed |
+                                      EChannelPermission::SystemWritesAllowed;
     double ApproximateFreeSpaceShare = 0;
     double FreeSpaceScore = 0;
     bool ReassignRequestedByBlobStorage = false;
@@ -392,9 +392,7 @@ public:
 
     void InitFreshBlocks(const TVector<TOwningFreshBlock>& freshBlocks);
 
-    void WriteFreshBlock(
-        const TBlock& block,
-        TBlockDataRef blockContent);
+    void WriteFreshBlock(const TBlock& block, TBlockDataRef blockContent);
 
     bool DeleteFreshBlock(ui32 blockIndex, ui64 commitId);
 
@@ -470,9 +468,7 @@ private:
         TRequestInfoPtr RequestInfo;
         const ui64 CommitId;
 
-        TFlushContext(
-                TRequestInfoPtr requestInfo,
-                ui64 commitId)
+        TFlushContext(TRequestInfoPtr requestInfo, ui64 commitId)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
         {}
@@ -488,8 +484,8 @@ public:
         return *FlushContext;
     }
 
-    template <typename ...TArgs>
-    void ConstructFlushContext(TArgs&& ...args)
+    template <typename... TArgs>
+    void ConstructFlushContext(TArgs&&... args)
     {
         Y_ABORT_UNLESS(!FlushContext);
         FlushContext.ConstructInPlace(std::forward<TArgs>(args)...);
@@ -585,7 +581,6 @@ public:
         LastTrimFreshLogToCommitId = commitId;
     }
 
-
     //
     // Merged blobs
     //
@@ -620,9 +615,7 @@ public:
         bool fastPathAllowed,
         TVector<TBlock>& blocks);
 
-    bool DeleteBlob(
-        TPartitionDatabase& db,
-        const TPartialBlobId& blobId);
+    bool DeleteBlob(TPartitionDatabase& db, const TPartialBlobId& blobId);
 
     bool FindBlockList(
         TPartitionDatabase& db,
@@ -648,9 +641,7 @@ public:
         const TVector<TBlobUpdate>& blobUpdates,
         const TVector<TPartitionDatabase::TBlobGarbage>& blobGarbage);
 
-    bool InitIndex(
-        TPartitionDatabase& db,
-        const TBlockRange32& blockRange);
+    bool InitIndex(TPartitionDatabase& db, const TBlockRange32& blockRange);
 
     bool IsIndexInitialized(const TBlockRange32& blockRange);
 
@@ -689,10 +680,8 @@ public:
 
     size_t GetUsedBlockCount() const
     {
-        return GetMixedBlockCount()
-            + GetFreshBlockCount()
-            + GetMergedBlockCount()
-            - GetGarbageBlockCount();
+        return GetMixedBlockCount() + GetFreshBlockCount() +
+               GetMergedBlockCount() - GetGarbageBlockCount();
     }
 
     ui32 GetMixedZoneCount() const
@@ -738,7 +727,8 @@ private:
     {
         const ui64 CommitId;
         std::unique_ptr<ITransactionBase> Tx;
-        std::function<void(const NActors::TActorContext&)> OnStartProcessing = {};
+        std::function<void(const NActors::TActorContext&)> OnStartProcessing =
+            {};
     };
 
     TDeque<TCCCRequest> CCCRequestQueue;
@@ -1039,10 +1029,9 @@ public:
 
     void RegisterCollectError()
     {
-        CollectTimeout = Min(
-            TDuration::Seconds(5),
-            Max(TDuration::MilliSeconds(100), CollectTimeout * 2)
-        );
+        CollectTimeout =
+            Min(TDuration::Seconds(5),
+                Max(TDuration::MilliSeconds(100), CollectTimeout * 2));
     }
 
     void RegisterCollectSuccess()

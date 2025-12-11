@@ -1,6 +1,7 @@
 #include "helpers.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
+
 #include <cloud/storage/core/libs/common/media.h>
 
 #include <util/generic/algorithm.h>
@@ -262,8 +263,7 @@ void UpdateLaggingDevicesAfterMetaUpdate(
         const bool laggingDevicesWereRemoved = AllOf(
             agent.GetDevices(),
             [&removedLaggingDeviceIds](
-                const NProto::TLaggingDevice& laggingDevice)
-            {
+                const NProto::TLaggingDevice& laggingDevice) {
                 return !!FindPtr(
                     removedLaggingDeviceIds,
                     laggingDevice.GetDeviceUUID());

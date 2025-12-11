@@ -6,10 +6,10 @@
 #include <cloud/filestore/libs/storage/core/public.h>
 #include <cloud/filestore/libs/storage/tablet/tablet_private.h>
 
+#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
-
-#include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -67,8 +67,9 @@ private:
         const TEvents::TEvPoisonPill::TPtr& ev,
         const TActorContext& ctx);
 
-    void
-    ReplyAndDie(const TActorContext& ctx, const NProto::TError& error = {});
+    void ReplyAndDie(
+        const TActorContext& ctx,
+        const NProto::TError& error = {});
 };
 
 }   // namespace NCloud::NFileStore::NStorage

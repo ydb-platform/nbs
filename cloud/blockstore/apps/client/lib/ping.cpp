@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -13,12 +14,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TPingCommand final
-    : public TCommand
+class TPingCommand final: public TCommand
 {
 public:
-    TPingCommand(IBlockStorePtr client) :
-        TCommand(std::move(client))
+    TPingCommand(IBlockStorePtr client)
+        : TCommand(std::move(client))
     {}
 
 protected:
@@ -29,8 +29,7 @@ protected:
         STORAGE_DEBUG("Sending Ping request");
         auto result = WaitFor(ClientEndpoint->Ping(
             MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TPingRequest>()
-        ));
+            std::make_shared<NProto::TPingRequest>()));
 
         STORAGE_DEBUG("Received Ping response");
         if (Proto) {
@@ -48,7 +47,7 @@ protected:
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

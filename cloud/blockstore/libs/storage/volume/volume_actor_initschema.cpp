@@ -47,9 +47,7 @@ void TVolumeActor::CompleteInitSchema(
         "%s Schema initialized",
         LogTitle.GetWithTime().c_str());
 
-    ExecuteTx<TLoadState>(
-        ctx,
-        ctx.Now() - Config->GetVolumeHistoryDuration());
+    ExecuteTx<TLoadState>(ctx, ctx.Now() - Config->GetVolumeHistoryDuration());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

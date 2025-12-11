@@ -4,9 +4,10 @@
 
 namespace NCloud {
 
-enum class EHistogramCounterOption {
-    ReportSingleCounter     = (1 << 0),
-    ReportMultipleCounters  = (1 << 1),
+enum class EHistogramCounterOption
+{
+    ReportSingleCounter = (1 << 0),
+    ReportMultipleCounters = (1 << 1),
     // Report time histograms with milliseconds buckets. Percentiles are still
     // reported in microseconds.
     UseMsUnitsForTimeHistogram = (1 << 2),

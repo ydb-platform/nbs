@@ -22,14 +22,16 @@ TFeaturesConfig::TFeatureInfo::TFeatureInfo(NProto::TFeatureConfig config)
     , Blacklist(config.GetBlacklist())
     , Value(config.GetValue())
 {
-    double defaultProbability = config.HasBlacklist() && !config.HasWhitelist()
-        ? 1.0 : 0.0;
+    double defaultProbability =
+        config.HasBlacklist() && !config.HasWhitelist() ? 1.0 : 0.0;
 
     CloudProbability = config.HasCloudProbability()
-        ? config.GetCloudProbability() : defaultProbability;
+                           ? config.GetCloudProbability()
+                           : defaultProbability;
 
     FolderProbability = config.HasFolderProbability()
-        ? config.GetFolderProbability() : defaultProbability;
+                            ? config.GetFolderProbability()
+                            : defaultProbability;
 }
 
 TFeaturesConfig::TFeaturesConfig(NProto::TFeaturesConfig config)

@@ -77,15 +77,27 @@ void TTotalCounters::UpdateVolumeSelfCounters(const TVolumeSelfCounters& source)
 void TVolumeRequestCounters::Register(NMonitoring::TDynamicCountersPtr counters)
 {
     ReadCount.Register(counters->GetSubgroup("request", "ReadBlocks"), "Count");
-    ReadBytes.Register(counters->GetSubgroup("request", "ReadBlocks"), "RequestBytes");
-    ReadVoidBytes.Register(counters->GetSubgroup("request", "ReadBlocks"), "RequestVoidBytes");
-    ReadNonVoidBytes.Register(counters->GetSubgroup("request", "ReadBlocks"), "RequestNonVoidBytes");
+    ReadBytes.Register(
+        counters->GetSubgroup("request", "ReadBlocks"),
+        "RequestBytes");
+    ReadVoidBytes.Register(
+        counters->GetSubgroup("request", "ReadBlocks"),
+        "RequestVoidBytes");
+    ReadNonVoidBytes.Register(
+        counters->GetSubgroup("request", "ReadBlocks"),
+        "RequestNonVoidBytes");
 
-    WriteCount.Register(counters->GetSubgroup("request", "WriteBlocks"), "Count");
-    WriteBytes.Register(counters->GetSubgroup("request", "WriteBlocks"), "RequestBytes");
+    WriteCount.Register(
+        counters->GetSubgroup("request", "WriteBlocks"),
+        "Count");
+    WriteBytes.Register(
+        counters->GetSubgroup("request", "WriteBlocks"),
+        "RequestBytes");
 
     ZeroCount.Register(counters->GetSubgroup("request", "ZeroBlocks"), "Count");
-    ZeroBytes.Register(counters->GetSubgroup("request", "ZeroBlocks"), "RequestBytes");
+    ZeroBytes.Register(
+        counters->GetSubgroup("request", "ZeroBlocks"),
+        "RequestBytes");
 }
 
 void TVolumeRequestCounters::Publish(TInstant now)
@@ -118,7 +130,8 @@ void TVolumeRequestCounters::Reset()
     ZeroBytes.Reset();
 }
 
-void TVolumeRequestCounters::UpdateCounters(const TPartitionDiskCounters& source)
+void TVolumeRequestCounters::UpdateCounters(
+    const TPartitionDiskCounters& source)
 {
     ReadCount.Increment(source.RequestCounters.ReadBlocks.GetCount());
     ReadBytes.Increment(source.RequestCounters.ReadBlocks.GetRequestBytes());
@@ -137,11 +150,11 @@ void TVolumeRequestCounters::UpdateCounters(const TPartitionDiskCounters& source
 ////////////////////////////////////////////////////////////////////////////////
 
 TBlobLoadCounters::TBlobLoadCounters(
-        const TString& mediaKind,
-        ui64 maxGroupReadIops,
-        ui64 maxGroupWriteIops,
-        ui64 maxGroupReadThroughput,
-        ui64 maxGroupWriteThroughput)
+    const TString& mediaKind,
+    ui64 maxGroupReadIops,
+    ui64 maxGroupWriteIops,
+    ui64 maxGroupReadThroughput,
+    ui64 maxGroupWriteThroughput)
     : MediaKind(mediaKind)
     , MaxGroupReadIops(maxGroupReadIops)
     , MaxGroupWriteIops(maxGroupWriteIops)
@@ -168,20 +181,18 @@ void TBlobLoadCounters::Publish(
         }
     }
 
-    const double groupReadIops =
-        metricsAggregate.ReadOperations.Iops;
-    const double groupWriteIops =
-        metricsAggregate.WriteOperations.Iops;
+    const double groupReadIops = metricsAggregate.ReadOperations.Iops;
+    const double groupWriteIops = metricsAggregate.WriteOperations.Iops;
     const double groupReadByteCounts =
         metricsAggregate.ReadOperations.ByteCount;
     const double groupWriteByteCounts =
         metricsAggregate.WriteOperations.ByteCount;
 
-    const ui64 groupsCount = 100 *
-        ( groupReadIops / MaxGroupReadIops +
-          groupWriteIops / MaxGroupWriteIops +
-          groupReadByteCounts / MaxGroupReadThroughput +
-          groupWriteByteCounts / MaxGroupWriteThroughput ) /
+    const ui64 groupsCount =
+        100 *
+        (groupReadIops / MaxGroupReadIops + groupWriteIops / MaxGroupWriteIops +
+         groupReadByteCounts / MaxGroupReadThroughput +
+         groupWriteByteCounts / MaxGroupWriteThroughput) /
         UpdateCountersInterval.SecondsFloat();
 
     UsedGroupsCount.SetCounterValue(now, groupsCount);

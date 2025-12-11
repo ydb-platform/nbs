@@ -27,8 +27,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TIoUringServiceBase
-    : public IFileIOService
+struct TIoUringServiceBase: public IFileIOService
 {
     TContext Context;
     const ui32 SqeFlags;
@@ -51,8 +50,7 @@ struct TIoUringServiceBase
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TIoUringService final
-    : public TIoUringServiceBase
+struct TIoUringService final: public TIoUringServiceBase
 {
     using TIoUringServiceBase::TIoUringServiceBase;
 
@@ -95,8 +93,7 @@ struct TIoUringService final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TIoUringServiceNull final
-    : public TIoUringServiceBase
+struct TIoUringServiceNull final: public TIoUringServiceBase
 {
     using TIoUringServiceBase::TIoUringServiceBase;
 
@@ -158,8 +155,7 @@ struct TIoUringServiceNull final
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TService>
-class TIoUringServiceFactory final
-    : public IFileIOServiceFactory
+class TIoUringServiceFactory final: public IFileIOServiceFactory
 {
 private:
     const TIoUringServiceParams Params;

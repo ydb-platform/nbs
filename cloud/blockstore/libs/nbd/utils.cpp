@@ -45,8 +45,8 @@ TString PrintHostAndPort(const TNetworkAddress& addr)
 
 TString FindFreeNbdDevice(const TString& sysBlockDir)
 {
-    auto sysBlockItems = std::filesystem::directory_iterator{
-        sysBlockDir.c_str()};
+    auto sysBlockItems =
+        std::filesystem::directory_iterator{sysBlockDir.c_str()};
 
     for (const auto& entry: sysBlockItems) {
         if (!entry.is_directory()) {

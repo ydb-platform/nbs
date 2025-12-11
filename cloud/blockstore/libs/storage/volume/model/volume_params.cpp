@@ -1,6 +1,5 @@
 #include "volume_params.h"
 
-
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -44,12 +43,13 @@ TMaybe<TDuration> TRuntimeVolumeParams::GetNextExpirationDelay(
         return Nothing();
     }
 
-    const auto minTime = std::min_element(
-        VolumeParams.begin(),
-        VolumeParams.end(),
-        [&](const auto& a, const auto& b) {
-            return a.second.ValidUntil < b.second.ValidUntil;
-        })->second.ValidUntil;
+    const auto minTime =
+        std::min_element(
+            VolumeParams.begin(),
+            VolumeParams.end(),
+            [&](const auto& a, const auto& b)
+            { return a.second.ValidUntil < b.second.ValidUntil; })
+            ->second.ValidUntil;
 
     const auto defaultDelay = TDuration::MilliSeconds(1);
     return minTime <= now ? defaultDelay : minTime - now;
@@ -58,9 +58,9 @@ TMaybe<TDuration> TRuntimeVolumeParams::GetNextExpirationDelay(
 TDuration TRuntimeVolumeParams::GetMaxTimedOutDeviceStateDurationOverride(
     const TInstant& now) const
 {
-    const auto* maxTimeoutParam = VolumeParams.FindPtr(
-        "max-timed-out-device-state-duration");
-    if (!maxTimeoutParam || maxTimeoutParam->ValidUntil <= now ) {
+    const auto* maxTimeoutParam =
+        VolumeParams.FindPtr("max-timed-out-device-state-duration");
+    if (!maxTimeoutParam || maxTimeoutParam->ValidUntil <= now) {
         return {};
     }
 

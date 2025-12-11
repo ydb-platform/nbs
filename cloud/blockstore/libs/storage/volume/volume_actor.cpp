@@ -45,10 +45,10 @@ constexpr TInstant DRTabletIdRequestRetryInterval = TInstant::Seconds(3);
 ////////////////////////////////////////////////////////////////////////////////
 
 const TVolumeActor::TStateInfo TVolumeActor::States[STATE_MAX] = {
-    { "Boot",   (IActor::TReceiveFunc)&TVolumeActor::StateBoot   },
-    { "Init",   (IActor::TReceiveFunc)&TVolumeActor::StateInit   },
-    { "Work",   (IActor::TReceiveFunc)&TVolumeActor::StateWork   },
-    { "Zombie", (IActor::TReceiveFunc)&TVolumeActor::StateZombie },
+    {"Boot", (IActor::TReceiveFunc)&TVolumeActor::StateBoot},
+    {"Init", (IActor::TReceiveFunc)&TVolumeActor::StateInit},
+    {"Work", (IActor::TReceiveFunc)&TVolumeActor::StateWork},
+    {"Zombie", (IActor::TReceiveFunc)&TVolumeActor::StateZombie},
 };
 
 const TString VolumeTransactions[] = {
@@ -125,7 +125,7 @@ void TVolumeActor::Enqueue(STFUNC_SIG)
 
 void TVolumeActor::DefaultSignalTabletActive(const TActorContext& ctx)
 {
-    Y_UNUSED(ctx); // postpone until LoadState transaction completes
+    Y_UNUSED(ctx);   // postpone until LoadState transaction completes
 }
 
 void TVolumeActor::BecomeAux(const TActorContext& ctx, EState state)
@@ -194,28 +194,33 @@ void TVolumeActor::RegisterCounters(const TActorContext& ctx)
 void TVolumeActor::ScheduleRegularUpdates(const TActorContext& ctx)
 {
     if (!UpdateCountersScheduled) {
-        ctx.Schedule(UpdateCountersInterval,
+        ctx.Schedule(
+            UpdateCountersInterval,
             new TEvVolumePrivate::TEvUpdateCounters());
         UpdateCountersScheduled = true;
     }
 
     if (!UpdateLeakyBucketCountersScheduled) {
-        ctx.Schedule(UpdateLeakyBucketCountersInterval,
+        ctx.Schedule(
+            UpdateLeakyBucketCountersInterval,
             new TEvVolumePrivate::TEvUpdateThrottlerState());
         UpdateLeakyBucketCountersScheduled = true;
     }
 
     if (!UpdateReadWriteClientInfoScheduled) {
-        ctx.Schedule(UpdateCountersInterval,
+        ctx.Schedule(
+            UpdateCountersInterval,
             new TEvVolumePrivate::TEvUpdateReadWriteClientInfo());
         UpdateReadWriteClientInfoScheduled = true;
     }
 
     if (!RemoveExpiredVolumeParamsScheduled && State) {
-        const auto delay = State->GetVolumeParams().GetNextExpirationDelay(ctx.Now());
+        const auto delay =
+            State->GetVolumeParams().GetNextExpirationDelay(ctx.Now());
         if (delay.Defined()) {
-            ctx.Schedule(ctx.Now() + *delay,
-                    new TEvVolumePrivate::TEvRemoveExpiredVolumeParams());
+            ctx.Schedule(
+                ctx.Now() + *delay,
+                new TEvVolumePrivate::TEvRemoveExpiredVolumeParams());
             RemoveExpiredVolumeParamsScheduled = true;
         }
     }
@@ -386,16 +391,18 @@ void TVolumeActor::ReleaseTransactions()
 
 TString TVolumeActor::GetVolumeStatusString(TVolumeActor::EStatus status) const
 {
-    switch (status)
-    {
+    switch (status) {
         case TVolumeActor::STATUS_ONLINE: {
-            return State->GetLocalMountClientId().empty() ?
-                "Online":
-                "Online (preempted)";
+            return State->GetLocalMountClientId().empty()
+                       ? "Online"
+                       : "Online (preempted)";
         }
-        case TVolumeActor::STATUS_INACTIVE: return "Inactive";
-        case TVolumeActor::STATUS_MOUNTED: return "Mounted";
-        default: return "Offline";
+        case TVolumeActor::STATUS_INACTIVE:
+            return "Inactive";
+        case TVolumeActor::STATUS_MOUNTED:
+            return "Mounted";
+        default:
+            return "Offline";
     }
 }
 
@@ -405,8 +412,8 @@ TVolumeActor::EStatus TVolumeActor::GetVolumeStatus() const
         auto state = State->GetPartitionsState();
         if (state == TPartitionInfo::READY) {
             return (StartMode == EVolumeStartMode::MOUNTED)
-                ? TVolumeActor::STATUS_MOUNTED
-                : TVolumeActor::STATUS_ONLINE;
+                       ? TVolumeActor::STATUS_MOUNTED
+                       : TVolumeActor::STATUS_ONLINE;
         } else if (state == TPartitionInfo::UNKNOWN) {
             return TVolumeActor::STATUS_INACTIVE;
         }
@@ -531,9 +538,10 @@ void TVolumeActor::SendVolumeConfigUpdated(const TActorContext& ctx)
     }
 
     {
-        auto request = std::make_unique<TEvStatsService::TEvVolumeConfigUpdated>(
-            State->GetDiskId(),
-            std::move(volume));
+        auto request =
+            std::make_unique<TEvStatsService::TEvVolumeConfigUpdated>(
+                State->GetDiskId(),
+                std::move(volume));
         NCloud::Send(ctx, MakeStorageStatsServiceId(), std::move(request));
     }
 }
@@ -654,21 +662,21 @@ void TVolumeActor::HandleUpdateThrottlerState(
 
     const auto mediaKind = static_cast<NCloud::NProto::EStorageMediaKind>(
         GetNewestConfig().GetStorageMediaKind());
-    if ((mediaKind == NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD
-            || mediaKind == NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HYBRID)
-            && ctx.Now() - Config->GetThrottlerStateWriteInterval() >= LastThrottlerStateWrite)
+    if ((mediaKind == NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HDD ||
+         mediaKind ==
+             NCloud::NProto::EStorageMediaKind::STORAGE_MEDIA_HYBRID) &&
+        ctx.Now() - Config->GetThrottlerStateWriteInterval() >=
+            LastThrottlerStateWrite)
     {
-        auto requestInfo = CreateRequestInfo(
-            ev->Sender,
-            ev->Cookie,
-            ev->Get()->CallContext);
+        auto requestInfo =
+            CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
 
         ExecuteTx<TWriteThrottlerState>(
             ctx,
             std::move(requestInfo),
-            TVolumeDatabase::TThrottlerStateInfo{
-                State->GetThrottlingPolicy().GetCurrentBoostBudget().MilliSeconds()
-            });
+            TVolumeDatabase::TThrottlerStateInfo{State->GetThrottlingPolicy()
+                                                     .GetCurrentBoostBudget()
+                                                     .MilliSeconds()});
     }
 }
 
@@ -680,8 +688,8 @@ void TVolumeActor::HandleUpdateCounters(
 
     // if we use pull scheme we must send request to the partitions
     // to collect statistics
-    if (Config->GetUsePullSchemeForVolumeStatistics() &&
-        State && !State->IsDiskRegistryMediaKind() &&
+    if (Config->GetUsePullSchemeForVolumeStatistics() && State &&
+        !State->IsDiskRegistryMediaKind() &&
         GetVolumeStatus() != EStatus::STATUS_INACTIVE)
     {
         ScheduleRegularUpdates(ctx);
@@ -781,10 +789,7 @@ void TVolumeActor::HandleGetStorageConfig(
     auto response = std::make_unique<TEvVolume::TEvGetStorageConfigResponse>();
     *response->Record.MutableStorageConfig() = Config->GetStorageConfigProto();
 
-    NCloud::Reply(
-        ctx,
-        *ev,
-        std::move(response));
+    NCloud::Reply(ctx, *ev, std::move(response));
 }
 
 void TVolumeActor::HandleTakeVolumeRequestId(
@@ -803,7 +808,8 @@ void TVolumeActor::HandleTakeVolumeRequestId(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "%s Sent PoisonPill to volume because of volume request id overflow",
+            "%s Sent PoisonPill to volume because of volume request id "
+            "overflow",
             LogTitle.GetWithTime().c_str());
         return;
     }
@@ -953,9 +959,7 @@ STFUNC(TVolumeActor::StateInit)
         HFunc(
             TEvVolumePrivate::TEvProcessUpdateVolumeConfig,
             HandleProcessUpdateVolumeConfig);
-        HFunc(
-            TEvBlockStore::TEvUpdateVolumeConfig,
-            HandleUpdateVolumeConfig);
+        HFunc(TEvBlockStore::TEvUpdateVolumeConfig, HandleUpdateVolumeConfig);
         HFunc(
             TEvVolumePrivate::TEvAllocateDiskIfNeeded,
             HandleAllocateDiskIfNeeded);
@@ -1068,12 +1072,18 @@ STFUNC(TVolumeActor::StateWork)
             TEvVolumePrivate::TEvRetryStartPartition,
             HandleRetryStartPartition);
 
-        HFunc(TEvHiveProxy::TEvBootExternalResponse, HandleBootExternalResponse);
+        HFunc(
+            TEvHiveProxy::TEvBootExternalResponse,
+            HandleBootExternalResponse);
         HFunc(TEvPartition::TEvWaitReadyResponse, HandleWaitReadyResponse);
         HFunc(TEvPartition::TEvBackpressureReport, HandleBackpressureReport);
-        HFunc(TEvPartition::TEvGarbageCollectorCompleted, HandleGarbageCollectorCompleted);
+        HFunc(
+            TEvPartition::TEvGarbageCollectorCompleted,
+            HandleGarbageCollectorCompleted);
 
-        HFunc(TEvVolume::TEvPreparePartitionMigrationRequest, HandlePreparePartitionMigration);
+        HFunc(
+            TEvVolume::TEvPreparePartitionMigrationRequest,
+            HandlePreparePartitionMigration);
 
         HFunc(TEvVolume::TEvUpdateMigrationState, HandleUpdateMigrationState);
         HFunc(TEvVolume::TEvUpdateResyncState, HandleUpdateResyncState);
@@ -1085,9 +1095,7 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(
             TEvVolumePrivate::TEvReportOutdatedLaggingDevicesToDR,
             HandleReportLaggingDevicesToDR);
-        HFunc(
-            TEvVolumePrivate::TEvDeviceTimedOutRequest,
-            HandleDeviceTimedOut);
+        HFunc(TEvVolumePrivate::TEvDeviceTimedOutRequest, HandleDeviceTimedOut);
         HFunc(
             TEvVolumePrivate::TEvUpdateLaggingAgentMigrationState,
             HandleUpdateLaggingAgentMigrationState);
@@ -1224,15 +1232,14 @@ STFUNC(TVolumeActor::StateZombie)
 
 TString DescribeAllocation(const NProto::TAllocateDiskResponse& record)
 {
-    auto outputDevice = [] (const auto& device, TStringBuilder& out) {
-        out << "("
-            << device.GetDeviceUUID() << " "
-            << device.GetBlocksCount() << " "
-            << device.GetBlockSize()
-        << ") ";
+    auto outputDevice = [](const auto& device, TStringBuilder& out)
+    {
+        out << "(" << device.GetDeviceUUID() << " " << device.GetBlocksCount()
+            << " " << device.GetBlockSize() << ") ";
     };
 
-    auto outputDevices = [=] (const auto& devices, TStringBuilder& out) {
+    auto outputDevices = [=](const auto& devices, TStringBuilder& out)
+    {
         out << "[";
         if (devices.size() != 0) {
             out << " ";

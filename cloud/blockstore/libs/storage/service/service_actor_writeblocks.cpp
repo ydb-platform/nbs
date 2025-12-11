@@ -32,9 +32,9 @@ private:
 
 public:
     TWriteBlocksRemoteRequestActor(
-            TEvService::TEvWriteBlocksLocalRequest::TPtr request,
-            ui64 blockSize,
-            TActorId volumeClient)
+        TEvService::TEvWriteBlocksLocalRequest::TPtr request,
+        ui64 blockSize,
+        TActorId volumeClient)
         : Request(request)
         , BlockSize(blockSize)
         , VolumeClient(volumeClient)
@@ -55,12 +55,17 @@ private:
 
         auto request = CreateRemoteRequest();
         if (!request) {
-            ReplyAndDie(ctx, MakeError(E_REJECTED, "failed to create remote request"));
+            ReplyAndDie(
+                ctx,
+                MakeError(E_REJECTED, "failed to create remote request"));
             return;
         }
 
-        LOG_TRACE(ctx, TBlockStoreComponents::SERVICE,
-            "Converted Local to gRPC WriteBlocks request for client %s to volume %s",
+        LOG_TRACE(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Converted Local to gRPC WriteBlocks request for client %s to "
+            "volume %s",
             clientId.Quote().data(),
             diskId.Quote().data());
 
@@ -70,9 +75,9 @@ private:
             VolumeClient,
             SelfId(),
             request.release(),
-            Request->Flags | IEventHandle::FlagForwardOnNondelivery,  // flags
-            Request->Cookie,  // cookie
-            &undeliveredActor    // forwardOnNondelivery
+            Request->Flags | IEventHandle::FlagForwardOnNondelivery,   // flags
+            Request->Cookie,                                           // cookie
+            &undeliveredActor   // forwardOnNondelivery
         );
         ctx.Send(event.release());
     }
@@ -101,7 +106,8 @@ private:
 
     void ReplyAndDie(const TActorContext& ctx, const NProto::TError& error)
     {
-        auto response = std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(error);
+        auto response =
+            std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(error);
 
         NCloud::Reply(ctx, *Request, std::move(response));
 
@@ -112,7 +118,9 @@ private:
     STFUNC(StateWait)
     {
         switch (ev->GetTypeRewrite()) {
-            HFunc(TEvService::TEvWriteBlocksResponse, HandleWriteBlocksResponse);
+            HFunc(
+                TEvService::TEvWriteBlocksResponse,
+                HandleWriteBlocksResponse);
 
             HFunc(TEvService::TEvWriteBlocksRequest, HandleUndelivery);
 
@@ -138,8 +146,9 @@ private:
     {
         const auto* msg = ev->Get();
 
-        auto response = std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
-            msg->Record);
+        auto response =
+            std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
+                msg->Record);
 
         NCloud::Reply(ctx, *Request, std::move(response));
 

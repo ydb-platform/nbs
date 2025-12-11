@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -13,8 +14,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TListPlacementGroupsCommand final
-    : public TCommand
+class TListPlacementGroupsCommand final: public TCommand
 {
 public:
     TListPlacementGroupsCommand(IBlockStorePtr client)
@@ -29,8 +29,7 @@ protected:
         STORAGE_DEBUG("Sending ListPlacementGroups request");
         auto result = WaitFor(ClientEndpoint->ListPlacementGroups(
             MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TListPlacementGroupsRequest>()
-        ));
+            std::make_shared<NProto::TListPlacementGroupsRequest>()));
 
         STORAGE_DEBUG("Received ListPlacementGroups response");
         if (Proto) {
@@ -50,7 +49,7 @@ protected:
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

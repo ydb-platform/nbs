@@ -164,9 +164,7 @@ struct TDefaultVolumeProcessingPolicy
         return false;
     }
 
-    void UnmountVolume(
-        const TString& diskId,
-        const TString& clientId)
+    void UnmountVolume(const TString& diskId, const TString& clientId)
     {
         Y_UNUSED(clientId);
 
@@ -214,9 +212,7 @@ public:
             instanceId);
     }
 
-    void UnmountVolume(
-        const TString& diskId,
-        const TString& clientId) override
+    void UnmountVolume(const TString& diskId, const TString& clientId) override
     {
         TVolumeProcessingPolicy::UnmountVolume(diskId, clientId);
     }

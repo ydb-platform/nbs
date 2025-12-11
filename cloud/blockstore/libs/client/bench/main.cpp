@@ -29,7 +29,7 @@ namespace {
 
 struct TBootstrap
 {
-    const ui32 BlockSize = 4*1024;
+    const ui32 BlockSize = 4 * 1024;
 
     ILoggingServicePtr Logging = CreateLoggingService(
         "console",
@@ -56,31 +56,34 @@ struct TBootstrap
         auto client = std::make_shared<TTestService>();
 
         client->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                Y_UNUSED(request);
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            Y_UNUSED(request);
 
-                NProto::TMountVolumeResponse response;
-                response.SetSessionId("test");
+            NProto::TMountVolumeResponse response;
+            response.SetSessionId("test");
 
-                auto& volume = *response.MutableVolume();
-                volume.SetDiskId("disk");
-                volume.SetBlockSize(BlockSize);
-                volume.SetBlocksCount(1024);
+            auto& volume = *response.MutableVolume();
+            volume.SetDiskId("disk");
+            volume.SetBlockSize(BlockSize);
+            volume.SetBlocksCount(1024);
 
-                return MakeFuture(response);
-            };
+            return MakeFuture(response);
+        };
 
         client->WriteBlocksHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture(NProto::TWriteBlocksResponse());
-            };
+            [&](std::shared_ptr<NProto::TWriteBlocksRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture(NProto::TWriteBlocksResponse());
+        };
 
         client->WriteBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture(NProto::TWriteBlocksLocalResponse());
-            };
+            [&](std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture(NProto::TWriteBlocksLocalResponse());
+        };
 
         return client;
     }

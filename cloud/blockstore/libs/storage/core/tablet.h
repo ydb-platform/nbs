@@ -29,10 +29,8 @@ class ITransactionTracker
 public:
     virtual ~ITransactionTracker() = default;
 
-    virtual void OnStarted(
-        ui64 transactionId,
-        TString transactionName,
-        ui64 startTime) = 0;
+    virtual void
+    OnStarted(ui64 transactionId, TString transactionName, ui64 startTime) = 0;
     virtual void OnFinished(ui64 transactionId, ui64 finishTime) = 0;
 };
 
@@ -47,81 +45,81 @@ template <typename T, typename = void>
 constexpr bool combinedRequest = false;
 
 template <typename T>
-constexpr bool combinedRequest<T, std::void_t<
-    decltype(std::declval<T>().Requests)>> = true;
+constexpr bool
+    combinedRequest<T, std::void_t<decltype(std::declval<T>().Requests)>> =
+        true;
 
 template <typename T>
-constexpr bool HasRequestInfoField() {
-    return requires(const T& t) {
-        t.RequestInfo;
-    };
+constexpr bool HasRequestInfoField()
+{
+    return requires(const T& t) { t.RequestInfo; };
 }
 
-#define TX_TRACK_HELPER(probe, info)                                           \
-    LWTRACK(                                                                   \
-        probe,                                                                 \
-        info->CallContext->LWOrbit,                                            \
-        TTx::Name,                                                             \
-        info->CallContext->RequestId);                                         \
-// TX_TRACK_HELPER
+#define TX_TRACK_HELPER(probe, info)   \
+    LWTRACK(                           \
+        probe,                         \
+        info->CallContext->LWOrbit,    \
+        TTx::Name,                     \
+        info->CallContext->RequestId); \
+    // TX_TRACK_HELPER
 
-#define TX_TRACK(probe)                                                        \
-    if constexpr (combinedRequest<typename TTx::TArgs>) {                      \
-        for (auto& __request: Args.Requests) {                                 \
-            TX_TRACK_HELPER(probe, __request.RequestInfo);                     \
-        }                                                                      \
-    } else if constexpr (HasRequestInfoField<decltype(Args)>()) {              \
-        if (Args.RequestInfo) {                                                \
-            TX_TRACK_HELPER(probe, Args.RequestInfo);                          \
-        }                                                                      \
-    }                                                                          \
-// TX_TRACK
+#define TX_TRACK(probe)                                           \
+    if constexpr (combinedRequest<typename TTx::TArgs>) {         \
+        for (auto& __request: Args.Requests) {                    \
+            TX_TRACK_HELPER(probe, __request.RequestInfo);        \
+        }                                                         \
+    } else if constexpr (HasRequestInfoField<decltype(Args)>()) { \
+        if (Args.RequestInfo) {                                   \
+            TX_TRACK_HELPER(probe, Args.RequestInfo);             \
+        }                                                         \
+    }                                                             \
+    // TX_TRACK
 
-#define TX_FORK_HELPER(request)                                                \
-    if (auto& cc = request->CallContext; !cc->LWOrbit.Fork(Orbit)) {           \
-        LWTRACK(ForkFailed, cc->LWOrbit, TTx::Name, cc->RequestId);            \
-    }                                                                          \
-// TX_FORK_HELPER
+#define TX_FORK_HELPER(request)                                      \
+    if (auto& cc = request->CallContext; !cc->LWOrbit.Fork(Orbit)) { \
+        LWTRACK(ForkFailed, cc->LWOrbit, TTx::Name, cc->RequestId);  \
+    }                                                                \
+    // TX_FORK_HELPER
 
-#define TX_FORK()                                                              \
-    if constexpr (combinedRequest<typename TTx::TArgs>) {                      \
-        for (auto& __request: Args.Requests) {                                 \
-            TX_FORK_HELPER(__request.RequestInfo);                             \
-        }                                                                      \
-    } else if constexpr (HasRequestInfoField<decltype(Args)>()) {              \
-        if (Args.RequestInfo) {                                                \
-            TX_FORK_HELPER(Args.RequestInfo);                                  \
-        }                                                                      \
-    }                                                                          \
-// TX_FORK
+#define TX_FORK()                                                 \
+    if constexpr (combinedRequest<typename TTx::TArgs>) {         \
+        for (auto& __request: Args.Requests) {                    \
+            TX_FORK_HELPER(__request.RequestInfo);                \
+        }                                                         \
+    } else if constexpr (HasRequestInfoField<decltype(Args)>()) { \
+        if (Args.RequestInfo) {                                   \
+            TX_FORK_HELPER(Args.RequestInfo);                     \
+        }                                                         \
+    }                                                             \
+    // TX_FORK
 
-#define TX_JOIN_HELPER(request)                                                \
-        request->CallContext->LWOrbit.Join(Orbit);                             \
-// TX_JOIN_HELPER
+#define TX_JOIN_HELPER(request)                \
+    request->CallContext->LWOrbit.Join(Orbit); \
+    // TX_JOIN_HELPER
 
-#define TX_JOIN()                                                              \
-    if constexpr (combinedRequest<typename TTx::TArgs>) {                      \
-        for (auto& __request: Args.Requests) {                                 \
-            TX_JOIN_HELPER(__request.RequestInfo);                             \
-        }                                                                      \
-    } else if constexpr (HasRequestInfoField<decltype(Args)>()) {              \
-        if (Args.RequestInfo) {                                                \
-            TX_JOIN_HELPER(Args.RequestInfo);                                  \
-        }                                                                      \
-    }                                                                          \
-// TX_JOIN
+#define TX_JOIN()                                                 \
+    if constexpr (combinedRequest<typename TTx::TArgs>) {         \
+        for (auto& __request: Args.Requests) {                    \
+            TX_JOIN_HELPER(__request.RequestInfo);                \
+        }                                                         \
+    } else if constexpr (HasRequestInfoField<decltype(Args)>()) { \
+        if (Args.RequestInfo) {                                   \
+            TX_JOIN_HELPER(Args.RequestInfo);                     \
+        }                                                         \
+    }                                                             \
+    // TX_JOIN
 
 template <typename T>
-class TTabletBase
-    : public NKikimr::NTabletFlatExecutor::TTabletExecutedFlat
+class TTabletBase: public NKikimr::NTabletFlatExecutor::TTabletExecutedFlat
 {
     ITransactionTracker* const TransactionTracker = nullptr;
     ui64 TransactionIdGenerator = 0;
 
 public:
-    TTabletBase(const NActors::TActorId& owner,
-                NKikimr::TTabletStorageInfoPtr storage,
-                ITransactionTracker* transactionTracker)
+    TTabletBase(
+        const NActors::TActorId& owner,
+        NKikimr::TTabletStorageInfoPtr storage,
+        ITransactionTracker* transactionTracker)
         : TTabletExecutedFlat(storage.Get(), owner, NewMiniKQLFactory())
         , TransactionTracker(transactionTracker)
     {}
@@ -140,8 +138,8 @@ protected:
         ui32 Step = 0;
 
     public:
-        template <typename ...TArgs>
-        TTransaction(T* self, TArgs&& ...args)
+        template <typename... TArgs>
+        TTransaction(T* self, TArgs&&... args)
             : Self(self)
             , Args(std::forward<TArgs>(args)...)
         {}
@@ -173,7 +171,9 @@ protected:
 
             TX_TRACK(TxPrepare);
 
-            LOG_DEBUG(ctx, T::LogComponent,
+            LOG_DEBUG(
+                ctx,
+                T::LogComponent,
                 "[%lu] Prepare %s (gen: %u, step: %u)",
                 Self->TabletID(),
                 TTx::Name,
@@ -190,7 +190,9 @@ protected:
 
             TX_TRACK(TxExecute);
 
-            LOG_DEBUG(ctx, T::LogComponent,
+            LOG_DEBUG(
+                ctx,
+                T::LogComponent,
                 "[%lu] Execute %s (gen: %u, step: %u)",
                 Self->TabletID(),
                 TTx::Name,
@@ -214,7 +216,9 @@ protected:
 
             TX_TRACK(TxComplete);
 
-            LOG_DEBUG(ctx, T::LogComponent,
+            LOG_DEBUG(
+                ctx,
+                T::LogComponent,
                 "[%lu] Complete %s (gen: %u, step: %u)",
                 Self->TabletID(),
                 TTx::Name,
@@ -227,8 +231,8 @@ protected:
         }
     };
 
-    template <typename TTx, typename ...TArgs>
-    std::unique_ptr<TTransaction<TTx>> CreateTx(TArgs&& ...args)
+    template <typename TTx, typename... TArgs>
+    std::unique_ptr<TTransaction<TTx>> CreateTx(TArgs&&... args)
     {
         return std::make_unique<TTransaction<TTx>>(
             static_cast<T*>(this),
@@ -263,20 +267,20 @@ protected:
         static constexpr const char* Name = #name;                             \
         static constexpr NKikimr::TTxType TxType = TCounters::TX_##name;       \
                                                                                \
-        template <typename T, typename ...Args>                                \
-        static bool Prepare(T& target, Args&& ...args)                         \
+        template <typename T, typename... Args>                                \
+        static bool Prepare(T& target, Args&&... args)                         \
         {                                                                      \
             return target.Prepare##name(std::forward<Args>(args)...);          \
         }                                                                      \
                                                                                \
-        template <typename T, typename ...Args>                                \
-        static void Execute(T& target, Args&& ...args)                         \
+        template <typename T, typename... Args>                                \
+        static void Execute(T& target, Args&&... args)                         \
         {                                                                      \
             target.Execute##name(std::forward<Args>(args)...);                 \
         }                                                                      \
                                                                                \
-        template <typename T, typename ...Args>                                \
-        static void Complete(T& target, Args&& ...args)                        \
+        template <typename T, typename... Args>                                \
+        static void Complete(T& target, Args&&... args)                        \
         {                                                                      \
             target.Complete##name(std::forward<Args>(args)...);                \
         }                                                                      \
@@ -292,9 +296,7 @@ protected:
         NKikimr::NTabletFlatExecutor::TTransactionContext& tx,                 \
         ns::T##name& args);                                                    \
                                                                                \
-    void Complete##name(                                                       \
-        const NActors::TActorContext& ctx,                                     \
-        ns::T##name& args);                                                    \
-// BLOCKSTORE_IMPLEMENT_TRANSACTION
+    void Complete##name(const NActors::TActorContext& ctx, ns::T##name& args); \
+    // BLOCKSTORE_IMPLEMENT_TRANSACTION
 
 }   // namespace NCloud::NBlockStore::NStorage

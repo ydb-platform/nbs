@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/storage/disk_registry/testlib/test_state.h>
 #include <cloud/blockstore/libs/storage/testlib/test_executor.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
@@ -43,22 +44,21 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
                  Device("dev-3", "uuid-2.3"),
                  Device("dev-4", "uuid-2.4")})};
 
-        auto state =
-            TDiskRegistryStateBuilder()
-                .WithConfig(
-                    [&]
-                    {
-                        auto config = MakeConfig(0, agents);
+        auto state = TDiskRegistryStateBuilder()
+                         .WithConfig(
+                             [&]
+                             {
+                                 auto config = MakeConfig(0, agents);
 
-                        auto* local = config.AddDevicePoolConfigs();
-                        local->SetName("local-ssd");
-                        local->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
-                        local->SetAllocationUnit(DefaultDeviceSize);
+                                 auto* local = config.AddDevicePoolConfigs();
+                                 local->SetName("local-ssd");
+                                 local->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                                 local->SetAllocationUnit(DefaultDeviceSize);
 
-                        return config;
-                    }())
-                .WithAgents(agents)
-                .Build();
+                                 return config;
+                             }())
+                         .WithAgents(agents)
+                         .Build();
 
         const TInstant agentStateTs = TInstant::FromValue(100042);
         const TString agentStateMessage = "message";
@@ -87,13 +87,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
             const auto& device = agent.GetDevices(0);
             const auto& deviceInfo = agentInfo.GetDevices(0);
 
-            UNIT_ASSERT_VALUES_EQUAL(agent.GetAgentId(), agentInfo.GetAgentId());
-            UNIT_ASSERT_EQUAL(
-                NProto::AGENT_STATE_ONLINE,
-                agentInfo.GetState());
+            UNIT_ASSERT_VALUES_EQUAL(
+                agent.GetAgentId(),
+                agentInfo.GetAgentId());
+            UNIT_ASSERT_EQUAL(NProto::AGENT_STATE_ONLINE, agentInfo.GetState());
             UNIT_ASSERT_VALUES_EQUAL("", agentInfo.GetStateMessage());
             UNIT_ASSERT_VALUES_EQUAL(0, agentInfo.GetStateTs());
-            UNIT_ASSERT_VALUES_EQUAL(agent.DevicesSize(), agentInfo.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                agent.DevicesSize(),
+                agentInfo.DevicesSize());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 device.GetDeviceName(),
@@ -119,7 +121,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
             const auto& device = agent.GetDevices(0);
             const auto& deviceInfo = agentInfo.GetDevices(0);
 
-            UNIT_ASSERT_VALUES_EQUAL(agent.GetAgentId(), agentInfo.GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                agent.GetAgentId(),
+                agentInfo.GetAgentId());
             UNIT_ASSERT_EQUAL(
                 NProto::AGENT_STATE_WARNING,
                 agentInfo.GetState());
@@ -129,7 +133,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 agentStateTs,
                 TInstant::MicroSeconds(agentInfo.GetStateTs()));
-            UNIT_ASSERT_VALUES_EQUAL(agent.DevicesSize(), agentInfo.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                agent.DevicesSize(),
+                agentInfo.DevicesSize());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 device.GetDeviceName(),
@@ -145,7 +151,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateQueryAgentsInfoTest)
                 deviceInfo.GetDeviceTotalSpaceInBytes());
             UNIT_ASSERT_VALUES_EQUAL_C(
                 deviceSpaceInBytes,
-                deviceInfo.GetDeviceDecommissionedSpaceInBytes(), deviceInfo);
+                deviceInfo.GetDeviceDecommissionedSpaceInBytes(),
+                deviceInfo);
         }
     }
 

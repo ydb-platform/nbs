@@ -1,7 +1,5 @@
 #include "topic_api.h"
 
-#include <contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core/ut/ut_utils/test_server.h>
-
 #include <cloud/blockstore/libs/logbroker/iface/config.h>
 #include <cloud/blockstore/libs/logbroker/iface/logbroker.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
@@ -9,6 +7,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <contrib/ydb/public/sdk/cpp/client/ydb_persqueue_core/ut/ut_utils/test_server.h>
 #include <contrib/ydb/public/sdk/cpp/client/ydb_topic/topic.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -48,22 +47,23 @@ NKikimr::Tests::TServerSettings MakeServerSettings()
     settings.PQConfig.SetRoot("/Root");
     settings.PQConfig.SetDatabase("/Root");
 
-    settings.SetLoggerInitializer([] (NActors::TTestActorRuntime& runtime) {
-        runtime.SetLogPriority(PQ_READ_PROXY, PRI_DEBUG);
-        runtime.SetLogPriority(PQ_WRITE_PROXY, PRI_DEBUG);
-        runtime.SetLogPriority(PQ_MIRRORER, PRI_DEBUG);
-        runtime.SetLogPriority(PQ_METACACHE, PRI_DEBUG);
-        runtime.SetLogPriority(PERSQUEUE, PRI_DEBUG);
-        runtime.SetLogPriority(PERSQUEUE_CLUSTER_TRACKER, PRI_DEBUG);
-    });
+    settings.SetLoggerInitializer(
+        [](NActors::TTestActorRuntime& runtime)
+        {
+            runtime.SetLogPriority(PQ_READ_PROXY, PRI_DEBUG);
+            runtime.SetLogPriority(PQ_WRITE_PROXY, PRI_DEBUG);
+            runtime.SetLogPriority(PQ_MIRRORER, PRI_DEBUG);
+            runtime.SetLogPriority(PQ_METACACHE, PRI_DEBUG);
+            runtime.SetLogPriority(PERSQUEUE, PRI_DEBUG);
+            runtime.SetLogPriority(PERSQUEUE_CLUSTER_TRACKER, PRI_DEBUG);
+        });
 
     return settings;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFixture
-    : public NUnitTest::TBaseFixture
+struct TFixture: public NUnitTest::TBaseFixture
 {
     std::optional<NPersQueue::TTestServer> Server;
 
@@ -80,22 +80,20 @@ struct TFixture
     {
         Server.emplace(MakeServerSettings());
 
-        Driver.emplace(NYdb::TDriverConfig()
-            .SetEndpoint("localhost:" + ToString(Server->GrpcPort))
-            .SetDatabase(Database));
+        Driver.emplace(
+            NYdb::TDriverConfig()
+                .SetEndpoint("localhost:" + ToString(Server->GrpcPort))
+                .SetDatabase(Database));
         Client.emplace(*Driver);
 
-        auto settings = NYdb::NTopic::TCreateTopicSettings()
-            .PartitioningSettings(1, 1);
+        auto settings =
+            NYdb::NTopic::TCreateTopicSettings().PartitioningSettings(1, 1);
 
-        NYdb::NTopic::TConsumerSettings consumers(
-            settings,
-            TestConsumer);
+        NYdb::NTopic::TConsumerSettings consumers(settings, TestConsumer);
 
         settings.AppendConsumers(consumers);
 
-        auto status = Client->CreateTopic(TestTopic, settings)
-            .GetValueSync();
+        auto status = Client->CreateTopic(TestTopic, settings).GetValueSync();
 
         UNIT_ASSERT_C(status.IsSuccess(), status);
 
@@ -106,11 +104,12 @@ struct TFixture
     {
         using namespace NYdb::NTopic;
 
-        auto session = Client->CreateReadSession(NYdb::NTopic::TReadSessionSettings()
-            .ConsumerName(TestConsumer)
-            .AppendTopics(TestTopic)
-            .Decompress(true)
-            .Log(Logging->CreateLog("Read")));
+        auto session =
+            Client->CreateReadSession(NYdb::NTopic::TReadSessionSettings()
+                                          .ConsumerName(TestConsumer)
+                                          .AppendTopics(TestTopic)
+                                          .Decompress(true)
+                                          .Log(Logging->CreateLog("Read")));
 
         TVector<TMessage> messages;
 
@@ -121,37 +120,37 @@ struct TFixture
 
             auto events = session->GetEvents();
             for (auto& event: events) {
-                std::visit(TOverloaded {
-                    [&] (TReadSessionEvent::TDataReceivedEvent& ev) {
-                        UNIT_ASSERT(!ev.HasCompressedMessages());
+                std::visit(
+                    TOverloaded{
+                        [&](TReadSessionEvent::TDataReceivedEvent& ev)
+                        {
+                            UNIT_ASSERT(!ev.HasCompressedMessages());
 
-                        for (auto& m: ev.GetMessages()) {
-                            messages.emplace_back(TMessage{
-                                m.GetData(),
-                                m.GetSeqNo()
-                            });
-                        }
+                            for (auto& m: ev.GetMessages()) {
+                                messages.emplace_back(
+                                    TMessage{m.GetData(), m.GetSeqNo()});
+                            }
 
-                        count -= std::min(ev.GetMessagesCount(), count);
+                            count -= std::min(ev.GetMessagesCount(), count);
 
-                        ev.Commit();
+                            ev.Commit();
 
-                        if (!count) {
-                            session->Close(1s);
-                        }
-                    },
-                    [&] (TReadSessionEvent::TStartPartitionSessionEvent& ev) {
-                        ev.Confirm();
-                    },
-                    [&] (TReadSessionEvent::TStopPartitionSessionEvent& ev) {
-                        ev.Confirm();
-                    },
-                    [&] (TSessionClosedEvent& ev) {
-                        UNIT_ASSERT_C(ev.IsSuccess(), ev.DebugString());
-                        sessionClosed = true;
-                    },
-                    [] (const auto&) {}
-                }, event);
+                            if (!count) {
+                                session->Close(1s);
+                            }
+                        },
+                        [&](TReadSessionEvent::TStartPartitionSessionEvent& ev)
+                        { ev.Confirm(); },
+                        [&](TReadSessionEvent::TStopPartitionSessionEvent& ev)
+                        { ev.Confirm(); },
+                        [&](TSessionClosedEvent& ev)
+                        {
+                            UNIT_ASSERT_C(ev.IsSuccess(), ev.DebugString());
+                            sessionClosed = true;
+                        },
+                        [](const auto&) {
+                        }},
+                    event);
             }
         }
 

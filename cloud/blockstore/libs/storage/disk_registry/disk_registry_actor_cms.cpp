@@ -10,8 +10,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCmsRequestActor final
-    : public TActorBootstrapped<TCmsRequestActor>
+class TCmsRequestActor final: public TActorBootstrapped<TCmsRequestActor>
 {
 private:
     const TActorId Owner;
@@ -49,7 +48,8 @@ private:
         const TActorContext& ctx);
 
     void HandleUpdateHostDeviceStateResponse(
-        const TEvDiskRegistryPrivate::TEvUpdateCmsHostDeviceStateResponse::TPtr& ev,
+        const TEvDiskRegistryPrivate::TEvUpdateCmsHostDeviceStateResponse::TPtr&
+            ev,
         const TActorContext& ctx);
 
     void HandleUpdateCmsHostStateResponse(
@@ -70,9 +70,9 @@ private:
 };
 
 TCmsRequestActor::TCmsRequestActor(
-        const TActorId& owner,
-        TRequestInfoPtr requestInfo,
-        google::protobuf::RepeatedPtrField<NProto::TAction> requests)
+    const TActorId& owner,
+    TRequestInfoPtr requestInfo,
+    google::protobuf::RepeatedPtrField<NProto::TAction> requests)
     : Owner(owner)
     , RequestInfo(std::move(requestInfo))
     , Requests(std::move(requests))
@@ -104,10 +104,7 @@ void TCmsRequestActor::SendNextRequest(const TActorContext& ctx)
                 NProto::EAgentState::AGENT_STATE_WARNING,
                 action.GetDryRun());
 
-            NCloud::Send(
-                ctx,
-                Owner,
-                std::move(request));
+            NCloud::Send(ctx, Owner, std::move(request));
             break;
         }
 
@@ -121,26 +118,19 @@ void TCmsRequestActor::SendNextRequest(const TActorContext& ctx)
                 /*shouldResumeDevice=*/false,
                 action.GetDryRun());
 
-            NCloud::Send(
-                ctx,
-                Owner,
-                std::move(request));
+            NCloud::Send(ctx, Owner, std::move(request));
 
             break;
         }
 
         case NProto::TAction_EType::TAction_EType_GET_DEPENDENT_DISKS: {
-            using TRequest =
-                TEvDiskRegistry::TEvGetDependentDisksRequest;
+            using TRequest = TEvDiskRegistry::TEvGetDependentDisksRequest;
             auto request = std::make_unique<TRequest>();
             request->Record.SetHost(action.GetHost());
             request->Record.SetPath(action.GetDevice());
             request->Record.SetIgnoreReplicatedDisks(true);
 
-            NCloud::Send(
-                ctx,
-                Owner,
-                std::move(request));
+            NCloud::Send(ctx, Owner, std::move(request));
             break;
         }
 
@@ -154,10 +144,7 @@ void TCmsRequestActor::SendNextRequest(const TActorContext& ctx)
                 /*shouldResumeDevice=*/false,
                 action.GetDryRun());
 
-            NCloud::Send(
-                ctx,
-                Owner,
-                std::move(request));
+            NCloud::Send(ctx, Owner, std::move(request));
             break;
         }
 
@@ -169,10 +156,7 @@ void TCmsRequestActor::SendNextRequest(const TActorContext& ctx)
                 NProto::EAgentState::AGENT_STATE_ONLINE,
                 action.GetDryRun());
 
-            NCloud::Send(
-                ctx,
-                Owner,
-                std::move(request));
+            NCloud::Send(ctx, Owner, std::move(request));
             break;
         }
 
@@ -313,7 +297,7 @@ STFUNC(TCmsRequestActor::StateWork)
     }
 }
 
-}; // namespace
+};   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

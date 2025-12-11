@@ -8,8 +8,7 @@ namespace NCloud::NBlockStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TConfigInitializerLocal final
-    : public TConfigInitializerCommon
+struct TConfigInitializerLocal final: public TConfigInitializerCommon
 {
     TOptionsLocalPtr Options;
 

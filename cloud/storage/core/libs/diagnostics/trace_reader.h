@@ -97,10 +97,8 @@ ITraceReaderPtr CreateSlowRequestsFilter(
     TString componentName,
     TRequestThresholds requestThresholds);
 
-ITraceReaderPtr CreateTraceLimiter(
-    TString id,
-    ITraceReaderPtr consumer,
-    ui64 limit);
+ITraceReaderPtr
+CreateTraceLimiter(TString id, ITraceReaderPtr consumer, ui64 limit);
 
 ITraceReaderPtr SetupTraceReaderWithLog(
     TString id,

@@ -92,8 +92,8 @@ NProto::TError TryToNormalize(
 ////////////////////////////////////////////////////////////////////////////////
 
 TAlignedDeviceHandler::TAlignedDeviceHandler(
-        TDeviceHandlerParams params,
-        ui32 maxSubRequestSize)
+    TDeviceHandlerParams params,
+    ui32 maxSubRequestSize)
     : Storage(
           params.CheckBufferModificationDuringWriting
               ? CreateChecksumStorageWrapper(
@@ -387,8 +387,8 @@ TFuture<NProto::TZeroBlocksResponse> TAlignedDeviceHandler::ExecuteZeroRequest(
         // The request size is quite small. We do all work at once.
         auto result = Storage->ZeroBlocks(std::move(ctx), std::move(request));
         return result.Subscribe(
-            [weakPtr = weak_from_this(),
-             range = blocksInfo.Range](const TFuture<NProto::TZeroBlocksResponse>& future)
+            [weakPtr = weak_from_this(), range = blocksInfo.Range](
+                const TFuture<NProto::TZeroBlocksResponse>& future)
             {
                 const auto& response = future.GetValue();
                 if (HasError(response)) {

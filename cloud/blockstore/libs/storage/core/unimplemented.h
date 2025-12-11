@@ -20,10 +20,8 @@ void RejectUnimplementedRequest(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo<TMethod>(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo<TMethod>(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -44,9 +42,7 @@ void RejectUnimplementedRequest(
         *requestInfo,
         std::make_unique<typename TMethod::TResponse>(MakeError(
             E_NOT_IMPLEMENTED,
-            TStringBuilder() << "Disk does not support " << TMethod::Name
-        ))
-    );
+            TStringBuilder() << "Disk does not support " << TMethod::Name)));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -2,14 +2,14 @@
 
 #include <library/cpp/string_utils/base64/base64.h>
 
-#include <openssl/crypto.h>
-#include <openssl/sha.h>
-
 #include <util/generic/singleton.h>
 #include <util/generic/yexception.h>
 #include <util/random/entropy.h>
 #include <util/stream/input.h>
 #include <util/stream/str.h>
+
+#include <openssl/crypto.h>
+#include <openssl/sha.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -17,7 +17,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void ComputeSHA384Hash(const TString& salt, const TString& secret, TString& hash)
+void ComputeSHA384Hash(
+    const TString& salt,
+    const TString& secret,
+    TString& hash)
 {
     SHA512_CTX ctx;
     SHA384_Init(&ctx);
@@ -49,7 +52,10 @@ void TMountToken::SetSecret(EFormat format, const TString& secret)
     SetSecret(format, secret, salt);
 }
 
-void TMountToken::SetSecret(EFormat format, const TString& secret, const TString& salt)
+void TMountToken::SetSecret(
+    EFormat format,
+    const TString& secret,
+    const TString& salt)
 {
     switch (format) {
         case EFormat::EMPTY:
@@ -87,9 +93,8 @@ TString TMountToken::ToString() const
         case EFormat::EMPTY:
             break;
         case EFormat::SHA384_V1:
-            out << "SHA384_V1"
-                << ':' << Base64Encode(Salt)
-                << ':' << Base64Encode(Hash);
+            out << "SHA384_V1" << ':' << Base64Encode(Salt) << ':'
+                << Base64Encode(Hash);
             break;
     }
     return result;

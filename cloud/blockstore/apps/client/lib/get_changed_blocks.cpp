@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -18,8 +19,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TGetChangedBlocksCommand final
-    : public TCommand
+class TGetChangedBlocksCommand final: public TCommand
 {
 private:
     TString DiskId;
@@ -41,7 +41,9 @@ public:
             .RequiredArgument("NUM")
             .StoreResult(&StartIndex);
 
-        Opts.AddLongOption("blocks-count", "maximum number of blocks stored in volume")
+        Opts.AddLongOption(
+                "blocks-count",
+                "maximum number of blocks stored in volume")
             .RequiredArgument("NUM")
             .StoreResult(&BlocksCount);
 
@@ -113,13 +115,15 @@ private:
             return false;
         }
 
-        const auto* startIndex = ParseResultPtr->FindLongOptParseResult("start-index");
+        const auto* startIndex =
+            ParseResultPtr->FindLongOptParseResult("start-index");
         if (!startIndex) {
             STORAGE_ERROR("Start index is required");
             return false;
         }
 
-        const auto* blocksCount = ParseResultPtr->FindLongOptParseResult("blocks-count");
+        const auto* blocksCount =
+            ParseResultPtr->FindLongOptParseResult("blocks-count");
         if (!blocksCount) {
             STORAGE_ERROR("Blocks count is required");
             return false;
@@ -129,7 +133,7 @@ private:
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

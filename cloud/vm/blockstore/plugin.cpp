@@ -94,9 +94,7 @@ int MountVolumeSync(
         volume);
 }
 
-int UnmountVolume(
-    BlockPlugin* plugin,
-    BlockPlugin_Volume* volume)
+int UnmountVolume(BlockPlugin* plugin, BlockPlugin_Volume* volume)
 {
     if (!plugin || !plugin->state) {
         return BLOCK_PLUGIN_E_ARGUMENT;
@@ -179,8 +177,7 @@ int GetCounters(
 // Global plugin state
 // Currently we only need to support 1 plugin instance per dll
 
-BlockPlugin gBlockPlugin =
-{
+BlockPlugin gBlockPlugin = {
     .magic = BLOCK_PLUGIN_MAGIC,
     .version_major = BLOCK_PLUGIN_API_VERSION_MAJOR,
     .version_minor = BLOCK_PLUGIN_API_VERSION_MINOR,
@@ -209,11 +206,10 @@ extern "C" {
 
 BlockPlugin* BlockPlugin_GetPlugin(BlockPluginHost* host, const char* options)
 {
-    if (!host
-        || host->magic != BLOCK_PLUGIN_HOST_MAGIC
-        || host->version_major != BLOCK_PLUGIN_API_VERSION_MAJOR // require major versions to match
-        || !host->complete_request
-        || !host->log_message)
+    if (!host || host->magic != BLOCK_PLUGIN_HOST_MAGIC ||
+        host->version_major !=
+            BLOCK_PLUGIN_API_VERSION_MAJOR   // require major versions to match
+        || !host->complete_request || !host->log_message)
     {
         return nullptr;
     }

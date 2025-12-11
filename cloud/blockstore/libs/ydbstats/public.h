@@ -5,7 +5,7 @@
 namespace NCloud::NBlockStore {
 
 namespace NProto {
-    class TYdbStatsConfig;
+class TYdbStatsConfig;
 }
 
 namespace NYdbStats {

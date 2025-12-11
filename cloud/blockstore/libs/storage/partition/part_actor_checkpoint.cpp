@@ -48,10 +48,8 @@ void TPartitionActor::HandleCreateCheckpoint(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -61,8 +59,9 @@ void TPartitionActor::HandleCreateCheckpoint(
 
     const auto& checkpointId = msg->Record.GetCheckpointId();
     if (!checkpointId) {
-        auto response = std::make_unique<TEvService::TEvCreateCheckpointResponse>(
-            MakeError(E_ARGUMENT, "missing checkpoint identifier"));
+        auto response =
+            std::make_unique<TEvService::TEvCreateCheckpointResponse>(
+                MakeError(E_ARGUMENT, "missing checkpoint identifier"));
 
         LWTRACK(
             ResponseSent_Partition,
@@ -82,19 +81,19 @@ void TPartitionActor::HandleCreateCheckpoint(
 
     auto tx = CreateTx<TCreateCheckpoint>(
         std::move(requestInfo),
-        TCheckpoint(
-            checkpointId,
-            commitId,
-            idempotenceId,
-            ctx.Now(),
-            {}),
-        msg->Record.GetCheckpointType() == NProto::ECheckpointType::WITHOUT_DATA);
+        TCheckpoint(checkpointId, commitId, idempotenceId, ctx.Now(), {}),
+        msg->Record.GetCheckpointType() ==
+            NProto::ECheckpointType::WITHOUT_DATA);
 
     ui64 minCommitId = State->GetCommitQueue().GetMinCommitId();
 
-    State->GetCheckpointsInFlight().AddTx(checkpointId, std::move(tx), commitId);
+    State->GetCheckpointsInFlight().AddTx(
+        checkpointId,
+        std::move(tx),
+        commitId);
 
-    auto nextTx = State->GetCheckpointsInFlight().GetTx(checkpointId, minCommitId);
+    auto nextTx =
+        State->GetCheckpointsInFlight().GetTx(checkpointId, minCommitId);
     if (nextTx) {
         ExecuteTx(ctx, std::move(nextTx));
     }
@@ -122,19 +121,22 @@ void TPartitionActor::ExecuteCreateCheckpoint(
     TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
 
-    auto checkpoint = args.Checkpoint;  // copy to update
+    auto checkpoint = args.Checkpoint;   // copy to update
     checkpoint.Stats.CopyFrom(State->GetStats());
 
     bool added = (args.WithoutData)
-                ? State->GetCheckpoints().AddCheckpointMapping(checkpoint)
-                : State->GetCheckpoints().Add(checkpoint);
+                     ? State->GetCheckpoints().AddCheckpointMapping(checkpoint)
+                     : State->GetCheckpoints().Add(checkpoint);
     if (added) {
         db.WriteCheckpoint(checkpoint, args.WithoutData);
     } else {
-        auto existingIdempotenceId = State->GetCheckpoints().GetIdempotenceId(checkpoint.CheckpointId);
+        auto existingIdempotenceId =
+            State->GetCheckpoints().GetIdempotenceId(checkpoint.CheckpointId);
         if (existingIdempotenceId != checkpoint.IdempotenceId) {
-            args.Error = MakeError(S_ALREADY, TStringBuilder()
-                << "checkpoint already exists: " << checkpoint.CheckpointId.Quote());
+            args.Error = MakeError(
+                S_ALREADY,
+                TStringBuilder() << "checkpoint already exists: "
+                                 << checkpoint.CheckpointId.Quote());
         }
     }
 }
@@ -143,7 +145,8 @@ void TPartitionActor::CompleteCreateCheckpoint(
     const TActorContext& ctx,
     TTxPartition::TCreateCheckpoint& args)
 {
-    auto response = std::make_unique<TEvService::TEvCreateCheckpointResponse>(args.Error);
+    auto response =
+        std::make_unique<TEvService::TEvCreateCheckpointResponse>(args.Error);
 
     LWTRACK(
         ResponseSent_Partition,
@@ -190,10 +193,8 @@ void TPartitionActor::DeleteCheckpoint(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -219,7 +220,10 @@ void TPartitionActor::DeleteCheckpoint(
 
     const auto& checkpointId = msg->Record.GetCheckpointId();
     if (!checkpointId) {
-        reply(ctx, requestInfo, MakeError(E_ARGUMENT, "missing checkpoint identifier"));
+        reply(
+            ctx,
+            requestInfo,
+            MakeError(E_ARGUMENT, "missing checkpoint identifier"));
         return;
     }
 
@@ -235,7 +239,8 @@ void TPartitionActor::DeleteCheckpoint(
 
     State->GetCheckpointsInFlight().AddTx(checkpointId, std::move(tx));
 
-    auto nextTx = State->GetCheckpointsInFlight().GetTx(checkpointId, minCommitId);
+    auto nextTx =
+        State->GetCheckpointsInFlight().GetTx(checkpointId, minCommitId);
     if (nextTx) {
         ExecuteTx(ctx, std::move(nextTx));
     }
@@ -265,14 +270,17 @@ void TPartitionActor::ExecuteDeleteCheckpoint(
 
     bool deleted = State->GetCheckpoints().Delete(args.CheckpointId);
     if (!args.DeleteOnlyData) {
-        deleted |= State->GetCheckpoints().DeleteCheckpointMapping(args.CheckpointId);
+        deleted |=
+            State->GetCheckpoints().DeleteCheckpointMapping(args.CheckpointId);
     }
 
     if (deleted) {
         db.DeleteCheckpoint(args.CheckpointId, args.DeleteOnlyData);
     } else {
-        args.Error = MakeError(S_ALREADY, TStringBuilder()
-            << "checkpoint not found: " << args.CheckpointId.Quote());
+        args.Error = MakeError(
+            S_ALREADY,
+            TStringBuilder()
+                << "checkpoint not found: " << args.CheckpointId.Quote());
     }
 }
 

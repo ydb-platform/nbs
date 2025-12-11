@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+
 #include <cloud/storage/core/protos/error.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -50,7 +51,7 @@ private:
 public:
     TMigrationRequestActor(
         TRequestInfoPtr requestInfo,
-        NActors::TActorId leaderPartition,  // may be empty
+        NActors::TActorId leaderPartition,   // may be empty
         NActors::TActorId followerPartition,
         typename TMethod::TRequest::ProtoRecordType request,
         TString diskId,
@@ -95,13 +96,13 @@ private:
 
 template <typename TMethod>
 TMigrationRequestActor<TMethod>::TMigrationRequestActor(
-        TRequestInfoPtr requestInfo,
-        NActors::TActorId leaderPartition,
-        NActors::TActorId followerPartition,
-        typename TMethod::TRequest::ProtoRecordType request,
-        TString diskId,
-        NActors::TActorId parentActorId,
-        ui64 nonreplicatedRequestCounter)
+    TRequestInfoPtr requestInfo,
+    NActors::TActorId leaderPartition,
+    NActors::TActorId followerPartition,
+    typename TMethod::TRequest::ProtoRecordType request,
+    TString diskId,
+    NActors::TActorId parentActorId,
+    ui64 nonreplicatedRequestCounter)
     : RequestInfo(std::move(requestInfo))
     , LeaderPartition(leaderPartition)
     , FollowerPartition(followerPartition)
@@ -114,7 +115,8 @@ TMigrationRequestActor<TMethod>::TMigrationRequestActor(
 }
 
 template <typename TMethod>
-void TMigrationRequestActor<TMethod>::Bootstrap(const NActors::TActorContext& ctx)
+void TMigrationRequestActor<TMethod>::Bootstrap(
+    const NActors::TActorContext& ctx)
 {
     TRequestScope timer(*RequestInfo);
 

@@ -85,8 +85,7 @@ public:
 
 TIO::TIO(const TString& filePath, ui32 blockSize)
     : Impl(new TImpl(filePath, blockSize))
-{
-}
+{}
 
 TIO::~TIO() = default;
 

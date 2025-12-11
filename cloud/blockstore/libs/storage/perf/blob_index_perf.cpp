@@ -125,8 +125,7 @@ void FindBlob(
         ZoneBlockCount,
         BlockListCacheSize,
         MaxBlocksInBlob,
-        DeletedRangesMapMode
-    );
+        DeletedRangesMapMode);
     for (const auto& blob: blobs) {
         auto blobRange = TBlockRange32::MakeClosedInterval(
             blob.Blocks.front().BlockIndex,
@@ -147,9 +146,12 @@ void FindBlob(
             index = 0;
         }
 
-        Y_DO_NOT_OPTIMIZE_AWAY(blobIndex.FindBlob(
-            blob.Blocks.front().BlockIndex / ZoneBlockCount,
-            blob.BlobId).Blob);
+        Y_DO_NOT_OPTIMIZE_AWAY(
+            blobIndex
+                .FindBlob(
+                    blob.Blocks.front().BlockIndex / ZoneBlockCount,
+                    blob.BlobId)
+                .Blob);
     }
 }
 
@@ -162,8 +164,7 @@ void FindBlobs(
         ZoneBlockCount,
         BlockListCacheSize,
         MaxBlocksInBlob,
-        DeletedRangesMapMode
-    );
+        DeletedRangesMapMode);
     for (const auto& blob: blobs) {
         auto blobRange = TBlockRange32::MakeClosedInterval(
             blob.Blocks.front().BlockIndex,
@@ -189,10 +190,11 @@ void FindBlobs(
             blob.Blocks.back().BlockIndex);
 
         ui32 rangeSize = 1 + Random.Uniform(blobRange.Size() / 2);
-        ui32 startIndex = blobRange.Start + Random.Uniform(blobRange.Size() - rangeSize);
+        ui32 startIndex =
+            blobRange.Start + Random.Uniform(blobRange.Size() - rangeSize);
 
-        Y_DO_NOT_OPTIMIZE_AWAY(
-            blobIndex.FindBlobs(TBlockRange32::WithLength(startIndex, rangeSize)));
+        Y_DO_NOT_OPTIMIZE_AWAY(blobIndex.FindBlobs(
+            TBlockRange32::WithLength(startIndex, rangeSize)));
     }
 }
 
@@ -240,8 +242,7 @@ Y_CPU_BENCHMARK(TDisjointRangeMap_OptimizeForLongRanges_LongMarks, iface)
     MarkAndFind(
         RandomLongMarks,
         EOptimizationMode::OptimizeForLongRanges,
-        iface
-    );
+        iface);
 }
 
 Y_CPU_BENCHMARK(TDisjointRangeMap_OptimizeForLongRanges_ShortMarks, iface)
@@ -249,8 +250,7 @@ Y_CPU_BENCHMARK(TDisjointRangeMap_OptimizeForLongRanges_ShortMarks, iface)
     MarkAndFind(
         RandomShortMarks,
         EOptimizationMode::OptimizeForLongRanges,
-        iface
-    );
+        iface);
 }
 
 Y_CPU_BENCHMARK(TDisjointRangeMap_OptimizeForShortRanges_LongMarks, iface)
@@ -258,8 +258,7 @@ Y_CPU_BENCHMARK(TDisjointRangeMap_OptimizeForShortRanges_LongMarks, iface)
     MarkAndFind(
         RandomLongMarks,
         EOptimizationMode::OptimizeForShortRanges,
-        iface
-    );
+        iface);
 }
 
 Y_CPU_BENCHMARK(TDisjointRangeMap_OptimizeForShortRanges_ShortMarks, iface)
@@ -267,6 +266,5 @@ Y_CPU_BENCHMARK(TDisjointRangeMap_OptimizeForShortRanges_ShortMarks, iface)
     MarkAndFind(
         RandomShortMarks,
         EOptimizationMode::OptimizeForShortRanges,
-        iface
-    );
+        iface);
 }

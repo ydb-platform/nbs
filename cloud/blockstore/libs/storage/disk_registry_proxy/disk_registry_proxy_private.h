@@ -53,8 +53,8 @@ struct TEvDiskRegistryProxyPrivate
         TDiskRegistryChannelKinds Kinds;
 
         TDiskRegistryCreateResult(
-                ui64 tabletId,
-                TDiskRegistryChannelKinds kinds)
+            ui64 tabletId,
+            TDiskRegistryChannelKinds kinds)
             : TabletId(tabletId)
             , Kinds(std::move(kinds))
         {}

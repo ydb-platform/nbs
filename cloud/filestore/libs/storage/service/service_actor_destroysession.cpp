@@ -56,24 +56,20 @@ private:
         const TEvents::TEvPoisonPill::TPtr& ev,
         const TActorContext& ctx);
 
-    void ReplyAndDie(
-        const TActorContext& ctx,
-        const NProto::TError& error);
+    void ReplyAndDie(const TActorContext& ctx, const NProto::TError& error);
 
-    void Notify(
-        const TActorContext& ctx,
-        const NProto::TError& error);
+    void Notify(const TActorContext& ctx, const NProto::TError& error);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TDestroySessionActor::TDestroySessionActor(
-        TStorageConfigPtr config,
-        TRequestInfoPtr requestInfo,
-        TString clientId,
-        TString fileSystemId,
-        TString sessionId,
-        ui64 seqNo)
+    TStorageConfigPtr config,
+    TRequestInfoPtr requestInfo,
+    TString clientId,
+    TString fileSystemId,
+    TString sessionId,
+    ui64 seqNo)
     : Config(std::move(config))
     , RequestInfo(std::move(requestInfo))
     , ClientId(std::move(clientId))
@@ -108,7 +104,9 @@ void TDestroySessionActor::HandleDestroySessionResponse(
 {
     const auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::SERVICE_WORKER,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE_WORKER,
         "[%s] client removed (%s)",
         SessionId.Quote().c_str(),
         FormatError(msg->GetError()).c_str());
@@ -139,7 +137,9 @@ void TDestroySessionActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    LOG_DEBUG(ctx, TFileStoreComponents::SERVICE_WORKER,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE_WORKER,
         "[%s] destroy poisoned, dying",
         SessionId.Quote().c_str());
 
@@ -158,7 +158,9 @@ void TDestroySessionActor::Notify(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::SERVICE_WORKER,
         "[%s] session stop completed (%s)",
         SessionId.Quote().c_str(),
         FormatError(error).c_str());
@@ -214,7 +216,8 @@ void TStorageServiceActor::HandleDestroySession(
 
     InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
 
-    auto reply = [&, inflight = std::move(inflight)] (auto error) {
+    auto reply = [&, inflight = std::move(inflight)](auto error)
+    {
         auto response =
             std::make_unique<TEvService::TEvDestroySessionResponse>(error);
         inflight->Complete(ctx.Now(), std::move(error));
@@ -224,14 +227,14 @@ void TStorageServiceActor::HandleDestroySession(
     auto* session = State->FindSession(sessionId, seqNo);
     if (!session) {
         // session still needs to be destroyed in index tablet
-        LOG_INFO(ctx, TFileStoreComponents::SERVICE,
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::SERVICE,
             "%s DestroySession - tablet only",
             LogTag(fsId, clientId, sessionId, seqNo).c_str());
 
-        auto requestInfo = CreateRequestInfo(
-            SelfId(),
-            cookie,
-            msg->CallContext);
+        auto requestInfo =
+            CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
         auto actor = std::make_unique<TDestroySessionActor>(
             StorageConfig,
@@ -252,8 +255,8 @@ void TStorageServiceActor::HandleDestroySession(
             "Another create or destroy request is in progress"));
     }
 
-    if (session->ClientId != clientId
-            || session->FileStore.GetFileSystemId() != fsId)
+    if (session->ClientId != clientId ||
+        session->FileStore.GetFileSystemId() != fsId)
     {
         return reply(ErrorInvalidSession(clientId, sessionId, seqNo));
     }
@@ -263,12 +266,16 @@ void TStorageServiceActor::HandleDestroySession(
             MakeError(E_REJECTED, "session destruction is in progress"));
     }
 
-    LOG_INFO(ctx, TFileStoreComponents::SERVICE,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::SERVICE,
         "%s DestroySession",
         LogTag(fsId, clientId, sessionId, seqNo).c_str());
 
     if (State->IsLastSubSession(sessionId, seqNo)) {
-        LOG_INFO(ctx, TFileStoreComponents::SERVICE,
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::SERVICE,
             "%s Kill session actor %s from %s",
             LogTag(fsId, clientId, sessionId, seqNo).c_str(),
             ToString(session->SessionActor).c_str(),
@@ -286,10 +293,7 @@ void TStorageServiceActor::HandleDestroySession(
     session->CreateDestroyState =
         ESessionCreateDestroyState::STATE_DESTROY_SESSION;
 
-    auto requestInfo = CreateRequestInfo(
-        SelfId(),
-        cookie,
-        msg->CallContext);
+    auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
     auto actor = std::make_unique<TDestroySessionActor>(
         StorageConfig,
@@ -322,14 +326,18 @@ void TStorageServiceActor::HandleSessionDestroyed(
 
     auto* inflight = FindInFlightRequest(ev->Cookie);
     if (!inflight) {
-        LOG_CRIT(ctx, TFileStoreComponents::SERVICE,
+        LOG_CRIT(
+            ctx,
+            TFileStoreComponents::SERVICE,
             "[%s] failed to complete DestroySession: invalid cookie (%lu)",
             msg->SessionId.Quote().c_str(),
             ev->Cookie);
         return;
     }
 
-    LOG_INFO(ctx, TFileStoreComponents::SERVICE,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::SERVICE,
         "[%s] DestroySession completed (%s)",
         msg->SessionId.Quote().c_str(),
         FormatError(msg->GetError()).c_str());

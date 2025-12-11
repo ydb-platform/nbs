@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -14,8 +15,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAssignVolumeCommand final
-    : public TCommand
+class TAssignVolumeCommand final: public TCommand
 {
 private:
     TString DiskId;
@@ -105,7 +105,7 @@ private:
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

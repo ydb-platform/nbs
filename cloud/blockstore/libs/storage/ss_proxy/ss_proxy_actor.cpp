@@ -18,14 +18,13 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const THashSet<ui32> RetriableTxProxyErrors {
+const THashSet<ui32> RetriableTxProxyErrors{
     NKikimr::NTxProxy::TResultStatus::ProxyNotReady,
     NKikimr::NTxProxy::TResultStatus::ProxyShardNotAvailable,
     NKikimr::NTxProxy::TResultStatus::ProxyShardTryLater,
     NKikimr::NTxProxy::TResultStatus::ProxyShardOverloaded,
     NKikimr::NTxProxy::TResultStatus::ExecTimeout,
-    NKikimr::NTxProxy::TResultStatus::ExecResultUnavailable
-};
+    NKikimr::NTxProxy::TResultStatus::ExecResultUnavailable};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -36,8 +35,7 @@ std::unique_ptr<NTabletPipe::IClientCache> CreateTabletPipeClientCache(
     clientConfig.RetryPolicy = {
         .RetryLimitCount = config.GetPipeClientRetryCount(),
         .MinRetryTime = config.GetPipeClientMinRetryTime(),
-        .MaxRetryTime = config.GetPipeClientMaxRetryTime()
-    };
+        .MaxRetryTime = config.GetPipeClientMaxRetryTime()};
 
     return std::unique_ptr<NTabletPipe::IClientCache>(
         NTabletPipe::CreateUnboundedClientCache(clientConfig));
@@ -65,7 +63,9 @@ void TSSProxyActor::Bootstrap(const TActorContext& ctx)
             /*readOnlyMode=*/false);
 
         PathDescriptionBackup = ctx.Register(
-            cache.release(), TMailboxType::HTSwap, AppData()->IOPoolId);
+            cache.release(),
+            TMailboxType::HTSwap,
+            AppData()->IOPoolId);
     }
 }
 
@@ -78,8 +78,10 @@ void TSSProxyActor::HandleConnect(
     const auto* msg = ev->Get();
 
     if (!ClientCache->OnConnect(ev)) {
-        auto error = MakeKikimrError(msg->Status, TStringBuilder()
-            << "Connect to schemeshard " << msg->TabletId << " failed");
+        auto error = MakeKikimrError(
+            msg->Status,
+            TStringBuilder()
+                << "Connect to schemeshard " << msg->TabletId << " failed");
 
         OnConnectionError(ctx, error, msg->TabletId);
     }
@@ -93,8 +95,9 @@ void TSSProxyActor::HandleDisconnect(
 
     ClientCache->OnDisconnect(ev);
 
-    auto error = MakeError(E_REJECTED, TStringBuilder()
-        << "Disconnected from schemeshard " << msg->TabletId);
+    auto error = MakeError(
+        E_REJECTED,
+        TStringBuilder() << "Disconnected from schemeshard " << msg->TabletId);
 
     OnConnectionError(ctx, error, msg->TabletId);
 }
@@ -109,7 +112,7 @@ void TSSProxyActor::OnConnectionError(
     // SchemeShard is a tablet, so it should eventually get up
     // Re-send all outstanding requests
     if (auto* state = SchemeShardStates.FindPtr(schemeShard)) {
-        for (const auto& kv : state->TxToRequests) {
+        for (const auto& kv: state->TxToRequests) {
             ui64 txId = kv.first;
             SendWaitTxRequest(ctx, schemeShard, txId);
         }
@@ -136,7 +139,9 @@ STFUNC(TSSProxyActor::StateWork)
         HFunc(TEvTabletPipe::TEvClientConnected, HandleConnect);
         HFunc(TEvTabletPipe::TEvClientDestroyed, HandleDisconnect);
 
-        HFunc(TEvSchemeShard::TEvNotifyTxCompletionRegistered, HandleTxRegistered);
+        HFunc(
+            TEvSchemeShard::TEvNotifyTxCompletionRegistered,
+            HandleTxRegistered);
         HFunc(TEvSchemeShard::TEvNotifyTxCompletionResult, HandleTxResult);
 
         default:

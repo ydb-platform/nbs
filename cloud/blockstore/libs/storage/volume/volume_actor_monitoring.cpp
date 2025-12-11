@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/config.h>
+
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
@@ -24,9 +25,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IOutputStream& operator <<(
-    IOutputStream& out,
-    ECheckpointData checkpointData)
+IOutputStream& operator<<(IOutputStream& out, ECheckpointData checkpointData)
 {
     switch (checkpointData) {
         case ECheckpointData::DataPresent:
@@ -34,10 +33,8 @@ IOutputStream& operator <<(
         case ECheckpointData::DataDeleted:
             return out << "<font color=red>data deleted</font>";
         default:
-            return out
-                << "(Unknown value "
-                << static_cast<int>(checkpointData)
-                << ")";
+            return out << "(Unknown value " << static_cast<int>(checkpointData)
+                       << ")";
     }
 }
 
@@ -59,9 +56,7 @@ IOutputStream& operator<<(IOutputStream& out, EShadowDiskState state)
     return out;
 }
 
-IOutputStream& operator <<(
-    IOutputStream& out,
-    NProto::EVolumeIOMode ioMode)
+IOutputStream& operator<<(IOutputStream& out, NProto::EVolumeIOMode ioMode)
 {
     switch (ioMode) {
         case NProto::VOLUME_IO_OK:
@@ -69,14 +64,12 @@ IOutputStream& operator <<(
         case NProto::VOLUME_IO_ERROR_READ_ONLY:
             return out << "<font color=red>read only</font>";
         default:
-            return out
-                << "(Unknown EVolumeIOMode value "
-                << static_cast<int>(ioMode)
-                << ")";
+            return out << "(Unknown EVolumeIOMode value "
+                       << static_cast<int>(ioMode) << ")";
     }
 }
 
-IOutputStream& operator <<(
+IOutputStream& operator<<(
     IOutputStream& out,
     NProto::EVolumeAccessMode accessMode)
 {
@@ -90,24 +83,29 @@ IOutputStream& operator <<(
         case NProto::VOLUME_ACCESS_USER_READ_ONLY:
             return out << "User read only";
         default:
-            Y_DEBUG_ABORT_UNLESS(false, "Unknown EVolumeAccessMode: %d", accessMode);
+            Y_DEBUG_ABORT_UNLESS(
+                false,
+                "Unknown EVolumeAccessMode: %d",
+                accessMode);
             return out << "Undefined";
     }
 }
 
-IOutputStream& operator <<(
+IOutputStream& operator<<(
     IOutputStream& out,
     const NKikimrBlockStore::TEncryptionDesc& desc)
 {
     const auto encryptionMode =
         static_cast<NProto::EEncryptionMode>(desc.GetMode());
 
-    HTML(out) {
-        DIV() { out << NProto::EEncryptionMode_Name(encryptionMode); }
+    HTML (out) {
+        DIV () {
+            out << NProto::EEncryptionMode_Name(encryptionMode);
+        }
 
         switch (encryptionMode) {
             case NProto::ENCRYPTION_AES_XTS: {
-                DIV() {
+                DIV () {
                     const auto& keyHash = desc.GetKeyHash();
                     if (keyHash.empty()) {
                         out << "Binding to the encryption key has not yet "
@@ -121,8 +119,10 @@ IOutputStream& operator <<(
 
             case NProto::ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY: {
                 const auto& key = desc.GetEncryptedDataKey();
-                DIV() { out << "Kek Id: " << key.GetKekId().Quote(); }
-                DIV() {
+                DIV () {
+                    out << "Kek Id: " << key.GetKekId().Quote();
+                }
+                DIV () {
                     out << "Encrypted DEK has " << key.GetCiphertext().size()
                         << " bytes length";
                 }
@@ -159,7 +159,8 @@ void OutputProgress(
         if (totalBlocks) {
             readyPercent =
                 (TStringBuilder()
-                 << (1000 * (totalBlocks - *blocksToProcess) / totalBlocks) * 0.1);
+                 << (1000 * (totalBlocks - *blocksToProcess) / totalBlocks) *
+                        0.1);
         }
     }
 
@@ -168,22 +169,18 @@ void OutputProgress(
         << "</font> = " << totalSize << ", " << readyPercent << "%)";
 }
 
-
 void RenderCheckpointRequest(
     IOutputStream& out,
     const TCheckpointRequest& request)
 {
-    HTML(out)
-    {
+    HTML (out) {
         if (request.ShadowDiskId) {
-            DIV()
-            {
+            DIV () {
                 out << "Shadow disk: " << request.ShadowDiskId.Quote();
             }
         }
 
-        DIV()
-        {
+        DIV () {
             out << "State: " << request.ShadowDiskState;
             if (request.ShadowDiskState == EShadowDiskState::Preparing) {
                 out << ", processed blocks: "
@@ -192,8 +189,7 @@ void RenderCheckpointRequest(
         }
 
         if (request.CheckpointError) {
-            DIV()
-            {
+            DIV () {
                 out << "Error: " << request.CheckpointError;
             }
         }
@@ -206,10 +202,8 @@ void RenderCheckpointInfo(
     const TActiveCheckpointInfo& checkpointInfo,
     IOutputStream& out)
 {
-    HTML(out)
-    {
-        DIV()
-        {
+    HTML (out) {
+        DIV () {
             switch (checkpointInfo.Type) {
                 case ECheckpointType::Light: {
                     out << "no data (light)";
@@ -220,17 +214,14 @@ void RenderCheckpointInfo(
             }
         }
         if (checkpointInfo.IsShadowDiskBased()) {
-            DIV()
-            {
+            DIV () {
                 out << " Shadow disk: " << checkpointInfo.ShadowDiskId.Quote();
             }
-            DIV()
-            {
+            DIV () {
                 out << " State: " << checkpointInfo.ShadowDiskState;
             }
             if (checkpointInfo.ShadowDiskState == EShadowDiskState::Preparing) {
-                DIV()
-                {
+                DIV () {
                     out << "Block: ";
                     OutputProgress(
                         checkpointInfo.ProcessedBlockCount,
@@ -249,11 +240,12 @@ void RenderCheckpointInfo(
 void RenderFollowers(IOutputStream& out, const TFollowerDisks& followers)
 {
     HTML (out) {
-        TAG(TH3) {
+        TAG (TH3) {
             out << "Followers:";
         }
         DIV_CLASS ("row") {
-            TABLE_SORTABLE_CLASS ("table table-bordered") {
+            TABLE_SORTABLE_CLASS("table table-bordered")
+            {
                 TABLEHEAD () {
                     TABLER () {
                         TABLEH () {
@@ -309,12 +301,13 @@ void RenderFollowers(IOutputStream& out, const TFollowerDisks& followers)
 void RenderLeaders(IOutputStream& out, const TLeaderDisks& leaders)
 {
     HTML (out) {
-        TAG(TH3) {
+        TAG (TH3) {
             out << "Leaders:";
         }
 
         DIV_CLASS ("row") {
-            TABLE_SORTABLE_CLASS ("table table-bordered") {
+            TABLE_SORTABLE_CLASS("table table-bordered")
+            {
                 TABLEHEAD () {
                     TABLER () {
                         TABLEH () {
@@ -368,9 +361,8 @@ void BuildVolumeRemoveClientButton(
         << "<input type='hidden' name='Volume' value='" << diskId << "'/>"
         << "<input type='hidden' name='action' value='removeclient'/>"
         << "<input class='btn btn-primary' type='button' value='Remove' "
-        << "data-toggle='modal' data-target='#volume-remove-client-"
-        << id << "'/>"
-        << "</form>" << Endl;
+        << "data-toggle='modal' data-target='#volume-remove-client-" << id
+        << "'/>" << "</form>" << Endl;
 
     BuildConfirmActionDialog(
         out,
@@ -391,8 +383,7 @@ void BuildVolumeResetMountSeqNumberButton(
         << "<input type='hidden' name='action' value='resetmountseqnumber'/>"
         << "<input class='btn btn-primary' type='button' value='Reset' "
         << "data-toggle='modal' data-target='#volume-reset-seqnumber-"
-        << clientId << "'/>"
-        << "</form>" << Endl;
+        << clientId << "'/>" << "</form>" << Endl;
 
     BuildConfirmActionDialog(
         out,
@@ -413,12 +404,15 @@ void BuildHistoryNextButton(
         key.Timestamp -= TDuration::MicroSeconds(1);
         key.SeqNo = Max<ui64>();
     }
-    out << "<form method='GET' name='NextHistoryPage' style='display:inline-block'>"
-        << "<input type='hidden' name='timestamp' value='" << key.Timestamp.MicroSeconds() << "'/>"
+    out << "<form method='GET' name='NextHistoryPage' "
+           "style='display:inline-block'>"
+        << "<input type='hidden' name='timestamp' value='"
+        << key.Timestamp.MicroSeconds() << "'/>"
         << "<input type='hidden' name='seqno' value='" << key.SeqNo << "'/>"
         << "<input type='hidden' name='next' value='true'/>"
         << "<input type='hidden' name='TabletID' value='" << tabletId << "'/>"
-        << "<input class='btn btn-primary display:inline-block' type='submit' value='Next>>'/>"
+        << "<input class='btn btn-primary display:inline-block' type='submit' "
+           "value='Next>>'/>"
         << "</form>" << Endl;
 }
 
@@ -431,9 +425,10 @@ void BuildStartPartitionsButton(
         << "<input type='hidden' name='TabletID' value='" << tabletId << "'/>"
         << "<input type='hidden' name='Volume' value='" << diskId << "'/>"
         << "<input type='hidden' name='action' value='startpartitions'/>"
-        << "<input class='btn btn-primary' type='button' value='Start Partitions' "
-        << "data-toggle='modal' data-target='#start-partitions'/>"
-        << "</form>" << Endl;
+        << "<input class='btn btn-primary' type='button' value='Start "
+           "Partitions' "
+        << "data-toggle='modal' data-target='#start-partitions'/>" << "</form>"
+        << Endl;
 
     BuildConfirmActionDialog(
         out,
@@ -495,48 +490,62 @@ void OutputClientInfo(
     bool isStale,
     TVolumeClientState::TPipes pipes)
 {
-    HTML(out) {
-        TABLER() {
-            TABLED() { out << clientId; }
-            TABLED() {
+    HTML (out) {
+        TABLER () {
+            TABLED () {
+                out << clientId;
+            }
+            TABLED () {
                 out << accessMode;
             }
-            TABLED() {
+            TABLED () {
                 if (mountMode == NProto::VOLUME_MOUNT_LOCAL) {
                     out << "Local";
                 } else {
                     out << "Remote";
                 }
             }
-            TABLED() {
+            TABLED () {
                 auto time = disconnectTimestamp;
                 if (time) {
-                    out << TInstant::MicroSeconds(time).ToStringLocalUpToSeconds();
+                    out << TInstant::MicroSeconds(time)
+                               .ToStringLocalUpToSeconds();
                 }
             }
-            TABLED() {
+            TABLED () {
                 auto time = lastActivityTimestamp;
                 if (time) {
-                    out << TInstant::MicroSeconds(time).ToStringLocalUpToSeconds();
+                    out << TInstant::MicroSeconds(time)
+                               .ToStringLocalUpToSeconds();
                 }
             }
-            TABLED() {
+            TABLED () {
                 if (isStale) {
                     out << "Stale";
                 } else {
                     out << "Actual";
                 }
             }
-            TABLED() {
-                UL() {
+            TABLED () {
+                UL()
+                {
                     for (const auto& p: pipes) {
-                        if (p.second.State != TVolumeClientState::EPipeState::DEACTIVATED) {
-                            if (p.second.State == TVolumeClientState::EPipeState::WAIT_START) {
-                                LI() {
+                        if (p.second.State !=
+                            TVolumeClientState::EPipeState::DEACTIVATED)
+                        {
+                            if (p.second.State ==
+                                TVolumeClientState::EPipeState::WAIT_START)
+                            {
+                                LI()
+                                {
                                     out << p.first << "[Wait]";
                                 }
-                            } else if (p.second.State == TVolumeClientState::EPipeState::ACTIVE) {
-                                LI() {
+                            } else if (
+                                p.second.State ==
+                                TVolumeClientState::EPipeState::ACTIVE)
+                            {
+                                LI()
+                                {
                                     out << p.first << "[Active]";
                                 }
                             }
@@ -544,7 +553,7 @@ void OutputClientInfo(
                     }
                 }
             }
-            TABLED() {
+            TABLED () {
                 BuildVolumeRemoveClientButton(
                     out,
                     clientNo,
@@ -956,7 +965,7 @@ bool IsSetDefaultThrottlingPolicy(const TVolumeState* state)
                volumeThrottlingPolicyConfig.GetMaxWriteBandwidth();
 }
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -975,7 +984,7 @@ void TVolumeActor::HandleHttpInfo(
     const NMon::TEvRemoteHttpInfo::TPtr& ev,
     const TActorContext& ctx)
 {
-    using THttpHandler = void(TVolumeActor::*)(
+    using THttpHandler = void (TVolumeActor::*)(
         const NActors::TActorContext&,
         const TCgiParameters&,
         TRequestInfoPtr);
@@ -995,7 +1004,7 @@ void TVolumeActor::HandleHttpInfo(
          &TActor::HandleHttpInfo_ResetTransactionLatencyStats},
         {"resetRequestLatencyStats",
          &TActor::HandleHttpInfo_ResetRequestLatencyStats},
-         {"resetDeviceOperationLatencyStats",
+        {"resetDeviceOperationLatencyStats",
          &TActor::HandleHttpInfo_ResetDeviceOperationLatencyStats},
     }};
 
@@ -1006,8 +1015,7 @@ void TVolumeActor::HandleHttpInfo(
          &TActor::HandleHttpInfo_GetTransactionsLatency},
         {"getTransactionsInflight",
          &TActor::HandleHttpInfo_GetTransactionsInflight},
-        {"getRequestsInflight",
-         &TActor::HandleHttpInfo_GetRequestsInflight},
+        {"getRequestsInflight", &TActor::HandleHttpInfo_GetRequestsInflight},
         {"getDeviceLatency", &TActor::HandleHttpInfo_GetDeviceLatency},
         {"getDeviceOperationsInflight",
          &TActor::HandleHttpInfo_GetDeviceOperationsInflight},
@@ -1087,7 +1095,7 @@ void TVolumeActor::HandleHttpInfo_Default(
         TryFromString(params.Get("seqno"), seqNo))
     {
         auto cancelRoutine =
-        [] (const TActorContext& ctx, TRequestInfo& requestInfo)
+            [](const TActorContext& ctx, TRequestInfo& requestInfo)
         {
             TStringStream out;
 
@@ -1095,8 +1103,7 @@ void TVolumeActor::HandleHttpInfo_Default(
             NCloud::Reply(
                 ctx,
                 requestInfo,
-                std::make_unique<NMon::TEvRemoteHttpInfoRes>(
-                    out.Str()));
+                std::make_unique<NMon::TEvRemoteHttpInfoRes>(out.Str()));
         };
 
         requestInfo->CancelRoutine = cancelRoutine;
@@ -1160,47 +1167,61 @@ void TVolumeActor::HandleHttpInfo_Default(
 
     TStringStream out;
 
-    HTML(out) {
+    HTML (out) {
         AddLatencyCSS(out);
 
-        DIV_CLASS_ID("container-fluid", "tabs") {
+        DIV_CLASS_ID("container-fluid", "tabs")
+        {
             BuildVolumeTabs(out);
 
-            DIV_CLASS("tab-content") {
-                DIV_CLASS_ID(overviewTab, overviewTabName) {
-                    DumpDefaultHeader(out, *Info(), SelfId().NodeId(), *DiagnosticsConfig);
+            DIV_CLASS ("tab-content") {
+                DIV_CLASS_ID(overviewTab, overviewTabName)
+                {
+                    DumpDefaultHeader(
+                        out,
+                        *Info(),
+                        SelfId().NodeId(),
+                        *DiagnosticsConfig);
                     RenderHtmlInfo(out, ctx.Now());
                 }
 
-                DIV_CLASS_ID(historyTab, historyTabName) {
+                DIV_CLASS_ID(historyTab, historyTabName)
+                {
                     RenderHistory(history, metaHistory, out);
                 }
 
-                DIV_CLASS_ID(checkpointsTab, checkpointsTabName) {
+                DIV_CLASS_ID(checkpointsTab, checkpointsTabName)
+                {
                     RenderCheckpoints(out);
                 }
 
-                DIV_CLASS_ID(linksTab, linksTabName) {
+                DIV_CLASS_ID(linksTab, linksTabName)
+                {
                     RenderLinks(out);
                 }
 
-                DIV_CLASS_ID(latencyTab, latencyTabName) {
+                DIV_CLASS_ID(latencyTab, latencyTabName)
+                {
                     RenderLatency(out);
                 }
 
-                DIV_CLASS_ID(transactionsTab, transactionsTabName) {
+                DIV_CLASS_ID(transactionsTab, transactionsTabName)
+                {
                     RenderTransactions(out);
                 }
 
-                DIV_CLASS_ID(tracesTab, tracesTabName) {
+                DIV_CLASS_ID(tracesTab, tracesTabName)
+                {
                     RenderTraces(out);
                 }
 
-                DIV_CLASS_ID(storageConfigTab, storageConfigTabName) {
+                DIV_CLASS_ID(storageConfigTab, storageConfigTabName)
+                {
                     RenderStorageConfig(out);
                 }
 
-                DIV_CLASS_ID(rawVolumeConfigTab, rawVolumeConfigTabName) {
+                DIV_CLASS_ID(rawVolumeConfigTab, rawVolumeConfigTabName)
+                {
                     RenderRawVolumeConfig(out);
                 }
 
@@ -1224,28 +1245,41 @@ void TVolumeActor::RenderHistory(
 {
     using namespace NMonitoringUtils;
 
-    HTML(out) {
-        DIV_CLASS("row") {
-            TAG(TH3) { out << "History"; }
-            TABLE_SORTABLE_CLASS("table table-bordered") {
-                TABLEHEAD() {
-                    TABLER() {
-                        TABLEH() { out << "Time"; }
-                        TABLEH() { out << "Host"; }
-                        TABLEH() { out << "Operation type"; }
-                        TABLEH() { out << "Result"; }
-                        TABLEH() { out << "Operation"; }
+    HTML (out) {
+        DIV_CLASS ("row") {
+            TAG (TH3) {
+                out << "History";
+            }
+            TABLE_SORTABLE_CLASS("table table-bordered")
+            {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "Time";
+                        }
+                        TABLEH () {
+                            out << "Host";
+                        }
+                        TABLEH () {
+                            out << "Operation type";
+                        }
+                        TABLEH () {
+                            out << "Result";
+                        }
+                        TABLEH () {
+                            out << "Operation";
+                        }
                     }
                 }
                 for (const auto& h: history.Items) {
-                    TABLER() {
-                        TABLED() {
+                    TABLER () {
+                        TABLED () {
                             out << h.Key.Timestamp;
                         }
-                        TABLED() {
+                        TABLED () {
                             out << h.Operation.GetTabletHost();
                         }
-                        TABLED() {
+                        TABLED () {
                             TStringBuf type;
                             if (h.Operation.HasAdd()) {
                                 type = "Add";
@@ -1256,29 +1290,37 @@ void TVolumeActor::RenderHistory(
                             }
                             out << type;
                         }
-                        TABLED() {
+                        TABLED () {
                             if (FAILED(h.Operation.GetError().GetCode())) {
-                                SerializeToTextFormat(h.Operation.GetError(), out);
+                                SerializeToTextFormat(
+                                    h.Operation.GetError(),
+                                    out);
                             } else {
                                 out << "OK";
                             }
                         }
-                        TABLED() {
+                        TABLED () {
                             if (h.Operation.HasAdd()) {
-                                SerializeToTextFormat(h.Operation.GetAdd(), out);
+                                SerializeToTextFormat(
+                                    h.Operation.GetAdd(),
+                                    out);
                             } else if (h.Operation.HasRemove()) {
-                                SerializeToTextFormat(h.Operation.GetRemove(), out);
+                                SerializeToTextFormat(
+                                    h.Operation.GetRemove(),
+                                    out);
                             } else {
-                                SerializeToTextFormat(h.Operation.GetUpdateVolumeMeta(), out);
+                                SerializeToTextFormat(
+                                    h.Operation.GetUpdateVolumeMeta(),
+                                    out);
                             }
                         }
                     }
                 }
             }
             if (history.Items.size() && history.HasMoreItems()) {
-                TABLE_CLASS("table") {
-                    TABLER() {
-                        TABLED() {
+                TABLE_CLASS ("table") {
+                    TABLER () {
+                        TABLED () {
                             BuildHistoryNextButton(
                                 out,
                                 history.Items.back().Key,
@@ -1289,13 +1331,20 @@ void TVolumeActor::RenderHistory(
             }
         }
 
-        DIV_CLASS("row") {
-            TAG(TH3) { out << "MetaHistory"; }
-            TABLE_SORTABLE_CLASS("table table-bordered") {
-                TABLEHEAD() {
-                    TABLER() {
-                        TABLEH() { out << "Time"; }
-                        TABLEH() { out << "Meta"; }
+        DIV_CLASS ("row") {
+            TAG (TH3) {
+                out << "MetaHistory";
+            }
+            TABLE_SORTABLE_CLASS("table table-bordered")
+            {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "Time";
+                        }
+                        TABLEH () {
+                            out << "Meta";
+                        }
                     }
                 }
                 auto it = metaHistory.rbegin();
@@ -1305,11 +1354,11 @@ void TVolumeActor::RenderHistory(
                 while (it != metaHistory.rend() && displayedCount < limit) {
                     const auto& item = *it;
 
-                    TABLER() {
-                        TABLED() {
+                    TABLER () {
+                        TABLED () {
                             out << item.Timestamp;
                         }
-                        TABLED() {
+                        TABLED () {
                             item.Meta.PrintJSON(out);
                         }
                     }
@@ -1326,9 +1375,9 @@ void TVolumeActor::RenderCheckpoints(IOutputStream& out) const
 {
     using namespace NMonitoringUtils;
 
-    HTML(out) {
-        DIV_CLASS("row") {
-            TAG(TH3) {
+    HTML (out) {
+        DIV_CLASS ("row") {
+            TAG (TH3) {
                 BuildMenuButton(out, "checkpoint-add");
                 out << "Checkpoints";
             }
@@ -1336,20 +1385,29 @@ void TVolumeActor::RenderCheckpoints(IOutputStream& out) const
             BuildCreateCheckpointButton(out, TabletID());
             out << "</div>";
 
-            TABLE_SORTABLE_CLASS("table table-bordered") {
-                TABLEHEAD() {
-                    TABLER() {
-                        TABLEH() { out << "CheckpointId"; }
-                        TABLEH() { out << "Info"; }
-                        TABLEH() { out << "Delete"; }
+            TABLE_SORTABLE_CLASS("table table-bordered")
+            {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "CheckpointId";
+                        }
+                        TABLEH () {
+                            out << "Info";
+                        }
+                        TABLEH () {
+                            out << "Delete";
+                        }
                     }
                 }
                 for (const auto& [r, checkpointInfo]:
-                    State->GetCheckpointStore().GetActiveCheckpoints())
+                     State->GetCheckpointStore().GetActiveCheckpoints())
                 {
-                    TABLER() {
-                        TABLED() { out << r; }
-                        TABLED() {
+                    TABLER () {
+                        TABLED () {
+                            out << r;
+                        }
+                        TABLED () {
                             RenderCheckpointInfo(
                                 GetBlocksCount(),
                                 State->GetMeta()
@@ -1358,48 +1416,69 @@ void TVolumeActor::RenderCheckpoints(IOutputStream& out) const
                                 checkpointInfo,
                                 out);
                         }
-                        TABLED() {
-                            BuildDeleteCheckpointButton(
-                                out,
-                                TabletID(),
-                                r);
+                        TABLED () {
+                            BuildDeleteCheckpointButton(out, TabletID(), r);
                         }
                     }
                 }
             }
         };
-        DIV_CLASS("row") {
+        DIV_CLASS ("row") {
             const bool isDiskRegistryMediaKind =
                 State->IsDiskRegistryMediaKind();
-            TAG(TH3) { out << "CheckpointRequests"; }
-            TABLE_SORTABLE_CLASS("table table-bordered") {
-                TABLEHEAD() {
-                    TABLER() {
-                        TABLEH() { out << "RequestId"; }
-                        TABLEH() { out << "CheckpointId"; }
-                        if (isDiskRegistryMediaKind) {
-                            TABLEH() { out << "ShadowDisk"; }
+            TAG (TH3) {
+                out << "CheckpointRequests";
+            }
+            TABLE_SORTABLE_CLASS("table table-bordered")
+            {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "RequestId";
                         }
-                        TABLEH() { out << "Timestamp"; }
-                        TABLEH() { out << "State"; }
-                        TABLEH() { out << "Type"; }
+                        TABLEH () {
+                            out << "CheckpointId";
+                        }
+                        if (isDiskRegistryMediaKind) {
+                            TABLEH () {
+                                out << "ShadowDisk";
+                            }
+                        }
+                        TABLEH () {
+                            out << "Timestamp";
+                        }
+                        TABLEH () {
+                            out << "State";
+                        }
+                        TABLEH () {
+                            out << "Type";
+                        }
                     }
                 }
                 for (const auto& r:
                      State->GetCheckpointStore().GetCheckpointRequests())
                 {
-                    TABLER() {
-                        TABLED() { out << r.RequestId; }
-                        TABLED() { out << r.CheckpointId; }
+                    TABLER () {
+                        TABLED () {
+                            out << r.RequestId;
+                        }
+                        TABLED () {
+                            out << r.CheckpointId;
+                        }
                         if (isDiskRegistryMediaKind) {
-                            TABLED()
-                            {
+                            TABLED () {
                                 RenderCheckpointRequest(out, r);
                             }
                         }
-                        TABLED() { out << r.Timestamp; }
-                        TABLED() { out << r.State; }
-                        TABLED() { out << r.ReqType; }
+                        TABLED () {
+                            out << r.Timestamp;
+                        }
+                        TABLED () {
+                            out << r.State;
+                        }
+                        TABLED () {
+                            out << r.ReqType;
+                        }
                     }
                 }
             }
@@ -1423,14 +1502,15 @@ void TVolumeActor::RenderLinks(IOutputStream& out) const
     RenderLeaders(out, State->GetAllLeaders());
 }
 
-void TVolumeActor::RenderLatency(IOutputStream& out) const {
+void TVolumeActor::RenderLatency(IOutputStream& out) const
+{
     using namespace NMonitoringUtils;
 
     if (!State) {
         return;
     }
 
- const TString style = R"(
+    const TString style = R"(
         <style>
             .table-latency {
                 width: 100%;
@@ -1530,8 +1610,7 @@ void TVolumeActor::RenderLatency(IOutputStream& out) const {
             "getRequestsLatency",
             TabletID(),
             1000,
-            "updateRequestsData"
-        );
+            "updateRequestsData");
     }
 }
 
@@ -1558,13 +1637,17 @@ void TVolumeActor::RenderTraces(IOutputStream& out) const
 {
     using namespace NMonitoringUtils;
     const auto& diskId = State->GetDiskId();
-    HTML(out) {
-        DIV_CLASS("row") {
-            TAG(TH3) {
-                out << "<a href=\"../tracelogs/slow?diskId=" << diskId << "\">"
-                        "Slow logs for " << diskId << "</a><br>";
-                out << "<a href=\"../tracelogs/random?diskId=" << diskId << "\">"
-                       "Random samples for " << diskId << "</a>";
+    HTML (out) {
+        DIV_CLASS ("row") {
+            TAG (TH3) {
+                out << "<a href=\"../tracelogs/slow?diskId=" << diskId
+                    << "\">"
+                       "Slow logs for "
+                    << diskId << "</a><br>";
+                out << "<a href=\"../tracelogs/random?diskId=" << diskId
+                    << "\">"
+                       "Random samples for "
+                    << diskId << "</a>";
             }
         }
     }
@@ -1574,16 +1657,21 @@ void TVolumeActor::RenderStorageConfig(IOutputStream& out) const
 {
     using namespace NMonitoringUtils;
 
-    HTML(out) {
-        DIV_CLASS("row") {
-            TAG(TH3) {
+    HTML (out) {
+        DIV_CLASS ("row") {
+            TAG (TH3) {
                 out << "StorageConfig";
             }
-            TABLE_SORTABLE_CLASS("table table-bordered") {
-                TABLEHEAD() {
-                    TABLER() {
-                        TABLEH() { out << "Field name"; }
-                        TABLEH() { out << "Value"; }
+            TABLE_SORTABLE_CLASS("table table-bordered")
+            {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "Field name";
+                        }
+                        TABLEH () {
+                            out << "Value";
+                        }
                     }
                 }
                 const auto& protoValues = Config->GetStorageConfigProto();
@@ -1609,11 +1697,12 @@ void TVolumeActor::RenderStorageConfig(IOutputStream& out) const
 
                         for (int j = 0; j < repeatedSize; ++j) {
                             TString curValue;
-                            google::protobuf::TextFormat::PrintFieldValueToString(
-                                protoValues,
-                                fieldDescriptor,
-                                j,
-                                &curValue);
+                            google::protobuf::TextFormat::
+                                PrintFieldValueToString(
+                                    protoValues,
+                                    fieldDescriptor,
+                                    j,
+                                    &curValue);
                             value.append(curValue);
                             value.append("; ");
                         }
@@ -1629,11 +1718,12 @@ void TVolumeActor::RenderStorageConfig(IOutputStream& out) const
                         continue;
                     }
 
-                    TABLER() {
-                        TABLED() {
-                            out << fieldDescriptor->name();;
+                    TABLER () {
+                        TABLED () {
+                            out << fieldDescriptor->name();
+                            ;
                         }
-                        TABLED() {
+                        TABLED () {
                             out << value;
                         }
                     }
@@ -1651,13 +1741,14 @@ void TVolumeActor::RenderRawVolumeConfig(IOutputStream& out) const
 
     const auto& volumeConfig = State->GetMeta().GetVolumeConfig();
 
-    HTML(out) {
-        DIV_CLASS("row") {
-            TAG(TH3) {
+    HTML (out) {
+        DIV_CLASS ("row") {
+            TAG (TH3) {
                 out << "RawVolumeConfig";
             }
 
-            PRE() {
+            PRE()
+            {
                 SerializeToTextFormatPretty(volumeConfig, out);
             }
         }
@@ -1674,9 +1765,9 @@ void TVolumeActor::RenderHtmlInfo(IOutputStream& out, TInstant now) const
 
     const auto mediaKind = State->GetConfig().GetStorageMediaKind();
 
-    HTML(out) {
-        DIV_CLASS("row") {
-            DIV_CLASS("col-md-6") {
+    HTML (out) {
+        DIV_CLASS ("row") {
+            DIV_CLASS ("col-md-6") {
                 DumpMonitoringVolumeLink(
                     out,
                     *DiagnosticsConfig,
@@ -1684,8 +1775,8 @@ void TVolumeActor::RenderHtmlInfo(IOutputStream& out, TInstant now) const
             }
         }
 
-        DIV_CLASS("row") {
-            DIV_CLASS("col-md-6") {
+        DIV_CLASS ("row") {
+            DIV_CLASS ("col-md-6") {
                 RenderStatus(out);
             }
         }
@@ -1697,64 +1788,62 @@ void TVolumeActor::RenderHtmlInfo(IOutputStream& out, TInstant now) const
         }
 
         if (IsDiskRegistryMediaKind(mediaKind)) {
-            DIV_CLASS("row") {
-                DIV_CLASS("col-md-6") {
+            DIV_CLASS ("row") {
+                DIV_CLASS ("col-md-6") {
                     RenderMigrationStatus(out);
                 }
             }
         }
 
         if (IsReliableDiskRegistryMediaKind(mediaKind)) {
-            DIV_CLASS("row") {
-                DIV_CLASS("col-md-6") {
+            DIV_CLASS ("row") {
+                DIV_CLASS ("col-md-6") {
                     RenderScrubbingStatus(out);
                 }
             }
 
-            DIV_CLASS("row") {
-                DIV_CLASS("col-md-6") {
+            DIV_CLASS ("row") {
+                DIV_CLASS ("col-md-6") {
                     RenderResyncStatus(out);
                 }
             }
         }
 
         if (LaggingDevicesAreAllowed()) {
-            DIV_CLASS("row")
-            {
-                DIV_CLASS("col-md-6")
-                {
+            DIV_CLASS ("row") {
+                DIV_CLASS ("col-md-6") {
                     RenderLaggingStatus(out);
                 }
             }
         }
 
-        DIV_CLASS("row") {
-            DIV_CLASS("col-md-6") {
+        DIV_CLASS ("row") {
+            DIV_CLASS ("col-md-6") {
                 RenderAppliedVolumeThrottlingRule(out);
             }
         }
 
-        DIV_CLASS("row") {
-            DIV_CLASS("col-md-6") {
+        DIV_CLASS ("row") {
+            DIV_CLASS ("col-md-6") {
                 RenderCommonButtons(out);
             }
         }
 
-        DIV_CLASS("row") {
-            DIV_CLASS("col-md-6") {
+        DIV_CLASS ("row") {
+            DIV_CLASS ("col-md-6") {
                 RenderConfig(out);
             }
         }
 
-        DIV_CLASS("row") {
+        DIV_CLASS ("row") {
             RenderTabletList(out);
         }
 
-        DIV_CLASS("row") {
+        DIV_CLASS ("row") {
             RenderClientList(out, now);
         }
 
-        DIV_CLASS("row") {
+        DIV_CLASS ("row") {
             RenderMountSeqNumber(out);
         }
     }
@@ -1762,16 +1851,29 @@ void TVolumeActor::RenderHtmlInfo(IOutputStream& out, TInstant now) const
 
 void TVolumeActor::RenderTabletList(IOutputStream& out) const
 {
-    HTML(out) {
-        TAG(TH3) { out << "Partitions"; }
-        TABLE_SORTABLE_CLASS("table table-bordered") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "Partition"; }
-                    TABLEH() { out << "Status"; }
-                    TABLEH() { out << "Blocks Count"; }
-                    TABLEH() { out << "Uptime"; }
-                    TABLEH() { out << "Restarts"; }
+    HTML (out) {
+        TAG (TH3) {
+            out << "Partitions";
+        }
+        TABLE_SORTABLE_CLASS("table table-bordered")
+        {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "Partition";
+                    }
+                    TABLEH () {
+                        out << "Status";
+                    }
+                    TABLEH () {
+                        out << "Blocks Count";
+                    }
+                    TABLEH () {
+                        out << "Uptime";
+                    }
+                    TABLEH () {
+                        out << "Restarts";
+                    }
                 }
             }
 
@@ -1790,18 +1892,16 @@ void TVolumeActor::RenderTabletList(IOutputStream& out) const
             };
 
             for (const auto& partition: State->GetPartitions()) {
-                TABLER() {
-                    TABLED() {
+                TABLER () {
+                    TABLED () {
                         out << "<a href='../tablets?TabletID="
-                            << partition.TabletId
-                            << "'>"
-                            << partition.TabletId
+                            << partition.TabletId << "'>" << partition.TabletId
                             << "</a>";
                     }
-                    TABLED() {
+                    TABLED () {
                         out << partition.GetStatus();
                     }
-                    TABLED() {
+                    TABLED () {
                         out << partition.PartitionConfig.GetBlocksCount();
                     }
                     renderStartInfo(partition.GetStartInfo());
@@ -1810,17 +1910,15 @@ void TVolumeActor::RenderTabletList(IOutputStream& out) const
 
             const auto mediaKind = State->GetConfig().GetStorageMediaKind();
             if (IsDiskRegistryMediaKind(mediaKind)) {
-                TABLER() {
-                    TABLED() {
+                TABLER () {
+                    TABLED () {
                         out << "<a href='?action=rendernpinfo"
-                            << "&TabletID=" << TabletID()
-                            << "'>"
-                            << "nonreplicated partition"
-                            << "</a>";
+                            << "&TabletID=" << TabletID() << "'>"
+                            << "nonreplicated partition" << "</a>";
                     }
-                    TABLED() {
+                    TABLED () {
                     }
-                    TABLED() {
+                    TABLED () {
                         out << State->GetConfig().GetBlocksCount();
                     }
                     renderStartInfo(
@@ -1842,17 +1940,21 @@ void TVolumeActor::RenderConfig(IOutputStream& out) const
     ui64 blocksCount = GetBlocksCount();
     ui32 blockSize = volumeConfig.GetBlockSize();
     const double blocksPerStripe = volumeConfig.GetBlocksPerStripe();
-    const double stripes = blocksPerStripe
-        ? double(blocksCount) / blocksPerStripe
-        : 0;
+    const double stripes =
+        blocksPerStripe ? double(blocksCount) / blocksPerStripe : 0;
 
-    HTML(out) {
-        TAG(TH3) { out << "Volume Config"; }
-        TABLE_SORTABLE_CLASS("table table-condensed") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLED() { out << "Disk Id"; }
-                    TABLED() {
+    HTML (out) {
+        TAG (TH3) {
+            out << "Volume Config";
+        }
+        TABLE_SORTABLE_CLASS("table table-condensed")
+        {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLED () {
+                        out << "Disk Id";
+                    }
+                    TABLED () {
                         const auto mediaKind =
                             State->GetConfig().GetStorageMediaKind();
                         if (DiskRegistryTabletId &&
@@ -1867,38 +1969,63 @@ void TVolumeActor::RenderConfig(IOutputStream& out) const
                         }
                     }
                 }
-                TABLER() {
-                    TABLED() { out << "Base Disk Id"; }
-                    TABLED() { out << volumeConfig.GetBaseDiskId(); }
+                TABLER () {
+                    TABLED () {
+                        out << "Base Disk Id";
+                    }
+                    TABLED () {
+                        out << volumeConfig.GetBaseDiskId();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "Base Disk Checkpoint Id"; }
-                    TABLED() { out << volumeConfig.GetBaseDiskCheckpointId(); }
+                TABLER () {
+                    TABLED () {
+                        out << "Base Disk Checkpoint Id";
+                    }
+                    TABLED () {
+                        out << volumeConfig.GetBaseDiskCheckpointId();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "Folder Id"; }
-                    TABLED() { out << volumeConfig.GetFolderId(); }
+                TABLER () {
+                    TABLED () {
+                        out << "Folder Id";
+                    }
+                    TABLED () {
+                        out << volumeConfig.GetFolderId();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "Cloud Id"; }
-                    TABLED() { out << volumeConfig.GetCloudId(); }
+                TABLER () {
+                    TABLED () {
+                        out << "Cloud Id";
+                    }
+                    TABLED () {
+                        out << volumeConfig.GetCloudId();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "Project Id"; }
-                    TABLED() { out << volumeConfig.GetProjectId(); }
+                TABLER () {
+                    TABLED () {
+                        out << "Project Id";
+                    }
+                    TABLED () {
+                        out << volumeConfig.GetProjectId();
+                    }
                 }
 
-                TABLER() {
-                    TABLED() { out << "Block size"; }
-                    TABLED() { out << blockSize; }
+                TABLER () {
+                    TABLED () {
+                        out << "Block size";
+                    }
+                    TABLED () {
+                        out << blockSize;
+                    }
                 }
 
-                TABLER() {
-                    TABLED() { out << "Blocks count"; }
-                    TABLED() {
+                TABLER () {
+                    TABLED () {
+                        out << "Blocks count";
+                    }
+                    TABLED () {
                         out << blocksCount;
-                        out << " ("
-                            << FormatByteSize(blocksCount * blockSize)
+                        out << " (" << FormatByteSize(blocksCount * blockSize)
                             << ")";
                     }
                 }
@@ -1906,20 +2033,23 @@ void TVolumeActor::RenderConfig(IOutputStream& out) const
                 if (State->GetTrackUsedBlocks()) {
                     const auto used = State->GetUsedBlockCount();
 
-                    TABLER() {
-                        TABLED() { out << "Used blocks count"; }
-                        TABLED() {
+                    TABLER () {
+                        TABLED () {
+                            out << "Used blocks count";
+                        }
+                        TABLED () {
                             out << used;
-                            out << " ("
-                                << FormatByteSize(used * blockSize)
+                            out << " (" << FormatByteSize(used * blockSize)
                                 << ")";
                         }
                     }
                 }
 
-                TABLER() {
-                    TABLED() { out << "BlocksPerStripe"; }
-                    TABLED() {
+                TABLER () {
+                    TABLED () {
+                        out << "BlocksPerStripe";
+                    }
+                    TABLED () {
                         out << blocksPerStripe;
                         out << " ("
                             << FormatByteSize(blocksPerStripe * blockSize)
@@ -1927,145 +2057,253 @@ void TVolumeActor::RenderConfig(IOutputStream& out) const
                     }
                 }
 
-                TABLER() {
-                    TABLED() { out << "Stripes"; }
-                    TABLED() { out << stripes << Endl; }
-                }
-
-                TABLER() {
-                    TABLED() { out << "StripesPerPartition"; }
-                    TABLED() {
-                        out << (stripes / volumeConfig.PartitionsSize()) << Endl;
+                TABLER () {
+                    TABLED () {
+                        out << "Stripes";
+                    }
+                    TABLED () {
+                        out << stripes << Endl;
                     }
                 }
 
-                TABLER() {
-                    TABLED() { out << "Number of channels"; }
-                    TABLED() { out << volumeConfig.ExplicitChannelProfilesSize(); }
+                TABLER () {
+                    TABLED () {
+                        out << "StripesPerPartition";
+                    }
+                    TABLED () {
+                        out << (stripes / volumeConfig.PartitionsSize())
+                            << Endl;
+                    }
                 }
 
-                TABLER() {
-                    TABLED() { out << "Storage media kind"; }
-                    TABLED() {
+                TABLER () {
+                    TABLED () {
+                        out << "Number of channels";
+                    }
+                    TABLED () {
+                        out << volumeConfig.ExplicitChannelProfilesSize();
+                    }
+                }
+
+                TABLER () {
+                    TABLED () {
+                        out << "Storage media kind";
+                    }
+                    TABLED () {
                         out << NCloud::NProto::EStorageMediaKind_Name(
-                            (NCloud::NProto::EStorageMediaKind)volumeConfig.GetStorageMediaKind());
+                            (NCloud::NProto::EStorageMediaKind)
+                                volumeConfig.GetStorageMediaKind());
                     }
                 }
 
-                TABLER() {
-                    TABLED() { out << "Encryption"; }
-                    TABLED() { out << volumeConfig.GetEncryptionDesc(); }
+                TABLER () {
+                    TABLED () {
+                        out << "Encryption";
+                    }
+                    TABLED () {
+                        out << volumeConfig.GetEncryptionDesc();
+                    }
                 }
 
-                TABLER() {
-                    TABLED() { out << "Channel profile id"; }
-                    TABLED() {
+                TABLER () {
+                    TABLED () {
+                        out << "Channel profile id";
+                    }
+                    TABLED () {
                         out << volumeConfig.GetChannelProfileId();
                     }
                 }
 
-                TABLER() {
-                    TABLED() { out << "Partition tablet version"; }
-                    TABLED() {
+                TABLER () {
+                    TABLED () {
+                        out << "Partition tablet version";
+                    }
+                    TABLED () {
                         out << volumeConfig.GetTabletVersion();
                     }
                 }
 
-                TABLER() {
-                    TABLED() { out << "Tags"; }
-                    TABLED() {
+                TABLER () {
+                    TABLED () {
+                        out << "Tags";
+                    }
+                    TABLED () {
                         out << volumeConfig.GetTagsStr();
                     }
                 }
 
-                TABLER() {
-                    TABLED() { out << "UseRdma"; }
-                    TABLED() {
+                TABLER () {
+                    TABLED () {
+                        out << "UseRdma";
+                    }
+                    TABLED () {
                         out << State->GetUseRdma();
                     }
                 }
 
-                TABLER() {
-                    TABLED() { out << "UseFastPath"; }
-                    TABLED() {
+                TABLER () {
+                    TABLED () {
+                        out << "UseFastPath";
+                    }
+                    TABLED () {
                         out << State->GetUseFastPath();
                     }
                 }
 
-                TABLER() {
-                    TABLED() { out << "Throttler"; }
-                    TABLED() {
+                TABLER () {
+                    TABLED () {
+                        out << "Throttler";
+                    }
+                    TABLED () {
                         const auto& tp = State->GetThrottlingPolicy();
-                        TABLE_CLASS("table table-condensed") {
-                            TABLEBODY() {
+                        TABLE_CLASS ("table table-condensed") {
+                            TABLEBODY()
+                            {
                                 if (Throttler) {
-                                    TABLER() {
-                                        TABLED() { out << "PostponedQueueSize"; }
-                                        TABLED() { out << Throttler->GetPostponedRequestsCount(); }
+                                    TABLER () {
+                                        TABLED () {
+                                            out << "PostponedQueueSize";
+                                        }
+                                        TABLED () {
+                                            out << Throttler
+                                                       ->GetPostponedRequestsCount();
+                                        }
                                     }
                                 }
-                                TABLER() {
-                                    TABLED() { out << "WriteCostMultiplier"; }
-                                    TABLED() { out << tp.GetWriteCostMultiplier(); }
+                                TABLER () {
+                                    TABLED () {
+                                        out << "WriteCostMultiplier";
+                                    }
+                                    TABLED () {
+                                        out << tp.GetWriteCostMultiplier();
+                                    }
                                 }
-                                TABLER() {
-                                    TABLED() { out << "PostponedQueueWeight"; }
-                                    TABLED() { out << tp.CalculatePostponedWeight(); }
+                                TABLER () {
+                                    TABLED () {
+                                        out << "PostponedQueueWeight";
+                                    }
+                                    TABLED () {
+                                        out << tp.CalculatePostponedWeight();
+                                    }
                                 }
-                                TABLER() {
-                                    TABLED() { out << "BackpressureFeatures"; }
-                                    TABLED() {
-                                        const auto& bp = tp.GetCurrentBackpressure();
-                                        TABLE_CLASS("table table-condensed") {
-                                            TABLEBODY() {
-                                                TABLER() {
-                                                    TABLED() { out << "FreshIndexScore"; }
-                                                    TABLED() { out << bp.FreshIndexScore; }
+                                TABLER () {
+                                    TABLED () {
+                                        out << "BackpressureFeatures";
+                                    }
+                                    TABLED () {
+                                        const auto& bp =
+                                            tp.GetCurrentBackpressure();
+                                        TABLE_CLASS ("table table-condensed") {
+                                            TABLEBODY()
+                                            {
+                                                TABLER () {
+                                                    TABLED () {
+                                                        out << "FreshIndexScor"
+                                                               "e";
+                                                    }
+                                                    TABLED () {
+                                                        out << bp.FreshIndexScore;
+                                                    }
                                                 }
-                                                TABLER() {
-                                                    TABLED() { out << "CompactionScore"; }
-                                                    TABLED() { out << bp.CompactionScore; }
+                                                TABLER () {
+                                                    TABLED () {
+                                                        out << "CompactionScor"
+                                                               "e";
+                                                    }
+                                                    TABLED () {
+                                                        out << bp.CompactionScore;
+                                                    }
                                                 }
-                                                TABLER() {
-                                                    TABLED() { out << "DiskSpaceScore"; }
-                                                    TABLED() { out << bp.DiskSpaceScore; }
+                                                TABLER () {
+                                                    TABLED () {
+                                                        out << "DiskSpaceScore";
+                                                    }
+                                                    TABLED () {
+                                                        out << bp.DiskSpaceScore;
+                                                    }
                                                 }
-                                                TABLER() {
-                                                    TABLED() { out << "CleanupScore"; }
-                                                    TABLED() { out << bp.CleanupScore; }
+                                                TABLER () {
+                                                    TABLED () {
+                                                        out << "CleanupScore";
+                                                    }
+                                                    TABLED () {
+                                                        out << bp.CleanupScore;
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 }
-                                TABLER() {
-                                    TABLED() { out << "ThrottlerParams"; }
-                                    TABLED() {
-                                        TABLE_CLASS("table table-condensed") {
-                                            TABLEBODY() {
-                                                TABLER() {
-                                                    TABLED() { out << "ReadC1"; }
-                                                    TABLED() { out << tp.C1(TVolumeThrottlingPolicy::EOpType::Read); }
+                                TABLER () {
+                                    TABLED () {
+                                        out << "ThrottlerParams";
+                                    }
+                                    TABLED () {
+                                        TABLE_CLASS ("table table-condensed") {
+                                            TABLEBODY()
+                                            {
+                                                TABLER () {
+                                                    TABLED () {
+                                                        out << "ReadC1";
+                                                    }
+                                                    TABLED () {
+                                                        out << tp.C1(
+                                                            TVolumeThrottlingPolicy::
+                                                                EOpType::Read);
+                                                    }
                                                 }
-                                                TABLER() {
-                                                    TABLED() { out << "ReadC2"; }
-                                                    TABLED() { out << FormatByteSize(tp.C2(TVolumeThrottlingPolicy::EOpType::Read)); }
+                                                TABLER () {
+                                                    TABLED () {
+                                                        out << "ReadC2";
+                                                    }
+                                                    TABLED () {
+                                                        out << FormatByteSize(tp.C2(
+                                                            TVolumeThrottlingPolicy::
+                                                                EOpType::Read));
+                                                    }
                                                 }
-                                                TABLER() {
-                                                    TABLED() { out << "WriteC1"; }
-                                                    TABLED() { out << tp.C1(TVolumeThrottlingPolicy::EOpType::Write); }
+                                                TABLER () {
+                                                    TABLED () {
+                                                        out << "WriteC1";
+                                                    }
+                                                    TABLED () {
+                                                        out << tp.C1(
+                                                            TVolumeThrottlingPolicy::
+                                                                EOpType::Write);
+                                                    }
                                                 }
-                                                TABLER() {
-                                                    TABLED() { out << "WriteC2"; }
-                                                    TABLED() { out << FormatByteSize(tp.C2(TVolumeThrottlingPolicy::EOpType::Write)); }
+                                                TABLER () {
+                                                    TABLED () {
+                                                        out << "WriteC2";
+                                                    }
+                                                    TABLED () {
+                                                        out << FormatByteSize(tp.C2(
+                                                            TVolumeThrottlingPolicy::
+                                                                EOpType::
+                                                                    Write));
+                                                    }
                                                 }
-                                                TABLER() {
-                                                    TABLED() { out << "DescribeC1"; }
-                                                    TABLED() { out << tp.C1(TVolumeThrottlingPolicy::EOpType::Describe); }
+                                                TABLER () {
+                                                    TABLED () {
+                                                        out << "DescribeC1";
+                                                    }
+                                                    TABLED () {
+                                                        out << tp.C1(
+                                                            TVolumeThrottlingPolicy::
+                                                                EOpType::
+                                                                    Describe);
+                                                    }
                                                 }
-                                                TABLER() {
-                                                    TABLED() { out << "DescribeC2"; }
-                                                    TABLED() { out << FormatByteSize(tp.C2(TVolumeThrottlingPolicy::EOpType::Describe)); }
+                                                TABLER () {
+                                                    TABLED () {
+                                                        out << "DescribeC2";
+                                                    }
+                                                    TABLED () {
+                                                        out << FormatByteSize(tp.C2(
+                                                            TVolumeThrottlingPolicy::
+                                                                EOpType::
+                                                                    Describe));
+                                                    }
                                                 }
                                             }
                                         }
@@ -2076,9 +2314,11 @@ void TVolumeActor::RenderConfig(IOutputStream& out) const
                     }
                 }
 
-                TABLER() {
-                    TABLED() { out << "ExplicitChannelProfiles"; }
-                    TABLED() {
+                TABLER () {
+                    TABLED () {
+                        out << "ExplicitChannelProfiles";
+                    }
+                    TABLED () {
                         if (volumeConfig.ExplicitChannelProfilesSize()) {
                             out << "Yes";
                         } else {
@@ -2104,19 +2344,38 @@ void TVolumeActor::RenderClientList(IOutputStream& out, TInstant now) const
 
     const auto& diskId = State->GetDiskId();
 
-    HTML(out) {
-        TAG(TH3) { out << "Volume Clients"; }
-        TABLE_SORTABLE_CLASS("table table-condensed") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "Client Id"; }
-                    TABLEH() { out << "Access mode"; }
-                    TABLEH() { out << "Mount mode"; }
-                    TABLEH() { out << "Disconnect time"; }
-                    TABLEH() { out << "Last activity time"; }
-                    TABLEH() { out << "State"; }
-                    TABLEH() { out << "Pipe server actor"; }
-                    TABLEH() { out << "Remove"; }
+    HTML (out) {
+        TAG (TH3) {
+            out << "Volume Clients";
+        }
+        TABLE_SORTABLE_CLASS("table table-condensed")
+        {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "Client Id";
+                    }
+                    TABLEH () {
+                        out << "Access mode";
+                    }
+                    TABLEH () {
+                        out << "Mount mode";
+                    }
+                    TABLEH () {
+                        out << "Disconnect time";
+                    }
+                    TABLEH () {
+                        out << "Last activity time";
+                    }
+                    TABLEH () {
+                        out << "State";
+                    }
+                    TABLEH () {
+                        out << "Pipe server actor";
+                    }
+                    TABLEH () {
+                        out << "Remove";
+                    }
                 }
             }
             ui64 clientNo = 0;
@@ -2161,22 +2420,35 @@ void TVolumeActor::RenderMountSeqNumber(IOutputStream& out) const
         return;
     }
 
-    HTML(out) {
-        TAG(TH3) { out << "Volume Mount Sequence Number"; }
-        TABLE_SORTABLE_CLASS("table table-condensed") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "Client Id"; }
-                    TABLEH() { out << "Mount Generation"; }
-                    TABLEH() { out << "Reset"; }
+    HTML (out) {
+        TAG (TH3) {
+            out << "Volume Mount Sequence Number";
+        }
+        TABLE_SORTABLE_CLASS("table table-condensed")
+        {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "Client Id";
+                    }
+                    TABLEH () {
+                        out << "Mount Generation";
+                    }
+                    TABLEH () {
+                        out << "Reset";
+                    }
                 }
             }
 
-            TABLER() {
+            TABLER () {
                 const auto& rwClient = State->GetReadWriteAccessClientId();
-                TABLED() { out << rwClient; }
-                TABLED() { out << State->GetMountSeqNumber(); }
-                TABLED() {
+                TABLED () {
+                    out << rwClient;
+                }
+                TABLED () {
+                    out << State->GetMountSeqNumber();
+                }
+                TABLED () {
                     BuildVolumeResetMountSeqNumberButton(
                         out,
                         rwClient,
@@ -2197,8 +2469,8 @@ void TVolumeActor::RenderMountSeqNumber(IOutputStream& out) const
 
 void TVolumeActor::RenderStatus(IOutputStream& out) const
 {
-    HTML(out) {
-        TAG(TH3) {
+    HTML (out) {
+        TAG (TH3) {
             TString statusText = "offline";
             TString cssClass = "label-danger";
 
@@ -2213,12 +2485,14 @@ void TVolumeActor::RenderStatus(IOutputStream& out) const
 
             out << "Status:";
 
-            SPAN_CLASS_STYLE("label " + cssClass, "margin-left:10px") {
+            SPAN_CLASS_STYLE("label " + cssClass, "margin-left:10px")
+            {
                 out << statusText;
             }
 
             if (!CanExecuteWriteRequest()) {
-                SPAN_CLASS_STYLE("label label-danger", "margin-left:10px") {
+                SPAN_CLASS_STYLE("label label-danger", "margin-left:10px")
+                {
                     out << "Writes blocked by checkpoint";
                 }
             }
@@ -2233,13 +2507,14 @@ void TVolumeActor::RenderUptime(IOutputStream& out) const
 
 void TVolumeActor::RenderMigrationStatus(IOutputStream& out) const
 {
-    HTML(out) {
-        bool active = State->GetMeta().GetMigrations().size()
-            || State->GetFilteredFreshDevices().size();
+    HTML (out) {
+        bool active = State->GetMeta().GetMigrations().size() ||
+                      State->GetFilteredFreshDevices().size();
         TStringBuf label = State->GetFilteredFreshDevices().empty()
-            ? "Migration" : "Replication";
+                               ? "Migration"
+                               : "Replication";
 
-        TAG(TH3) {
+        TAG (TH3) {
             TString statusText = "inactive";
             TString cssClass = "label-default";
 
@@ -2250,7 +2525,8 @@ void TVolumeActor::RenderMigrationStatus(IOutputStream& out) const
 
             out << label << "Status:";
 
-            SPAN_CLASS_STYLE("label " + cssClass, "margin-left:10px") {
+            SPAN_CLASS_STYLE("label " + cssClass, "margin-left:10px")
+            {
                 out << statusText;
             }
         }
@@ -2263,11 +2539,14 @@ void TVolumeActor::RenderMigrationStatus(IOutputStream& out) const
         const auto migrationIndex = State->GetMeta().GetMigrationIndex();
         const auto blockSize = State->GetBlockSize();
 
-        TABLE_SORTABLE_CLASS("table table-condensed") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLED() { out << label << " index: "; }
-                    TABLED() {
+        TABLE_SORTABLE_CLASS("table table-condensed")
+        {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLED () {
+                        out << label << " index: ";
+                    }
+                    TABLED () {
                         OutputProgress(
                             migrationIndex,
                             totalBlocks,
@@ -2311,7 +2590,8 @@ void TVolumeActor::RenderScrubbingStatus(IOutputStream& out) const
 
             out << "ScrubbingStatus:";
 
-            SPAN_CLASS_STYLE ("label " + cssClass, "margin-left:10px") {
+            SPAN_CLASS_STYLE("label " + cssClass, "margin-left:10px")
+            {
                 out << statusText;
             }
         }
@@ -2320,11 +2600,14 @@ void TVolumeActor::RenderScrubbingStatus(IOutputStream& out) const
             return;
         }
 
-        TABLE_SORTABLE_CLASS("table table-condensed") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLED() { out << "Scrubbing progress: "; }
-                    TABLED() {
+        TABLE_SORTABLE_CLASS("table table-condensed")
+        {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLED () {
+                        out << "Scrubbing progress: ";
+                    }
+                    TABLED () {
                         OutputProgress(
                             scrubbing.CurrentRange.Start,
                             totalBlocks,
@@ -2332,43 +2615,51 @@ void TVolumeActor::RenderScrubbingStatus(IOutputStream& out) const
                             totalBlocks - scrubbing.CurrentRange.Start,
                             out);
 
-                        out << "<br>Full scan count: " << scrubbing.FullScanCount;
+                        out << "<br>Full scan count: "
+                            << scrubbing.FullScanCount;
                     }
                 }
-                TABLER() {
-                    TABLED () { out << "Minors: "; }
+                TABLER () {
+                    TABLED () {
+                        out << "Minors: ";
+                    }
                     TABLED () {
                         outputRanges(scrubbing.Minors);
                     }
                 }
-                TABLER() {
-                    TABLED () { out << "Majors: "; }
+                TABLER () {
+                    TABLED () {
+                        out << "Majors: ";
+                    }
                     TABLED () {
                         outputRanges(scrubbing.Majors);
                     }
                 }
-                TABLER() {
-                    TABLED () { out << "Fixed: "; }
+                TABLER () {
+                    TABLED () {
+                        out << "Fixed: ";
+                    }
                     TABLED () {
                         outputRanges(scrubbing.Fixed);
                     }
                 }
-                TABLER() {
-                    TABLED () { out << "Fixed partial: "; }
+                TABLER () {
+                    TABLED () {
+                        out << "Fixed partial: ";
+                    }
                     TABLED () {
                         outputRanges(scrubbing.FixedPartial);
                     }
                 }
             }
         }
-
     }
 }
 
 void TVolumeActor::RenderResyncStatus(IOutputStream& out) const
 {
-    HTML(out) {
-        TAG(TH3) {
+    HTML (out) {
+        TAG (TH3) {
             TString statusText = "inactive";
             TString cssClass = "label-default";
 
@@ -2379,7 +2670,8 @@ void TVolumeActor::RenderResyncStatus(IOutputStream& out) const
 
             out << "ResyncStatus:";
 
-            SPAN_CLASS_STYLE("label " + cssClass, "margin-left:10px") {
+            SPAN_CLASS_STYLE("label " + cssClass, "margin-left:10px")
+            {
                 out << statusText;
             }
         }
@@ -2392,11 +2684,14 @@ void TVolumeActor::RenderResyncStatus(IOutputStream& out) const
         const auto resyncIndex = State->GetMeta().GetResyncIndex();
         const auto blockSize = State->GetBlockSize();
 
-        TABLE_SORTABLE_CLASS("table table-condensed") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLED() { out << "Resync index: "; }
-                    TABLED() {
+        TABLE_SORTABLE_CLASS("table table-condensed")
+        {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLED () {
+                        out << "Resync index: ";
+                    }
+                    TABLED () {
                         OutputProgress(
                             resyncIndex,
                             totalBlocks,
@@ -2412,10 +2707,8 @@ void TVolumeActor::RenderResyncStatus(IOutputStream& out) const
 
 void TVolumeActor::RenderLaggingStatus(IOutputStream& out) const
 {
-    HTML(out)
-    {
-        TAG(TH3)
-        {
+    HTML (out) {
+        TAG (TH3) {
             TString statusText = "ok";
             TString cssClass = "label-success";
 
@@ -2452,7 +2745,7 @@ void TVolumeActor::RenderLaggingStatus(IOutputStream& out) const
         ui64 cleanBlocks = 0;
         ui64 dirtyBlocks = 0;
         TStringBuilder laggingAgentIds;
-        for (const auto& [laggingAgentId, laggingInfo] : laggingInfos) {
+        for (const auto& [laggingAgentId, laggingInfo]: laggingInfos) {
             if (!laggingAgentIds.empty()) {
                 laggingAgentIds << ", ";
             }
@@ -2463,17 +2756,13 @@ void TVolumeActor::RenderLaggingStatus(IOutputStream& out) const
 
         TABLE_SORTABLE_CLASS("table table-condensed")
         {
-            TABLEHEAD()
-            {
-                TABLER()
-                {
-                    TABLED()
-                    {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLED () {
                         out << "Lagging agents " << laggingAgentIds
                             << " migration progress: ";
                     }
-                    TABLED()
-                    {
+                    TABLED () {
                         OutputProgress(
                             cleanBlocks,
                             cleanBlocks + dirtyBlocks,
@@ -2563,11 +2852,14 @@ void TVolumeActor::RenderCommonButtons(IOutputStream& out) const
         return;
     }
 
-    HTML(out) {
-        TAG(TH3) { out << "Controls"; }
-        TABLE_SORTABLE_CLASS("table table-condensed") {
-            TABLER() {
-                TABLED() {
+    HTML (out) {
+        TAG (TH3) {
+            out << "Controls";
+        }
+        TABLE_SORTABLE_CLASS("table table-condensed")
+        {
+            TABLER () {
+                TABLED () {
                     BuildStartPartitionsButton(
                         out,
                         State->GetDiskId(),
@@ -2585,9 +2877,10 @@ void TVolumeActor::RenderCommonButtons(IOutputStream& out) const
             )___";
 
         if (CanChangeThrottlingPolicy()) {
-            TABLE_SORTABLE_CLASS("table table-condensed") {
-                TABLER() {
-                    TABLED() {
+            TABLE_SORTABLE_CLASS("table table-condensed")
+            {
+                TABLER () {
+                    TABLED () {
                         TAG (TH3) {
                             const bool isDefaultPolicy =
                                 IsSetDefaultThrottlingPolicy(State.get());
@@ -2633,7 +2926,11 @@ void TVolumeActor::HandleHttpInfo_StartPartitions(
 
     StartPartitionsIfNeeded(ctx);
 
-    SendHttpResponse(ctx, *requestInfo, "Start initiated", EAlertLevel::SUCCESS);
+    SendHttpResponse(
+        ctx,
+        *requestInfo,
+        "Start initiated",
+        EAlertLevel::SUCCESS);
 }
 
 void TVolumeActor::HandleHttpInfo_ChangeThrottlingPolicy(
@@ -2653,11 +2950,13 @@ void TVolumeActor::HandleHttpInfo_ChangeThrottlingPolicy(
 
     NProto::TVolumePerformanceProfile pp =
         State->GetConfig().GetPerformanceProfile();
-    auto getParam = [&] (const TStringBuf name) {
+    auto getParam = [&](const TStringBuf name)
+    {
         const auto& s = params.Get(name);
         return FromStringWithDefault(s, Max<ui32>());
     };
-    auto getParam64 = [&] (const TStringBuf name) {
+    auto getParam64 = [&](const TStringBuf name)
+    {
         const auto& s = params.Get(name);
         return FromStringWithDefault(s, static_cast<ui64>(Max<ui32>()));
     };
@@ -2691,7 +2990,7 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
 
     auto meta = State->GetMeta();
     if (!State->GetNonreplicatedPartitionConfig()) {
-        HTML(out) {
+        HTML (out) {
             out << "no config, allocation result: "
                 << FormatError(StorageAllocationResult);
         }
@@ -2701,38 +3000,65 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
 
     const auto& config = *State->GetNonreplicatedPartitionConfig();
 
-    HTML(out) {
-        BODY() {
-            TABLE_CLASS("table table-bordered") {
-                TABLEHEAD() {
-                    TABLER() {
-                        TABLEH() { out << "Property"; }
-                        TABLEH() { out << "Value"; }
+    HTML (out) {
+        BODY()
+        {
+            TABLE_CLASS ("table table-bordered") {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "Property";
+                        }
+                        TABLEH () {
+                            out << "Value";
+                        }
                     }
                 }
-                TABLER() {
-                    TABLED() { out << "BlockSize"; }
-                    TABLED() { out << config.GetBlockSize(); }
+                TABLER () {
+                    TABLED () {
+                        out << "BlockSize";
+                    }
+                    TABLED () {
+                        out << config.GetBlockSize();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "Blocks"; }
-                    TABLED() { out << config.GetBlockCount(); }
+                TABLER () {
+                    TABLED () {
+                        out << "Blocks";
+                    }
+                    TABLED () {
+                        out << config.GetBlockCount();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "IOMode"; }
-                    TABLED() { out << meta.GetIOMode(); }
+                TABLER () {
+                    TABLED () {
+                        out << "IOMode";
+                    }
+                    TABLED () {
+                        out << meta.GetIOMode();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "IOModeTs"; }
-                    TABLED() { out << meta.GetIOModeTs(); }
+                TABLER () {
+                    TABLED () {
+                        out << "IOModeTs";
+                    }
+                    TABLED () {
+                        out << meta.GetIOModeTs();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "MuteIOErrors"; }
-                    TABLED() { out << meta.GetMuteIOErrors(); }
+                TABLER () {
+                    TABLED () {
+                        out << "MuteIOErrors";
+                    }
+                    TABLED () {
+                        out << meta.GetMuteIOErrors();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "MaxTimedOutDeviceStateDuration"; }
-                    TABLED() {
+                TABLER () {
+                    TABLED () {
+                        out << "MaxTimedOutDeviceStateDuration";
+                    }
+                    TABLED () {
                         const bool overridden =
                             config.IsMaxTimedOutDeviceStateDurationOverridden();
                         if (config.GetMaxTimedOutDeviceStateDuration() ||
@@ -2751,51 +3077,76 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
                 auto infos = State->GetPartitionStatInfos();
                 if (!infos.empty() && infos.front().LastCounters) {
                     const auto& counters = infos.front().LastCounters;
-                    TABLER() {
-                        TABLED() { out << "HasBrokenDevice"; }
-                        TABLED() {
+                    TABLER () {
+                        TABLED () {
+                            out << "HasBrokenDevice";
+                        }
+                        TABLED () {
                             out << counters->Simple.HasBrokenDevice.Value;
                         }
                     }
-                    TABLER() {
-                        TABLED() { out << "HasBrokenDeviceSilent"; }
-                        TABLED() {
+                    TABLER () {
+                        TABLED () {
+                            out << "HasBrokenDeviceSilent";
+                        }
+                        TABLED () {
                             out << counters->Simple.HasBrokenDeviceSilent.Value;
                         }
                     }
                 }
 
                 auto findMigration =
-                    [&] (const TString& deviceId) -> const NProto::TDeviceConfig* {
-                        for (const auto& migration: meta.GetMigrations()) {
-                            if (migration.GetSourceDeviceId() == deviceId) {
-                                return &migration.GetTargetDevice();
-                            }
+                    [&](const TString& deviceId) -> const NProto::TDeviceConfig*
+                {
+                    for (const auto& migration: meta.GetMigrations()) {
+                        if (migration.GetSourceDeviceId() == deviceId) {
+                            return &migration.GetTargetDevice();
                         }
+                    }
 
-                        return nullptr;
-                    };
+                    return nullptr;
+                };
 
                 bool renderLaggingState = IsReliableDiskRegistryMediaKind(
                     State->GetConfig().GetStorageMediaKind());
-                auto outputDevices = [&] (const TDevices& devices) {
-                    TABLED() {
-                        TABLE_CLASS("table table-bordered") {
-                            TABLEHEAD() {
-                                TABLER() {
-                                    TABLEH() { out << "DeviceNo"; }
-                                    TABLEH() { out << "Offset"; }
-                                    TABLEH() { out << "NodeId"; }
-                                    TABLEH() { out << "TransportId"; }
-                                    TABLEH() { out << "RdmaEndpoint"; }
-                                    TABLEH() { out << "DeviceName"; }
-                                    TABLEH() { out << "DeviceUUID"; }
-                                    TABLEH() { out << "BlockSize"; }
-                                    TABLEH() { out << "Blocks"; }
-                                    TABLEH() { out << "BlockRange"; }
+                auto outputDevices = [&](const TDevices& devices)
+                {
+                    TABLED () {
+                        TABLE_CLASS ("table table-bordered") {
+                            TABLEHEAD () {
+                                TABLER () {
+                                    TABLEH () {
+                                        out << "DeviceNo";
+                                    }
+                                    TABLEH () {
+                                        out << "Offset";
+                                    }
+                                    TABLEH () {
+                                        out << "NodeId";
+                                    }
+                                    TABLEH () {
+                                        out << "TransportId";
+                                    }
+                                    TABLEH () {
+                                        out << "RdmaEndpoint";
+                                    }
+                                    TABLEH () {
+                                        out << "DeviceName";
+                                    }
+                                    TABLEH () {
+                                        out << "DeviceUUID";
+                                    }
+                                    TABLEH () {
+                                        out << "BlockSize";
+                                    }
+                                    TABLEH () {
+                                        out << "Blocks";
+                                    }
+                                    TABLEH () {
+                                        out << "BlockRange";
+                                    }
                                     if (renderLaggingState) {
-                                        TABLEH()
-                                        {
+                                        TABLEH () {
                                             out << "LaggingState";
                                         }
                                     }
@@ -2804,20 +3155,29 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
 
                             ui64 currentOffset = 0;
                             ui64 currentBlockCount = 0;
-                            auto outputDevice = [&] (const NProto::TDeviceConfig& d) {
-                                TABLED() { out << d.GetNodeId(); }
-                                TABLED() { out << d.GetTransportId(); }
-                                TABLED() {
+                            auto outputDevice =
+                                [&](const NProto::TDeviceConfig& d)
+                            {
+                                TABLED () {
+                                    out << d.GetNodeId();
+                                }
+                                TABLED () {
+                                    out << d.GetTransportId();
+                                }
+                                TABLED () {
                                     const auto& e = d.GetRdmaEndpoint();
                                     out << e.GetHost() << ":" << e.GetPort();
                                 }
-                                TABLED() { out << d.GetDeviceName(); }
-                                TABLED() {
-                                    const bool isFresh = Find(
-                                        meta.GetFreshDeviceIds().begin(),
-                                        meta.GetFreshDeviceIds().end(),
-                                        d.GetDeviceUUID()
-                                    ) != meta.GetFreshDeviceIds().end();
+                                TABLED () {
+                                    out << d.GetDeviceName();
+                                }
+                                TABLED () {
+                                    const bool isFresh =
+                                        Find(
+                                            meta.GetFreshDeviceIds().begin(),
+                                            meta.GetFreshDeviceIds().end(),
+                                            d.GetDeviceUUID()) !=
+                                        meta.GetFreshDeviceIds().end();
 
                                     if (isFresh) {
                                         out << "<font color=blue>";
@@ -2827,9 +3187,13 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
                                         out << "</font>";
                                     }
                                 }
-                                TABLED() { out << d.GetBlockSize(); }
-                                TABLED() { out << d.GetBlocksCount(); }
-                                TABLED() {
+                                TABLED () {
+                                    out << d.GetBlockSize();
+                                }
+                                TABLED () {
+                                    out << d.GetBlocksCount();
+                                }
+                                TABLED () {
                                     const auto currentRange =
                                         TBlockRange64::WithLength(
                                             currentBlockCount,
@@ -2837,8 +3201,7 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
                                     out << DescribeRange(currentRange);
                                 }
                                 if (renderLaggingState) {
-                                    TABLED()
-                                    {
+                                    TABLED () {
                                         RenderLaggingStateForDevice(out, d);
                                     }
                                 }
@@ -2847,9 +3210,11 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
                             for (int i = 0; i < devices.size(); ++i) {
                                 const auto& device = devices[i];
 
-                                TABLER() {
-                                    TABLED() { out << i; }
-                                    TABLED() {
+                                TABLER () {
+                                    TABLED () {
+                                        out << i;
+                                    }
+                                    TABLED () {
                                         out << FormatByteSize(currentOffset);
                                     }
                                     outputDevice(device);
@@ -2857,31 +3222,36 @@ void TVolumeActor::HandleHttpInfo_RenderNonreplPartitionInfo(
 
                                 auto* m = findMigration(device.GetDeviceUUID());
                                 if (m) {
-                                    TABLER() {
-                                        TABLED() { out << i << " migration"; }
-                                        TABLED() {
-                                            out << FormatByteSize(currentOffset);
+                                    TABLER () {
+                                        TABLED () {
+                                            out << i << " migration";
+                                        }
+                                        TABLED () {
+                                            out << FormatByteSize(
+                                                currentOffset);
                                         }
                                         outputDevice(*m);
                                     }
                                 }
 
                                 currentBlockCount += device.GetBlocksCount();
-                                currentOffset +=
-                                    device.GetBlocksCount() * device.GetBlockSize();
+                                currentOffset += device.GetBlocksCount() *
+                                                 device.GetBlockSize();
                             }
                         }
                     }
                 };
 
-                TABLER() {
-                    TABLED() { out << "Devices"; }
+                TABLER () {
+                    TABLED () {
+                        out << "Devices";
+                    }
                     outputDevices(config.GetDevices());
                 }
 
                 for (ui32 i = 0; i < meta.ReplicasSize(); ++i) {
-                    TABLER() {
-                        TABLED() {
+                    TABLER () {
+                        TABLED () {
                             out << "Devices (Replica " << (i + 1) << ")";
                         }
                         outputDevices(meta.GetReplicas(i).GetDevices());

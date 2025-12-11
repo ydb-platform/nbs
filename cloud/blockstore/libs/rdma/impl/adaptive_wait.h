@@ -14,9 +14,7 @@ private:
     ui64 ResetCycles;
 
 public:
-    TAdaptiveWait(
-            TDuration sleepDuration,
-            TDuration sleepDelay) noexcept
+    TAdaptiveWait(TDuration sleepDuration, TDuration sleepDelay) noexcept
         : SleepDuration(sleepDuration)
         , SleepDelay(sleepDelay)
     {

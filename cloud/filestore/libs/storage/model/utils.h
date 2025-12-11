@@ -65,8 +65,8 @@ void RemoveByIndices(
 
     int j = 0;
     for (int i = static_cast<int>(indices[0]); i < field.size(); ++i) {
-        if (j < static_cast<int>(indices.size())
-                && i == static_cast<int>(indices[j]))
+        if (j < static_cast<int>(indices.size()) &&
+            i == static_cast<int>(indices[j]))
         {
             ++j;
             continue;

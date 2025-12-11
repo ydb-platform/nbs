@@ -21,9 +21,9 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 ////////////////////////////////////////////////////////////////////////////////
 
 TDrainActorCompanion::TDrainActorCompanion(
-        IRequestsInProgress& requestsInProgress,
-        TString loggingId,
-        IWriteRequestsTracker* writeRequestTracker)
+    IRequestsInProgress& requestsInProgress,
+    TString loggingId,
+    IWriteRequestsTracker* writeRequestTracker)
     : RequestsInProgress(requestsInProgress)
     , WriteRequestTracker(writeRequestTracker)
     , LoggingId(std::move(loggingId))
@@ -35,10 +35,8 @@ void TDrainActorCompanion::HandleDrain(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     LWTRACK(
         RequestReceived_Partition,
@@ -220,4 +218,4 @@ void TDrainActorCompanion::DoProcessDrainRangeRequests(const TActorContext& ctx)
     EraseIf(DrainRangeRequests, checkNoRequestsInRange);
 }
 
-}  // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NBlockStore::NStorage

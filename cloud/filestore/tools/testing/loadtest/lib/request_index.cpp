@@ -69,11 +69,11 @@ private:
 
 public:
     TIndexRequestGenerator(
-            NProto::TIndexLoadSpec spec,
-            ILoggingServicePtr logging,
-            ISessionPtr session,
-            TString filesystemId,
-            NProto::THeaders headers)
+        NProto::TIndexLoadSpec spec,
+        ILoggingServicePtr logging,
+        ISessionPtr session,
+        TString filesystemId,
+        NProto::THeaders headers)
         : Spec(std::move(spec))
         , FileSystemId(std::move(filesystemId))
         , Headers(std::move(headers))
@@ -82,13 +82,17 @@ public:
         Log = logging->CreateLog(Headers.GetClientId());
 
         for (const auto& action: Spec.GetActions()) {
-            Y_ENSURE(action.GetRate() > 0, "please specify positive action rate");
+            Y_ENSURE(
+                action.GetRate() > 0,
+                "please specify positive action rate");
 
             TotalRate += action.GetRate();
             Actions.emplace_back(std::make_pair(TotalRate, action.GetAction()));
         }
 
-        Y_ENSURE(!Actions.empty(), "please specify at least one action for the test spec");
+        Y_ENSURE(
+            !Actions.empty(),
+            "please specify at least one action for the test spec");
     }
 
     bool HasNextRequest() override
@@ -100,24 +104,24 @@ public:
     {
         const auto& action = PeekNextAction();
         switch (action) {
-        case NProto::ACTION_CREATE_NODE:
-            return DoCreateNode();
-        case NProto::ACTION_RENAME_NODE:
-            return DoRenameNode();
-        case NProto::ACTION_REMOVE_NODE:
-            return DoUnlinkNode();
-        case NProto::ACTION_CREATE_HANDLE:
-            return DoCreateHandle();
-        case NProto::ACTION_DESTROY_HANDLE:
-            return DoDestroyHandle();
-        case NProto::ACTION_GET_NODE_ATTR:
-            return DoGetNodeAttr();
-        case NProto::ACTION_ACQUIRE_LOCK:
-            return DoAcquireLock();
-        case NProto::ACTION_RELEASE_LOCK:
-            return DoReleaseLock();
-        default:
-            Y_ABORT("unexpected action: %u", (ui32)action);
+            case NProto::ACTION_CREATE_NODE:
+                return DoCreateNode();
+            case NProto::ACTION_RENAME_NODE:
+                return DoRenameNode();
+            case NProto::ACTION_REMOVE_NODE:
+                return DoUnlinkNode();
+            case NProto::ACTION_CREATE_HANDLE:
+                return DoCreateHandle();
+            case NProto::ACTION_DESTROY_HANDLE:
+                return DoDestroyHandle();
+            case NProto::ACTION_GET_NODE_ATTR:
+                return DoGetNodeAttr();
+            case NProto::ACTION_ACQUIRE_LOCK:
+                return DoAcquireLock();
+            case NProto::ACTION_RELEASE_LOCK:
+                return DoReleaseLock();
+            default:
+                Y_ABORT("unexpected action: %u", (ui32)action);
         }
     }
 
@@ -129,7 +133,7 @@ private:
             Actions.begin(),
             Actions.end(),
             number,
-            [] (const auto& pair, ui64 b) { return pair.first < b; });
+            [](const auto& pair, ui64 b) { return pair.first < b; });
 
         Y_ABORT_UNLESS(it != Actions.end());
         return it->second;
@@ -149,17 +153,19 @@ private:
 
         auto started = TInstant::Now();
         auto self = weak_from_this();
-        return Session->CreateNode(CreateCallContext(), std::move(request)).Apply(
-            [=] (const TFuture<NProto::TCreateNodeResponse>& future) {
-                if (auto ptr = self.lock()) {
-                    return ptr->HandleCreateNode(future, name, started);
-                }
+        return Session->CreateNode(CreateCallContext(), std::move(request))
+            .Apply(
+                [=](const TFuture<NProto::TCreateNodeResponse>& future)
+                {
+                    if (auto ptr = self.lock()) {
+                        return ptr->HandleCreateNode(future, name, started);
+                    }
 
-                return TCompletedRequest{
-                    NProto::ACTION_CREATE_NODE,
-                    started,
-                    MakeError(E_CANCELLED, "cancelled")};
-            });
+                    return TCompletedRequest{
+                        NProto::ACTION_CREATE_NODE,
+                        started,
+                        MakeError(E_CANCELLED, "cancelled")};
+                });
     }
 
     TCompletedRequest HandleCreateNode(
@@ -176,9 +182,10 @@ private:
 
             Nodes[name] = TNode{name, response.GetNode()};
             return {NProto::ACTION_CREATE_NODE, started, response.GetError()};
-        } catch (const TServiceError& e)  {
+        } catch (const TServiceError& e) {
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
-            STORAGE_ERROR("create node %s has failed: %s",
+            STORAGE_ERROR(
+                "create node %s has failed: %s",
                 name.c_str(),
                 FormatError(error).c_str());
 
@@ -211,17 +218,21 @@ private:
         Nodes.erase(it);
 
         auto self = weak_from_this();
-        return Session->RenameNode(CreateCallContext(), std::move(request)).Apply(
-            [=, old = std::move(old), newbie = std::move(newbie)] (const TFuture<NProto::TRenameNodeResponse>& future) {
-                if (auto ptr = self.lock()) {
-                    return ptr->HandleRenameNode(future, old, newbie, started);
-                }
+        return Session->RenameNode(CreateCallContext(), std::move(request))
+            .Apply(
+                [=, old = std::move(old), newbie = std::move(newbie)](
+                    const TFuture<NProto::TRenameNodeResponse>& future)
+                {
+                    if (auto ptr = self.lock()) {
+                        return ptr
+                            ->HandleRenameNode(future, old, newbie, started);
+                    }
 
-                return TCompletedRequest{
-                    NProto::ACTION_RENAME_NODE,
-                    started,
-                    MakeError(E_CANCELLED, "cancelled")};
-            });
+                    return TCompletedRequest{
+                        NProto::ACTION_RENAME_NODE,
+                        started,
+                        MakeError(E_CANCELLED, "cancelled")};
+                });
     }
 
     TCompletedRequest HandleRenameNode(
@@ -242,9 +253,10 @@ private:
 
             Nodes[newbie] = std::move(node);
             return {NProto::ACTION_RENAME_NODE, started, response.GetError()};
-        } catch (const TServiceError& e)  {
+        } catch (const TServiceError& e) {
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
-            STORAGE_ERROR("rename node %s has failed: %s",
+            STORAGE_ERROR(
+                "rename node %s has failed: %s",
                 old.c_str(),
                 FormatError(error).c_str());
 
@@ -272,17 +284,20 @@ private:
         Nodes.erase(it);
 
         auto self = weak_from_this();
-        return Session->UnlinkNode(CreateCallContext(), std::move(request)).Apply(
-            [=, name = std::move(name)] (const TFuture<NProto::TUnlinkNodeResponse>& future) {
-                if (auto ptr = self.lock()) {
-                    return ptr->HandleUnlinkNode(future, name, started);
-                }
+        return Session->UnlinkNode(CreateCallContext(), std::move(request))
+            .Apply(
+                [=, name = std::move(name)](
+                    const TFuture<NProto::TUnlinkNodeResponse>& future)
+                {
+                    if (auto ptr = self.lock()) {
+                        return ptr->HandleUnlinkNode(future, name, started);
+                    }
 
-                return TCompletedRequest{
-                    NProto::ACTION_REMOVE_NODE,
-                    started,
-                    MakeError(E_CANCELLED, "cancelled")};
-            });
+                    return TCompletedRequest{
+                        NProto::ACTION_REMOVE_NODE,
+                        started,
+                        MakeError(E_CANCELLED, "cancelled")};
+                });
     }
 
     TCompletedRequest HandleUnlinkNode(
@@ -299,9 +314,10 @@ private:
             CheckResponse(response);
 
             return {NProto::ACTION_REMOVE_NODE, started, response.GetError()};
-        } catch (const TServiceError& e)  {
+        } catch (const TServiceError& e) {
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
-            STORAGE_ERROR("unlink for %s has failed: %s",
+            STORAGE_ERROR(
+                "unlink for %s has failed: %s",
                 name.c_str(),
                 FormatError(error).c_str());
 
@@ -311,8 +327,9 @@ private:
 
     TFuture<TCompletedRequest> DoCreateHandle()
     {
-        static const int flags = ProtoFlag(NProto::TCreateHandleRequest::E_READ)
-            | ProtoFlag(NProto::TCreateHandleRequest::E_WRITE);
+        static const int flags =
+            ProtoFlag(NProto::TCreateHandleRequest::E_READ) |
+            ProtoFlag(NProto::TCreateHandleRequest::E_WRITE);
 
         TGuard<TMutex> guard(StateLock);
         if (Nodes.empty()) {
@@ -334,17 +351,20 @@ private:
         request->SetFlags(flags);
 
         auto self = weak_from_this();
-        return Session->CreateHandle(CreateCallContext(), std::move(request)).Apply(
-            [=, name = std::move(name)] (const TFuture<NProto::TCreateHandleResponse>& future) {
-                if (auto ptr = self.lock()) {
-                    return ptr->HandleCreateHandle(future, name, started);
-                }
+        return Session->CreateHandle(CreateCallContext(), std::move(request))
+            .Apply(
+                [=, name = std::move(name)](
+                    const TFuture<NProto::TCreateHandleResponse>& future)
+                {
+                    if (auto ptr = self.lock()) {
+                        return ptr->HandleCreateHandle(future, name, started);
+                    }
 
-                return TCompletedRequest{
-                    NProto::ACTION_CREATE_HANDLE,
-                    started,
-                    MakeError(E_CANCELLED, "cancelled")};
-            });
+                    return TCompletedRequest{
+                        NProto::ACTION_CREATE_HANDLE,
+                        started,
+                        MakeError(E_CANCELLED, "cancelled")};
+                });
     }
 
     TCompletedRequest HandleCreateHandle(
@@ -362,9 +382,10 @@ private:
             Handles[handle] = THandle{name, handle};
 
             return {NProto::ACTION_CREATE_HANDLE, started, response.GetError()};
-        } catch (const TServiceError& e)  {
+        } catch (const TServiceError& e) {
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
-            STORAGE_ERROR("create handle for %s has failed: %s",
+            STORAGE_ERROR(
+                "create handle for %s has failed: %s",
                 name.c_str(),
                 FormatError(error).c_str());
 
@@ -396,17 +417,20 @@ private:
         request->SetHandle(handle);
 
         auto self = weak_from_this();
-        return Session->DestroyHandle(CreateCallContext(), std::move(request)).Apply(
-            [=, name = std::move(name)] (const TFuture<NProto::TDestroyHandleResponse>& future) {
-                if (auto ptr = self.lock()) {
-                    return ptr->HandleDestroyHandle(name, future, started);
-                }
+        return Session->DestroyHandle(CreateCallContext(), std::move(request))
+            .Apply(
+                [=, name = std::move(name)](
+                    const TFuture<NProto::TDestroyHandleResponse>& future)
+                {
+                    if (auto ptr = self.lock()) {
+                        return ptr->HandleDestroyHandle(name, future, started);
+                    }
 
-                return TCompletedRequest{
-                    NProto::ACTION_DESTROY_HANDLE,
-                    started,
-                    MakeError(E_CANCELLED, "cancelled")};
-            });
+                    return TCompletedRequest{
+                        NProto::ACTION_DESTROY_HANDLE,
+                        started,
+                        MakeError(E_CANCELLED, "cancelled")};
+                });
     }
 
     TFuture<TCompletedRequest> DoGetNodeAttr()
@@ -489,9 +513,10 @@ private:
             CheckResponse(response);
 
             return {NProto::ACTION_DESTROY_HANDLE, started, {}};
-        } catch (const TServiceError& e)  {
+        } catch (const TServiceError& e) {
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
-            STORAGE_ERROR("destroy handle %s has failed: %s",
+            STORAGE_ERROR(
+                "destroy handle %s has failed: %s",
                 name.c_str(),
                 FormatError(error).c_str());
 
@@ -508,7 +533,9 @@ private:
 
         auto started = TInstant::Now();
         auto it = Handles.begin();
-        while (it != Handles.end() && (Locks.contains(it->first) || StagedLocks.contains(it->first))) {
+        while (it != Handles.end() &&
+               (Locks.contains(it->first) || StagedLocks.contains(it->first)))
+        {
             ++it;
         }
 
@@ -525,17 +552,19 @@ private:
         request->SetLength(LockLength);
 
         auto self = weak_from_this();
-        return Session->AcquireLock(CreateCallContext(), std::move(request)).Apply(
-            [=] (const TFuture<NProto::TAcquireLockResponse>& future) {
-                if (auto ptr = self.lock()) {
-                    return ptr->HandleAcquireLock(handle, future, started);
-                }
+        return Session->AcquireLock(CreateCallContext(), std::move(request))
+            .Apply(
+                [=](const TFuture<NProto::TAcquireLockResponse>& future)
+                {
+                    if (auto ptr = self.lock()) {
+                        return ptr->HandleAcquireLock(handle, future, started);
+                    }
 
-                return TCompletedRequest{
-                    NProto::ACTION_ACQUIRE_LOCK,
-                    started,
-                    MakeError(E_CANCELLED, "cancelled")};
-            });
+                    return TCompletedRequest{
+                        NProto::ACTION_ACQUIRE_LOCK,
+                        started,
+                        MakeError(E_CANCELLED, "cancelled")};
+                });
     }
 
     TCompletedRequest HandleAcquireLock(
@@ -560,9 +589,10 @@ private:
 
             Locks.insert(handle);
             return {NProto::ACTION_ACQUIRE_LOCK, started, {}};
-        } catch (const TServiceError& e)  {
+        } catch (const TServiceError& e) {
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
-            STORAGE_ERROR("acquire lock on %lu has failed: %s",
+            STORAGE_ERROR(
+                "acquire lock on %lu has failed: %s",
                 handle,
                 FormatError(error).c_str());
 
@@ -590,17 +620,19 @@ private:
 
         auto started = TInstant::Now();
         auto self = weak_from_this();
-        return Session->ReleaseLock(CreateCallContext(), std::move(request)).Apply(
-            [=] (const TFuture<NProto::TReleaseLockResponse>& future) {
-                if (auto ptr = self.lock()) {
-                    return ptr->HandleReleaseLock(handle, future, started);
-                }
+        return Session->ReleaseLock(CreateCallContext(), std::move(request))
+            .Apply(
+                [=](const TFuture<NProto::TReleaseLockResponse>& future)
+                {
+                    if (auto ptr = self.lock()) {
+                        return ptr->HandleReleaseLock(handle, future, started);
+                    }
 
-                return TCompletedRequest{
-                    NProto::ACTION_RELEASE_LOCK,
-                    started,
-                    MakeError(E_CANCELLED, "cancelled")};
-            });
+                    return TCompletedRequest{
+                        NProto::ACTION_RELEASE_LOCK,
+                        started,
+                        MakeError(E_CANCELLED, "cancelled")};
+                });
     }
 
     TCompletedRequest HandleReleaseLock(
@@ -618,9 +650,10 @@ private:
         try {
             CheckResponse(future.GetValue());
             return {NProto::ACTION_RELEASE_LOCK, started, {}};
-        } catch (const TServiceError& e)  {
+        } catch (const TServiceError& e) {
             auto error = MakeError(e.GetCode(), TString{e.GetMessage()});
-            STORAGE_ERROR("release lock on %lu has failed: %s",
+            STORAGE_ERROR(
+                "release lock on %lu has failed: %s",
                 handle,
                 FormatError(error).c_str());
 
@@ -640,7 +673,8 @@ private:
 
     TString GenerateNodeName()
     {
-        return TStringBuilder() << Headers.GetClientId() << ":" << CreateGuidAsString();
+        return TStringBuilder()
+               << Headers.GetClientId() << ":" << CreateGuidAsString();
     }
 
     template <typename T>
@@ -653,7 +687,9 @@ private:
 
     TIntrusivePtr<TCallContext> CreateCallContext()
     {
-        return MakeIntrusive<TCallContext>(FileSystemId, AtomicIncrement(LastRequestId));
+        return MakeIntrusive<TCallContext>(
+            FileSystemId,
+            AtomicIncrement(LastRequestId));
     }
 };
 

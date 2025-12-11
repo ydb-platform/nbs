@@ -2,7 +2,6 @@
 
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
-
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -31,7 +30,9 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
         service2.SendStatVolumeRequest("unknown");
         auto response = service2.RecvStatVolumeResponse();
 
-        UNIT_ASSERT_C(FAILED(response->GetStatus()), response->GetErrorReason());
+        UNIT_ASSERT_C(
+            FAILED(response->GetStatus()),
+            response->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldNotifyIfTabletRemounted)
@@ -58,7 +59,9 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
                 sessionId);
             auto response = service.RecvWriteBlocksResponse();
 
-            UNIT_ASSERT_C(response->GetStatus() == E_BS_INVALID_SESSION, response->GetErrorReason());
+            UNIT_ASSERT_C(
+                response->GetStatus() == E_BS_INVALID_SESSION,
+                response->GetErrorReason());
         }
     }
 
@@ -88,7 +91,9 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
         int event_counter = 0;
         int pipe_counter = 0;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvTabletPipe::EvSend: {
                         if (event->Type == TEvService::EvWriteBlocksRequest) {
@@ -100,7 +105,7 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
                         if (pipe_counter == 2) {
                             ++event_counter;
                             if (event_counter == 2) {
-                                auto &s = const_cast<TActorId&>(event->Sender);
+                                auto& s = const_cast<TActorId&>(event->Sender);
                                 s = NullActor;
                             }
                         }
@@ -114,27 +119,33 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
             new IEventHandle(
                 MakeStorageServiceId(),
                 FirstRequestActor,
-                service2.CreateWriteBlocksRequest(
-                    DefaultDiskId,
-                    TBlockRange64::WithLength(0, 1024),
-                    sessionId).release()),
+                service2
+                    .CreateWriteBlocksRequest(
+                        DefaultDiskId,
+                        TBlockRange64::WithLength(0, 1024),
+                        sessionId)
+                    .release()),
             nodeIdx2);
 
         runtime.Send(
             new IEventHandle(
                 MakeStorageServiceId(),
                 SecondRequestActor,
-                service2.CreateWriteBlocksRequest(
-                    DefaultDiskId,
-                    TBlockRange64::WithLength(0, 1024),
-                    sessionId).release()),
+                service2
+                    .CreateWriteBlocksRequest(
+                        DefaultDiskId,
+                        TBlockRange64::WithLength(0, 1024),
+                        sessionId)
+                    .release()),
             nodeIdx2);
 
         TAutoPtr<IEventHandle> handle1;
-        runtime.GrabEdgeEventRethrow<TEvService::TEvWriteBlocksResponse>(handle1);
+        runtime.GrabEdgeEventRethrow<TEvService::TEvWriteBlocksResponse>(
+            handle1);
 
         TAutoPtr<IEventHandle> handle2;
-        runtime.GrabEdgeEventRethrow<TEvService::TEvWriteBlocksResponse>(handle2);
+        runtime.GrabEdgeEventRethrow<TEvService::TEvWriteBlocksResponse>(
+            handle2);
 
         UNIT_ASSERT_C(
             (handle2->Recipient == SecondRequestActor),
@@ -157,7 +168,9 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
 
         auto KillerActor = runtime.AllocateEdgeActor(nodeIdx1);
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvTabletPipe::EvSend: {
                         if (event->Type == TEvService::EvWriteBlocksRequest) {
@@ -165,7 +178,8 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
                                 new IEventHandle(
                                     event->GetRecipientRewrite(),
                                     KillerActor,
-                                    std::make_unique<TEvents::TEvPoisonPill>().release()),
+                                    std::make_unique<TEvents::TEvPoisonPill>()
+                                        .release()),
                                 nodeIdx1);
                         }
                         break;
@@ -177,8 +191,7 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
         service2.SendWriteBlocksRequest(
             DefaultDiskId,
             TBlockRange64::WithLength(0, 1024),
-            sessionId
-        );
+            sessionId);
         auto response = service2.RecvWriteBlocksResponse();
         UNIT_ASSERT_C(
             FAILED(response->GetStatus()),
@@ -203,10 +216,13 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
 
         ui64 tabletId = 0;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvTabletPipe::EvClientConnected: {
-                        auto* msg = reinterpret_cast<TEvTabletPipe::TEvClientConnected::TPtr*>(&event);
+                        auto* msg = reinterpret_cast<
+                            TEvTabletPipe::TEvClientConnected::TPtr*>(&event);
                         tabletId = (*msg)->Get()->TabletId;
                         break;
                     }
@@ -216,10 +232,12 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
                                 new IEventHandle(
                                     event->Sender,
                                     killerActor,
-                                    std::make_unique<TEvTabletPipe::TEvClientDestroyed>(
+                                    std::make_unique<
+                                        TEvTabletPipe::TEvClientDestroyed>(
                                         tabletId,
                                         TActorId(),
-                                        TActorId()).release()),
+                                        TActorId())
+                                        .release()),
                                 nodeIdx2);
                             return TTestActorRuntime::EEventAction::DROP;
                         }
@@ -234,8 +252,7 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
         service2.SendWriteBlocksRequest(
             DefaultDiskId,
             TBlockRange64::WithLength(0, 1024),
-            sessionId
-        );
+            sessionId);
         auto response = service2.RecvWriteBlocksResponse();
         UNIT_ASSERT_C(
             FAILED(response->GetStatus()),
@@ -257,28 +274,19 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
             service.SendWriteBlocksRequest(
                 DefaultDiskId,
                 TBlockRange64::WithLength(0, 1024),
-                TString()
-            );
+                TString());
             auto response = service.RecvWriteBlocksResponse();
             UNIT_ASSERT(response->GetStatus() == E_BS_INVALID_SESSION);
         }
 
         {
-            service.SendReadBlocksRequest(
-                DefaultDiskId,
-                0,
-                TString()
-            );
+            service.SendReadBlocksRequest(DefaultDiskId, 0, TString());
             auto response = service.RecvReadBlocksResponse();
             UNIT_ASSERT(response->GetStatus() == E_BS_INVALID_SESSION);
         }
 
         {
-            service.SendZeroBlocksRequest(
-                DefaultDiskId,
-                0,
-                TString()
-            );
+            service.SendZeroBlocksRequest(DefaultDiskId, 0, TString());
             auto response = service.RecvZeroBlocksResponse();
             UNIT_ASSERT(response->GetStatus() == E_BS_INVALID_SESSION);
         }
@@ -307,34 +315,26 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
             service2.SendWriteBlocksRequest(
                 DefaultDiskId,
                 TBlockRange64::WithLength(0, 1024),
-                TString()
-            );
+                TString());
             auto response = service2.RecvWriteBlocksResponse();
             UNIT_ASSERT(response->GetStatus() == E_BS_INVALID_SESSION);
         }
 
         {
-            service2.SendReadBlocksRequest(
-                DefaultDiskId,
-                0,
-                TString()
-            );
+            service2.SendReadBlocksRequest(DefaultDiskId, 0, TString());
             auto response = service2.RecvReadBlocksResponse();
             UNIT_ASSERT(response->GetStatus() == E_BS_INVALID_SESSION);
         }
 
         {
-            service2.SendZeroBlocksRequest(
-                DefaultDiskId,
-                0,
-                TString()
-            );
+            service2.SendZeroBlocksRequest(DefaultDiskId, 0, TString());
             auto response = service2.RecvZeroBlocksResponse();
             UNIT_ASSERT(response->GetStatus() == E_BS_INVALID_SESSION);
         }
     }
 
-    Y_UNIT_TEST(ShouldAllowWriteRequestsWithReadOnlyAccessModeAndForceWriteMountFlag)
+    Y_UNIT_TEST(
+        ShouldAllowWriteRequestsWithReadOnlyAccessModeAndForceWriteMountFlag)
     {
         TTestEnv env;
 
@@ -361,14 +361,16 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
 
         // and using READ_ONLY mount
 
-        auto sessionId = service.MountVolume(
-            DefaultDiskId,
-            "foo",
-            "bar",
-            NProto::IPC_GRPC,
-            NProto::VOLUME_ACCESS_READ_ONLY,
-            NProto::VOLUME_MOUNT_REMOTE,
-            mountFlags)->Record.GetSessionId();
+        auto sessionId = service
+                             .MountVolume(
+                                 DefaultDiskId,
+                                 "foo",
+                                 "bar",
+                                 NProto::IPC_GRPC,
+                                 NProto::VOLUME_ACCESS_READ_ONLY,
+                                 NProto::VOLUME_MOUNT_REMOTE,
+                                 mountFlags)
+                             ->Record.GetSessionId();
 
         // but write/zero requests should still succeed since MF_FORCE_WRITE
         // overrides all checks
@@ -386,10 +388,7 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
         }
 
         {
-            service.SendZeroBlocksRequest(
-                DefaultDiskId,
-                0,
-                sessionId);
+            service.SendZeroBlocksRequest(DefaultDiskId, 0, sessionId);
             auto response = service.RecvZeroBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
@@ -412,28 +411,19 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
             service.SendWriteBlocksRequest(
                 DefaultDiskId,
                 TBlockRange64::WithLength(0, 1024),
-                TString()
-            );
+                TString());
             auto response = service.RecvWriteBlocksResponse();
             UNIT_ASSERT(response->GetStatus() == E_BS_INVALID_SESSION);
         }
 
         {
-            service.SendReadBlocksRequest(
-                DefaultDiskId,
-                0,
-                TString()
-            );
+            service.SendReadBlocksRequest(DefaultDiskId, 0, TString());
             auto response = service.RecvReadBlocksResponse();
             UNIT_ASSERT(response->GetStatus() == E_BS_INVALID_SESSION);
         }
 
         {
-            service.SendZeroBlocksRequest(
-                DefaultDiskId,
-                0,
-                TString()
-            );
+            service.SendZeroBlocksRequest(DefaultDiskId, 0, TString());
             auto response = service.RecvZeroBlocksResponse();
             UNIT_ASSERT(response->GetStatus() == E_BS_INVALID_SESSION);
         }
@@ -448,10 +438,13 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
         TActorId volumeActorId;
         bool pendingVolumeTabletStatus = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
-                        auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
+                        auto* msg = event->Get<
+                            TEvServicePrivate::TEvVolumeTabletStatus>();
                         volumeActorId = msg->VolumeActor;
                         if (pendingVolumeTabletStatus) {
                             return TTestActorRuntime::EEventAction::DROP;
@@ -469,12 +462,15 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
         UNIT_ASSERT(volumeActorId);
 
         // Kill the volume actor
-        service.SendRequest(volumeActorId, std::make_unique<TEvents::TEvPoisonPill>());
+        service.SendRequest(
+            volumeActorId,
+            std::make_unique<TEvents::TEvPoisonPill>());
 
         // Wait until tablet goes down
         {
             TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvServicePrivate::EvVolumeTabletStatus);
+            options.FinalEvents.emplace_back(
+                TEvServicePrivate::EvVolumeTabletStatus);
             runtime.DispatchEvents(options);
             UNIT_ASSERT(!volumeActorId);
         }
@@ -482,7 +478,8 @@ Y_UNIT_TEST_SUITE(TServiceForwardTest)
         pendingVolumeTabletStatus = true;
 
         // Volume tablet status will not be delivered to service actor now
-        // so from service's perspective the volume is still rebooting i.e. not ready
+        // so from service's perspective the volume is still rebooting i.e. not
+        // ready
 
         {
             service.SendWriteBlocksRequest(

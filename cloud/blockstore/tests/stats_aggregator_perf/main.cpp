@@ -1,4 +1,5 @@
 #include <cloud/blockstore/libs/diagnostics/stats_aggregator.h>
+
 #include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -71,9 +72,7 @@ private:
             auto encoder = CreateEncoder(&out, EFormat::SPACK);
             counters->Accept("", "", *encoder);
 
-            StatsAggregator->AddStats(
-                CreateGuidAsString(),
-                out.Str());
+            StatsAggregator->AddStats(CreateGuidAsString(), out.Str());
         }
     }
 
@@ -116,8 +115,10 @@ private:
         auto clientCounters = SetupComponentMetrics("client_stats");
         rootGroup->RegisterSubgroup("component", "client", clientCounters);
 
-        auto clientVolumeGroup = counters->GetSubgroup("component", "client_volume");
-        auto clientVolumeCounters = SetupComponentMetrics("client_volume_stats");
+        auto clientVolumeGroup =
+            counters->GetSubgroup("component", "client_volume");
+        auto clientVolumeCounters =
+            SetupComponentMetrics("client_volume_stats");
         clientVolumeGroup->RegisterSubgroup(
             "volume",
             CreateGuidAsString(),
@@ -138,7 +139,7 @@ private:
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

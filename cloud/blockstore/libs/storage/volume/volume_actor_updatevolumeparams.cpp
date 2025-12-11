@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+
 #include <cloud/storage/core/libs/common/verify.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -36,16 +37,11 @@ void TVolumeActor::HandleUpdateVolumeParams(
     THashMap<TString, TRuntimeVolumeParamsValue> volumeParams;
     for (const auto& [key, param]: msg->Record.GetVolumeParams()) {
         const auto ttl = param.HasTtlMs()
-            ? TDuration::MilliSeconds(param.GetTtlMs())
-            : TDuration::Minutes(15);
+                             ? TDuration::MilliSeconds(param.GetTtlMs())
+                             : TDuration::Minutes(15);
         volumeParams.try_emplace(
             key,
-            TRuntimeVolumeParamsValue{
-                key,
-                param.GetValue(),
-                ctx.Now() + ttl
-            }
-        );
+            TRuntimeVolumeParamsValue{key, param.GetValue(), ctx.Now() + ttl});
     }
 
     ExecuteTx<TUpdateVolumeParams>(
@@ -130,7 +126,8 @@ void TVolumeActor::CompleteUpdateVolumeParams(
         "%s Sending OK response for UpdateVolumeParams",
         LogTitle.GetWithTime().c_str());
 
-    auto response = std::make_unique<TEvVolume::TEvUpdateVolumeParamsResponse>();
+    auto response =
+        std::make_unique<TEvVolume::TEvUpdateVolumeParamsResponse>();
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     StopPartitions(ctx, {});

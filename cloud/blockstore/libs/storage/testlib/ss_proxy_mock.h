@@ -1,11 +1,10 @@
 #pragma once
 
 #include <cloud/blockstore/libs/kikimr/helpers.h>
-
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 
-#include <contrib/ydb/core/protos/subdomains.pb.h>
 #include <contrib/ydb/core/protos/bind_channel_storage_pool.pb.h>
+#include <contrib/ydb/core/protos/subdomains.pb.h>
 
 #include <util/generic/set.h>
 
@@ -13,9 +12,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-
-class TSSProxyMock final
-    : public NActors::TActor<TSSProxyMock>
+class TSSProxyMock final: public NActors::TActor<TSSProxyMock>
 {
 public:
     struct TPoolDescr
@@ -83,8 +80,8 @@ private:
     {
         const auto* msg = ev->Get();
 
-        Y_ABORT_UNLESS(msg->OpType ==
-            TEvSSProxy::TModifyVolumeRequest::EOpType::Destroy);
+        Y_ABORT_UNLESS(
+            msg->OpType == TEvSSProxy::TModifyVolumeRequest::EOpType::Destroy);
 
         Y_ABORT_UNLESS(Volumes.contains(msg->DiskId));
         Volumes.erase(msg->DiskId);
@@ -102,11 +99,10 @@ private:
         auto it = Volumes.find(msg->DiskId);
 
         if (it == Volumes.end()) {
-            auto response = std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
-                MakeError(
-                    MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist)
-                )
-            );
+            auto response =
+                std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
+                    MakeError(MAKE_SCHEMESHARD_ERROR(
+                        NKikimrScheme::StatusPathDoesNotExist)));
 
             NCloud::Reply(ctx, *ev, std::move(response));
             return;
@@ -172,28 +168,30 @@ private:
             volumeDescr.SetName(ToString(path));
 
             auto& config = *volumeDescr.MutableVolumeConfig();
-            if (path.StartsWith("nonrepl-")
-                    || path.StartsWith("hdd-nonrepl-")
-                    || path.StartsWith("mirror"))
+            if (path.StartsWith("nonrepl-") ||
+                path.StartsWith("hdd-nonrepl-") || path.StartsWith("mirror"))
             {
-                config.SetStorageMediaKind(path.StartsWith("nonrepl-")
-                    ? NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED
+                config.SetStorageMediaKind(
+                    path.StartsWith("nonrepl-")
+                        ? NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED
                     : path.StartsWith("hdd-nonrepl-")
-                    ? NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED
+                        ? NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED
                     : path.StartsWith("mirror2-")
-                    ? NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2
-                    : NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
+                        ? NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2
+                        : NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3);
                 config.SetBlockSize(4096);
                 auto& partition = *config.AddPartitions();
                 partition.SetBlockCount(1000000);
-                partition.SetType(NKikimrBlockStore::EPartitionType::NonReplicated);
+                partition.SetType(
+                    NKikimrBlockStore::EPartitionType::NonReplicated);
             } else {
                 config.SetStorageMediaKind(NCloud::NProto::STORAGE_MEDIA_SSD);
             }
         }
 
         auto response = std::make_unique<TEvSSProxy::TEvDescribeSchemeResponse>(
-            msg->Path, std::move(p));
+            msg->Path,
+            std::move(p));
 
         NCloud::Reply(ctx, *ev, std::move(response));
     }

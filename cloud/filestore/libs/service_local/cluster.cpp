@@ -6,9 +6,8 @@ namespace NCloud::NFileStore {
 
 bool TClusterNode::AddClient(const NProto::TClusterClient& client)
 {
-    auto [it, inserted] = Clients.emplace(
-        client.GetClientId(),
-        client.GetOpaque());
+    auto [it, inserted] =
+        Clients.emplace(client.GetClientId(), client.GetOpaque());
 
     return inserted;
 }
@@ -24,7 +23,8 @@ bool TClusterNode::RemoveClient(const TString& clientId)
     return false;
 }
 
-void TClusterNode::ListClients(NProto::TListClusterClientsResponse& response) const
+void TClusterNode::ListClients(
+    NProto::TListClusterClientsResponse& response) const
 {
     for (const auto& [clientId, opaque]: Clients) {
         auto* record = response.AddClients();

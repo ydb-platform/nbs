@@ -50,7 +50,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TBackupTabletBootInfosActor::TBackupTabletBootInfosActor(
-        TRequestInfoPtr requestInfo)
+    TRequestInfoPtr requestInfo)
     : RequestInfo(std::move(requestInfo))
 {}
 
@@ -120,8 +120,8 @@ TResultOrError<IActorPtr> TServiceActor::CreateBackupTabletBootInfosActor(
 {
     Y_UNUSED(input);
 
-    return {std::make_unique<TBackupTabletBootInfosActor>(
-        std::move(requestInfo))};
+    return {
+        std::make_unique<TBackupTabletBootInfosActor>(std::move(requestInfo))};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

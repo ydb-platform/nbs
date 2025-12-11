@@ -6,8 +6,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TThrottlerPolicyStub final
-    : public IThrottlerPolicy
+class TThrottlerPolicyStub final: public IThrottlerPolicy
 {
 public:
     TDuration SuggestDelay(

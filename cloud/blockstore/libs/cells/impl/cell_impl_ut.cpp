@@ -160,7 +160,7 @@ Y_UNIT_TEST_SUITE(TCellTest)
         proto.SetMinCellConnections(1);
         proto.SetTransport(NProto::CELL_DATA_TRANSPORT_GRPC);
         ConfigureHosts(proto, hosts);
-        auto config= std::make_shared<TCellConfig>(std::move(proto));
+        auto config = std::make_shared<TCellConfig>(std::move(proto));
 
         TBootstrap bootstrap;
         bootstrap.GrpcClient = std::make_shared<TTestGrpcClient>();
@@ -208,7 +208,7 @@ Y_UNIT_TEST_SUITE(TCellTest)
         proto.SetMinCellConnections(3);
         proto.SetTransport(NProto::CELL_DATA_TRANSPORT_GRPC);
         ConfigureHosts(proto, hosts);
-        auto config= std::make_shared<TCellConfig>(std::move(proto));
+        auto config = std::make_shared<TCellConfig>(std::move(proto));
 
         TBootstrap bootstrap;
         bootstrap.GrpcClient = std::make_shared<TTestGrpcClient>();

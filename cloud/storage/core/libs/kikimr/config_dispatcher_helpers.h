@@ -4,7 +4,6 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
-
 #include <cloud/storage/core/protos/config_dispatcher_settings.pb.h>
 
 #include <contrib/ydb/core/config/init/init.h>

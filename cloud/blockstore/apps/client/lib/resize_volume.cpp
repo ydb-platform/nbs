@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -16,8 +17,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TResizeVolumeCommand final
-    : public TCommand
+class TResizeVolumeCommand final: public TCommand
 {
 private:
     TVolumeId VolumeId;
@@ -86,7 +86,8 @@ private:
             return false;
         }
 
-        const auto* blocksCount = ParseResultPtr->FindLongOptParseResult("blocks-count");
+        const auto* blocksCount =
+            ParseResultPtr->FindLongOptParseResult("blocks-count");
         if (!blocksCount) {
             STORAGE_ERROR("Blocks count is required");
             return false;

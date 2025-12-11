@@ -21,10 +21,8 @@ void TPartitionActor::HandleCreateCheckpoint(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -34,14 +32,14 @@ void TPartitionActor::HandleCreateCheckpoint(
         "CreateCheckpoint",
         requestInfo->CallContext->RequestId);
 
-    auto replyError = [=] (
-        const TActorContext& ctx,
-        TRequestInfo& requestInfo,
-        ui32 errorCode,
-        TString errorReason)
+    auto replyError = [=](const TActorContext& ctx,
+                          TRequestInfo& requestInfo,
+                          ui32 errorCode,
+                          TString errorReason)
     {
-        auto response = std::make_unique<TEvService::TEvCreateCheckpointResponse>(
-            MakeError(errorCode, std::move(errorReason)));
+        auto response =
+            std::make_unique<TEvService::TEvCreateCheckpointResponse>(
+                MakeError(errorCode, std::move(errorReason)));
 
         LWTRACK(
             ResponseSent_Partition,
@@ -54,13 +52,21 @@ void TPartitionActor::HandleCreateCheckpoint(
 
     const auto& checkpointId = msg->Record.GetCheckpointId();
     if (!checkpointId) {
-        replyError(ctx, *requestInfo, E_ARGUMENT, "missing checkpoint identifier");
+        replyError(
+            ctx,
+            *requestInfo,
+            E_ARGUMENT,
+            "missing checkpoint identifier");
         return;
     }
 
     if (State->GetCheckpoints().GetCommitId(checkpointId)) {
-        replyError(ctx, *requestInfo, S_ALREADY, TStringBuilder()
-            << "checkpoint already exists: " << checkpointId.Quote());
+        replyError(
+            ctx,
+            *requestInfo,
+            S_ALREADY,
+            TStringBuilder()
+                << "checkpoint already exists: " << checkpointId.Quote());
         return;
     }
 
@@ -71,7 +77,9 @@ void TPartitionActor::HandleCreateCheckpoint(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%lu] Create checkpoint (%s)",
         TabletID(),
         checkpointId.Quote().data());
@@ -86,12 +94,10 @@ void TPartitionActor::HandleCreateCheckpoint(
 
     AddTransaction<TEvService::TCreateCheckpointMethod>(*requestInfo);
 
-    auto tx = CreateTx<TCreateCheckpoint>(
-        requestInfo,
-        std::move(meta));
+    auto tx = CreateTx<TCreateCheckpoint>(requestInfo, std::move(meta));
 
     auto& queue = State->GetCCCRequestQueue();
-    queue.push_back({ commitId, std::move(tx) });
+    queue.push_back({commitId, std::move(tx)});
 
     ProcessCCCRequestQueue(ctx);
 }
@@ -132,7 +138,9 @@ void TPartitionActor::CompleteCreateCheckpoint(
 
     State->StopProcessingCCCRequest();
 
-    LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%lu] Checkpoint %s created (commit: %lu)",
         TabletID(),
         args.Meta.GetCheckpointId().Quote().data(),

@@ -70,8 +70,7 @@ ELogPriority GetDetailsLogPriority(const NProto::TError& error)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-struct TRequestStateBase
-    : public TRetryState
+struct TRequestStateBase: public TRetryState
 {
     TCallContextPtr CallContext;
     std::shared_ptr<typename T::TRequest> Request;
@@ -79,8 +78,8 @@ struct TRequestStateBase
     ELogPriority DetailsLogPriority = TLOG_DEBUG;
 
     TRequestStateBase(
-            TCallContextPtr callContext,
-            std::shared_ptr<typename T::TRequest> request)
+        TCallContextPtr callContext,
+        std::shared_ptr<typename T::TRequest> request)
         : CallContext(std::move(callContext))
         , Request(std::move(request))
         , Response(NewPromise<typename T::TResponse>())
@@ -130,14 +129,14 @@ protected:
 
 public:
     TDurableClient(
-            TClientAppConfigPtr config,
-            IBlockStorePtr client,
-            IRetryPolicyPtr retryPolicy,
-            ILoggingServicePtr logging,
-            ITimerPtr timer,
-            ISchedulerPtr scheduler,
-            IRequestStatsPtr requestStats,
-            IVolumeStatsPtr volumeStats)
+        TClientAppConfigPtr config,
+        IBlockStorePtr client,
+        IRetryPolicyPtr retryPolicy,
+        ILoggingServicePtr logging,
+        ITimerPtr timer,
+        ISchedulerPtr scheduler,
+        IRequestStatsPtr requestStats,
+        IVolumeStatsPtr volumeStats)
         : Config(std::move(config))
         , Client(std::move(client))
         , RetryPolicy(std::move(retryPolicy))
@@ -207,7 +206,8 @@ private:
     void IncrementRequestTimeout(T& request)
     {
         auto& headers = *request.MutableHeaders();
-        const auto timeout = TDuration::MilliSeconds(headers.GetRequestTimeout());
+        const auto timeout =
+            TDuration::MilliSeconds(headers.GetRequestTimeout());
         const auto newTimeout = Min<TDuration>(
             timeout + Config->GetRequestTimeoutIncrementOnRetry(),
             Config->GetRequestTimeoutMax());
@@ -261,7 +261,8 @@ private:
                         state->CallContext->SetHasUncountableRejects();
                         break;
                     }
-                    case EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint: {
+                    case EDiagnosticsErrorKind::
+                        ErrorWriteRejectedByCheckpoint: {
                         // Do not flood in the log. One message in the log is
                         // enough.
                         doLogging = state->Retries == 1;
@@ -286,11 +287,9 @@ private:
                             clientId,
                             Config->GetInstanceId())
                         << GetRequestDetails(*state->Request)
-                        << " retry request"
-                        << " (retries: " << state->Retries
+                        << " retry request" << " (retries: " << state->Retries
                         << ", timeout: " << FormatDuration(retrySpec.Backoff)
-                        << ", error: " << FormatError(error)
-                        << ")");
+                        << ", error: " << FormatError(error) << ")");
                 }
 
                 auto volumeInfo = VolumeStats->GetVolumeInfo(diskId, clientId);
@@ -325,7 +324,8 @@ private:
                         } else {
                             state->CallContext->AddTime(
                                 EProcessingStage::Backoff,
-                                CyclesToDurationSafe(nowCycles - postponeCycles));
+                                CyclesToDurationSafe(
+                                    nowCycles - postponeCycles));
                         }
 
                         if (auto p = weakSelf.lock()) {
@@ -343,7 +343,8 @@ private:
                 auto& error = *response.MutableError();
                 auto errorStr = FormatError(error);
                 error.SetCode(E_RETRY_TIMEOUT);
-                error.SetMessage(TStringBuilder() << "Retry timeout: " << errorStr);
+                error.SetMessage(
+                    TStringBuilder() << "Retry timeout: " << errorStr);
             }
 
             auto duration = TInstant::Now() - state->Started;
@@ -357,8 +358,7 @@ private:
                 << GetRequestDetails(*state->Request)
                 << " will not retry error: " << FormatError(response.GetError())
                 << " (retries: " << state->Retries
-                << ", duration: " << FormatDuration(duration)
-                << ")");
+                << ", duration: " << FormatDuration(duration) << ")");
         } else {
             // log successful request
             if (state->Retries) {
@@ -371,11 +371,10 @@ private:
                         diskId,
                         clientId,
                         Config->GetInstanceId())
-                    << GetRequestDetails(*state->Request)
-                    << " request completed"
-                    << " (retries: " << state->Retries
-                    << ", duration: " << FormatDuration(duration)
-                    << ")");
+                        << GetRequestDetails(*state->Request)
+                        << " request completed"
+                        << " (retries: " << state->Retries
+                        << ", duration: " << FormatDuration(duration) << ")");
             }
         }
 

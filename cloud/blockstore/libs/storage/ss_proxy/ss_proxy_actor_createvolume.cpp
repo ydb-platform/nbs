@@ -7,7 +7,6 @@
 #include <cloud/storage/core/libs/common/helpers.h>
 
 #include <contrib/ydb/core/base/path.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -33,8 +32,7 @@ ui64 GetBlocksCount(const TVolumeConfig& config)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCreateVolumeActor final
-    : public TActorBootstrapped<TCreateVolumeActor>
+class TCreateVolumeActor final: public TActorBootstrapped<TCreateVolumeActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
@@ -101,9 +99,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TCreateVolumeActor::TCreateVolumeActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
-        TVolumeConfig volumeConfig)
+    TRequestInfoPtr requestInfo,
+    TStorageConfigPtr config,
+    TVolumeConfig volumeConfig)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , VolumeConfig(std::move(volumeConfig))
@@ -144,7 +142,9 @@ void TCreateVolumeActor::DescribeVolumeBeforeCreate(const TActorContext& ctx)
         DiskIdToVolumeDirAndNameDeprecated(schemeShardDir, diskId);
     const auto volumePath = volumeDir + "/" + volumeName;
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SS_PROXY,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SS_PROXY,
         "Sending describe request before create, for volume %s and path %s",
         diskId.Quote().data(),
         volumePath.data());
@@ -177,7 +177,9 @@ void TCreateVolumeActor::CreateVolume(const TActorContext& ctx)
     auto request =
         std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(modifyScheme);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SS_PROXY,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SS_PROXY,
         "Sending create request for %s in directory %s",
         VolumeName.Quote().data(),
         VolumeDir.Quote().data());
@@ -201,7 +203,9 @@ void TCreateVolumeActor::CreateNextDir(const TActorContext& ctx)
     TString parentDir = ParentDirs[NextItemToCreate];
     TString itemName = VolumePathItems[NextItemToCreate];
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SS_PROXY,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SS_PROXY,
         "Sending mkdir request for %s in directory %s",
         itemName.Quote().data(),
         parentDir.Quote().data());
@@ -213,9 +217,8 @@ void TCreateVolumeActor::CreateNextDir(const TActorContext& ctx)
     auto* op = modifyScheme.MutableMkDir();
     op->SetName(itemName);
 
-    auto request =
-        std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(
-            std::move(modifyScheme));
+    auto request = std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(
+        std::move(modifyScheme));
 
     NCloud::Send(
         ctx,
@@ -230,7 +233,9 @@ void TCreateVolumeActor::DescribeVolumeAfterCreate(const TActorContext& ctx)
 
     const auto volumePath = VolumeDir + "/" + VolumeName;
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SS_PROXY,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SS_PROXY,
         "Volume %s: sending describe request after create for path %s",
         VolumeConfig.GetDiskId().Quote().data(),
         volumePath.data());
@@ -254,7 +259,9 @@ bool TCreateVolumeActor::VerifyVolume(
     // See NBS-1250.
 
     if (VolumeConfig.GetDiskId() != actual.GetDiskId()) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SS_PROXY,
             "Created volume DiskId mismatch: expected=%s, actual=%s",
             VolumeConfig.GetDiskId().Quote().data(),
             actual.GetDiskId().Quote().data());
@@ -262,7 +269,9 @@ bool TCreateVolumeActor::VerifyVolume(
     }
 
     if (VolumeConfig.GetProjectId() != actual.GetProjectId()) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SS_PROXY,
             "Created volume ProjectId mismatch: expected=%s, actual=%s",
             VolumeConfig.GetProjectId().Quote().data(),
             actual.GetProjectId().Quote().data());
@@ -270,7 +279,9 @@ bool TCreateVolumeActor::VerifyVolume(
     }
 
     if (VolumeConfig.GetBlockSize() != actual.GetBlockSize()) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SS_PROXY,
             "Created volume BlockSize mismatch: expected=%lu, actual=%lu",
             VolumeConfig.GetBlockSize(),
             actual.GetBlockSize());
@@ -278,7 +289,9 @@ bool TCreateVolumeActor::VerifyVolume(
     }
 
     if (GetBlocksCount(VolumeConfig) != GetBlocksCount(actual)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SS_PROXY,
             "Created volume BlocksCount mismatch: expected=%lu, actual=%lu",
             GetBlocksCount(VolumeConfig),
             GetBlocksCount(actual));
@@ -286,15 +299,20 @@ bool TCreateVolumeActor::VerifyVolume(
     }
 
     if (VolumeConfig.GetStorageMediaKind() != actual.GetStorageMediaKind()) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY,
-            "Created volume StorageMediaKind mismatch: expected=%lu, actual=%lu",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SS_PROXY,
+            "Created volume StorageMediaKind mismatch: expected=%lu, "
+            "actual=%lu",
             VolumeConfig.GetStorageMediaKind(),
             actual.GetStorageMediaKind());
         return false;
     }
 
     if (VolumeConfig.GetFolderId() != actual.GetFolderId()) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SS_PROXY,
             "Created volume FolderId mismatch: expected=%s, actual=%s",
             VolumeConfig.GetFolderId().Quote().data(),
             actual.GetFolderId().Quote().data());
@@ -302,7 +320,9 @@ bool TCreateVolumeActor::VerifyVolume(
     }
 
     if (VolumeConfig.GetCloudId() != actual.GetCloudId()) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SS_PROXY,
             "Created volume CloudId mismatch: expected=%s, actual=%s",
             VolumeConfig.GetCloudId().Quote().data(),
             actual.GetCloudId().Quote().data());
@@ -310,23 +330,32 @@ bool TCreateVolumeActor::VerifyVolume(
     }
 
     if (VolumeConfig.GetTabletVersion() != actual.GetTabletVersion()) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SS_PROXY,
             "Created volume TabletVersion mismatch: expected=%lu, actual=%lu",
             VolumeConfig.GetTabletVersion(),
             actual.GetTabletVersion());
         return false;
     }
 
-    if (VolumeConfig.GetBaseDiskCheckpointId() != actual.GetBaseDiskCheckpointId()) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY,
-            "Created volume BaseDiskCheckpointId mismatch: expected=%s, actual=%s",
+    if (VolumeConfig.GetBaseDiskCheckpointId() !=
+        actual.GetBaseDiskCheckpointId())
+    {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SS_PROXY,
+            "Created volume BaseDiskCheckpointId mismatch: expected=%s, "
+            "actual=%s",
             VolumeConfig.GetBaseDiskCheckpointId().Quote().data(),
             actual.GetBaseDiskCheckpointId().Quote().data());
         return false;
     }
 
     if (VolumeConfig.GetFillGeneration() != actual.GetFillGeneration()) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SS_PROXY,
             "Created volume FillGeneration mismatch: expected=%lu, actual=%lu",
             VolumeConfig.GetFillGeneration(),
             actual.GetFillGeneration());
@@ -334,7 +363,9 @@ bool TCreateVolumeActor::VerifyVolume(
     }
 
     if (VolumeConfig.GetTagsStr() != actual.GetTagsStr()) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SS_PROXY,
             "Created volume TagsStr mismatch: expected=%s, actual=%s",
             VolumeConfig.GetTagsStr().Quote().data(),
             actual.GetTagsStr().Quote().data());
@@ -355,15 +386,17 @@ void TCreateVolumeActor::HandleDescribeVolumeBeforeCreateResponse(
     // TODO: use E_NOT_FOUND instead of StatusPathDoesNotExist
     if (FAILED(error.GetCode())) {
         if (FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD) {
-           auto status =
-                static_cast<NKikimrScheme::EStatus>(STATUS_FROM_CODE(error.GetCode()));
+            auto status = static_cast<NKikimrScheme::EStatus>(
+                STATUS_FROM_CODE(error.GetCode()));
             if (status == NKikimrScheme::StatusPathDoesNotExist) {
                 CreateVolume(ctx);
                 return;
             }
         }
 
-        LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SS_PROXY,
             "Volume %s: describe before create failed: %s",
             VolumeConfig.GetDiskId().Quote().data(),
             FormatError(error).data());
@@ -378,7 +411,9 @@ void TCreateVolumeActor::HandleDescribeVolumeBeforeCreateResponse(
     const auto pathType = pathDescription.GetSelf().GetPathType();
 
     if (pathType != NKikimrSchemeOp::EPathTypeBlockStoreVolume) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SS_PROXY,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SS_PROXY,
             "Volume %s: described path %s is not a BlockStoreVolume",
             VolumeConfig.GetDiskId().Quote().data(),
             msg->Path.data());
@@ -393,7 +428,8 @@ void TCreateVolumeActor::HandleDescribeVolumeBeforeCreateResponse(
 
     if (!VerifyVolume(ctx, describedVolumeConfig)) {
         const auto& diskId = VolumeConfig.GetDiskId();
-        const TString errorMsg = TStringBuilder()
+        const TString errorMsg =
+            TStringBuilder()
             << "Volume " << diskId.Quote()
             << " with different config already exists at path " << msg->Path;
         LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY, errorMsg);
@@ -422,10 +458,9 @@ void TCreateVolumeActor::HandleCreateVolumeResponse(
 
     if (FAILED(error.GetCode())) {
         if (FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD) {
-            auto status =
-                static_cast<NKikimrScheme::EStatus>(STATUS_FROM_CODE(error.GetCode()));
-            if (FirstCreationAttempt &&
-                ParentDirs &&
+            auto status = static_cast<NKikimrScheme::EStatus>(
+                STATUS_FROM_CODE(error.GetCode()));
+            if (FirstCreationAttempt && ParentDirs &&
                 status == NKikimrScheme::StatusPathDoesNotExist)
             {
                 // Try creating intermediate directories
@@ -435,7 +470,9 @@ void TCreateVolumeActor::HandleCreateVolumeResponse(
             }
         }
 
-        LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SS_PROXY,
             "Volume %s: create failed: %s",
             diskId.Quote().data(),
             FormatError(error).data());
@@ -446,7 +483,9 @@ void TCreateVolumeActor::HandleCreateVolumeResponse(
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::SS_PROXY,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SS_PROXY,
         "Volume %s created successfully",
         diskId.Quote().data());
 
@@ -461,7 +500,9 @@ void TCreateVolumeActor::HandleMkDirResponse(
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SS_PROXY,
             "Volume %s: mkdir parentDir %s itemName %s failed: %s",
             VolumeConfig.GetDiskId().Quote().data(),
             ParentDirs[NextItemToCreate].Quote().data(),
@@ -488,14 +529,17 @@ void TCreateVolumeActor::HandleDescribeVolumeAfterCreateResponse(
 
     auto error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_WARN(ctx, TBlockStoreComponents::SS_PROXY,
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::SS_PROXY,
             "Volume %s: describe after create failed: %s",
             diskId.Quote().data(),
             FormatError(error).data());
 
         ReplyAndDie(
             ctx,
-            std::make_unique<TEvSSProxy::TEvCreateVolumeResponse>(std::move(error)));
+            std::make_unique<TEvSSProxy::TEvCreateVolumeResponse>(
+                std::move(error)));
         return;
     }
 
@@ -503,15 +547,19 @@ void TCreateVolumeActor::HandleDescribeVolumeAfterCreateResponse(
     const auto pathType = pathDescription.GetSelf().GetPathType();
 
     if (pathType != NKikimrSchemeOp::EPathTypeBlockStoreVolume) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY,
-            "Volume %s: describe after create failed: described path %s is not a BlockStoreVolume",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SS_PROXY,
+            "Volume %s: describe after create failed: described path %s is not "
+            "a BlockStoreVolume",
             diskId.Quote().data(),
             msg->Path.data());
 
         ReplyAndDie(
             ctx,
-            std::make_unique<TEvSSProxy::TEvCreateVolumeResponse>(
-                MakeError(E_INVALID_STATE, TStringBuilder()
+            std::make_unique<TEvSSProxy::TEvCreateVolumeResponse>(MakeError(
+                E_INVALID_STATE,
+                TStringBuilder()
                     << "Described path is not a BlockStoreVolume")));
         return;
     }
@@ -520,11 +568,13 @@ void TCreateVolumeActor::HandleDescribeVolumeAfterCreateResponse(
         pathDescription.GetBlockStoreVolumeDescription();
     const auto& describedVolumeConfig = volumeDescription.GetVolumeConfig();
 
-    if (VolumeConfig.GetFillGeneration() > describedVolumeConfig.GetFillGeneration()) {
+    if (VolumeConfig.GetFillGeneration() >
+        describedVolumeConfig.GetFillGeneration())
+    {
         const auto& diskId = VolumeConfig.GetDiskId();
         const TString errorMsg = TStringBuilder()
-            << "Volume " << diskId.Quote()
-            << " has outdated FillGeneration";
+                                 << "Volume " << diskId.Quote()
+                                 << " has outdated FillGeneration";
         LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY, errorMsg);
 
         ReplyAndDie(
@@ -535,21 +585,22 @@ void TCreateVolumeActor::HandleDescribeVolumeAfterCreateResponse(
     }
 
     if (!VerifyVolume(ctx, describedVolumeConfig)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SS_PROXY,
-            "Volume %s: describe after create failed: described volume config mismatch",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SS_PROXY,
+            "Volume %s: describe after create failed: described volume config "
+            "mismatch",
             diskId.Quote().data());
 
         ReplyAndDie(
             ctx,
-            std::make_unique<TEvSSProxy::TEvCreateVolumeResponse>(
-                MakeError(E_INVALID_STATE, TStringBuilder()
-                    << "Described volume config mismatch")));
+            std::make_unique<TEvSSProxy::TEvCreateVolumeResponse>(MakeError(
+                E_INVALID_STATE,
+                TStringBuilder() << "Described volume config mismatch")));
         return;
     }
 
-    ReplyAndDie(
-        ctx,
-        std::make_unique<TEvSSProxy::TEvCreateVolumeResponse>());
+    ReplyAndDie(ctx, std::make_unique<TEvSSProxy::TEvCreateVolumeResponse>());
 }
 
 void TCreateVolumeActor::ReplyAndDie(
@@ -563,7 +614,9 @@ void TCreateVolumeActor::ReplyAndDie(
 STFUNC(TCreateVolumeActor::StateDescribeVolumeBeforeCreate)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvSSProxy::TEvDescribeSchemeResponse, HandleDescribeVolumeBeforeCreateResponse);
+        HFunc(
+            TEvSSProxy::TEvDescribeSchemeResponse,
+            HandleDescribeVolumeBeforeCreateResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -605,7 +658,9 @@ STFUNC(TCreateVolumeActor::StateCreateNextDir)
 STFUNC(TCreateVolumeActor::StateDescribeVolumeAfterCreate)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvSSProxy::TEvDescribeSchemeResponse, HandleDescribeVolumeAfterCreateResponse);
+        HFunc(
+            TEvSSProxy::TEvDescribeSchemeResponse,
+            HandleDescribeVolumeAfterCreateResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -626,10 +681,8 @@ void TSSProxyActor::HandleCreateVolume(
 {
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     NCloud::Register<TCreateVolumeActor>(
         ctx,

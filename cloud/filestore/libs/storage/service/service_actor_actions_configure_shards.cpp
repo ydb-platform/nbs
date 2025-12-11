@@ -28,9 +28,7 @@ private:
     const TString Input;
 
 public:
-    TConfigureShardsActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TConfigureShardsActionActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -50,8 +48,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TConfigureShardsActionActor::TConfigureShardsActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -60,9 +58,7 @@ void TConfigureShardsActionActor::Bootstrap(const TActorContext& ctx)
 {
     NProtoPrivate::TConfigureShardsRequest request;
     if (!google::protobuf::util::JsonStringToMessage(Input, &request).ok()) {
-        ReplyAndDie(
-            ctx,
-            TErrorResponse(E_ARGUMENT, "Failed to parse input"));
+        ReplyAndDie(ctx, TErrorResponse(E_ARGUMENT, "Failed to parse input"));
         return;
     }
 
@@ -128,7 +124,7 @@ STFUNC(TConfigureShardsActionActor::StateWork)
     }
 }
 
-} // namespace
+}   // namespace
 
 IActorPtr TStorageServiceActor::CreateConfigureShardsActionActor(
     TRequestInfoPtr requestInfo,

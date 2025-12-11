@@ -11,8 +11,7 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct ICheckpointValidator
-    : public IOutputStream
+struct ICheckpointValidator: public IOutputStream
 {
     virtual bool GetResult() const = 0;
 };

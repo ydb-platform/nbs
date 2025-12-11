@@ -44,7 +44,7 @@ Y_UNIT_TEST_SUITE(TConcurrentQueueTest)
 
     Y_UNIT_TEST(ShouldKeepItems_ManySegments)
     {
-        ShouldKeepItems(100*1000);
+        ShouldKeepItems(100 * 1000);
     }
 }
 

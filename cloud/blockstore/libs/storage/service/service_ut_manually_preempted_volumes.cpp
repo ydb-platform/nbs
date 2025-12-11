@@ -19,7 +19,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using EChangeBindingOp = TEvService::TEvChangeVolumeBindingRequest::EChangeBindingOp;
+using EChangeBindingOp =
+    TEvService::TEvChangeVolumeBindingRequest::EChangeBindingOp;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -44,7 +45,8 @@ void PushVolume(TServiceClient& service, const TString& diskId)
 
     TDispatchOptions options;
     options.FinalEvents.emplace_back(
-        TEvServicePrivate::EvSyncManuallyPreemptedVolumesComplete, 1);
+        TEvServicePrivate::EvSyncManuallyPreemptedVolumesComplete,
+        1);
 }
 
 void PushVolumeNoSync(
@@ -59,9 +61,12 @@ void PushVolumeNoSync(
     using TResponse = TEvService::TEvChangeVolumeBindingResponse;
 
     bool syncSeen = false;
-    runtime.SetObserverFunc( [&] (TAutoPtr<IEventHandle>& event) {
+    runtime.SetObserverFunc(
+        [&](TAutoPtr<IEventHandle>& event)
+        {
             switch (event->GetTypeRewrite()) {
-                case TEvServicePrivate::EvSyncManuallyPreemptedVolumesComplete: {
+                case TEvServicePrivate::
+                    EvSyncManuallyPreemptedVolumesComplete: {
                     syncSeen = true;
                     break;
                 }
@@ -82,7 +87,7 @@ void PushVolumeNoSync(
     UNIT_ASSERT_VALUES_EQUAL(false, syncSeen);
 }
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -99,7 +104,9 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
 
         auto& runtime = env.GetRuntime();
         bool responseSeen = false;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvService::EvRunVolumesLivenessCheckResponse: {
                         responseSeen = true;
@@ -128,7 +135,9 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
 
         auto& runtime = env.GetRuntime();
         bool responseSeen = false;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvService::EvRunVolumesLivenessCheckResponse: {
                         responseSeen = true;
@@ -170,9 +179,12 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
         auto& runtime = env.GetRuntime();
         bool syncSeen = false;
         TAutoPtr<IEventHandle> syncComplete;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
-                    case TEvServicePrivate::EvSyncManuallyPreemptedVolumesComplete: {
+                    case TEvServicePrivate::
+                        EvSyncManuallyPreemptedVolumesComplete: {
                         syncSeen = true;
                         syncComplete = event;
                         return TTestActorRuntime::EEventAction::DROP;
@@ -197,7 +209,9 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
 
         bool responseSeen = false;
         bool describeSeen = false;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeResponse: {
                         describeSeen = true;
@@ -245,9 +259,12 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
         auto& runtime = env.GetRuntime();
         bool syncSeen = false;
         TAutoPtr<IEventHandle> syncComplete;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
-                    case TEvServicePrivate::EvSyncManuallyPreemptedVolumesComplete: {
+                    case TEvServicePrivate::
+                        EvSyncManuallyPreemptedVolumesComplete: {
                         syncSeen = true;
                         syncComplete = event;
                         return TTestActorRuntime::EEventAction::DROP;
@@ -274,9 +291,12 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
         UNIT_ASSERT(syncComplete);
 
         syncSeen = false;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
-                    case TEvServicePrivate::EvSyncManuallyPreemptedVolumesComplete: {
+                    case TEvServicePrivate::
+                        EvSyncManuallyPreemptedVolumesComplete: {
                         syncSeen = true;
                         break;
                     }
@@ -300,7 +320,8 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
 
         TDispatchOptions options;
         options.FinalEvents.emplace_back(
-            TEvServicePrivate::EvSyncManuallyPreemptedVolumesComplete, 1);
+            TEvServicePrivate::EvSyncManuallyPreemptedVolumesComplete,
+            1);
         runtime.DispatchEvents(options);
     }
 
@@ -323,13 +344,16 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
         TVector<TAutoPtr<IEventHandle>> describeResponses;
         TVector<ui64> cookies;
         THashMap<ui64, TString> cookieToDisk;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeRequest: {
                         const auto* msg =
                             event->Get<TEvSSProxy::TEvDescribeVolumeRequest>();
                         UNIT_ASSERT_C(
-                            cookieToDisk.find(event->Cookie) == cookieToDisk.end(),
+                            cookieToDisk.find(event->Cookie) ==
+                                cookieToDisk.end(),
                             "Cookie already exists");
                         cookieToDisk[event->Cookie] = msg->DiskId;
                         break;
@@ -370,7 +394,8 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
 
         TDispatchOptions options;
         options.FinalEvents.emplace_back(
-            TEvService::EvRunVolumesLivenessCheckResponse, 1);
+            TEvService::EvRunVolumesLivenessCheckResponse,
+            1);
         runtime.DispatchEvents(options);
     }
 
@@ -395,7 +420,9 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
         bool describeSeen = false;
         ui32 checkReplyCnt = 0;
         ui32 checkRequestCnt = 0;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeRequest: {
                         describeSeen = true;
@@ -427,8 +454,7 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
         config.SetManuallyPreemptedVolumesFile("somefile");
         config.SetDisableManuallyPreemptedVolumesTracking(true);
 
-        TVector<std::pair<TString, TInstant>> volumes =
-            {{"volume1", {}}};
+        TVector<std::pair<TString, TInstant>> volumes = {{"volume1", {}}};
 
         ui32 nodeIdx = SetupTestEnvWithManuallyPreemptedVolumes(
             env,
@@ -442,7 +468,9 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
 
         ui32 startVolumeRequestCnt = 0;
         ui32 startVolumeresponseCnt = 0;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvStartVolumeRequest: {
                         ++startVolumeRequestCnt;
@@ -484,7 +512,8 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
         {
             TDispatchOptions options;
             options.FinalEvents.emplace_back(
-                TEvService::EvRunVolumesLivenessCheckResponse, 1);
+                TEvService::EvRunVolumesLivenessCheckResponse,
+                1);
             runtime.DispatchEvents(options);
         }
 
@@ -496,7 +525,7 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
 
         {
             NPrivateProto::TRebindVolumesRequest request;
-            request.SetBinding(2);  // REMOTE
+            request.SetBinding(2);   // REMOTE
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -505,7 +534,8 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
             {
                 TDispatchOptions options;
                 options.FinalEvents.emplace_back(
-                    TEvServicePrivate::EvUpdateManuallyPreemptedVolume, 2);
+                    TEvServicePrivate::EvUpdateManuallyPreemptedVolume,
+                    2);
                 runtime.DispatchEvents(options);
             }
 
@@ -516,7 +546,7 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
 
         {
             NPrivateProto::TRebindVolumesRequest request;
-            request.SetBinding(1);  // LOCAL
+            request.SetBinding(1);   // LOCAL
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -525,7 +555,8 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
             {
                 TDispatchOptions options;
                 options.FinalEvents.emplace_back(
-                    TEvServicePrivate::EvUpdateManuallyPreemptedVolume, 2);
+                    TEvServicePrivate::EvUpdateManuallyPreemptedVolume,
+                    2);
                 runtime.DispatchEvents(options);
             }
 
@@ -553,12 +584,11 @@ Y_UNIT_TEST_SUITE(TManuallyPreemptedVolumesTest)
 
             TDispatchOptions options;
             options.FinalEvents.emplace_back(
-                TEvServicePrivate::EvSyncManuallyPreemptedVolumesComplete, 1);
-
-            }
-
-            UNIT_ASSERT_VALUES_EQUAL(manuallyPreemptedVolumes->GetSize(), 1);
+                TEvServicePrivate::EvSyncManuallyPreemptedVolumesComplete,
+                1);
         }
-    }
-}   // namespace NCloud::NBlockStore::NStorage
 
+        UNIT_ASSERT_VALUES_EQUAL(manuallyPreemptedVolumes->GetSize(), 1);
+    }
+}
+}   // namespace NCloud::NBlockStore::NStorage

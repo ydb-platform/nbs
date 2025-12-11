@@ -121,7 +121,9 @@ public:
         TInstant now,
         NProto::TZeroDeviceBlocksRequest request);
 
-    NThreading::TFuture<NProto::TError> SecureErase(const TString& uuid, TInstant now);
+    NThreading::TFuture<NProto::TError> SecureErase(
+        const TString& uuid,
+        TInstant now);
 
     NThreading::TFuture<NProto::TChecksumDeviceBlocksResponse> Checksum(
         TInstant now,
@@ -144,8 +146,8 @@ public:
     TVector<TDeviceClient::TSessionInfo> GetReaderSessions(
         const TString& uuid) const;
 
-    // @return `true` if any session has been updated (excluding `LastActivityTs`
-    // field) or a new one has been added.
+    // @return `true` if any session has been updated (excluding
+    // `LastActivityTs` field) or a new one has been added.
     bool AcquireDevices(
         const TVector<TString>& uuids,
         const TString& clientId,

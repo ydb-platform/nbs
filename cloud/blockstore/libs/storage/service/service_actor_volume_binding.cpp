@@ -6,7 +6,6 @@
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
 #include <contrib/ydb/core/tablet/tablet_setup.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -37,20 +36,19 @@ private:
 
 public:
     TDelayChangeBindingActor(
-            TRequestInfoPtr requestInfo,
-            const TActorId& sessionActor,
-            TDuration delay,
-            TString diskId,
-            EChangeBindingOp action,
-            NProto::EPreemptionSource source)
+        TRequestInfoPtr requestInfo,
+        const TActorId& sessionActor,
+        TDuration delay,
+        TString diskId,
+        EChangeBindingOp action,
+        NProto::EPreemptionSource source)
         : RequestInfo(std::move(requestInfo))
         , SessionActor(sessionActor)
         , Delay(delay)
         , DiskId(std::move(diskId))
         , Action(action)
         , Source(source)
-    {
-    }
+    {}
 
     void Bootstrap(const TActorContext& ctx)
     {
@@ -155,9 +153,7 @@ STFUNC(TDelayChangeBindingActor::StateWork)
             TEvService::TEvChangeVolumeBindingResponse,
             HandleBindingResponse);
 
-        HFunc(
-            TEvService::TEvChangeVolumeBindingRequest,
-            HandleUndelivery);
+        HFunc(TEvService::TEvChangeVolumeBindingRequest, HandleUndelivery);
 
         default:
             HandleUnexpectedEvent(
@@ -168,7 +164,7 @@ STFUNC(TDelayChangeBindingActor::StateWork)
     }
 }
 
-}  // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -179,7 +175,7 @@ void TServiceActor::HandleChangeVolumeBinding(
     const auto* msg = ev->Get();
     const auto& diskId = GetDiskId(*msg);
 
-    auto replyError = [&] (NProto::TError result)
+    auto replyError = [&](NProto::TError result)
     {
         using TResponse = TEvService::TEvChangeVolumeBindingResponse;
         auto response = std::make_unique<TResponse>(std::move(result));
@@ -189,10 +185,9 @@ void TServiceActor::HandleChangeVolumeBinding(
     auto volume = State.GetVolume(diskId);
 
     if (!volume || !volume->VolumeSessionActor) {
-        replyError(
-            MakeError(
-                E_NOT_FOUND,
-                TStringBuilder() << "Volume not mounted: " << diskId.Quote()));
+        replyError(MakeError(
+            E_NOT_FOUND,
+            TStringBuilder() << "Volume not mounted: " << diskId.Quote()));
         return;
     }
 
@@ -201,10 +196,8 @@ void TServiceActor::HandleChangeVolumeBinding(
         return;
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        std::move(msg->CallContext));
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, std::move(msg->CallContext));
 
     TDuration delayInterval;
     if (msg->Source == NProto::SOURCE_BALANCER) {

@@ -34,4 +34,4 @@ ITraceReaderPtr SetupTraceReaderForSlowRequestsWithOpentelemetryExport(
     TRequestThresholds requestThresholds,
     TString tag);
 
-} // namespace NCloud
+}   // namespace NCloud

@@ -2,8 +2,9 @@
 
 #include "agent_list.h"
 
-#include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
+
+#include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -56,9 +57,11 @@ auto CreateAgentConfig(
 template <typename C>
 ui64 CalcTotalSize(const C& devices)
 {
-    return Accumulate(devices, ui64{}, [] (ui64 val, auto& x) {
-        return val + x.GetBlockSize() * x.GetBlocksCount();
-    });
+    return Accumulate(
+        devices,
+        ui64{},
+        [](ui64 val, auto& x)
+        { return val + x.GetBlockSize() * x.GetBlocksCount(); });
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -95,15 +98,15 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
         TDeviceList deviceList;
 
-        auto allocate = [&] (THashSet<TString> racks) {
-            return deviceList.AllocateDevice(
-                "disk",
-                {
-                    .ForbiddenRacks = std::move(racks),
-                    .LogicalBlockSize = DefaultBlockSize,
-                    .BlockCount = DefaultBlockCount
-                }
-            ).GetDeviceUUID();
+        auto allocate = [&](THashSet<TString> racks)
+        {
+            return deviceList
+                .AllocateDevice(
+                    "disk",
+                    {.ForbiddenRacks = std::move(racks),
+                     .LogicalBlockSize = DefaultBlockSize,
+                     .BlockCount = DefaultBlockCount})
+                .GetDeviceUUID();
         };
 
         UNIT_ASSERT(allocate({}).empty());
@@ -159,15 +162,13 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
         TDeviceList deviceList;
 
-        auto allocate = [&] (ui32 n, THashSet<TString> racks) {
+        auto allocate = [&](ui32 n, THashSet<TString> racks)
+        {
             return deviceList.AllocateDevices(
                 "disk",
-                {
-                    .ForbiddenRacks = std::move(racks),
-                    .LogicalBlockSize = DefaultBlockSize,
-                    .BlockCount = n * DefaultBlockCount
-                }
-            );
+                {.ForbiddenRacks = std::move(racks),
+                 .LogicalBlockSize = DefaultBlockSize,
+                 .BlockCount = n * DefaultBlockCount});
         };
 
         UNIT_ASSERT_VALUES_EQUAL(0, deviceList.Size());
@@ -265,9 +266,14 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, allocate(1, {}).size());
 
-        THashSet<TString> discardedDevices {
-            "foo-7", "bar-7", "baz-7", "baz-10", "foo-13", "bar-13", "baz-13"
-        };
+        THashSet<TString> discardedDevices{
+            "foo-7",
+            "bar-7",
+            "baz-7",
+            "baz-10",
+            "foo-13",
+            "bar-13",
+            "baz-13"};
 
         for (auto* agent: {&foo, &bar, &baz}) {
             for (auto& device: agent->GetDevices()) {
@@ -311,15 +317,13 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
         TDeviceList deviceList;
 
-        auto allocate = [&] (ui32 n, THashSet<TString> racks) {
+        auto allocate = [&](ui32 n, THashSet<TString> racks)
+        {
             return deviceList.AllocateDevices(
                 "disk",
-                {
-                    .ForbiddenRacks = std::move(racks),
-                    .LogicalBlockSize = DefaultBlockSize,
-                    .BlockCount = n * DefaultBlockCount
-                }
-            );
+                {.ForbiddenRacks = std::move(racks),
+                 .LogicalBlockSize = DefaultBlockSize,
+                 .BlockCount = n * DefaultBlockCount});
         };
 
         UNIT_ASSERT_VALUES_EQUAL(0, deviceList.Size());
@@ -373,21 +377,19 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
         TDeviceList deviceList;
 
-        auto allocate = [&] (ui32 n) {
+        auto allocate = [&](ui32 n)
+        {
             return deviceList.AllocateDevices(
                 "disk",
-                {
-                    .LogicalBlockSize = DefaultBlockSize,
-                    .BlockCount = n * DefaultBlockCount
-                }
-            );
+                {.LogicalBlockSize = DefaultBlockSize,
+                 .BlockCount = n * DefaultBlockCount});
         };
 
         NProto::TAgentConfig config = CreateAgentConfig(
             "agent-id",
-            1000, // nodeId
+            1000,   // nodeId
             "rack",
-            "", // poolName
+            "",   // poolName
             {"/dev/1", "/dev/2", "/dev/3", "/dev/4"},
             400);
 
@@ -436,8 +438,7 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
                     .LogicalBlockSize = DefaultBlockSize,
                     .BlockCount = n * DefaultBlockCount,
                     .NodeIds = std::move(nodeIds),
-                }
-            );
+                });
         };
 
         NProto::TAgentConfig agent1 = CreateAgentConfig("agent1", 1, "rack1");
@@ -552,14 +553,17 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
             auto devices = allocate(1);
             UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
             UNIT_ASSERT_VALUES_EQUAL("rack1", devices[0].GetRack());
-            UNIT_ASSERT_VALUES_EQUAL(agent1.GetAgentId(), devices[0].GetAgentId());
-            UNIT_ASSERT_VALUES_EQUAL(agent1.GetNodeId(), devices[0].GetNodeId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                agent1.GetAgentId(),
+                devices[0].GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                agent1.GetNodeId(),
+                devices[0].GetNodeId());
         }
 
         const THashSet<ui32> downrankedNodes = {
             agent1.GetNodeId(),
-            agent5.GetNodeId()
-        };
+            agent5.GetNodeId()};
 
         {
             // rack1 [agent1: 14], *agent2: 3  17
@@ -681,14 +685,12 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
         TDeviceList deviceList;
 
-        auto allocate = [&] (ui32 n) {
+        auto allocate = [&](ui32 n)
+        {
             return deviceList.AllocateDevices(
                 "disk",
-                {
-                    .LogicalBlockSize = DefaultBlockSize,
-                    .BlockCount = n * DefaultBlockCount
-                }
-            );
+                {.LogicalBlockSize = DefaultBlockSize,
+                 .BlockCount = n * DefaultBlockCount});
         };
 
         NProto::TAgentConfig agent1 = CreateAgentConfig(
@@ -752,30 +754,18 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
         TDeviceList deviceList;
 
-        auto allocate = [&] (ui32 n) {
+        auto allocate = [&](ui32 n)
+        {
             return deviceList.AllocateDevices(
                 "disk",
-                {
-                    .LogicalBlockSize = DefaultBlockSize,
-                    .BlockCount = n * DefaultBlockCount
-                }
-            );
+                {.LogicalBlockSize = DefaultBlockSize,
+                 .BlockCount = n * DefaultBlockCount});
         };
 
-        NProto::TAgentConfig agent1 = CreateAgentConfig(
-            "agent1",
-            1,
-            "rack1",
-            "",
-            {"/dev1"},
-            100);
-        NProto::TAgentConfig agent2 = CreateAgentConfig(
-            "agent2",
-            2,
-            "rack2",
-            "",
-            {"/dev1"},
-            200);
+        NProto::TAgentConfig agent1 =
+            CreateAgentConfig("agent1", 1, "rack1", "", {"/dev1"}, 100);
+        NProto::TAgentConfig agent2 =
+            CreateAgentConfig("agent2", 2, "rack2", "", {"/dev1"}, 200);
         deviceList.UpdateDevices(agent1, poolConfigs);
         deviceList.UpdateDevices(agent2, poolConfigs);
 
@@ -839,20 +829,16 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
         TDeviceList deviceList;
 
-        auto allocate = [&] (
-            ui32 n,
-            THashSet<TString> forbiddenRacks,
-            THashSet<TString> preferredRacks)
+        auto allocate = [&](ui32 n,
+                            THashSet<TString> forbiddenRacks,
+                            THashSet<TString> preferredRacks)
         {
             return deviceList.AllocateDevices(
                 "disk",
-                {
-                    .ForbiddenRacks = std::move(forbiddenRacks),
-                    .PreferredRacks = std::move(preferredRacks),
-                    .LogicalBlockSize = DefaultBlockSize,
-                    .BlockCount = n * DefaultBlockCount
-                }
-            );
+                {.ForbiddenRacks = std::move(forbiddenRacks),
+                 .PreferredRacks = std::move(preferredRacks),
+                 .LogicalBlockSize = DefaultBlockSize,
+                 .BlockCount = n * DefaultBlockCount});
         };
 
         NProto::TAgentConfig agent1 = CreateAgentConfig("agent1", 1, "rack1");
@@ -891,27 +877,24 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
         TDeviceList deviceList;
 
-        TVector agents {
+        TVector agents{
             CreateAgentConfig("agent1", 1, "rack1"),
             CreateAgentConfig("agent2", 2, "rack2"),
-            CreateAgentConfig("agent3", 3, "rack2")
-        };
+            CreateAgentConfig("agent3", 3, "rack2")};
 
         for (const auto& agent: agents) {
             UNIT_ASSERT_VALUES_EQUAL(15, agent.DevicesSize());
             deviceList.UpdateDevices(agent, poolConfigs);
         }
 
-        auto allocate = [&] (ui32 n, ui32 nodeId) {
+        auto allocate = [&](ui32 n, ui32 nodeId)
+        {
             return deviceList.AllocateDevices(
                 Sprintf("disk-%d-%d", n, nodeId),
-                {
-                    .ForbiddenRacks = {},
-                    .LogicalBlockSize = DefaultBlockSize,
-                    .BlockCount = n * DefaultBlockCount,
-                    .NodeIds = { nodeId }
-                }
-            );
+                {.ForbiddenRacks = {},
+                 .LogicalBlockSize = DefaultBlockSize,
+                 .BlockCount = n * DefaultBlockCount,
+                 .NodeIds = {nodeId}});
         };
 
         // allocate one device from each agent
@@ -1024,17 +1007,15 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
     {
         const TString localPoolName = "local-ssd";
 
-        const auto poolConfigs = CreateDevicePoolConfigs({{
-            localPoolName, 93_GB, NProto::DEVICE_POOL_KIND_LOCAL
-        }});
+        const auto poolConfigs = CreateDevicePoolConfigs(
+            {{localPoolName, 93_GB, NProto::DEVICE_POOL_KIND_LOCAL}});
 
         TDeviceList deviceList;
 
-        TVector agents {
+        TVector agents{
             CreateAgentConfig("agent1", 1, "rack1"),
             CreateAgentConfig("agent2", 2, "rack2"),
-            CreateAgentConfig("agent3", 3, "rack2")
-        };
+            CreateAgentConfig("agent3", 3, "rack2")};
 
         for (auto& agent: agents) {
             auto& device = *agent.MutableDevices(0);
@@ -1047,7 +1028,8 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
             deviceList.UpdateDevices(agent, poolConfigs);
         }
 
-        auto allocate = [&] (ui32 n) {
+        auto allocate = [&](ui32 n)
+        {
             return deviceList.AllocateDevices(
                 "disk-id",
                 {
@@ -1055,9 +1037,8 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
                     .LogicalBlockSize = DefaultBlockSize,
                     .BlockCount = n * DefaultBlockCount,
                     .PoolKind = NProto::DEVICE_POOL_KIND_LOCAL,
-                    .NodeIds = { 1, 2, 3 },
-                }
-            );
+                    .NodeIds = {1, 2, 3},
+                });
         };
 
         {
@@ -1088,7 +1069,7 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
         TDeviceList deviceList;
 
-        TVector agents {
+        TVector agents{
             CreateAgentConfig("agent1", 1, "rack1"),
             CreateAgentConfig("agent2", 2, "rack2"),
             CreateAgentConfig("agent3", 3, "rack2", rotPoolName),
@@ -1101,7 +1082,8 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
             deviceList.UpdateDevices(agent, poolConfigs);
         }
 
-        auto allocate = [&] (ui32 n) {
+        auto allocate = [&](ui32 n)
+        {
             return deviceList.AllocateDevices(
                 "disk-id",
                 {
@@ -1110,18 +1092,18 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
                     .BlockCount = n * DefaultBlockCount,
                     .PoolName = rotPoolName,
                     .PoolKind = NProto::DEVICE_POOL_KIND_GLOBAL,
-                }
-            );
+                });
         };
 
-        auto check = [&] (const TVector<NProto::TDeviceConfig>& devices) {
+        auto check = [&](const TVector<NProto::TDeviceConfig>& devices)
+        {
             for (ui32 i = 0; i < devices.size(); ++i) {
                 const auto& device = devices[i];
                 UNIT_ASSERT_VALUES_EQUAL_C(
                     rotPoolName,
                     device.GetPoolName(),
                     TStringBuilder() << "device " << i << "/" << devices.size()
-                        << ", agent " << device.GetAgentId());
+                                     << ", agent " << device.GetAgentId());
             }
         };
 
@@ -1147,11 +1129,10 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
     {
         ui32 i = 1;
 
-        auto makeDevice = [&] (
-            const TString& agentId,
-            const TString& deviceName,
-            const TString& poolName,
-            const NProto::EDevicePoolKind poolKind)
+        auto makeDevice = [&](const TString& agentId,
+                              const TString& deviceName,
+                              const TString& poolName,
+                              const NProto::EDevicePoolKind poolKind)
         {
             NProto::TDeviceConfig d;
             d.SetAgentId(agentId);
@@ -1167,44 +1148,188 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
         };
 
         TVector<NProto::TDeviceConfig> devices = {
-            makeDevice("agent-1", "/dev/1", "", NProto::DEVICE_POOL_KIND_DEFAULT),
-            makeDevice("agent-1", "/dev/1", "", NProto::DEVICE_POOL_KIND_DEFAULT),
-            makeDevice("agent-1", "/dev/1", "", NProto::DEVICE_POOL_KIND_DEFAULT),
-            makeDevice("agent-1", "/dev/1", "", NProto::DEVICE_POOL_KIND_DEFAULT),
-            makeDevice("agent-1", "/dev/2", "", NProto::DEVICE_POOL_KIND_DEFAULT),
-            makeDevice("agent-1", "/dev/2", "", NProto::DEVICE_POOL_KIND_DEFAULT),
-            makeDevice("agent-1", "/dev/2", "", NProto::DEVICE_POOL_KIND_DEFAULT),
-            makeDevice("agent-2", "/dev/1", "", NProto::DEVICE_POOL_KIND_DEFAULT),
-            makeDevice("agent-2", "/dev/1", "", NProto::DEVICE_POOL_KIND_DEFAULT),
-            makeDevice("agent-2", "/dev/1", "", NProto::DEVICE_POOL_KIND_DEFAULT),
-            makeDevice("agent-2", "/dev/1", "", NProto::DEVICE_POOL_KIND_DEFAULT),
-            makeDevice("agent-2", "/dev/1", "", NProto::DEVICE_POOL_KIND_DEFAULT),
+            makeDevice(
+                "agent-1",
+                "/dev/1",
+                "",
+                NProto::DEVICE_POOL_KIND_DEFAULT),
+            makeDevice(
+                "agent-1",
+                "/dev/1",
+                "",
+                NProto::DEVICE_POOL_KIND_DEFAULT),
+            makeDevice(
+                "agent-1",
+                "/dev/1",
+                "",
+                NProto::DEVICE_POOL_KIND_DEFAULT),
+            makeDevice(
+                "agent-1",
+                "/dev/1",
+                "",
+                NProto::DEVICE_POOL_KIND_DEFAULT),
+            makeDevice(
+                "agent-1",
+                "/dev/2",
+                "",
+                NProto::DEVICE_POOL_KIND_DEFAULT),
+            makeDevice(
+                "agent-1",
+                "/dev/2",
+                "",
+                NProto::DEVICE_POOL_KIND_DEFAULT),
+            makeDevice(
+                "agent-1",
+                "/dev/2",
+                "",
+                NProto::DEVICE_POOL_KIND_DEFAULT),
+            makeDevice(
+                "agent-2",
+                "/dev/1",
+                "",
+                NProto::DEVICE_POOL_KIND_DEFAULT),
+            makeDevice(
+                "agent-2",
+                "/dev/1",
+                "",
+                NProto::DEVICE_POOL_KIND_DEFAULT),
+            makeDevice(
+                "agent-2",
+                "/dev/1",
+                "",
+                NProto::DEVICE_POOL_KIND_DEFAULT),
+            makeDevice(
+                "agent-2",
+                "/dev/1",
+                "",
+                NProto::DEVICE_POOL_KIND_DEFAULT),
+            makeDevice(
+                "agent-2",
+                "/dev/1",
+                "",
+                NProto::DEVICE_POOL_KIND_DEFAULT),
 
-            makeDevice("agent-3", "/dev/1", "local", NProto::DEVICE_POOL_KIND_LOCAL),
-            makeDevice("agent-3", "/dev/1", "local", NProto::DEVICE_POOL_KIND_LOCAL),
-            makeDevice("agent-3", "/dev/1", "local", NProto::DEVICE_POOL_KIND_LOCAL),
-            makeDevice("agent-3", "/dev/1", "local", NProto::DEVICE_POOL_KIND_LOCAL),
-            makeDevice("agent-3", "/dev/2", "local", NProto::DEVICE_POOL_KIND_LOCAL),
-            makeDevice("agent-3", "/dev/2", "local", NProto::DEVICE_POOL_KIND_LOCAL),
-            makeDevice("agent-3", "/dev/2", "local", NProto::DEVICE_POOL_KIND_LOCAL),
-            makeDevice("agent-4", "/dev/1", "local", NProto::DEVICE_POOL_KIND_LOCAL),
-            makeDevice("agent-4", "/dev/1", "local", NProto::DEVICE_POOL_KIND_LOCAL),
-            makeDevice("agent-4", "/dev/1", "local", NProto::DEVICE_POOL_KIND_LOCAL),
-            makeDevice("agent-4", "/dev/1", "local", NProto::DEVICE_POOL_KIND_LOCAL),
-            makeDevice("agent-4", "/dev/1", "local", NProto::DEVICE_POOL_KIND_LOCAL),
+            makeDevice(
+                "agent-3",
+                "/dev/1",
+                "local",
+                NProto::DEVICE_POOL_KIND_LOCAL),
+            makeDevice(
+                "agent-3",
+                "/dev/1",
+                "local",
+                NProto::DEVICE_POOL_KIND_LOCAL),
+            makeDevice(
+                "agent-3",
+                "/dev/1",
+                "local",
+                NProto::DEVICE_POOL_KIND_LOCAL),
+            makeDevice(
+                "agent-3",
+                "/dev/1",
+                "local",
+                NProto::DEVICE_POOL_KIND_LOCAL),
+            makeDevice(
+                "agent-3",
+                "/dev/2",
+                "local",
+                NProto::DEVICE_POOL_KIND_LOCAL),
+            makeDevice(
+                "agent-3",
+                "/dev/2",
+                "local",
+                NProto::DEVICE_POOL_KIND_LOCAL),
+            makeDevice(
+                "agent-3",
+                "/dev/2",
+                "local",
+                NProto::DEVICE_POOL_KIND_LOCAL),
+            makeDevice(
+                "agent-4",
+                "/dev/1",
+                "local",
+                NProto::DEVICE_POOL_KIND_LOCAL),
+            makeDevice(
+                "agent-4",
+                "/dev/1",
+                "local",
+                NProto::DEVICE_POOL_KIND_LOCAL),
+            makeDevice(
+                "agent-4",
+                "/dev/1",
+                "local",
+                NProto::DEVICE_POOL_KIND_LOCAL),
+            makeDevice(
+                "agent-4",
+                "/dev/1",
+                "local",
+                NProto::DEVICE_POOL_KIND_LOCAL),
+            makeDevice(
+                "agent-4",
+                "/dev/1",
+                "local",
+                NProto::DEVICE_POOL_KIND_LOCAL),
 
-            makeDevice("agent-5", "/dev/1", "rot", NProto::DEVICE_POOL_KIND_GLOBAL),
-            makeDevice("agent-5", "/dev/1", "rot", NProto::DEVICE_POOL_KIND_GLOBAL),
-            makeDevice("agent-5", "/dev/1", "rot", NProto::DEVICE_POOL_KIND_GLOBAL),
-            makeDevice("agent-5", "/dev/1", "rot", NProto::DEVICE_POOL_KIND_GLOBAL),
-            makeDevice("agent-5", "/dev/2", "rot", NProto::DEVICE_POOL_KIND_GLOBAL),
-            makeDevice("agent-5", "/dev/2", "rot", NProto::DEVICE_POOL_KIND_GLOBAL),
-            makeDevice("agent-5", "/dev/2", "rot", NProto::DEVICE_POOL_KIND_GLOBAL),
-            makeDevice("agent-6", "/dev/1", "rot", NProto::DEVICE_POOL_KIND_GLOBAL),
-            makeDevice("agent-6", "/dev/1", "rot", NProto::DEVICE_POOL_KIND_GLOBAL),
-            makeDevice("agent-6", "/dev/1", "rot", NProto::DEVICE_POOL_KIND_GLOBAL),
-            makeDevice("agent-6", "/dev/1", "rot", NProto::DEVICE_POOL_KIND_GLOBAL),
-            makeDevice("agent-6", "/dev/1", "rot", NProto::DEVICE_POOL_KIND_GLOBAL),
+            makeDevice(
+                "agent-5",
+                "/dev/1",
+                "rot",
+                NProto::DEVICE_POOL_KIND_GLOBAL),
+            makeDevice(
+                "agent-5",
+                "/dev/1",
+                "rot",
+                NProto::DEVICE_POOL_KIND_GLOBAL),
+            makeDevice(
+                "agent-5",
+                "/dev/1",
+                "rot",
+                NProto::DEVICE_POOL_KIND_GLOBAL),
+            makeDevice(
+                "agent-5",
+                "/dev/1",
+                "rot",
+                NProto::DEVICE_POOL_KIND_GLOBAL),
+            makeDevice(
+                "agent-5",
+                "/dev/2",
+                "rot",
+                NProto::DEVICE_POOL_KIND_GLOBAL),
+            makeDevice(
+                "agent-5",
+                "/dev/2",
+                "rot",
+                NProto::DEVICE_POOL_KIND_GLOBAL),
+            makeDevice(
+                "agent-5",
+                "/dev/2",
+                "rot",
+                NProto::DEVICE_POOL_KIND_GLOBAL),
+            makeDevice(
+                "agent-6",
+                "/dev/1",
+                "rot",
+                NProto::DEVICE_POOL_KIND_GLOBAL),
+            makeDevice(
+                "agent-6",
+                "/dev/1",
+                "rot",
+                NProto::DEVICE_POOL_KIND_GLOBAL),
+            makeDevice(
+                "agent-6",
+                "/dev/1",
+                "rot",
+                NProto::DEVICE_POOL_KIND_GLOBAL),
+            makeDevice(
+                "agent-6",
+                "/dev/1",
+                "rot",
+                NProto::DEVICE_POOL_KIND_GLOBAL),
+            makeDevice(
+                "agent-6",
+                "/dev/1",
+                "rot",
+                NProto::DEVICE_POOL_KIND_GLOBAL),
         };
 
         auto filtered = FilterDevices(devices, 10, 2, 1);
@@ -1301,10 +1426,15 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
 
         UNIT_ASSERT(!deviceList.FindDevice("foo-6"));
 
-        UNIT_ASSERT_VALUES_EQUAL(0, deviceList.AllocateDevices("vol1", {
-            .LogicalBlockSize = 4_KB,
-            .BlockCount = 10 * DefaultBlockCount * DefaultBlockSize / 4_KB
-        }).size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            deviceList
+                .AllocateDevices(
+                    "vol1",
+                    {.LogicalBlockSize = 4_KB,
+                     .BlockCount =
+                         10 * DefaultBlockCount * DefaultBlockSize / 4_KB})
+                .size());
     }
 
     Y_UNIT_TEST(ShouldTrackDeviceCountPerPool)
@@ -1360,7 +1490,8 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
         const auto poolConfigs = CreateDevicePoolConfigs({});
         const ui64 hugeDeviceBlockCount = 10 * DefaultBlockCount;
 
-        auto createAgentConfig = [] (bool withHugeDevice) {
+        auto createAgentConfig = [](bool withHugeDevice)
+        {
             NProto::TAgentConfig agentConfig;
             agentConfig.SetAgentId("node-id");
             agentConfig.SetNodeId(42);
@@ -1392,23 +1523,26 @@ Y_UNIT_TEST_SUITE(TDeviceListTest)
         {
             deviceList.UpdateDevices(createAgentConfig(true), poolConfigs);
 
-            const auto devices = deviceList.AllocateDevices("disk-id", {
-                .LogicalBlockSize = DefaultBlockSize,
-                .BlockCount = expectedDeviceCount * DefaultBlockCount,
-            });
+            const auto devices = deviceList.AllocateDevices(
+                "disk-id",
+                {
+                    .LogicalBlockSize = DefaultBlockSize,
+                    .BlockCount = expectedDeviceCount * DefaultBlockCount,
+                });
             UNIT_ASSERT_VALUES_EQUAL(0, devices.size());
         }
 
         UNIT_ASSERT_VALUES_EQUAL(1, configMismatch->Val());
 
         {
-
             deviceList.UpdateDevices(createAgentConfig(false), poolConfigs);
 
-            const auto devices = deviceList.AllocateDevices("disk-id", {
-                .LogicalBlockSize = DefaultBlockSize,
-                .BlockCount = expectedDeviceCount * DefaultBlockCount,
-            });
+            const auto devices = deviceList.AllocateDevices(
+                "disk-id",
+                {
+                    .LogicalBlockSize = DefaultBlockSize,
+                    .BlockCount = expectedDeviceCount * DefaultBlockCount,
+                });
 
             UNIT_ASSERT_VALUES_EQUAL(expectedDeviceCount, devices.size());
             for (const auto& device: devices) {

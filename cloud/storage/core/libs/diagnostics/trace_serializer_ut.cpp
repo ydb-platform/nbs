@@ -11,8 +11,8 @@ Y_UNIT_TEST_SUITE(TTraceSerializerTest)
     Y_UNIT_TEST(ShouldAdjustRemoteInterval)
     {
         {
-            TTraceInterval local {100, 200};
-            TTraceInterval remote {150, 250};
+            TTraceInterval local{100, 200};
+            TTraceInterval remote{150, 250};
 
             auto res = AdjustRemoteInterval(local, remote);
             UNIT_ASSERT_VALUES_EQUAL(res.Shift, -50);
@@ -20,8 +20,8 @@ Y_UNIT_TEST_SUITE(TTraceSerializerTest)
         };
 
         {
-            TTraceInterval local {100, 200};
-            TTraceInterval remote {250, 350};
+            TTraceInterval local{100, 200};
+            TTraceInterval remote{250, 350};
 
             auto res = AdjustRemoteInterval(local, remote);
             UNIT_ASSERT_VALUES_EQUAL(res.Shift, -150);
@@ -29,8 +29,8 @@ Y_UNIT_TEST_SUITE(TTraceSerializerTest)
         };
 
         {
-            TTraceInterval local {100, 200};
-            TTraceInterval remote {50, 150};
+            TTraceInterval local{100, 200};
+            TTraceInterval remote{50, 150};
 
             auto res = AdjustRemoteInterval(local, remote);
             UNIT_ASSERT_VALUES_EQUAL(res.Shift, 50);
@@ -38,8 +38,8 @@ Y_UNIT_TEST_SUITE(TTraceSerializerTest)
         };
 
         {
-            TTraceInterval local {100, 200};
-            TTraceInterval remote {50, 250};
+            TTraceInterval local{100, 200};
+            TTraceInterval remote{50, 250};
 
             auto res = AdjustRemoteInterval(local, remote);
             UNIT_ASSERT_VALUES_EQUAL(res.Shift, 50);
@@ -47,8 +47,8 @@ Y_UNIT_TEST_SUITE(TTraceSerializerTest)
         };
 
         {
-            TTraceInterval local {100, 200};
-            TTraceInterval remote {150, 190};
+            TTraceInterval local{100, 200};
+            TTraceInterval remote{150, 190};
 
             auto res = AdjustRemoteInterval(local, remote);
             UNIT_ASSERT_VALUES_EQUAL(res.Shift, -20);

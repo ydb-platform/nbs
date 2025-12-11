@@ -10,12 +10,12 @@ namespace {
 
 TBlock BlockKey(ui64 nodeId, ui32 blockIndex, ui64 commitId)
 {
-    return { nodeId, blockIndex, commitId, 0 };
+    return {nodeId, blockIndex, commitId, 0};
 }
 
 TBlock BlockKey(ui64 nodeId, ui32 blockIndex)
 {
-    return { nodeId, blockIndex, InvalidCommitId, 0 };
+    return {nodeId, blockIndex, InvalidCommitId, 0};
 }
 
 }   // namespace
@@ -41,15 +41,18 @@ TStringBuf TFreshBlocks::AllocateBlock(TStringBuf content, ui32 blockSize)
     memcpy(block.Data, content.data(), content.size());
 
     if (content.size() < blockSize) {
-        memset(static_cast<char*>(block.Data) + content.size(), 0, blockSize - content.size());
+        memset(
+            static_cast<char*>(block.Data) + content.size(),
+            0,
+            blockSize - content.size());
     }
 
-    return { static_cast<const char*>(block.Data), blockSize };
+    return {static_cast<const char*>(block.Data), blockSize};
 }
 
 void TFreshBlocks::ReleaseBlock(TStringBuf content)
 {
-    IAllocator::TBlock block { const_cast<char*>(content.data()), content.size() };
+    IAllocator::TBlock block{const_cast<char*>(content.data()), content.size()};
     Allocator->Release(block);
 }
 
@@ -144,10 +147,8 @@ bool TFreshBlocks::FindBlock(ui64 nodeId, ui32 blockIndex) const
     return false;
 }
 
-TMaybe<TFreshBlock> TFreshBlocks::FindBlock(
-    ui64 nodeId,
-    ui32 blockIndex,
-    ui64 commitId) const
+TMaybe<TFreshBlock>
+TFreshBlocks::FindBlock(ui64 nodeId, ui32 blockIndex, ui64 commitId) const
 {
     auto it = Blocks.lower_bound(BlockKey(nodeId, blockIndex, commitId));
     if (it != Blocks.end()) {
@@ -156,7 +157,7 @@ TMaybe<TFreshBlock> TFreshBlocks::FindBlock(
         if (block.NodeId == nodeId && block.BlockIndex == blockIndex) {
             Y_ABORT_UNLESS(block.MinCommitId <= commitId);
             if (block.MaxCommitId > commitId) {
-                return TFreshBlock { block, it->second };
+                return TFreshBlock{block, it->second};
             }
         }
     }

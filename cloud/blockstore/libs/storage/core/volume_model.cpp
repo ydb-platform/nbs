@@ -19,27 +19,27 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define THROTTLING_PARAM(paramName)                                            \
-    ui64 paramName(                                                            \
-        const TStorageConfig& config,                                          \
-        const NCloud::NProto::EStorageMediaKind mediaKind)                     \
-    {                                                                          \
-        switch (mediaKind) {                                                   \
-            case NCloud::NProto::STORAGE_MEDIA_SSD:                            \
-                return config.GetSSD ## paramName();                           \
-            case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED:              \
-                return config.GetNonReplicatedSSD ## paramName();              \
-            case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED:              \
-                return config.GetNonReplicatedHDD ## paramName();              \
-            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2:                    \
-                return config.GetMirror2SSD ## paramName();                    \
-            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3:                    \
-                return config.GetMirror3SSD ## paramName();                    \
-            default:                                                           \
-                return config.GetHDD ## paramName();                           \
-        }                                                                      \
-    }                                                                          \
-// THROTTLING_PARAM
+#define THROTTLING_PARAM(paramName)                               \
+    ui64 paramName(                                               \
+        const TStorageConfig& config,                             \
+        const NCloud::NProto::EStorageMediaKind mediaKind)        \
+    {                                                             \
+        switch (mediaKind) {                                      \
+            case NCloud::NProto::STORAGE_MEDIA_SSD:               \
+                return config.GetSSD##paramName();                \
+            case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED: \
+                return config.GetNonReplicatedSSD##paramName();   \
+            case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED: \
+                return config.GetNonReplicatedHDD##paramName();   \
+            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2:       \
+                return config.GetMirror2SSD##paramName();         \
+            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3:       \
+                return config.GetMirror3SSD##paramName();         \
+            default:                                              \
+                return config.GetHDD##paramName();                \
+        }                                                         \
+    }                                                             \
+    // THROTTLING_PARAM
 
 THROTTLING_PARAM(UnitReadBandwidth);
 THROTTLING_PARAM(UnitWriteBandwidth);
@@ -57,12 +57,12 @@ ui64 ReadBandwidth(
     const ui32 unitCount,
     const TVolumeParams& volumeParams)
 {
-    const auto unitBandwidth = UnitReadBandwidth(config, volumeParams.MediaKind);
+    const auto unitBandwidth =
+        UnitReadBandwidth(config, volumeParams.MediaKind);
     const auto maxBandwidth = MaxReadBandwidth(config, volumeParams.MediaKind);
     return Max(
         static_cast<ui64>(volumeParams.MaxReadBandwidth),
-        Min(maxBandwidth, unitCount * unitBandwidth) * 1_MB
-    );
+        Min(maxBandwidth, unitCount * unitBandwidth) * 1_MB);
 }
 
 ui64 WriteBandwidth(
@@ -70,14 +70,15 @@ ui64 WriteBandwidth(
     const ui32 unitCount,
     const TVolumeParams& volumeParams)
 {
-    const auto unitBandwidth = UnitWriteBandwidth(config, volumeParams.MediaKind);
+    const auto unitBandwidth =
+        UnitWriteBandwidth(config, volumeParams.MediaKind);
     const auto maxBandwidth = MaxWriteBandwidth(config, volumeParams.MediaKind);
     const auto volumeMaxWriteBandwidth = volumeParams.MaxWriteBandwidth
-        ? volumeParams.MaxWriteBandwidth : volumeParams.MaxReadBandwidth;
+                                             ? volumeParams.MaxWriteBandwidth
+                                             : volumeParams.MaxReadBandwidth;
     return Max(
         static_cast<ui64>(volumeMaxWriteBandwidth),
-        Min(maxBandwidth, unitCount * unitBandwidth) * 1_MB
-    );
+        Min(maxBandwidth, unitCount * unitBandwidth) * 1_MB);
 }
 
 ui32 ReadIops(
@@ -89,8 +90,7 @@ ui32 ReadIops(
     const auto maxIops = MaxReadIops(config, volumeParams.MediaKind);
     return Max(
         static_cast<ui64>(volumeParams.MaxReadIops),
-        Min(maxIops, unitCount * unitIops)
-    );
+        Min(maxIops, unitCount * unitIops));
 }
 
 ui32 WriteIops(
@@ -101,11 +101,11 @@ ui32 WriteIops(
     const auto unitIops = UnitWriteIops(config, volumeParams.MediaKind);
     const auto maxIops = MaxWriteIops(config, volumeParams.MediaKind);
     const auto volumeMaxWriteIops = volumeParams.MaxWriteIops
-        ? volumeParams.MaxWriteIops : volumeParams.MaxReadIops;
+                                        ? volumeParams.MaxWriteIops
+                                        : volumeParams.MaxReadIops;
     return Max(
         static_cast<ui64>(volumeMaxWriteIops),
-        Min(maxIops, unitCount * unitIops)
-    );
+        Min(maxIops, unitCount * unitIops));
 }
 
 bool GetThrottlingEnabled(
@@ -157,7 +157,8 @@ void AddOrModifyChannel(
     const ui64 size,
     const EChannelDataKind dataKind,
     NKikimrBlockStore::TVolumeConfig& volumeConfig,
-    const NPrivateProto::TVolumeChannelsToPoolsKinds& volumeChannelsToPoolsKinds)
+    const NPrivateProto::TVolumeChannelsToPoolsKinds&
+        volumeChannelsToPoolsKinds)
 {
     while (channelId >= volumeConfig.ExplicitChannelProfilesSize()) {
         volumeConfig.AddExplicitChannelProfiles();
@@ -175,9 +176,11 @@ void AddOrModifyChannel(
     profile->SetDataKind(static_cast<ui32>(dataKind));
     profile->SetSize(size);
     profile->SetReadIops(volumeConfig.GetPerformanceProfileMaxReadIops());
-    profile->SetReadBandwidth(volumeConfig.GetPerformanceProfileMaxReadBandwidth());
+    profile->SetReadBandwidth(
+        volumeConfig.GetPerformanceProfileMaxReadBandwidth());
     profile->SetWriteIops(volumeConfig.GetPerformanceProfileMaxWriteIops());
-    profile->SetWriteBandwidth(volumeConfig.GetPerformanceProfileMaxWriteBandwidth());
+    profile->SetWriteBandwidth(
+        volumeConfig.GetPerformanceProfileMaxWriteBandwidth());
 }
 
 void SetupVolumeChannel(
@@ -190,7 +193,8 @@ void SetupVolumeChannel(
     while (channelId >= volumeConfig.VolumeExplicitChannelProfilesSize()) {
         volumeConfig.AddVolumeExplicitChannelProfiles();
     }
-    auto* profile = volumeConfig.MutableVolumeExplicitChannelProfiles(channelId);
+    auto* profile =
+        volumeConfig.MutableVolumeExplicitChannelProfiles(channelId);
 
     if (profile->GetPoolKind().empty()) {
         profile->SetPoolKind(poolKind);
@@ -228,32 +232,39 @@ TPoolKinds GetPoolKinds(
                 config.GetHDDIndexChannelPoolKind(),
                 config.GetHDDMixedChannelPoolKind(),
                 config.GetHDDMergedChannelPoolKind(),
-                config.GetHDDFreshChannelPoolKind()
-            };
+                config.GetHDDFreshChannelPoolKind()};
         }
 
         case NCloud::NProto::STORAGE_MEDIA_SSD: {
             auto systemChannelPoolKind =
                 config.GetSSDSystemChannelPoolKindFeatureValue(
-                    cloudId, folderId, diskId);
+                    cloudId,
+                    folderId,
+                    diskId);
             if (systemChannelPoolKind.empty()) {
                 systemChannelPoolKind = config.GetSSDSystemChannelPoolKind();
             }
             auto logChannelPoolKind =
                 config.GetSSDLogChannelPoolKindFeatureValue(
-                    cloudId, folderId, diskId);
+                    cloudId,
+                    folderId,
+                    diskId);
             if (logChannelPoolKind.empty()) {
                 logChannelPoolKind = config.GetSSDLogChannelPoolKind();
             }
             auto indexChannelPoolKind =
                 config.GetSSDIndexChannelPoolKindFeatureValue(
-                    cloudId, folderId, diskId);
+                    cloudId,
+                    folderId,
+                    diskId);
             if (indexChannelPoolKind.empty()) {
                 indexChannelPoolKind = config.GetSSDIndexChannelPoolKind();
             }
             auto freshChannelPoolKind =
                 config.GetSSDFreshChannelPoolKindFeatureValue(
-                    cloudId, folderId, diskId);
+                    cloudId,
+                    folderId,
+                    diskId);
             if (freshChannelPoolKind.empty()) {
                 freshChannelPoolKind = config.GetSSDFreshChannelPoolKind();
             }
@@ -263,8 +274,7 @@ TPoolKinds GetPoolKinds(
                 std::move(indexChannelPoolKind),
                 config.GetSSDMixedChannelPoolKind(),
                 config.GetSSDMergedChannelPoolKind(),
-                std::move(freshChannelPoolKind)
-            };
+                std::move(freshChannelPoolKind)};
         }
 
         default: {
@@ -274,8 +284,7 @@ TPoolKinds GetPoolKinds(
                 config.GetHybridIndexChannelPoolKind(),
                 config.GetHybridMixedChannelPoolKind(),
                 config.GetHybridMergedChannelPoolKind(),
-                config.GetHybridFreshChannelPoolKind()
-            };
+                config.GetHybridFreshChannelPoolKind()};
         }
     }
 }
@@ -289,7 +298,8 @@ void SetExplicitChannelProfiles(
     const NCloud::NProto::EStorageMediaKind mediaKind,
     const TVector<TChannelInfo>& existingDataChannels,
     NKikimrBlockStore::TVolumeConfig& volumeConfig,
-    const NPrivateProto::TVolumeChannelsToPoolsKinds& volumeChannelsToPoolsKinds)
+    const NPrivateProto::TVolumeChannelsToPoolsKinds&
+        volumeChannelsToPoolsKinds)
 {
     const auto unit = GetAllocationUnit(config, mediaKind);
     const auto poolKinds = GetPoolKinds(
@@ -306,24 +316,21 @@ void SetExplicitChannelProfiles(
         128_MB,
         EChannelDataKind::System,
         volumeConfig,
-        volumeChannelsToPoolsKinds
-    );
+        volumeChannelsToPoolsKinds);
     AddOrModifyChannel(
         poolKinds.Log,
         1,
         freshChannelSize,
         EChannelDataKind::Log,
         volumeConfig,
-        volumeChannelsToPoolsKinds
-    );
+        volumeChannelsToPoolsKinds);
     AddOrModifyChannel(
         poolKinds.Index,
         2,
         Max(16_MB, diskSize / 1024),
         EChannelDataKind::Index,
         volumeConfig,
-        volumeChannelsToPoolsKinds
-    );
+        volumeChannelsToPoolsKinds);
 
     ui32 c = 3;
     while (c - 3 < existingDataChannels.size()) {
@@ -365,8 +372,7 @@ void SetExplicitChannelProfiles(
             channelSize,
             dataKind,
             volumeConfig,
-            volumeChannelsToPoolsKinds
-        );
+            volumeChannelsToPoolsKinds);
 
         ++c;
     }
@@ -387,8 +393,7 @@ void SetExplicitChannelProfiles(
             unit,
             EChannelDataKind::Merged,
             volumeConfig,
-            volumeChannelsToPoolsKinds
-        );
+            volumeChannelsToPoolsKinds);
 
         --mergedChannels;
         ++c;
@@ -401,8 +406,7 @@ void SetExplicitChannelProfiles(
             unit,
             EChannelDataKind::Mixed,
             volumeConfig,
-            volumeChannelsToPoolsKinds
-        );
+            volumeChannelsToPoolsKinds);
 
         --mixedChannels;
         ++c;
@@ -415,8 +419,7 @@ void SetExplicitChannelProfiles(
             freshChannelSize,
             EChannelDataKind::Fresh,
             volumeConfig,
-            volumeChannelsToPoolsKinds
-        );
+            volumeChannelsToPoolsKinds);
 
         --freshChannels;
         ++c;
@@ -439,22 +442,19 @@ void SetVolumeExplicitChannelProfiles(
         0,
         1_MB,
         EChannelDataKind::System,
-        volumeConfig
-    );
+        volumeConfig);
     SetupVolumeChannel(
         poolKinds.Log,
         1,
         1_MB,
         EChannelDataKind::Log,
-        volumeConfig
-    );
+        volumeConfig);
     SetupVolumeChannel(
         poolKinds.Index,
         2,
         1_MB,
         EChannelDataKind::Index,
-        volumeConfig
-    );
+        volumeConfig);
 }
 
 ui32 ComputeAllocationUnitCount(
@@ -488,8 +488,7 @@ ui32 GetExistingChannelCount(
     return existingChannelCount;
 }
 
-ui32 GetExistingMergedChannelCount(
-    const TVolumeParams& volumeParams)
+ui32 GetExistingMergedChannelCount(const TVolumeParams& volumeParams)
 {
     return GetExistingChannelCount(volumeParams, EChannelDataKind::Merged);
 }
@@ -541,7 +540,8 @@ void SetupChannels(
         !flags.GetNoSeparateMixedChannelAllocation() &&
         config.GetAllocateSeparateMixedChannels())
     {
-        if (const auto mixedPercentage = config.GetMixedChannelsPercentageFromMerged();
+        if (const auto mixedPercentage =
+                config.GetMixedChannelsPercentageFromMerged();
             mixedPercentage == 0)
         {
             auto iopsFactor = volumeConfig.GetPerformanceProfileMaxWriteIops() /
@@ -571,8 +571,7 @@ void SetupChannels(
         volumeParams.MediaKind,
         volumeParams.DataChannels,
         volumeConfig,
-        volumeParams.VolumeChannelsToPoolsKinds
-    );
+        volumeParams.VolumeChannelsToPoolsKinds);
 
     if (config.GetPoolKindChangeAllowed()) {
         volumeConfig.SetPoolKindChangeAllowed(true);
@@ -612,8 +611,7 @@ ui64 ComputeBlocksCountPerPartition(
     return ComputeBlocksCountPerPartition(
         newBlocksCountPerVolume,
         ceil(double(bytesPerStripe) / blockSize),
-        partitionsCount
-    );
+        partitionsCount);
 }
 
 TPartitionsInfo ComputePartitionsInfo(
@@ -631,11 +629,13 @@ TPartitionsInfo ComputePartitionsInfo(
 
     const bool enabledForCloud =
         config.IsMultipartitionVolumesFeatureEnabled(cloudId, folderId, diskId);
-    const ui64 bytesPerPartition = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD
-        ? config.GetBytesPerPartitionSSD() : config.GetBytesPerPartition();
-    const bool enabled = (enabledForCloud
-        || config.GetMultipartitionVolumesEnabled())
-        && bytesPerPartition;
+    const ui64 bytesPerPartition =
+        mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD
+            ? config.GetBytesPerPartitionSSD()
+            : config.GetBytesPerPartition();
+    const bool enabled =
+        (enabledForCloud || config.GetMultipartitionVolumesEnabled()) &&
+        bytesPerPartition;
 
     if (enabled && !isSystem && !isOverlayDisk) {
         const double blocksPerStripe =
@@ -656,8 +656,7 @@ TPartitionsInfo ComputePartitionsInfo(
             info.BlocksCountPerPartition = ComputeBlocksCountPerPartition(
                 blocksNeeded,
                 blocksPerStripe,
-                info.PartitionsCount
-            );
+                info.PartitionsCount);
 
             return info;
         }
@@ -701,9 +700,9 @@ void ResizeVolume(
         ReadIops(config, allocationUnitCount, volumeParams);
     const auto suggestedWriteIops =
         WriteIops(config, allocationUnitCount, volumeParams);
-    const auto suggestedBoostPercentage = 100
-        * GetThrottlingBoostUnits(config, volumeParams)
-        / double(allocationUnitCount);
+    const auto suggestedBoostPercentage =
+        100 * GetThrottlingBoostUnits(config, volumeParams) /
+        double(allocationUnitCount);
 
     if (profile.GetMaxReadBandwidth()) {
         volumeConfig.SetPerformanceProfileMaxReadBandwidth(
@@ -722,19 +721,16 @@ void ResizeVolume(
     }
 
     if (profile.GetMaxReadIops()) {
-        volumeConfig.SetPerformanceProfileMaxReadIops(
-            profile.GetMaxReadIops());
+        volumeConfig.SetPerformanceProfileMaxReadIops(profile.GetMaxReadIops());
     } else if (GetThrottlingEnabled(config, volumeParams)) {
-        volumeConfig.SetPerformanceProfileMaxReadIops(
-            suggestedReadIops);
+        volumeConfig.SetPerformanceProfileMaxReadIops(suggestedReadIops);
     }
 
     if (profile.GetMaxWriteIops()) {
         volumeConfig.SetPerformanceProfileMaxWriteIops(
             profile.GetMaxWriteIops());
     } else if (GetThrottlingEnabled(config, volumeParams)) {
-        volumeConfig.SetPerformanceProfileMaxWriteIops(
-            suggestedWriteIops);
+        volumeConfig.SetPerformanceProfileMaxWriteIops(suggestedWriteIops);
     }
 
     if (profile.GetBurstPercentage()) {
@@ -780,9 +776,9 @@ void ResizeVolume(
         volumeConfig.GetPerformanceProfileMaxReadIops();
     const bool throttlingExplicitlyDisabled =
         profile.GetMaxReadIops() && !profile.GetThrottlingEnabled();
-    if (throttlingSetUpForVolume
-            && GetThrottlingEnabled(config, volumeParams)
-            && !throttlingExplicitlyDisabled)
+    if (throttlingSetUpForVolume &&
+        GetThrottlingEnabled(config, volumeParams) &&
+        !throttlingExplicitlyDisabled)
     {
         volumeConfig.SetPerformanceProfileThrottlingEnabled(true);
     } else {
@@ -796,8 +792,7 @@ void ResizeVolume(
             config,
             volumeParams,
             flags,
-            volumeConfig
-        );
+            volumeConfig);
     }
 
     SetVolumeExplicitChannelProfiles(config, volumeConfig);
@@ -833,13 +828,13 @@ ui64 ComputeMaxBlocks(
             return MaxPartitionBlocksCount;
         }
 
-        return MaxPartitionBlocksCountForMultipartitionVolume
-            * currentPartitions;
+        return MaxPartitionBlocksCountForMultipartitionVolume *
+               currentPartitions;
     }
 
     if (config.GetMultipartitionVolumesEnabled()) {
-        return MaxPartitionBlocksCountForMultipartitionVolume
-            * config.GetMaxPartitionsPerVolume();
+        return MaxPartitionBlocksCountForMultipartitionVolume *
+               config.GetMaxPartitionsPerVolume();
     }
 
     return MaxPartitionBlocksCount;

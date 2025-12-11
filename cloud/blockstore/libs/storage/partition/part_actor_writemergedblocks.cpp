@@ -19,8 +19,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename ...T>
-IEventBasePtr CreateWriteBlocksResponse(bool replyLocal, T&& ...args)
+template <typename... T>
+IEventBasePtr CreateWriteBlocksResponse(bool replyLocal, T&&... args)
 {
     if (replyLocal) {
         return std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
@@ -44,8 +44,8 @@ public:
         TVector<ui32> Checksums;
 
         TWriteBlobRequest(
-                const TPartialBlobId& blobId,
-                const TBlockRange32& writeRange)
+            const TPartialBlobId& blobId,
+            const TBlockRange32& writeRange)
             : BlobId(blobId)
             , WriteRange(writeRange)
         {}
@@ -88,7 +88,8 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    TGuardedSgList BuildBlobContentAndComputeChecksums(TWriteBlobRequest& request);
+    TGuardedSgList BuildBlobContentAndComputeChecksums(
+        TWriteBlobRequest& request);
 
     void WriteBlobs(const TActorContext& ctx);
     void AddBlobs(const TActorContext& ctx, bool confirmed);
@@ -126,16 +127,16 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TWriteMergedBlocksActor::TWriteMergedBlocksActor(
-        const ui64 tabletId,
-        const TActorId& tablet,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
-        ui64 commitId,
-        TRequestInfoPtr requestInfo,
-        TVector<TWriteBlobRequest> writeBlobRequests,
-        bool replyLocal,
-        bool shouldAddUnconfirmedBlobs,
-        IWriteBlocksHandlerPtr writeHandler,
-        ui32 blockSizeForChecksums)
+    const ui64 tabletId,
+    const TActorId& tablet,
+    IBlockDigestGeneratorPtr blockDigestGenerator,
+    ui64 commitId,
+    TRequestInfoPtr requestInfo,
+    TVector<TWriteBlobRequest> writeBlobRequests,
+    bool replyLocal,
+    bool shouldAddUnconfirmedBlobs,
+    IWriteBlocksHandlerPtr writeHandler,
+    ui32 blockSizeForChecksums)
     : TabletId(tabletId)
     , Tablet(tablet)
     , BlockDigestGenerator(std::move(blockDigestGenerator))
@@ -179,9 +180,8 @@ TGuardedSgList TWriteMergedBlocksActor::BuildBlobContentAndComputeChecksums(
             const auto& block = sgList[index];
 
             auto blockIndex = request.WriteRange.Start + index;
-            const auto digest = BlockDigestGenerator->ComputeDigest(
-                blockIndex,
-                block);
+            const auto digest =
+                BlockDigestGenerator->ComputeDigest(blockIndex, block);
 
             if (digest.Defined()) {
                 AffectedBlockInfos.push_back({blockIndex, *digest});
@@ -197,13 +197,16 @@ void TWriteMergedBlocksActor::WriteBlobs(const TActorContext& ctx)
         auto& req = WriteBlobRequests[i];
         auto guardedSglist = BuildBlobContentAndComputeChecksums(req);
 
-        auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
-            req.BlobId,
-            std::move(guardedSglist),
-            BlockSizeForChecksums,
-            false); // async
+        auto request =
+            std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
+                req.BlobId,
+                std::move(guardedSglist),
+                BlockSizeForChecksums,
+                false);   // async
 
-        if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
+        if (!RequestInfo->CallContext->LWOrbit.Fork(
+                request->CallContext->LWOrbit))
+        {
             LWTRACK(
                 ForkFailed,
                 RequestInfo->CallContext->LWOrbit,
@@ -213,17 +216,11 @@ void TWriteMergedBlocksActor::WriteBlobs(const TActorContext& ctx)
 
         ForkedCallContexts.emplace_back(request->CallContext);
 
-        NCloud::Send(
-            ctx,
-            Tablet,
-            std::move(request),
-            i);
+        NCloud::Send(ctx, Tablet, std::move(request), i);
     }
 }
 
-void TWriteMergedBlocksActor::AddBlobs(
-    const TActorContext& ctx,
-    bool confirmed)
+void TWriteMergedBlocksActor::AddBlobs(const TActorContext& ctx, bool confirmed)
 {
     Y_DEBUG_ABORT_UNLESS(RequestInfo);
 
@@ -236,7 +233,7 @@ void TWriteMergedBlocksActor::AddBlobs(
             blobs.emplace_back(
                 req.BlobId,
                 req.WriteRange,
-                TBlockMask(), // skipMask
+                TBlockMask(),   // skipMask
                 std::move(req.Checksums));
         }
 
@@ -246,8 +243,7 @@ void TWriteMergedBlocksActor::AddBlobs(
             TVector<TAddMixedBlob>(),
             std::move(blobs),
             TVector<TAddFreshBlob>(),
-            ADD_WRITE_RESULT
-        );
+            ADD_WRITE_RESULT);
     } else {
         BlobsToConfirm.reserve(WriteBlobRequests.size());
 
@@ -259,7 +255,8 @@ void TWriteMergedBlocksActor::AddBlobs(
                 TVector<ui32>());
         }
 
-        request = std::make_unique<TEvPartitionPrivate::TEvAddUnconfirmedBlobsRequest>(
+        request = std::make_unique<
+            TEvPartitionPrivate::TEvAddUnconfirmedBlobsRequest>(
             RequestInfo->CallContext,
             CommitId,
             BlobsToConfirm);
@@ -267,10 +264,7 @@ void TWriteMergedBlocksActor::AddBlobs(
 
     SafeToUseOrbit = false;
 
-    NCloud::Send(
-        ctx,
-        Tablet,
-        std::move(request));
+    NCloud::Send(ctx, Tablet, std::move(request));
 }
 
 void TWriteMergedBlocksActor::NotifyCompleted(
@@ -470,9 +464,13 @@ STFUNC(TWriteMergedBlocksActor::StateWork)
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvPartitionPrivate::TEvWriteBlobResponse, HandleWriteBlobResponse);
+        HFunc(
+            TEvPartitionPrivate::TEvWriteBlobResponse,
+            HandleWriteBlobResponse);
         HFunc(TEvPartitionPrivate::TEvAddBlobsResponse, HandleAddBlobsResponse);
-        HFunc(TEvPartitionPrivate::TEvAddUnconfirmedBlobsResponse, HandleAddUnconfirmedBlobsResponse);
+        HFunc(
+            TEvPartitionPrivate::TEvAddUnconfirmedBlobsResponse,
+            HandleAddUnconfirmedBlobsResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -537,16 +535,18 @@ void TPartitionActor::WriteMergedBlocks(
     Y_ABORT_UNLESS(requests);
 
     const ui32 checksumBoundary =
-        Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs()
-        / State->GetBlockSize();
+        Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs() /
+        State->GetBlockSize();
     const bool checksumsEnabled = writeRange.Start < checksumBoundary;
 
-    const bool addingUnconfirmedBlobsEnabledForCloud = Config->IsAddingUnconfirmedBlobsFeatureEnabled(
-        PartitionConfig.GetCloudId(),
-        PartitionConfig.GetFolderId(),
-        PartitionConfig.GetDiskId());
-    bool shouldAddUnconfirmedBlobs = Config->GetAddingUnconfirmedBlobsEnabled()
-        || addingUnconfirmedBlobsEnabledForCloud;
+    const bool addingUnconfirmedBlobsEnabledForCloud =
+        Config->IsAddingUnconfirmedBlobsFeatureEnabled(
+            PartitionConfig.GetCloudId(),
+            PartitionConfig.GetFolderId(),
+            PartitionConfig.GetDiskId());
+    bool shouldAddUnconfirmedBlobs =
+        Config->GetAddingUnconfirmedBlobsEnabled() ||
+        addingUnconfirmedBlobsEnabledForCloud;
     if (shouldAddUnconfirmedBlobs) {
         // we take confirmed blobs into account because they have not yet been
         // added to the index, so we treat them as unconfirmed while counting
@@ -568,8 +568,7 @@ void TPartitionActor::WriteMergedBlocks(
         requestInBuffer.Data.ReplyLocal,
         shouldAddUnconfirmedBlobs,
         std::move(requestInBuffer.Data.Handler),
-        checksumsEnabled ? State->GetBlockSize() : 0
-    );
+        checksumsEnabled ? State->GetBlockSize() : 0);
     Actors.Insert(actor);
 }
 

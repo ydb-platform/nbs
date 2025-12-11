@@ -18,17 +18,17 @@ struct ITabletThrottlerLogger
         const NActors::TActorContext& ctx,
         TCallContextBase& callContext,
         TDuration delay,
-        const char * methodName) const = 0;
+        const char* methodName) const = 0;
     virtual void LogRequestPostponedAfterSchedule(
         const NActors::TActorContext& ctx,
         TCallContextBase& callContext,
         ui32 postponedCount,
-        const char * methodName) const = 0;
+        const char* methodName) const = 0;
 
     virtual void LogRequestAdvanced(
         const NActors::TActorContext& ctx,
         TCallContextBase& callContext,
-        const char * methodName,
+        const char* methodName,
         ui32 opType,
         TDuration delay) const = 0;
 };

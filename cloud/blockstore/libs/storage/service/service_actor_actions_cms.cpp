@@ -23,17 +23,14 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCmsActor final
-    : public TActorBootstrapped<TCmsActor>
+class TCmsActor final: public TActorBootstrapped<TCmsActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
     const TString Input;
 
 public:
-    TCmsActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TCmsActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -52,9 +49,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCmsActor::TCmsActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+TCmsActor::TCmsActor(TRequestInfoPtr requestInfo, TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -63,7 +58,9 @@ void TCmsActor::Bootstrap(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvService::TEvCmsActionRequest>();
 
-    if (!google::protobuf::util::JsonStringToMessage(Input, &request->Record).ok()) {
+    if (!google::protobuf::util::JsonStringToMessage(Input, &request->Record)
+             .ok())
+    {
         auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(
             MakeError(E_ARGUMENT, "Failed to parse input"));
         ReplyAndDie(ctx, std::move(response));
@@ -97,13 +94,12 @@ void TCmsActor::HandleCmsActionResponse(
 {
     const auto* msg = ev->Get();
 
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(
-        msg->GetError());
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(msg->GetError());
 
     google::protobuf::util::MessageToJsonString(
         msg->Record,
-        response->Record.MutableOutput()
-    );
+        response->Record.MutableOutput());
 
     ReplyAndDie(ctx, std::move(response));
 }
@@ -113,9 +109,7 @@ void TCmsActor::HandleCmsActionResponse(
 STFUNC(TCmsActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(
-            TEvService::TEvCmsActionResponse,
-            HandleCmsActionResponse);
+        HFunc(TEvService::TEvCmsActionResponse, HandleCmsActionResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -134,9 +128,8 @@ TResultOrError<IActorPtr> TServiceActor::CreateCmsActionActor(
     TRequestInfoPtr requestInfo,
     TString input)
 {
-    return {std::make_unique<TCmsActor>(
-        std::move(requestInfo),
-        std::move(input))};
+    return {
+        std::make_unique<TCmsActor>(std::move(requestInfo), std::move(input))};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

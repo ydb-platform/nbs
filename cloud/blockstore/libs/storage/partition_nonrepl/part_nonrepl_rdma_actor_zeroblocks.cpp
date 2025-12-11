@@ -1,4 +1,5 @@
 #include "part_nonrepl_rdma_actor.h"
+
 #include "part_nonrepl_common.h"
 
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
@@ -28,8 +29,7 @@ using TResponse = TEvService::TEvZeroBlocksResponse;
 class TRdmaRequestZeroBlocksHandler final
     : public TRdmaDeviceRequestHandlerBase<TRdmaRequestZeroBlocksHandler>
 {
-    using TBase =
-        TRdmaDeviceRequestHandlerBase<TRdmaRequestZeroBlocksHandler>;
+    using TBase = TRdmaDeviceRequestHandlerBase<TRdmaRequestZeroBlocksHandler>;
 
 public:
     using TRequestContext = TDeviceRequestRdmaContext;
@@ -139,7 +139,9 @@ void TNonreplicatedPartitionRdmaActor::HandleZeroBlocks(
             4_KB);
 
         if (HasError(err)) {
-            LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::PARTITION,
                 "Failed to allocate rdma memory for ZeroDeviceBlocksRequest"
                 ", error: %s",
                 FormatError(err).c_str());

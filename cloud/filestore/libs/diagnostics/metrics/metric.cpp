@@ -6,8 +6,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAtomicMetric
-    : public IMetric
+class TAtomicMetric: public IMetric
 {
 private:
     const std::atomic<i64>& Source;
@@ -24,8 +23,7 @@ public:
     }
 };
 
-class TDeprecatedAtomicMetric
-    : public IMetric
+class TDeprecatedAtomicMetric: public IMetric
 {
 private:
     const TAtomic& Source;
@@ -42,8 +40,7 @@ public:
     }
 };
 
-class TLazyMetric
-    : public IMetric
+class TLazyMetric: public IMetric
 {
 private:
     std::function<i64()> Source;
@@ -76,7 +73,7 @@ IMetricPtr CreateMetric(const TAtomic& source)
 
 IMetricPtr CreateMetric(std::function<i64()> source)
 {
-    return  std::make_shared<TLazyMetric>(std::move(source));
+    return std::make_shared<TLazyMetric>(std::move(source));
 }
 
 }   // namespace NCloud::NFileStore::NMetrics

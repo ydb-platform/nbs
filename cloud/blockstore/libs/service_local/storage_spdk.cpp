@@ -11,11 +11,11 @@
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/blockstore/libs/spdk/iface/device.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <library/cpp/monlib/dynamic_counters/counters.h>
-
 #include <library/cpp/deprecated/atomic/atomic.h>
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -34,8 +34,7 @@ TFuture<TResponse> FutureErrorResponse(ui32 code, TString message)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSpdkStorage
-    : public IStorage
+class TSpdkStorage: public IStorage
 {
 private:
     NSpdk::ISpdkDevicePtr Device;
@@ -44,9 +43,9 @@ private:
 
 public:
     TSpdkStorage(
-            NSpdk::ISpdkDevicePtr device,
-            ICachingAllocatorPtr allocator,
-            ui32 blockSize)
+        NSpdk::ISpdkDevicePtr device,
+        ICachingAllocatorPtr allocator,
+        ui32 blockSize)
         : Device(std::move(device))
         , Allocator(std::move(allocator))
         , BlockSize(blockSize)
@@ -84,8 +83,8 @@ TFuture<NProto::TReadBlocksLocalResponse> TSpdkStorage::ReadBlocksLocal(
     const ui32 totalBlockCount = request->GetBlocksCount();
 
     // std::function can't work with move only objects
-    auto guard = std::make_shared<TGuardedSgList::TGuard>(
-        request->Sglist.Acquire());
+    auto guard =
+        std::make_shared<TGuardedSgList::TGuard>(request->Sglist.Acquire());
 
     if (!*guard) {
         return FutureErrorResponse<NProto::TReadBlocksLocalResponse>(
@@ -98,14 +97,16 @@ TFuture<NProto::TReadBlocksLocalResponse> TSpdkStorage::ReadBlocksLocal(
         startIndex * BlockSize,
         totalBlockCount * BlockSize);
 
-    return result.Apply([request, guard] (const auto& future) mutable {
-        guard.reset();
+    return result.Apply(
+        [request, guard](const auto& future) mutable
+        {
+            guard.reset();
 
-        NProto::TReadBlocksLocalResponse response;
-        *response.MutableError() = future.GetValue();
+            NProto::TReadBlocksLocalResponse response;
+            *response.MutableError() = future.GetValue();
 
-        return response;
-    });
+            return response;
+        });
 }
 
 TFuture<NProto::TWriteBlocksLocalResponse> TSpdkStorage::WriteBlocksLocal(
@@ -118,8 +119,8 @@ TFuture<NProto::TWriteBlocksLocalResponse> TSpdkStorage::WriteBlocksLocal(
     const ui32 totalBlockCount = request->BlocksCount;
 
     // std::function can't work with move only objects
-    auto guard = std::make_shared<TGuardedSgList::TGuard>(
-        request->Sglist.Acquire());
+    auto guard =
+        std::make_shared<TGuardedSgList::TGuard>(request->Sglist.Acquire());
 
     if (!*guard) {
         return FutureErrorResponse<NProto::TWriteBlocksLocalResponse>(
@@ -132,14 +133,16 @@ TFuture<NProto::TWriteBlocksLocalResponse> TSpdkStorage::WriteBlocksLocal(
         startIndex * BlockSize,
         totalBlockCount * BlockSize);
 
-    return result.Apply([request, guard] (const auto& future) mutable {
-        guard.reset();
+    return result.Apply(
+        [request, guard](const auto& future) mutable
+        {
+            guard.reset();
 
-        NProto::TWriteBlocksLocalResponse response;
-        *response.MutableError() = future.GetValue();
+            NProto::TWriteBlocksLocalResponse response;
+            *response.MutableError() = future.GetValue();
 
-        return response;
-    });
+            return response;
+        });
 }
 
 TFuture<NProto::TZeroBlocksResponse> TSpdkStorage::ZeroBlocks(
@@ -155,12 +158,14 @@ TFuture<NProto::TZeroBlocksResponse> TSpdkStorage::ZeroBlocks(
         startIndex * BlockSize,
         totalBlockCount * BlockSize);
 
-    return result.Apply([] (const auto& future) {
-        NProto::TZeroBlocksResponse response;
-        *response.MutableError() = future.GetValue();
+    return result.Apply(
+        [](const auto& future)
+        {
+            NProto::TZeroBlocksResponse response;
+            *response.MutableError() = future.GetValue();
 
-        return response;
-    });
+            return response;
+        });
 }
 
 TFuture<NProto::TError> TSpdkStorage::EraseDevice(
@@ -179,9 +184,12 @@ TStorageBuffer TSpdkStorage::AllocateBuffer(size_t bytesCount)
 
     Y_ABORT_UNLESS(std::align(BlockSize, bytesCount, p, space));
 
-    return { static_cast<char*>(p), [=] (auto*) {
-        alloc->Release(block);
-    }};
+    return {
+        static_cast<char*>(p),
+        [=](auto*)
+        {
+            alloc->Release(block);
+        }};
 }
 
 void TSpdkStorage::ReportIOError()
@@ -189,8 +197,7 @@ void TSpdkStorage::ReportIOError()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TReadOnlySpdkStorage final
-    : public TSpdkStorage
+class TReadOnlySpdkStorage final: public TSpdkStorage
 {
 public:
     using TSpdkStorage::TSpdkStorage;
@@ -204,8 +211,7 @@ public:
 
         return FutureErrorResponse<NProto::TZeroBlocksResponse>(
             E_IO,
-            "Volume in error state"
-        );
+            "Volume in error state");
     }
 
     TFuture<NProto::TWriteBlocksLocalResponse> WriteBlocksLocal(
@@ -217,8 +223,7 @@ public:
 
         return FutureErrorResponse<NProto::TWriteBlocksLocalResponse>(
             E_IO,
-            "Volume in error state"
-        );
+            "Volume in error state");
     }
 };
 
@@ -245,13 +250,13 @@ struct TRegistrationContext
     const bool ReadOnly;
 
     TRegistrationContext(
-            ui32 deviceCount,
-            ui32 blockSize,
-            TString diskId,
-            TString clientId,
-            IServerStatsPtr serverStats,
-            ICachingAllocatorPtr allocator,
-            bool readOnly)
+        ui32 deviceCount,
+        ui32 blockSize,
+        TString diskId,
+        TString clientId,
+        IServerStatsPtr serverStats,
+        ICachingAllocatorPtr allocator,
+        bool readOnly)
         : Devices(deviceCount)
         , Offsets(deviceCount)
         , BlockSize(blockSize)
@@ -266,9 +271,13 @@ struct TRegistrationContext
 
     void OnResponse(ui32 i, NSpdk::ISpdkDevicePtr device)
     {
-        Devices[i] = ReadOnly
-            ? CreateReadOnlySpdkStorage(std::move(device), Allocator, BlockSize)
-            : CreateSpdkStorage(std::move(device), Allocator, BlockSize);
+        Devices[i] =
+            ReadOnly
+                ? CreateReadOnlySpdkStorage(
+                      std::move(device),
+                      Allocator,
+                      BlockSize)
+                : CreateSpdkStorage(std::move(device), Allocator, BlockSize);
 
         if (AtomicDecrement(RemainingRequests) == 0) {
             if (LastError) {
@@ -299,8 +308,7 @@ struct TRegistrationContext
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSpdkStorageProvider final
-    : public IStorageProvider
+class TSpdkStorageProvider final: public IStorageProvider
 {
 private:
     const NSpdk::ISpdkEnvPtr Spdk;
@@ -309,9 +317,9 @@ private:
 
 public:
     TSpdkStorageProvider(
-            NSpdk::ISpdkEnvPtr spdk,
-            ICachingAllocatorPtr allocator,
-            IServerStatsPtr serverStats)
+        NSpdk::ISpdkEnvPtr spdk,
+        ICachingAllocatorPtr allocator,
+        IServerStatsPtr serverStats)
         : Spdk(std::move(spdk))
         , Allocator(std::move(allocator))
         , ServerStats(std::move(serverStats))
@@ -354,30 +362,33 @@ public:
         }
 
         for (int i = 0; i < devices.size(); ++i) {
-            Spdk->RegisterNVMeDevices(devices[i].GetBaseName(),
-                                      devices[i].GetTransportId())
-                .Subscribe([=, this] (const auto& future) {
-                    try {
-                        const auto& remoteDevices = future.GetValue();
-                        Y_ENSURE(remoteDevices.size() == 1);
-                        Spdk->OpenDevice(remoteDevices[0], write).Subscribe(
-                            [=] (const auto& future) {
-                                try {
-                                    auto device = future.GetValue();
-                                    registrationContext->OnResponse(
-                                        i,
-                                        std::move(device)
-                                    );
-                                } catch (const yexception& e) {
-                                    registrationContext->OnError(e.what());
-                                }
-                            }
-                        );
-                    } catch (const yexception& e) {
-                        registrationContext->OnError(e.what());
-                    }
-                }
-            );
+            Spdk->RegisterNVMeDevices(
+                    devices[i].GetBaseName(),
+                    devices[i].GetTransportId())
+                .Subscribe(
+                    [=, this](const auto& future)
+                    {
+                        try {
+                            const auto& remoteDevices = future.GetValue();
+                            Y_ENSURE(remoteDevices.size() == 1);
+                            Spdk->OpenDevice(remoteDevices[0], write)
+                                .Subscribe(
+                                    [=](const auto& future)
+                                    {
+                                        try {
+                                            auto device = future.GetValue();
+                                            registrationContext->OnResponse(
+                                                i,
+                                                std::move(device));
+                                        } catch (const yexception& e) {
+                                            registrationContext->OnError(
+                                                e.what());
+                                        }
+                                    });
+                        } catch (const yexception& e) {
+                            registrationContext->OnError(e.what());
+                        }
+                    });
         }
 
         return registrationContext->Promise;

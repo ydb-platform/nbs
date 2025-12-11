@@ -17,8 +17,7 @@ TString MakeDeviceCountersKey(const TString& agentId, const TString& deviceName)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TDeviceCounters::Register(
-    NMonitoring::TDynamicCountersPtr counters)
+void TDeviceCounters::Register(NMonitoring::TDynamicCountersPtr counters)
 {
     ReadCount.Register(counters, "ReadCount");
     ReadBytes.Register(counters, "ReadBytes");
@@ -104,7 +103,8 @@ void TAgentCounters::Register(
     const NProto::TAgentConfig& agentConfig,
     NMonitoring::TDynamicCountersPtr counters)
 {
-    auto agentCounters = counters->GetSubgroup("agent", agentConfig.GetAgentId());
+    auto agentCounters =
+        counters->GetSubgroup("agent", agentConfig.GetAgentId());
 
     InitErrorsCount.Register(agentCounters, "Errors/Init");
     TotalCounters.Register(agentCounters);
@@ -139,9 +139,7 @@ void TAgentCounters::Update(
     }
 
     MeanTimeBetweenFailures->Set(
-        mtbf.GetBrokenCount()
-        ? mtbf.GetWorkTime() / mtbf.GetBrokenCount()
-        : 0);
+        mtbf.GetBrokenCount() ? mtbf.GetWorkTime() / mtbf.GetBrokenCount() : 0);
 }
 
 void TAgentCounters::ResetDeviceStats(
@@ -179,12 +177,11 @@ void TAgentCounters::UpdateDeviceStats(
 
     for (size_t i = 0; i != buckets.size(); ++i) {
         const auto& src = stats.GetHistogramBuckets(i);
-        buckets[i] = { src.GetValue(), src.GetCount() };
+        buckets[i] = {src.GetValue(), src.GetCount()};
     }
 
-    counters.TimePercentiles = CalculateWeightedPercentiles(
-        buckets,
-        GetDefaultPercentiles());
+    counters.TimePercentiles =
+        CalculateWeightedPercentiles(buckets, GetDefaultPercentiles());
 }
 
 void TAgentCounters::Publish(TInstant now)

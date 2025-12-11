@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -14,8 +15,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDestroyVolumeCommand final
-    : public TCommand
+class TDestroyVolumeCommand final: public TCommand
 {
 private:
     TString DiskId;
@@ -53,7 +53,8 @@ protected:
             request->SetSync(Sync);
 
             STORAGE_WARN("Waiting for confirmation");
-            output << "Confirm disk destruction by typing disk id to stdin" << Endl;
+            output << "Confirm disk destruction by typing disk id to stdin"
+                   << Endl;
             TString confirmation;
             input >> confirmation;
             if (confirmation != DiskId) {
@@ -100,7 +101,7 @@ private:
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

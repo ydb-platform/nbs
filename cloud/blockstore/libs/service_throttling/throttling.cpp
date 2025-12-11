@@ -12,17 +12,14 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TThrottlingService final
-    : public IBlockStore
+class TThrottlingService final: public IBlockStore
 {
 private:
     IBlockStorePtr Service;
     IThrottlerPtr Throttler;
 
 public:
-    TThrottlingService(
-            IBlockStorePtr service,
-            IThrottlerPtr throttler)
+    TThrottlingService(IBlockStorePtr service, IThrottlerPtr throttler)
         : Service(std::move(service))
         , Throttler(std::move(throttler))
     {}
@@ -44,17 +41,17 @@ public:
         return Service->AllocateBuffer(bytesCount);
     }
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        return Throttler->name(                                                \
-            Service,                                                           \
-            std::move(callContext),                                            \
-            std::move(request));                                               \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
+#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                      \
+    TFuture<NProto::T##name##Response> name(                        \
+        TCallContextPtr callContext,                                \
+        std::shared_ptr<NProto::T##name##Request> request) override \
+    {                                                               \
+        return Throttler->name(                                     \
+            Service,                                                \
+            std::move(callContext),                                 \
+            std::move(request));                                    \
+    }                                                               \
+    // BLOCKSTORE_IMPLEMENT_METHOD
 
     BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
 

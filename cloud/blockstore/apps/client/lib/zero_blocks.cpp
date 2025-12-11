@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/encryption/model/utils.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -17,8 +18,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TZeroBlocksCommand final
-    : public TCommand
+class TZeroBlocksCommand final: public TCommand
 {
 private:
     TString DiskId;
@@ -43,7 +43,9 @@ public:
             .RequiredArgument("NUM")
             .StoreResult(&StartIndex);
 
-        Opts.AddLongOption("blocks-count", "maximum number of blocks stored in volume")
+        Opts.AddLongOption(
+                "blocks-count",
+                "maximum number of blocks stored in volume")
             .RequiredArgument("NUM")
             .StoreResult(&BlocksCount);
 
@@ -65,13 +67,17 @@ public:
             .NoArgument()
             .SetFlag(&MountLocal);
 
-        Opts.AddLongOption("encryption-mode", "encryption mode [no|aes-xts|test]")
+        Opts.AddLongOption(
+                "encryption-mode",
+                "encryption mode [no|aes-xts|test]")
             .RequiredArgument("STR")
-            .Handler1T<TString>([this] (const auto& s) {
-                EncryptionMode = EncryptionModeFromString(s);
-            });
+            .Handler1T<TString>(
+                [this](const auto& s)
+                { EncryptionMode = EncryptionModeFromString(s); });
 
-        Opts.AddLongOption("encryption-key-path", "path to file with encryption key")
+        Opts.AddLongOption(
+                "encryption-key-path",
+                "path to file with encryption key")
             .RequiredArgument("STR")
             .StoreResult(&EncryptionKeyPath);
 
@@ -86,7 +92,8 @@ public:
 protected:
     bool DoExecute() override
     {
-        const auto* zeroAll = ParseResultPtr->FindLongOptParseResult("zero-all");
+        const auto* zeroAll =
+            ParseResultPtr->FindLongOptParseResult("zero-all");
         if (zeroAll) {
             ZeroAll = true;
         }
@@ -96,7 +103,8 @@ protected:
         }
 
         if (Proto && ZeroAll) {
-            STORAGE_ERROR("--zero-all option cannot be used along with --proto option");
+            STORAGE_ERROR(
+                "--zero-all option cannot be used along with --proto option");
             return false;
         }
 
@@ -124,8 +132,7 @@ protected:
             NProto::VOLUME_ACCESS_READ_WRITE,
             MountLocal,
             ThrottlingDisabled,
-            encryptionSpec
-        );
+            encryptionSpec);
         if (HasError(mountResponse)) {
             return false;
         }
@@ -145,7 +152,7 @@ protected:
             result = WaitFor(Session->ZeroBlocks(
                 MakeIntrusive<TCallContext>(),
                 std::move(request)));
-        } catch(...) {
+        } catch (...) {
             STORAGE_ERROR(CurrentExceptionMessage());
             UnmountVolume(*Session);
             return false;
@@ -183,13 +190,15 @@ private:
         }
 
         if (!ZeroAll) {
-            const auto* startIndex = ParseResultPtr->FindLongOptParseResult("start-index");
+            const auto* startIndex =
+                ParseResultPtr->FindLongOptParseResult("start-index");
             if (!startIndex) {
                 STORAGE_ERROR("Start index is required");
                 return false;
             }
 
-            const auto* blocksCount = ParseResultPtr->FindLongOptParseResult("blocks-count");
+            const auto* blocksCount =
+                ParseResultPtr->FindLongOptParseResult("blocks-count");
             if (!blocksCount) {
                 STORAGE_ERROR("Blocks count is required");
                 return false;
@@ -200,7 +209,7 @@ private:
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

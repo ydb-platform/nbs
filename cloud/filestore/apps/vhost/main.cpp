@@ -18,6 +18,8 @@ int main(int argc, char** argv)
     auto vhostFactories = std::make_shared<NDaemon::TVhostModuleFactories>();
     vhostFactories->LoopFactory = NFuse::CreateFuseLoopFactory;
 
-    NDaemon::TBootstrapVhost bootstrap(std::move(moduleFactories), std::move(vhostFactories));
+    NDaemon::TBootstrapVhost bootstrap(
+        std::move(moduleFactories),
+        std::move(vhostFactories));
     return NCloud::DoMain(bootstrap, argc, argv);
 }

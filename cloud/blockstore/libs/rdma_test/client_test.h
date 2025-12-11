@@ -34,12 +34,10 @@ struct TRdmaClientTest: NRdma::IClient
         ui32 port) override;
 
     void Start() override
-    {
-    }
+    {}
 
     void Stop() override
-    {
-    }
+    {}
 
     void DumpHtml(IOutputStream& out) const override
     {

@@ -61,9 +61,8 @@ struct TFixture: public NUnitTest::TBaseFixture
 
         const TFsPath filePath = TryGetRamDrivePath() / "test";
 
-        FileData = TFileHandle(
-            filePath,
-            OpenAlways | RdWr | DirectAligned | Sync);
+        FileData =
+            TFileHandle(filePath, OpenAlways | RdWr | DirectAligned | Sync);
         FileData.Resize(BlockCount * BlockSize);
 
         auto factory = CreateIoUringServiceFactory({
@@ -104,7 +103,8 @@ struct TFixture: public NUnitTest::TBaseFixture
         CPU_ZERO(&IoWqThreadCpuset);
         CPU_SET(selectedCore, &IoWqThreadCpuset);
 
-        int res = sched_setaffinity(0, sizeof(IoWqThreadCpuset), &IoWqThreadCpuset);
+        int res =
+            sched_setaffinity(0, sizeof(IoWqThreadCpuset), &IoWqThreadCpuset);
         UNIT_ASSERT(res == 0);
     }
 
@@ -115,7 +115,7 @@ struct TFixture: public NUnitTest::TBaseFixture
         TVector<TString> threadIds;
         taskDir.ListNames(threadIds);
 
-        for (const auto& threadId : threadIds) {
+        for (const auto& threadId: threadIds) {
             auto threadDir = taskDir / threadId;
             auto threadName = TFileInput(threadDir / "comm").ReadAll();
             StripInPlace(threadName);
@@ -129,8 +129,9 @@ struct TFixture: public NUnitTest::TBaseFixture
             UNIT_ASSERT_C(res == 0, "sched_getaffinity failed: " << res);
 
             res = std::memcmp(&cpuset, &IoWqThreadCpuset, sizeof(cpuset));
-            if (res != 0 ) {
-                auto dumpCpuset = [](auto& out, auto &cpuset) {
+            if (res != 0) {
+                auto dumpCpuset = [](auto& out, auto& cpuset)
+                {
                     for (int i = 0; i < CPU_SETSIZE; ++i) {
                         if (CPU_ISSET(i, &cpuset)) {
                             out << i << " ";
@@ -194,7 +195,7 @@ Y_UNIT_TEST_SUITE(TIoUringTest)
 
         std::shared_ptr<char> memory = AllocMem(length);
 
-        TArrayRef<char> buffer {memory.get(), length};
+        TArrayRef<char> buffer{memory.get(), length};
 
         for (int i = 0; i != ServicesCount; ++i) {
             auto& service = *Services[i];

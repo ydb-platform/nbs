@@ -1,7 +1,7 @@
 #pragma once
 
 #if !defined(BLOCKSTORE_INCLUDE_GUARDED_SGLIST_INL)
-#   error "this file should not be included directly"
+#error "this file should not be included directly"
 #endif
 
 #include "block_buffer.h"
@@ -56,15 +56,15 @@ inline TSgList CreateSgList(const TString& s)
     if (s.empty()) {
         return {{}};
     }
-    return {{ s.data(), s.length() }};
+    return {{s.data(), s.length()}};
 }
 
 inline TSgList CreateSgList(const TBuffer& buffer)
 {
     if (buffer.Empty()) {
-       return {{}};
+        return {{}};
     }
-    return {{ buffer.Data(), buffer.Size() }};
+    return {{buffer.Data(), buffer.Size()}};
 }
 
 inline TSgList CreateSgList(const TBlockBuffer& blockBuffer)

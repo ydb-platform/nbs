@@ -25,12 +25,11 @@ struct IExternalEndpoint
 };
 
 using IExternalEndpointPtr = std::shared_ptr<IExternalEndpoint>;
-using TExternalEndpointFactory = std::function<IExternalEndpointPtr (
+using TExternalEndpointFactory = std::function<IExternalEndpointPtr(
     const TString& clientId,
     const TString& diskId,
     TVector<TString> args,
-    TVector<TString> cgroups
-)>;
+    TVector<TString> cgroups)>;
 
 ////////////////////////////////////////////////////////////////////////////////
 

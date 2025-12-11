@@ -15,12 +15,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui64 DefaultBlocksCount = 1024*1024;
+constexpr ui64 DefaultBlocksCount = 1024 * 1024;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSpdkEnvStub final
-    : public ISpdkEnv
+class TSpdkEnvStub final: public ISpdkEnv
 {
 private:
     size_t DeviceId = 0;
@@ -29,12 +28,10 @@ private:
 
 public:
     void Start() override
-    {
-    }
+    {}
 
     void Stop() override
-    {
-    }
+    {}
 
     TFuture<void> StartAsync() override
     {
@@ -111,20 +108,17 @@ public:
 
         auto deviceId = "NVMeDevice" + ToString(++DeviceId);
         RegisterDevice(deviceId, DefaultBlocksCount, DefaultBlockSize);
-        return MakeFuture(TVector<TString> { deviceId });
+        return MakeFuture(TVector<TString>{deviceId});
     }
 
-    TFuture<void> UnregisterDevice(
-        const TString& name) override
+    TFuture<void> UnregisterDevice(const TString& name) override
     {
         Y_UNUSED(name);
 
         return MakeFuture();
     }
 
-    TFuture<ISpdkDevicePtr> OpenDevice(
-        const TString& name,
-        bool write) override
+    TFuture<ISpdkDevicePtr> OpenDevice(const TString& name, bool write) override
     {
         Y_UNUSED(name);
         Y_UNUSED(write);
@@ -132,8 +126,7 @@ public:
         return MakeFuture(CreateDeviceStub());
     }
 
-    TFuture<TDeviceStats> QueryDeviceStats(
-        const TString& name) override
+    TFuture<TDeviceStats> QueryDeviceStats(const TString& name) override
     {
         return MakeFuture(Devices[name]);
     }
@@ -170,8 +163,7 @@ public:
         return MakeFuture();
     }
 
-    TFuture<TDeviceRateLimits> GetRateLimits(
-        const TString& deviceName) override
+    TFuture<TDeviceRateLimits> GetRateLimits(const TString& deviceName) override
     {
         Y_UNUSED(deviceName);
 
@@ -203,16 +195,14 @@ public:
         return MakeFuture(TVector<TBucketInfo>());
     }
 
-    TFuture<void> AddTransport(
-        const TString& transportId) override
+    TFuture<void> AddTransport(const TString& transportId) override
     {
         Y_UNUSED(transportId);
 
         return MakeFuture();
     }
 
-    TFuture<void> StartListen(
-        const TString& transportId) override
+    TFuture<void> StartListen(const TString& transportId) override
     {
         Y_UNUSED(transportId);
 
@@ -264,10 +254,8 @@ public:
     }
 
 private:
-    void RegisterDevice(
-        const TString& deviceId,
-        ui64 blocksCount,
-        ui32 blockSize)
+    void
+    RegisterDevice(const TString& deviceId, ui64 blocksCount, ui32 blockSize)
     {
         auto& stats = Devices[deviceId];
         Zero(stats);
@@ -279,17 +267,14 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSpdkDeviceStub final
-    : public ISpdkDevice
+class TSpdkDeviceStub final: public ISpdkDevice
 {
 public:
     void Start() override
-    {
-    }
+    {}
 
     void Stop() override
-    {
-    }
+    {}
 
     TFuture<void> StartAsync() override
     {
@@ -301,10 +286,8 @@ public:
         return MakeFuture();
     }
 
-    TFuture<NProto::TError> Read(
-        void* buf,
-        ui64 fileOffset,
-        ui32 bytesCount) override
+    TFuture<NProto::TError>
+    Read(void* buf, ui64 fileOffset, ui32 bytesCount) override
     {
         Y_UNUSED(buf);
         Y_UNUSED(fileOffset);
@@ -313,10 +296,8 @@ public:
         return MakeFuture<NProto::TError>();
     }
 
-    TFuture<NProto::TError> Write(
-        void* buf,
-        ui64 fileOffset,
-        ui32 bytesCount) override
+    TFuture<NProto::TError>
+    Write(void* buf, ui64 fileOffset, ui32 bytesCount) override
     {
         Y_UNUSED(buf);
         Y_UNUSED(fileOffset);
@@ -325,10 +306,8 @@ public:
         return MakeFuture<NProto::TError>();
     }
 
-    TFuture<NProto::TError> Read(
-        TSgList sglist,
-        ui64 fileOffset,
-        ui32 bytesCount) override
+    TFuture<NProto::TError>
+    Read(TSgList sglist, ui64 fileOffset, ui32 bytesCount) override
     {
         Y_UNUSED(sglist);
         Y_UNUSED(fileOffset);
@@ -337,10 +316,8 @@ public:
         return MakeFuture<NProto::TError>();
     }
 
-    TFuture<NProto::TError> Write(
-        TSgList sglist,
-        ui64 fileOffset,
-        ui32 bytesCount) override
+    TFuture<NProto::TError>
+    Write(TSgList sglist, ui64 fileOffset, ui32 bytesCount) override
     {
         Y_UNUSED(sglist);
         Y_UNUSED(fileOffset);
@@ -370,17 +347,14 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSpdkTargetStub final
-    : public ISpdkTarget
+class TSpdkTargetStub final: public ISpdkTarget
 {
 public:
     void Start() override
-    {
-    }
+    {}
 
     void Stop() override
-    {
-    }
+    {}
 
     TFuture<void> StartAsync() override
     {

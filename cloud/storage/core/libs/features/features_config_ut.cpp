@@ -46,14 +46,12 @@ Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
             matches += config.IsFeatureEnabled(cloud, {}, {}, f->GetName());
         }
 
-        UNIT_ASSERT_C(1500 < matches && matches < 2500, TStringBuilder()
-            << "match count: " << matches);
+        UNIT_ASSERT_C(
+            1500 < matches && matches < 2500,
+            TStringBuilder() << "match count: " << matches);
 
-        UNIT_ASSERT(config.IsFeatureEnabled(
-            "whitelisted_cloud",
-            {},
-            {},
-            f->GetName()));
+        UNIT_ASSERT(
+            config.IsFeatureEnabled("whitelisted_cloud", {}, {}, f->GetName()));
     }
 
     Y_UNIT_TEST(ShouldMatchFoldersByProbability)
@@ -71,14 +69,13 @@ Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
             matches += config.IsFeatureEnabled({}, folder, {}, f->GetName());
         }
 
-        UNIT_ASSERT_C(2500 < matches && matches < 3500, TStringBuilder()
-            << "match count: " << matches);
+        UNIT_ASSERT_C(
+            2500 < matches && matches < 3500,
+            TStringBuilder() << "match count: " << matches);
 
-        UNIT_ASSERT(config.IsFeatureEnabled(
-            {},
-            "whitelisted_folder",
-            {},
-            f->GetName()));
+        UNIT_ASSERT(
+            config
+                .IsFeatureEnabled({}, "whitelisted_folder", {}, f->GetName()));
     }
 
     Y_UNIT_TEST(ShouldMatchId)
@@ -90,36 +87,17 @@ Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
         TFeaturesConfig config(fc);
 
         // id doesn't match "whitelisted_id"
-        UNIT_ASSERT(!config.IsFeatureEnabled(
-            "cloud_id",
-            {},
-            {},
-            f->GetName()));
-        UNIT_ASSERT(!config.IsFeatureEnabled(
-            {},
-            "folder_id",
-            {},
-            f->GetName()));
-        UNIT_ASSERT(!config.IsFeatureEnabled(
-            {},
-            {},
-            "id",
-            f->GetName()));
-        UNIT_ASSERT(!config.IsFeatureEnabled(
-            "cloud_id",
-            "folder_id",
-            {},
-            f->GetName()));
-        UNIT_ASSERT(!config.IsFeatureEnabled(
-            "cloud_id",
-            {},
-            "id",
-            f->GetName()));
-        UNIT_ASSERT(!config.IsFeatureEnabled(
-            {},
-            "folder_id",
-            "id",
-            f->GetName()));
+        UNIT_ASSERT(!config.IsFeatureEnabled("cloud_id", {}, {}, f->GetName()));
+        UNIT_ASSERT(
+            !config.IsFeatureEnabled({}, "folder_id", {}, f->GetName()));
+        UNIT_ASSERT(!config.IsFeatureEnabled({}, {}, "id", f->GetName()));
+        UNIT_ASSERT(
+            !config
+                 .IsFeatureEnabled("cloud_id", "folder_id", {}, f->GetName()));
+        UNIT_ASSERT(
+            !config.IsFeatureEnabled("cloud_id", {}, "id", f->GetName()));
+        UNIT_ASSERT(
+            !config.IsFeatureEnabled({}, "folder_id", "id", f->GetName()));
         UNIT_ASSERT(!config.IsFeatureEnabled(
             "cloud_id",
             "folder_id",
@@ -127,11 +105,8 @@ Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
             f->GetName()));
 
         // id matches "whitelisted_id"
-        UNIT_ASSERT(config.IsFeatureEnabled(
-            {},
-            {},
-            "whitelisted_id",
-            f->GetName()));
+        UNIT_ASSERT(
+            config.IsFeatureEnabled({}, {}, "whitelisted_id", f->GetName()));
         UNIT_ASSERT(config.IsFeatureEnabled(
             "cloud_id",
             {},
@@ -184,8 +159,9 @@ Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
             matches += config.IsFeatureEnabled(cloud, {}, {}, f->GetName());
         }
 
-        UNIT_ASSERT_C(matches == 1000, TStringBuilder()
-            << "match count: " << matches);
+        UNIT_ASSERT_C(
+            matches == 1000,
+            TStringBuilder() << "match count: " << matches);
     }
 
     Y_UNIT_TEST(ShouldMatchUsingRegexp)
@@ -207,8 +183,10 @@ Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
         UNIT_ASSERT(config.IsFeatureEnabled({}, {}, "disk-xyz", f->GetName()));
 
         UNIT_ASSERT(!config.IsFeatureEnabled("prod-123", {}, {}, f->GetName()));
-        UNIT_ASSERT(!config.IsFeatureEnabled({}, "folder-1A", {}, f->GetName()));
-        UNIT_ASSERT(!config.IsFeatureEnabled({}, {}, "volume-xyz", f->GetName()));
+        UNIT_ASSERT(
+            !config.IsFeatureEnabled({}, "folder-1A", {}, f->GetName()));
+        UNIT_ASSERT(
+            !config.IsFeatureEnabled({}, {}, "volume-xyz", f->GetName()));
     }
 
     Y_UNIT_TEST(ShouldNotMatchUsingBadRegexp)
@@ -219,7 +197,7 @@ Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
 
         auto* whitelist = f->MutableWhitelist();
         whitelist->SetMatchAlgorithm(NProto::FILTER_MATCH_ALGORITHM_REGEXP);
-        *whitelist->AddCloudIds() = R"([d]e[v-\d+)"; // bad regexp
+        *whitelist->AddCloudIds() = R"([d]e[v-\d+)";   // bad regexp
         *whitelist->AddFolderIds() = R"(folder-[A-Z]{2})";
         *whitelist->AddEntityIds() = R"(disk-.*)";
 
@@ -228,7 +206,6 @@ Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
         UNIT_ASSERT(!config.IsFeatureEnabled("dev-123", {}, {}, f->GetName()));
         UNIT_ASSERT(config.IsFeatureEnabled({}, "folder-AA", {}, f->GetName()));
         UNIT_ASSERT(config.IsFeatureEnabled({}, {}, "disk-xyz", f->GetName()));
-
     }
 
     Y_UNIT_TEST(ShouldRejectUsingRegexpBlacklist)
@@ -246,12 +223,16 @@ Y_UNIT_TEST_SUITE(TFeaturesConfigTest)
         TFeaturesConfig config(fc);
 
         UNIT_ASSERT(!config.IsFeatureEnabled("bad-101", {}, {}, f->GetName()));
-        UNIT_ASSERT(!config.IsFeatureEnabled({}, "tmp-alpha", {}, f->GetName()));
-        UNIT_ASSERT(!config.IsFeatureEnabled({}, {}, "forbidden-id", f->GetName()));
+        UNIT_ASSERT(
+            !config.IsFeatureEnabled({}, "tmp-alpha", {}, f->GetName()));
+        UNIT_ASSERT(
+            !config.IsFeatureEnabled({}, {}, "forbidden-id", f->GetName()));
 
         UNIT_ASSERT(config.IsFeatureEnabled("good-101", {}, {}, f->GetName()));
-        UNIT_ASSERT(config.IsFeatureEnabled({}, "prod-alpha", {}, f->GetName()));
-        UNIT_ASSERT(config.IsFeatureEnabled({}, {}, "allowed-id", f->GetName()));
+        UNIT_ASSERT(
+            config.IsFeatureEnabled({}, "prod-alpha", {}, f->GetName()));
+        UNIT_ASSERT(
+            config.IsFeatureEnabled({}, {}, "allowed-id", f->GetName()));
     }
 
     Y_UNIT_TEST(ShouldUseStringMatchByDefault)

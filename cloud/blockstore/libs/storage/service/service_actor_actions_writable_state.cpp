@@ -10,9 +10,9 @@
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
-#include <google/protobuf/util/json_util.h>
-
 #include <util/string/printf.h>
+
+#include <google/protobuf/util/json_util.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -26,8 +26,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TWritableStateActor final
-    : public TActorBootstrapped<TWritableStateActor>
+class TWritableStateActor final: public TActorBootstrapped<TWritableStateActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
@@ -36,9 +35,7 @@ private:
     NProto::TError Error;
 
 public:
-    TWritableStateActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TWritableStateActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -56,8 +53,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TWritableStateActor::TWritableStateActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -83,11 +80,11 @@ void TWritableStateActor::Bootstrap(const TActorContext& ctx)
 
 void TWritableStateActor::ReplyAndDie(const TActorContext& ctx)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(Error);
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(Error);
     google::protobuf::util::MessageToJsonString(
         NProto::TSetWritableStateResponse(),
-        response->Record.MutableOutput()
-    );
+        response->Record.MutableOutput());
 
     LWTRACK(
         ResponseSent_Service,

@@ -19,10 +19,8 @@ void TStorageServiceActor::HandlePingSession(
     const auto sessionId = GetSessionId(msg->Record);
 
     auto* session = State->FindSession(sessionId, seqNo);
-    if (!session ||
-        session->ClientId != clientId ||
-        sessionId != session->SessionId ||
-        !session->SessionActor)
+    if (!session || session->ClientId != clientId ||
+        sessionId != session->SessionId || !session->SessionActor)
     {
         auto response = std::make_unique<TEvService::TEvPingSessionResponse>(
             ErrorInvalidSession(clientId, sessionId, seqNo));

@@ -27,8 +27,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TStartVolumeActor final
-    : public TActorBootstrapped<TStartVolumeActor>
+class TStartVolumeActor final: public TActorBootstrapped<TStartVolumeActor>
 {
 private:
     enum class EPendingRequest
@@ -179,16 +178,16 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TStartVolumeActor::TStartVolumeActor(
-        const TActorId& sessionActorId,
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticsConfig,
-        IProfileLogPtr profileLog,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
-        ITraceSerializerPtr traceSerializer,
-        NServer::IEndpointEventHandlerPtr endpointEventHandler,
-        NRdma::IClientPtr rdmaClient,
-        TString diskId,
-        ui64 volumeTabletId)
+    const TActorId& sessionActorId,
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
+    IProfileLogPtr profileLog,
+    IBlockDigestGeneratorPtr blockDigestGenerator,
+    ITraceSerializerPtr traceSerializer,
+    NServer::IEndpointEventHandlerPtr endpointEventHandler,
+    NRdma::IClientPtr rdmaClient,
+    TString diskId,
+    ui64 volumeTabletId)
     : SessionActorId(sessionActorId)
     , Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
@@ -238,7 +237,7 @@ void TStartVolumeActor::LockTablet(const TActorContext& ctx)
     NCloud::Send<TEvHiveProxy::TEvLockTabletRequest>(
         ctx,
         MakeHiveProxyServiceId(),
-        0,  // cookie
+        0,   // cookie
         VolumeTabletId);
 }
 
@@ -357,10 +356,9 @@ void TStartVolumeActor::HandleDescribeVolumeResponse(
     }
 
     if (msg->GetStatus() == NKikimrScheme::StatusSuccess) {
-        auto volumeTabletId = msg->
-            PathDescription.
-            GetBlockStoreVolumeDescription().
-            GetVolumeTabletId();
+        auto volumeTabletId =
+            msg->PathDescription.GetBlockStoreVolumeDescription()
+                .GetVolumeTabletId();
 
         if (volumeTabletId != VolumeTabletId) {
             LOG_ERROR(
@@ -422,7 +420,7 @@ void TStartVolumeActor::UnlockTablet(const TActorContext& ctx)
     NCloud::Send<TEvHiveProxy::TEvUnlockTabletRequest>(
         ctx,
         MakeHiveProxyServiceId(),
-        0,  // cookie
+        0,   // cookie
         VolumeTabletId);
 }
 
@@ -503,7 +501,7 @@ void TStartVolumeActor::BootExternal(const TActorContext& ctx)
     NCloud::Send<TEvHiveProxy::TEvBootExternalRequest>(
         ctx,
         MakeHiveProxyServiceId(),
-        0,  // cookie
+        0,   // cookie
         VolumeTabletId);
 }
 
@@ -542,7 +540,8 @@ void TStartVolumeActor::HandleBootExternalResponse(
         LogTitle.SetGeneration(VolumeGeneration);
     }
     VolumeTabletStorageInfo = msg->StorageInfo;
-    Y_ABORT_UNLESS(VolumeTabletStorageInfo->TabletID == VolumeTabletId,
+    Y_ABORT_UNLESS(
+        VolumeTabletStorageInfo->TabletID == VolumeTabletId,
         "Tablet IDs mismatch: %lu != %lu",
         VolumeTabletStorageInfo->TabletID,
         VolumeTabletId);
@@ -637,7 +636,8 @@ void TStartVolumeActor::HandleTabletRestored(
 {
     const auto* msg = ev->Get();
 
-    Y_ABORT_UNLESS(msg->TabletID == VolumeTabletId,
+    Y_ABORT_UNLESS(
+        msg->TabletID == VolumeTabletId,
         "Tablet IDs mismatch: %lu != %lu",
         msg->TabletID,
         VolumeTabletId);
@@ -692,7 +692,8 @@ void TStartVolumeActor::HandleTabletDead(
 {
     const auto* msg = ev->Get();
 
-    Y_ABORT_UNLESS(msg->TabletID == VolumeTabletId,
+    Y_ABORT_UNLESS(
+        msg->TabletID == VolumeTabletId,
         "Tablet IDs mismatch: %lu != %lu",
         msg->TabletID,
         VolumeTabletId);
@@ -888,8 +889,8 @@ void TStartVolumeActor::ContinueShutdown(const TActorContext& ctx)
     }
 
     // notify service
-    auto msg = std::make_unique<TEvServicePrivate::TEvStartVolumeActorStopped>(
-        Error);
+    auto msg =
+        std::make_unique<TEvServicePrivate::TEvStartVolumeActorStopped>(Error);
 
     NCloud::Send(ctx, SessionActorId, std::move(msg));
     Die(ctx);
@@ -904,7 +905,7 @@ void TStartVolumeActor::SendVolumeTabletStatus(const TActorContext& ctx)
     NCloud::Send<TEvServicePrivate::TEvVolumeTabletStatus>(
         ctx,
         SessionActorId,
-        0,  // cookie
+        0,   // cookie
         VolumeTabletId,
         Volume,
         VolumeUserActor);
@@ -915,7 +916,9 @@ void TStartVolumeActor::SendVolumeTabletDeadErrorAndScheduleReboot(
 {
     Y_DEBUG_ABORT_UNLESS(!Ready);
 
-    auto error = MakeError(E_REJECTED, TEvTablet::TEvTabletDead::Str(VolumeTabletDeadReason));
+    auto error = MakeError(
+        E_REJECTED,
+        TEvTablet::TEvTabletDead::Str(VolumeTabletDeadReason));
 
     LOG_ERROR(
         ctx,
@@ -927,7 +930,7 @@ void TStartVolumeActor::SendVolumeTabletDeadErrorAndScheduleReboot(
     NCloud::Send<TEvServicePrivate::TEvVolumeTabletStatus>(
         ctx,
         SessionActorId,
-        0,  // cookie
+        0,   // cookie
         error);
 
     bool delay = true;
@@ -980,7 +983,7 @@ TString TStartVolumeActor::FormatPendingRequest() const
             return "Stop";
         default:
             return TStringBuilder()
-                << "Unknown: " << static_cast<size_t>(PendingRequest);
+                   << "Unknown: " << static_cast<size_t>(PendingRequest);
     }
 }
 
@@ -1065,11 +1068,17 @@ STFUNC(TStartVolumeActor::StateWork)
             HandleStartVolumeRequest);
 
         HFunc(TEvHiveProxy::TEvLockTabletResponse, HandleLockTabletResponse);
-        HFunc(TEvHiveProxy::TEvBootExternalResponse, HandleBootExternalResponse);
+        HFunc(
+            TEvHiveProxy::TEvBootExternalResponse,
+            HandleBootExternalResponse);
         HFunc(TEvHiveProxy::TEvTabletLockLost, HandleTabletLockLost);
-        HFunc(TEvHiveProxy::TEvUnlockTabletResponse, HandleUnlockTabletResponse);
+        HFunc(
+            TEvHiveProxy::TEvUnlockTabletResponse,
+            HandleUnlockTabletResponse);
 
-        HFunc(TEvSSProxy::TEvDescribeVolumeResponse, HandleDescribeVolumeResponse);
+        HFunc(
+            TEvSSProxy::TEvDescribeVolumeResponse,
+            HandleDescribeVolumeResponse);
 
         HFunc(TEvTablet::TEvRestored, HandleTabletRestored);
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
@@ -1120,9 +1129,12 @@ void TVolumeSessionActor::HandleStartVolumeRequest(
     }
 
     if (VolumeInfo->State == TVolumeInfo::STOPPING) {
-        auto response = std::make_unique<TEvServicePrivate::TEvStartVolumeResponse>(
-            MakeError(E_REJECTED, TStringBuilder()
-                << "Volume " << diskId << " is being stopped"));
+        auto response =
+            std::make_unique<TEvServicePrivate::TEvStartVolumeResponse>(
+                MakeError(
+                    E_REJECTED,
+                    TStringBuilder()
+                        << "Volume " << diskId << " is being stopped"));
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::SERVICE,
@@ -1136,8 +1148,9 @@ void TVolumeSessionActor::HandleStartVolumeRequest(
     if (VolumeInfo->State == TVolumeInfo::STARTED) {
         // If volume is already started then start volume actor should only
         // update hive lock.
-        auto request = std::make_unique<TEvServicePrivate::TEvStartVolumeRequest>(
-            TabletId);
+        auto request =
+            std::make_unique<TEvServicePrivate::TEvStartVolumeRequest>(
+                TabletId);
 
         NCloud::Send(ctx, StartVolumeActor, std::move(request));
         return;
@@ -1172,8 +1185,9 @@ void TVolumeSessionActor::HandleVolumeTabletStatus(
     VolumeInfo->SetStarted(msg->TabletId, msg->VolumeInfo, msg->VolumeActor);
 
     if (MountRequestActor) {
-        auto response = std::make_unique<TEvServicePrivate::TEvStartVolumeResponse>(
-            *VolumeInfo->VolumeInfo);
+        auto response =
+            std::make_unique<TEvServicePrivate::TEvStartVolumeResponse>(
+                *VolumeInfo->VolumeInfo);
         NCloud::Send(ctx, MountRequestActor, std::move(response));
     }
 }

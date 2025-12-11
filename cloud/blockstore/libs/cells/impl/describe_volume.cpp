@@ -42,9 +42,9 @@ struct TCellInfo
     TVector<NProto::TError> DescribeResults;
 
     TCellInfo(
-            TString cellId,
-            bool strictCellIdCheckInDescribe,
-            ui32 clientCount)
+        TString cellId,
+        bool strictCellIdCheckInDescribe,
+        ui32 clientCount)
         : CellId(std::move(cellId))
         , StrictCellIdCheckInDescribe(strictCellIdCheckInDescribe)
         , DescribeResults(clientCount)
@@ -119,11 +119,11 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TMultiCellDescribeHandler::TMultiCellDescribeHandler(
-        ISchedulerPtr scheduler,
-        TLog log,
-        TVector<TCellInfo> cells,
-        NProto::TDescribeVolumeRequest request,
-        bool hasUnavailableCells)
+    ISchedulerPtr scheduler,
+    TLog log,
+    TVector<TCellInfo> cells,
+    NProto::TDescribeVolumeRequest request,
+    bool hasUnavailableCells)
     : Scheduler(std::move(scheduler))
     , Log(std::move(log))
     , Cells(std::move(cells))
@@ -172,7 +172,8 @@ TFuture<NProto::TDescribeVolumeResponse> TMultiCellDescribeHandler::Start(
 
     Scheduler->Schedule(
         TInstant::Now() + describeTimeout,
-        [weak = std::move(weak)]() {
+        [weak = std::move(weak)]()
+        {
             if (auto self = weak.lock(); self) {
                 self->HandleTimeout();
             }
@@ -214,9 +215,8 @@ void TMultiCellDescribeHandler::HandleResponse(
             const bool allRetriable = std::all_of(
                 cell.DescribeResults.begin(),
                 cell.DescribeResults.end(),
-                [] (const auto& result) {
-                    return EErrorKind::ErrorRetriable == GetErrorKind(result);
-                });
+                [](const auto& result)
+                { return EErrorKind::ErrorRetriable == GetErrorKind(result); });
             if (allRetriable) {
                 HasUnavailableCells = true;
                 break;
@@ -229,13 +229,10 @@ void TMultiCellDescribeHandler::HandleResponse(
             return;
         }
 
-        *response.MutableError() =
-            std::move(MakeError(
-                E_NOT_FOUND,
-                TStringBuilder()
-                    << "Volume "
-                    << Request.GetDiskId().Quote()
-                    << " not found in cells"));
+        *response.MutableError() = std::move(MakeError(
+            E_NOT_FOUND,
+            TStringBuilder() << "Volume " << Request.GetDiskId().Quote()
+                             << " not found in cells"));
         Reply(std::move(response));
     }
 }
@@ -243,12 +240,12 @@ void TMultiCellDescribeHandler::HandleResponse(
 ////////////////////////////////////////////////////////////////////////////////
 
 TDescribeResponseHandler::TDescribeResponseHandler(
-        TLog log,
-        std::weak_ptr<TMultiCellDescribeHandler> owner,
-        TCellHostInfo hostInfo,
-        ui32 cellResultIndex,
-        TCellInfo& cell,
-        NProto::TDescribeVolumeRequest request)
+    TLog log,
+    std::weak_ptr<TMultiCellDescribeHandler> owner,
+    TCellHostInfo hostInfo,
+    ui32 cellResultIndex,
+    TCellInfo& cell,
+    NProto::TDescribeVolumeRequest request)
     : Owner(std::move(owner))
     , HostInfo(std::move(hostInfo))
     , CellResultIndex(cellResultIndex)
@@ -294,12 +291,12 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
     if (!HasError(response)) {
         const auto& volume = response.GetVolume();
         // DescribeVolume requests are sent to all cells at the start endpoint.
-        // If there is a relocation in progress, we may receive multiple responses
-        // for the same volume from both the source and destination disks.
-        // We should ignore responses from the destination disk, since the user
-        // should only interact with the source disk.
-        // The source disk ID tag is set on the destination disk during migration,
-        // so we should ignore response for disk with this tag.
+        // If there is a relocation in progress, we may receive multiple
+        // responses for the same volume from both the source and destination
+        // disks. We should ignore responses from the destination disk, since
+        // the user should only interact with the source disk. The source disk
+        // ID tag is set on the destination disk during migration, so we should
+        // ignore response for disk with this tag.
         if (volume.GetTags().contains(SourceDiskIdTagName)) {
             STORAGE_DEBUG(
                 TStringBuilder()

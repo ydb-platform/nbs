@@ -18,8 +18,7 @@ namespace NCloud {
 
 namespace {
 
-class TFileStorage final
-    : public IEndpointStorage
+class TFileStorage final: public IEndpointStorage
 {
 private:
     const TFsPath DirPath;
@@ -35,8 +34,10 @@ public:
         TGuard guard(Mutex);
 
         if (!DirPath.IsDirectory()) {
-            return MakeError(E_INVALID_STATE, TStringBuilder()
-                << "Failed to find directory " << DirPath.GetPath().Quote());
+            return MakeError(
+                E_INVALID_STATE,
+                TStringBuilder() << "Failed to find directory "
+                                 << DirPath.GetPath().Quote());
         }
 
         TVector<TFsPath> endpointFiles;
@@ -64,8 +65,10 @@ public:
 
         auto endpointFile = DirPath.Child(Base64EncodeUrl(endpointId));
         if (!endpointFile.Exists()) {
-            return MakeError(E_INVALID_STATE, TStringBuilder()
-                << "Failed to find endpoint with id " << endpointId);
+            return MakeError(
+                E_INVALID_STATE,
+                TStringBuilder()
+                    << "Failed to find endpoint with id " << endpointId);
         }
 
         return ReadFile(endpointFile);
@@ -80,7 +83,8 @@ public:
         try {
             TFsPath tmpFilePath(MakeTempName(nullptr, "endpoint"));
             TFileOutput(tmpFilePath).Write(endpointSpec);
-            tmpFilePath.ForceRenameTo(DirPath.Child(Base64EncodeUrl(endpointId)));
+            tmpFilePath.ForceRenameTo(
+                DirPath.Child(Base64EncodeUrl(endpointId)));
             return {};
         } catch (...) {
             return MakeError(E_IO, CurrentExceptionMessage());
@@ -105,16 +109,21 @@ private:
     {
         TFile file;
         try {
-            file = TFile(filepath,
+            file = TFile(
+                filepath,
                 EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
         } catch (...) {
-            return MakeError(E_INVALID_STATE, TStringBuilder()
-                << "Failed to open file " << filepath.GetPath().Quote());
+            return MakeError(
+                E_INVALID_STATE,
+                TStringBuilder()
+                    << "Failed to open file " << filepath.GetPath().Quote());
         }
 
         if (!file.IsOpen()) {
-            return MakeError(E_INVALID_STATE, TStringBuilder()
-                << "Failed to open file " << filepath.GetPath().Quote());
+            return MakeError(
+                E_INVALID_STATE,
+                TStringBuilder()
+                    << "Failed to open file " << filepath.GetPath().Quote());
         }
 
         try {

@@ -18,9 +18,7 @@ Y_UNIT_TEST_SUITE(TReadWriteRangeLockTest)
 
         // Test read lock
         bool readLock = false;
-        rangeLock.LockRead(0, 10, [&]() {
-            readLock = true;
-        });
+        rangeLock.LockRead(0, 10, [&]() { readLock = true; });
 
         UNIT_ASSERT(!rangeLock.Empty());
         UNIT_ASSERT(readLock);
@@ -31,9 +29,7 @@ Y_UNIT_TEST_SUITE(TReadWriteRangeLockTest)
 
         // Test write lock
         bool writeLock = false;
-        rangeLock.LockWrite(0, 10, [&]() {
-            writeLock = true;
-        });
+        rangeLock.LockWrite(0, 10, [&]() { writeLock = true; });
 
         UNIT_ASSERT(!rangeLock.Empty());
         UNIT_ASSERT(readLock);
@@ -50,11 +46,13 @@ Y_UNIT_TEST_SUITE(TReadWriteRangeLockTest)
         int readLockCount = 0;
         int writeLockCount = 0;
 
-        auto readLockAction = [&]() {
+        auto readLockAction = [&]()
+        {
             readLockCount++;
         };
 
-        auto writeLockAction = [&]() {
+        auto writeLockAction = [&]()
+        {
             writeLockCount++;
         };
 
@@ -81,9 +79,7 @@ Y_UNIT_TEST_SUITE(TReadWriteRangeLockTest)
         // RangeLock status:
         // - read locks: [0, 10)
         bool readLock1 = false;
-        rangeLock.LockRead(0, 10, [&]() {
-            readLock1 = true;
-        });
+        rangeLock.LockRead(0, 10, [&]() { readLock1 = true; });
 
         UNIT_ASSERT(!rangeLock.Empty());
         UNIT_ASSERT(readLock1);
@@ -92,9 +88,7 @@ Y_UNIT_TEST_SUITE(TReadWriteRangeLockTest)
         // RangeLock status:
         // - read locks: [0, 10), [0, 10)
         readLock1 = false;
-        rangeLock.LockRead(0, 10, [&]() {
-            readLock1 = true;
-        });
+        rangeLock.LockRead(0, 10, [&]() { readLock1 = true; });
 
         UNIT_ASSERT(!rangeLock.Empty());
         UNIT_ASSERT(readLock1);
@@ -105,9 +99,7 @@ Y_UNIT_TEST_SUITE(TReadWriteRangeLockTest)
         // - read locks: [0, 10), [0, 10)
         // - pending write locks: [5, 15)
         bool writeLock1 = false;
-        rangeLock.LockWrite(5, 15, [&]() {
-            writeLock1 = true;
-        });
+        rangeLock.LockWrite(5, 15, [&]() { writeLock1 = true; });
 
         UNIT_ASSERT(!rangeLock.Empty());
         UNIT_ASSERT(!writeLock1);
@@ -121,9 +113,7 @@ Y_UNIT_TEST_SUITE(TReadWriteRangeLockTest)
         // - pending read locks: [10, 20)
         // - pending write locks: [5, 15)
         bool readLock2 = false;
-        rangeLock.LockRead(10, 20, [&]() {
-            readLock2 = true;
-        });
+        rangeLock.LockRead(10, 20, [&]() { readLock2 = true; });
 
         UNIT_ASSERT(!rangeLock.Empty());
         UNIT_ASSERT(!readLock2);
@@ -173,9 +163,7 @@ Y_UNIT_TEST_SUITE(TReadWriteRangeLockTest)
         // RangeLock status:
         // - write locks: [0, 10)
         bool writeLock1 = false;
-        rangeLock.LockWrite(0, 10, [&]() {
-            writeLock1 = true;
-        });
+        rangeLock.LockWrite(0, 10, [&]() { writeLock1 = true; });
 
         UNIT_ASSERT(!rangeLock.Empty());
         UNIT_ASSERT(writeLock1);
@@ -186,9 +174,7 @@ Y_UNIT_TEST_SUITE(TReadWriteRangeLockTest)
         // - write locks: [0, 10)
         // - pending read locks: [5, 15)
         bool readLock1 = false;
-        rangeLock.LockRead(5, 15, [&]() {
-            readLock1 = true;
-        });
+        rangeLock.LockRead(5, 15, [&]() { readLock1 = true; });
 
         UNIT_ASSERT(!rangeLock.Empty());
         UNIT_ASSERT(!readLock1);
@@ -202,9 +188,7 @@ Y_UNIT_TEST_SUITE(TReadWriteRangeLockTest)
         // - write locks: [0, 10), [0, 10)
         // - pending read locks: [5, 15)
         bool writeLock2 = false;
-        rangeLock.LockWrite(0, 10, [&]() {
-            writeLock2 = true;
-        });
+        rangeLock.LockWrite(0, 10, [&]() { writeLock2 = true; });
 
         UNIT_ASSERT(!rangeLock.Empty());
         UNIT_ASSERT(writeLock2);

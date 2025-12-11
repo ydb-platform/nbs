@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -17,8 +18,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCreateVolumeFromDeviceCommand final
-    : public TCommand
+class TCreateVolumeFromDeviceCommand final: public TCommand
 {
 private:
     TVolumeId VolumeId;
@@ -46,6 +46,7 @@ public:
             .RequiredArgument("STR")
             .StoreResult(&Path);
     }
+
 protected:
     bool DoExecute() override
     {
@@ -57,7 +58,8 @@ protected:
         auto& output = GetOutputStream();
 
         STORAGE_DEBUG("Reading CreateVolumeFromDevice request");
-        auto request = std::make_shared<NProto::TCreateVolumeFromDeviceRequest>();
+        auto request =
+            std::make_shared<NProto::TCreateVolumeFromDeviceRequest>();
         if (Proto) {
             ParseFromTextFormat(input, *request);
         } else {
@@ -104,7 +106,8 @@ private:
             return false;
         }
 
-        const auto* agentId = ParseResultPtr->FindLongOptParseResult("agent-id");
+        const auto* agentId =
+            ParseResultPtr->FindLongOptParseResult("agent-id");
         if (!agentId) {
             STORAGE_ERROR("Agent id is required");
             return false;
@@ -114,7 +117,7 @@ private:
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -23,7 +23,8 @@ void TIndexTabletActor::HandleRemoveClusterNode(
     const TActorContext& ctx)
 {
     // TODO
-    auto response = std::make_unique<TEvService::TEvRemoveClusterNodeResponse>();
+    auto response =
+        std::make_unique<TEvService::TEvRemoveClusterNodeResponse>();
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
@@ -41,7 +42,8 @@ void TIndexTabletActor::HandleAddClusterClients(
     const TActorContext& ctx)
 {
     // TODO
-    auto response = std::make_unique<TEvService::TEvAddClusterClientsResponse>();
+    auto response =
+        std::make_unique<TEvService::TEvAddClusterClientsResponse>();
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
@@ -50,7 +52,8 @@ void TIndexTabletActor::HandleRemoveClusterClients(
     const TActorContext& ctx)
 {
     // TODO
-    auto response = std::make_unique<TEvService::TEvRemoveClusterClientsResponse>();
+    auto response =
+        std::make_unique<TEvService::TEvRemoveClusterClientsResponse>();
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
@@ -59,7 +62,8 @@ void TIndexTabletActor::HandleListClusterClients(
     const TActorContext& ctx)
 {
     // TODO
-    auto response = std::make_unique<TEvService::TEvListClusterClientsResponse>();
+    auto response =
+        std::make_unique<TEvService::TEvListClusterClientsResponse>();
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 

@@ -30,10 +30,7 @@ TDeviceConfig Device(
     return device;
 }
 
-TDeviceConfig Device(
-    TString name,
-    TString uuid,
-    NProto::EDeviceState state)
+TDeviceConfig Device(TString name, TString uuid, NProto::EDeviceState state)
 {
     return Device(
         std::move(name),
@@ -87,10 +84,8 @@ NProto::TAgentConfig AgentConfig(
     return agent;
 }
 
-NProto::TAgentConfig AgentConfig(
-    ui32 nodeId,
-    TString agentId,
-    TVector<TDeviceConfig> devices)
+NProto::TAgentConfig
+AgentConfig(ui32 nodeId, TString agentId, TVector<TDeviceConfig> devices)
 {
     return AgentConfig(nodeId, agentId, 0, devices);
 }
@@ -190,10 +185,11 @@ TVector<NProto::TDiskConfig> MirrorDisk(
 
     TVector<NProto::TDiskConfig> result;
 
-    const auto mediaKind = uuids.size() == 2 ? NProto::STORAGE_MEDIA_SSD_MIRROR2
-                          : NProto::STORAGE_MEDIA_SSD_MIRROR3;
+    const auto mediaKind = uuids.size() == 2
+                               ? NProto::STORAGE_MEDIA_SSD_MIRROR2
+                               : NProto::STORAGE_MEDIA_SSD_MIRROR3;
 
-    //Base disk
+    // Base disk
     NProto::TDiskConfig config;
     config.SetDiskId(diskId);
     config.SetBlockSize(DefaultLogicalBlockSize);
@@ -202,7 +198,7 @@ TVector<NProto::TDiskConfig> MirrorDisk(
     config.SetStorageMediaKind(mediaKind);
     result.push_back(std::move(config));
 
-    //Replicas
+    // Replicas
     for (size_t i = 0; i < uuids.size(); ++i) {
         NProto::TDiskConfig replicaConfig;
         replicaConfig.SetMasterDiskId(diskId);
@@ -241,7 +237,6 @@ NProto::TDiskConfig ShadowDisk(
     return config;
 }
 
-
 NProto::TError AllocateMirroredDisk(
     TDiskRegistryDatabase& db,
     TDiskRegistryState& state,
@@ -256,28 +251,25 @@ NProto::TError AllocateMirroredDisk(
     NProto::EStorageMediaKind mediaKind,
     ui32 logicalBlockSize)
 {
-    TDiskRegistryState::TAllocateDiskResult result {};
+    TDiskRegistryState::TAllocateDiskResult result{};
 
     auto error = state.AllocateDisk(
         now,
         db,
-        TDiskRegistryState::TAllocateDiskParams {
+        TDiskRegistryState::TAllocateDiskParams{
             .DiskId = diskId,
             .CloudId = "cloud-1",
             .FolderId = "folder-1",
             .BlockSize = logicalBlockSize,
             .BlocksCount = totalSize / logicalBlockSize,
             .ReplicaCount = replicaCount,
-            .MediaKind = mediaKind
-        },
+            .MediaKind = mediaKind},
         &result);
 
     devices = std::move(result.Devices);
     replicas = std::move(result.Replicas);
     migrations = std::move(result.Migrations);
-    SortBy(migrations, [] (const auto& m) {
-        return m.GetSourceDeviceId();
-    });
+    SortBy(migrations, [](const auto& m) { return m.GetSourceDeviceId(); });
     deviceReplacementIds = std::move(result.DeviceReplacementIds);
 
     return error;
@@ -296,12 +288,12 @@ NProto::TError AllocateDisk(
     TString poolName,
     ui32 logicalBlockSize)
 {
-    TDiskRegistryState::TAllocateDiskResult result {};
+    TDiskRegistryState::TAllocateDiskResult result{};
 
     auto error = state.AllocateDisk(
         now,
         db,
-        TDiskRegistryState::TAllocateDiskParams {
+        TDiskRegistryState::TAllocateDiskParams{
             .DiskId = diskId,
             .CloudId = "cloud-1",
             .FolderId = "folder-1",
@@ -364,8 +356,7 @@ TStorageConfigPtr CreateStorageConfig(NProto::TStorageServiceConfig proto)
     return std::make_shared<TStorageConfig>(
         std::move(proto),
         std::make_shared<NFeatures::TFeaturesConfig>(
-            NCloud::NProto::TFeaturesConfig())
-    );
+            NCloud::NProto::TFeaturesConfig()));
 }
 
 TStorageConfigPtr CreateStorageConfig()

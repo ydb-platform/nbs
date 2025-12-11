@@ -58,10 +58,10 @@ struct TOptions
     bool Disconnect = false;
     bool Reconfigure = false;
 
-    ui32 NullBlockSize = 4*1024;
-    ui64 NullBlocksCount = 1024*1024;
+    ui32 NullBlockSize = 4 * 1024;
+    ui64 NullBlocksCount = 1024 * 1024;
 
-    ui64 MaxInFlightBytes = 128*1024*1024;
+    ui64 MaxInFlightBytes = 128 * 1024 * 1024;
 
     TString VerboseLevel;
     bool EnableGrpcTracing = false;

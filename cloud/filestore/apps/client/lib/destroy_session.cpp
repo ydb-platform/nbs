@@ -19,8 +19,7 @@ void Print(const NProto::TDestroySessionResponse& response, bool jsonOutput)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDestroySessionCommand final
-    : public TFileStoreCommand
+class TDestroySessionCommand final: public TFileStoreCommand
 {
 private:
     TString SessionId;
@@ -37,9 +36,8 @@ public:
             .RequiredArgument("CLIENT_ID")
             .StoreResult(&ClientId);
 
-        Opts.AddLongOption("seq-no")
-            .RequiredArgument("SEQ_NO")
-            .StoreResult(&SeqNo);
+        Opts.AddLongOption("seq-no").RequiredArgument("SEQ_NO").StoreResult(
+            &SeqNo);
     }
 
     bool Execute() override
@@ -51,7 +49,8 @@ public:
         request->MutableHeaders()->SetSessionSeqNo(SeqNo);
 
         TCallContextPtr ctx = MakeIntrusive<TCallContext>(FileSystemId);
-        auto response = WaitFor(Client->DestroySession(ctx, std::move(request)));
+        auto response =
+            WaitFor(Client->DestroySession(ctx, std::move(request)));
         CheckResponse(response);
         Print(response, JsonOutput);
 

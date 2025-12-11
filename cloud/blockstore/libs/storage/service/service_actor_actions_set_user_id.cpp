@@ -23,8 +23,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSetUserIdActor final
-    : public TActorBootstrapped<TSetUserIdActor>
+class TSetUserIdActor final: public TActorBootstrapped<TSetUserIdActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
@@ -33,9 +32,7 @@ private:
     NProto::TError Error;
 
 public:
-    TSetUserIdActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TSetUserIdActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -52,9 +49,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TSetUserIdActor::TSetUserIdActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+TSetUserIdActor::TSetUserIdActor(TRequestInfoPtr requestInfo, TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -63,7 +58,9 @@ void TSetUserIdActor::Bootstrap(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvDiskRegistry::TEvSetUserIdRequest>();
 
-    if (!google::protobuf::util::JsonStringToMessage(Input, &request->Record).ok()) {
+    if (!google::protobuf::util::JsonStringToMessage(Input, &request->Record)
+             .ok())
+    {
         Error = MakeError(E_ARGUMENT, "Failed to parse input");
         ReplyAndDie(ctx);
         return;
@@ -76,11 +73,11 @@ void TSetUserIdActor::Bootstrap(const TActorContext& ctx)
 
 void TSetUserIdActor::ReplyAndDie(const TActorContext& ctx)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(Error);
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(Error);
     google::protobuf::util::MessageToJsonString(
         NProto::TSetWritableStateResponse(),
-        response->Record.MutableOutput()
-    );
+        response->Record.MutableOutput());
 
     LWTRACK(
         ResponseSent_Service,
@@ -112,9 +109,7 @@ void TSetUserIdActor::HandleSetUserIdResponse(
 STFUNC(TSetUserIdActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(
-            TEvDiskRegistry::TEvSetUserIdResponse,
-            HandleSetUserIdResponse);
+        HFunc(TEvDiskRegistry::TEvSetUserIdResponse, HandleSetUserIdResponse);
 
         default:
             HandleUnexpectedEvent(

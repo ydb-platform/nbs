@@ -47,12 +47,12 @@ bool EnqueueCompletion(grpc::CompletionQueue* completionQueue, void* tag)
             completionQueue->cq(),
             completion.get(),
             y_absl::OkStatus(),
-            [] (void*, grpc_cq_completion*) {},
+            [](void*, grpc_cq_completion*) {},
             nullptr,
             completion.get());
 
         completion.release();
-        return true;    // ownership transferred to CompletionQueue
+        return true;   // ownership transferred to CompletionQueue
     }
 
     return false;

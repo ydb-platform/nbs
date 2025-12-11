@@ -25,7 +25,8 @@ TSgList ResizeIOVector(NProto::TIOVector& iov, ui32 blockCount, ui32 blockSize)
     return sglist;
 }
 
-TSgList GetSgList(const NProto::TIOVector& iov) {
+TSgList GetSgList(const NProto::TIOVector& iov)
+{
     TSgList sglist(Reserve(iov.BuffersSize()));
 
     for (const auto& buffer: iov.GetBuffers()) {
@@ -257,8 +258,7 @@ bool IsAllZeroes(const NProto::TIOVector& iov)
 {
     return AllOf(
         iov.GetBuffers(),
-        [](const TString& buffer)
-        {
+        [](const TString& buffer) {
             return buffer.empty() || IsAllZeroes(buffer.data(), buffer.size());
         });
 }

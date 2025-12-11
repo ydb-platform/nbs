@@ -186,8 +186,7 @@ void Print(const TPageInfo& page, bool jsonOutput)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TLsCommand final
-    : public TFileStoreCommand
+class TLsCommand final: public TFileStoreCommand
 {
 private:
     TCliArgs CliArgs;
@@ -199,25 +198,21 @@ public:
         Opts.AddLongOption(PathOptionName)
             .RequiredArgument("PATH")
             .StoreResult(&CliArgs.Path)
-            .Handler0([this] {
-                CliArgs.Mode = EModeType::Path;
-            });
+            .Handler0([this] { CliArgs.Mode = EModeType::Path; });
 
         const TString NodeOptionName = "node";
         Opts.AddLongOption(NodeOptionName)
             .RequiredArgument("ID")
             .StoreResult(&CliArgs.NodeId)
-            .Handler0([this] {
-                CliArgs.Mode = EModeType::Node;
-            });
+            .Handler0([this] { CliArgs.Mode = EModeType::Node; });
 
         Opts.MutuallyExclusive(PathOptionName, NodeOptionName);
 
         Opts.AddLongOption("cookie")
             .RequiredArgument("COOKIE")
-            .Handler1T<TString>([this] (const auto& cursorBase64) {
-                CliArgs.Cookie = Base64Decode(cursorBase64);
-            });
+            .Handler1T<TString>(
+                [this](const auto& cursorBase64)
+                { CliArgs.Cookie = Base64Decode(cursorBase64); });
 
         Opts.AddLongOption("max-bytes")
             .RequiredArgument("BYTES")
@@ -231,8 +226,7 @@ public:
             .StoreResult(&CliArgs.RowsNumberLimit);
 
         const TString AllOptionName = "all";
-        Opts.AddLongOption(AllOptionName)
-            .StoreTrue(&CliArgs.FetchAll);
+        Opts.AddLongOption(AllOptionName).StoreTrue(&CliArgs.FetchAll);
 
         Opts.MutuallyExclusive(LimitOptionName, AllOptionName);
     }
@@ -244,7 +238,10 @@ public:
     {
         if (node.GetType() != NProto::E_DIRECTORY_NODE) {
             return TPageInfo{
-                .Content = {TNodeInfo{TString(name), node}, },
+                .Content =
+                    {
+                        TNodeInfo{TString(name), node},
+                    },
                 .Cookie = {},
             };
         }
@@ -264,24 +261,26 @@ public:
                 request->SetMaxBytes(CliArgs.MaxBytes);
             }
 
-            auto response = WaitFor(session.ListNodes(
-                PrepareCallContext(),
-                std::move(request)));
+            auto response = WaitFor(
+                session.ListNodes(PrepareCallContext(), std::move(request)));
 
             CheckResponse(response);
 
             const auto& names = response.GetNames();
             const auto& nodes = response.GetNodes();
 
-            Y_ENSURE(names.size() == nodes.size(), "names/nodes sizes don't match");
+            Y_ENSURE(
+                names.size() == nodes.size(),
+                "names/nodes sizes don't match");
 
             for (int i = 0; i < names.size(); ++i) {
                 page.Content.push_back(TNodeInfo{names[i], nodes[i]});
             }
 
             page.Cookie = response.GetCookie();
-        } while((CliArgs.FetchAll || page.Content.size() < CliArgs.RowsNumberLimit)
-                && !page.Cookie.empty());
+        } while ((CliArgs.FetchAll ||
+                  page.Content.size() < CliArgs.RowsNumberLimit) &&
+                 !page.Cookie.empty());
         return page;
     }
 
@@ -302,9 +301,10 @@ public:
         request->SetNodeId(nodeId);
         request->SetName(TString{});
 
-        auto node = WaitFor(session.GetNodeAttr(
-            PrepareCallContext(),
-            std::move(request))).GetNode();
+        auto node =
+            WaitFor(
+                session.GetNodeAttr(PrepareCallContext(), std::move(request)))
+                .GetNode();
 
         return FetchNodesInfo(session, node);
     }
@@ -346,7 +346,7 @@ TCommandPtr NewLsCommand()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template<>
+template <>
 inline void Out<NCloud::NFileStore::NClient::TPageInfo>(
     IOutputStream& out,
     const NCloud::NFileStore::NClient::TPageInfo& page)

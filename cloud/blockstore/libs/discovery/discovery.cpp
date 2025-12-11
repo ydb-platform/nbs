@@ -24,7 +24,9 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool FilterOutByPort(const TInstanceInfo& ii, NProto::EDiscoveryPortFilter filter)
+bool FilterOutByPort(
+    const TInstanceInfo& ii,
+    NProto::EDiscoveryPortFilter filter)
 {
     using NProto::EDiscoveryPortFilter;
 
@@ -32,7 +34,8 @@ bool FilterOutByPort(const TInstanceInfo& ii, NProto::EDiscoveryPortFilter filte
         return false;
     }
 
-    const bool acceptSecurePorts = filter == EDiscoveryPortFilter::DISCOVERY_SECURE_PORT;
+    const bool acceptSecurePorts =
+        filter == EDiscoveryPortFilter::DISCOVERY_SECURE_PORT;
 
     return acceptSecurePorts != ii.IsSecurePort;
 }
@@ -91,16 +94,16 @@ private:
 
 public:
     TDiscoveryService(
-            TDiscoveryConfigPtr config,
-            ITimerPtr timer,
-            ISchedulerPtr scheduler,
-            ILoggingServicePtr logging,
-            IMonitoringServicePtr monitoring,
-            IBanListPtr banList,
-            IInstanceFetcherPtr staticInstanceFetcher,
-            IInstanceFetcherPtr conductorInstanceFetcher,
-            IHealthCheckerPtr healthChecker,
-            IBalancingPolicyPtr balancingPolicy)
+        TDiscoveryConfigPtr config,
+        ITimerPtr timer,
+        ISchedulerPtr scheduler,
+        ILoggingServicePtr logging,
+        IMonitoringServicePtr monitoring,
+        IBanListPtr banList,
+        IInstanceFetcherPtr staticInstanceFetcher,
+        IInstanceFetcherPtr conductorInstanceFetcher,
+        IHealthCheckerPtr healthChecker,
+        IBalancingPolicyPtr balancingPolicy)
         : Config(std::move(config))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
@@ -111,8 +114,7 @@ public:
         , ConductorInstanceFetcher(std::move(conductorInstanceFetcher))
         , HealthChecker(std::move(healthChecker))
         , BalancingPolicy(std::move(balancingPolicy))
-    {
-    }
+    {}
 
 public:
     void ServeRequest(
@@ -147,8 +149,8 @@ void TDiscoveryService::ServeRequest(
     const NProto::TDiscoverInstancesRequest& request,
     NProto::TDiscoverInstancesResponse* response)
 {
-    if (!AtomicGet(StaticInstances.HealthCheckDone)
-            || !AtomicGet(ConductorInstances.HealthCheckDone))
+    if (!AtomicGet(StaticInstances.HealthCheckDone) ||
+        !AtomicGet(ConductorInstances.HealthCheckDone))
     {
         *response->MutableError() =
             MakeError(E_REJECTED, "not initialized yet");
@@ -165,8 +167,8 @@ void TDiscoveryService::ServeRequest(
     auto cit = ConductorInstances.Instances.begin();
     while (ui32(instances->size()) < request.GetLimit()) {
         if (sit == StaticInstances.Instances.end()) {
-            while (ui32(instances->size()) < request.GetLimit()
-                    && cit < ConductorInstances.Instances.end())
+            while (ui32(instances->size()) < request.GetLimit() &&
+                   cit < ConductorInstances.Instances.end())
             {
                 AddInstance(*cit, filter, response);
                 ++cit;
@@ -176,8 +178,8 @@ void TDiscoveryService::ServeRequest(
         }
 
         if (cit == ConductorInstances.Instances.end()) {
-            while (ui32(instances->size()) < request.GetLimit()
-                    && sit < StaticInstances.Instances.end())
+            while (ui32(instances->size()) < request.GetLimit() &&
+                   sit < StaticInstances.Instances.end())
             {
                 AddInstance(*sit, filter, response);
                 ++sit;
@@ -203,7 +205,8 @@ void TDiscoveryService::Start()
     auto rootGroup = counters->GetSubgroup("counters", "blockstore");
 
     auto discoveryCounters = rootGroup->GetSubgroup("component", "discovery");
-    auto serviceCounters = discoveryCounters->GetSubgroup("subcomponent", "service");
+    auto serviceCounters =
+        discoveryCounters->GetSubgroup("subcomponent", "service");
     Counters.Register(*serviceCounters);
 
     BanList->Start();
@@ -215,13 +218,11 @@ void TDiscoveryService::Start()
     FetchInstances(
         Config->GetConductorRequestInterval(),
         *ConductorInstanceFetcher,
-        ConductorInstances
-    );
+        ConductorInstances);
     FetchInstances(
         Config->GetLocalFilesReloadInterval(),
         *StaticInstanceFetcher,
-        StaticInstances
-    );
+        StaticInstances);
     ScheduleHealthCheck(ConductorInstances);
     ScheduleHealthCheck(StaticInstances);
 }
@@ -264,12 +265,12 @@ void TDiscoveryService::ScheduleFetch(
     auto weak_ptr = weak_from_this();
     Scheduler->Schedule(
         Timer->Now() + interval,
-        [weak_ptr = std::move(weak_ptr), interval, &fetcher, &instances] {
+        [weak_ptr = std::move(weak_ptr), interval, &fetcher, &instances]
+        {
             if (auto p = weak_ptr.lock()) {
                 p->FetchInstances(interval, fetcher, instances);
             }
-        }
-    );
+        });
 }
 
 void TDiscoveryService::FetchInstances(
@@ -280,15 +281,15 @@ void TDiscoveryService::FetchInstances(
     try {
         auto weak_ptr = weak_from_this();
         fetcher.FetchInstances(instances).Subscribe(
-            [weak_ptr = std::move(weak_ptr), interval, &fetcher, &instances] (auto) {
+            [weak_ptr = std::move(weak_ptr), interval, &fetcher, &instances](
+                auto)
+            {
                 if (auto p = weak_ptr.lock()) {
                     p->ScheduleFetch(interval, fetcher, instances);
                 }
-            }
-        );
+            });
     } catch (...) {
-        STORAGE_ERROR("unexpected fetch error: "
-            << CurrentExceptionMessage());
+        STORAGE_ERROR("unexpected fetch error: " << CurrentExceptionMessage());
         Counters.OnUnexpectedFetchError();
         ScheduleFetch(interval, fetcher, instances);
     }
@@ -303,12 +304,12 @@ void TDiscoveryService::ScheduleHealthCheck(TInstanceList& instances)
     auto weak_ptr = weak_from_this();
     Scheduler->Schedule(
         Timer->Now() + Config->GetHealthCheckInterval(),
-        [weak_ptr = std::move(weak_ptr), &instances] {
+        [weak_ptr = std::move(weak_ptr), &instances]
+        {
             if (auto p = weak_ptr.lock()) {
                 p->HealthCheckInstances(instances);
             }
-        }
-    );
+        });
 }
 
 void TDiscoveryService::HealthCheckInstances(TInstanceList& instances)
@@ -316,17 +317,17 @@ void TDiscoveryService::HealthCheckInstances(TInstanceList& instances)
     try {
         auto weak_ptr = weak_from_this();
         HealthChecker->UpdateStatus(instances).Subscribe(
-            [weak_ptr = std::move(weak_ptr), &instances] (auto) {
+            [weak_ptr = std::move(weak_ptr), &instances](auto)
+            {
                 if (auto p = weak_ptr.lock()) {
                     p->BalancingPolicy->Reorder(instances);
                     AtomicSet(instances.HealthCheckDone, true);
                     p->ScheduleHealthCheck(instances);
                 }
-            }
-        );
+            });
     } catch (...) {
-        STORAGE_ERROR("unexpected healthcheck error: "
-            << CurrentExceptionMessage());
+        STORAGE_ERROR(
+            "unexpected healthcheck error: " << CurrentExceptionMessage());
         Counters.OnUnexpectedHealthCheckError();
         ScheduleHealthCheck(instances);
     }
@@ -334,8 +335,7 @@ void TDiscoveryService::HealthCheckInstances(TInstanceList& instances)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDiscoveryServiceStub final
-    : public IDiscoveryService
+class TDiscoveryServiceStub final: public IDiscoveryService
 {
 private:
     TString DefaultHost;
@@ -343,12 +343,14 @@ private:
     ui16 DefaultSecurePort;
 
 public:
-    TDiscoveryServiceStub(TString defaultHost, ui16 defaultInsecurePort, ui16 defaultSecurePort)
+    TDiscoveryServiceStub(
+        TString defaultHost,
+        ui16 defaultInsecurePort,
+        ui16 defaultSecurePort)
         : DefaultHost(std::move(defaultHost))
         , DefaultInsecurePort(defaultInsecurePort)
         , DefaultSecurePort(defaultSecurePort)
-    {
-    }
+    {}
 
 public:
     void ServeRequest(
@@ -362,47 +364,45 @@ public:
         }
 
         switch (request.GetInstanceFilter()) {
-        case EDiscoveryPortFilter::DISCOVERY_INSECURE_PORT:
-            if (DefaultInsecurePort) {
-                auto* instance = response->AddInstances();
+            case EDiscoveryPortFilter::DISCOVERY_INSECURE_PORT:
+                if (DefaultInsecurePort) {
+                    auto* instance = response->AddInstances();
 
-                instance->SetHost(DefaultHost);
-                instance->SetPort(DefaultInsecurePort);
-            }
-            break;
-        case EDiscoveryPortFilter::DISCOVERY_SECURE_PORT:
-            if (DefaultSecurePort) {
-                auto* instance = response->AddInstances();
+                    instance->SetHost(DefaultHost);
+                    instance->SetPort(DefaultInsecurePort);
+                }
+                break;
+            case EDiscoveryPortFilter::DISCOVERY_SECURE_PORT:
+                if (DefaultSecurePort) {
+                    auto* instance = response->AddInstances();
 
-                instance->SetHost(DefaultHost);
-                instance->SetPort(DefaultSecurePort);
-            }
-            break;
-        case EDiscoveryPortFilter::DISCOVERY_ANY_PORT:
-            if (DefaultInsecurePort) {
-                auto* instance = response->AddInstances();
+                    instance->SetHost(DefaultHost);
+                    instance->SetPort(DefaultSecurePort);
+                }
+                break;
+            case EDiscoveryPortFilter::DISCOVERY_ANY_PORT:
+                if (DefaultInsecurePort) {
+                    auto* instance = response->AddInstances();
 
-                instance->SetHost(DefaultHost);
-                instance->SetPort(DefaultInsecurePort);
-            } else if (DefaultSecurePort) {
-                auto* instance = response->AddInstances();
+                    instance->SetHost(DefaultHost);
+                    instance->SetPort(DefaultInsecurePort);
+                } else if (DefaultSecurePort) {
+                    auto* instance = response->AddInstances();
 
-                instance->SetHost(DefaultHost);
-                instance->SetPort(DefaultSecurePort);
-            }
-            break;
-        default:
-            break;
+                    instance->SetHost(DefaultHost);
+                    instance->SetPort(DefaultSecurePort);
+                }
+                break;
+            default:
+                break;
         }
     }
 
     void Start() override
-    {
-    }
+    {}
 
     void Stop() override
-    {
-    }
+    {}
 };
 
 }   // namespace
@@ -431,15 +431,18 @@ IDiscoveryServicePtr CreateDiscoveryService(
         std::move(staticInstanceFetcher),
         std::move(conductorInstanceFetcher),
         std::move(healthChecker),
-        std::move(balancingPolicy)
-    );
+        std::move(balancingPolicy));
 }
 
 IDiscoveryServicePtr CreateDiscoveryServiceStub(
-    TString defaultHost, ui16 defaultInsecurePort, ui16 defaultSecurePort)
+    TString defaultHost,
+    ui16 defaultInsecurePort,
+    ui16 defaultSecurePort)
 {
     return std::make_shared<TDiscoveryServiceStub>(
-        std::move(defaultHost), defaultInsecurePort, defaultSecurePort);
+        std::move(defaultHost),
+        defaultInsecurePort,
+        defaultSecurePort);
 }
 
 }   // namespace NCloud::NBlockStore::NDiscovery

@@ -1,7 +1,6 @@
-#include "target.h"
-
 #include "options.h"
 #include "runnable.h"
+#include "target.h"
 
 #include <cloud/blockstore/libs/nbd/client.h>
 #include <cloud/blockstore/libs/nbd/client_handler.h>
@@ -34,7 +33,7 @@ constexpr TDuration ReportInterval = TDuration::Seconds(5);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRequest : TIntrusiveSListItem<TRequest>
+struct TRequest: TIntrusiveSListItem<TRequest>
 {
     TString Buffer;
 
@@ -55,9 +54,9 @@ struct TRequestStats
     ui64 BytesWritten = 0;
 };
 
-TRequestStats operator -(const TRequestStats& l, const TRequestStats& r)
+TRequestStats operator-(const TRequestStats& l, const TRequestStats& r)
 {
-    return TRequestStats {
+    return TRequestStats{
         .NumReadOps = l.NumReadOps - r.NumReadOps,
         .NumWriteOps = l.NumWriteOps - r.NumWriteOps,
         .BytesRead = l.BytesRead - r.BytesRead,
@@ -118,12 +117,12 @@ public:
 
         request->BlocksCount = Options.MinBlocksCount;
         if (Options.MinBlocksCount < Options.MaxBlocksCount) {
-            request->BlocksCount += RandomNumber(
-                Options.MaxBlocksCount - Options.MinBlocksCount);
+            request->BlocksCount +=
+                RandomNumber(Options.MaxBlocksCount - Options.MinBlocksCount);
         }
 
-        request->StartOffset = RandomNumber(
-            Options.BlocksCount - request->BlocksCount);
+        request->StartOffset =
+            RandomNumber(Options.BlocksCount - request->BlocksCount);
 
         request->SendTs = TInstant::Now();
 
@@ -173,24 +172,24 @@ private:
         req->BlocksCount = request->BlocksCount;
         req->BlockSize = Options.BlockSize;
 
-        auto sgList = TSgList {{
-            request->Buffer.begin(),
-            request->BlocksCount  * Options.BlockSize
-        }};
+        auto sgList = TSgList{
+            {request->Buffer.begin(),
+             request->BlocksCount * Options.BlockSize}};
 
         req->Sglist = TGuardedSgList(std::move(sgList));
         auto guardedSgList = req->Sglist;
 
-        auto future = Endpoint->WriteBlocksLocal(
-            std::move(callContext),
-            std::move(req));
+        auto future =
+            Endpoint->WriteBlocksLocal(std::move(callContext), std::move(req));
 
-        future.Subscribe([=, this] (auto f) mutable {
-            guardedSgList.Close();
+        future.Subscribe(
+            [=, this](auto f) mutable
+            {
+                guardedSgList.Close();
 
-            auto response = ExtractResponse(f);
-            ReportProgress(request, response.GetError());
-        });
+                auto response = ExtractResponse(f);
+                ReportProgress(request, response.GetError());
+            });
     }
 
     void ReadBlocks(TRequest* request)
@@ -202,24 +201,24 @@ private:
         req->SetBlocksCount(request->BlocksCount);
         req->BlockSize = Options.BlockSize;
 
-        TSgList sgList = {{
-            request->Buffer.begin(),
-            request->BlocksCount  * Options.BlockSize
-        }};
+        TSgList sgList = {
+            {request->Buffer.begin(),
+             request->BlocksCount * Options.BlockSize}};
 
         req->Sglist = TGuardedSgList(std::move(sgList));
         auto guardedSgList = req->Sglist;
 
-        auto future = Endpoint->ReadBlocksLocal(
-            std::move(callContext),
-            std::move(req));
+        auto future =
+            Endpoint->ReadBlocksLocal(std::move(callContext), std::move(req));
 
-        future.Subscribe([=, this] (auto f) mutable {
-            guardedSgList.Close();
+        future.Subscribe(
+            [=, this](auto f) mutable
+            {
+                guardedSgList.Close();
 
-            auto response = ExtractResponse(f);
-            ReportProgress(request, response.GetError());
-        });
+                auto response = ExtractResponse(f);
+                ReportProgress(request, response.GetError());
+            });
     }
 
     void ReportProgress(TRequest* request, const NProto::TError& error)
@@ -250,8 +249,7 @@ using TRequestSenderPtr = std::shared_ptr<TRequestSender>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestInitiator final
-    : public IRunnable
+class TTestInitiator final: public IRunnable
 {
 private:
     TAtomic ShouldStop = 0;
@@ -310,8 +308,7 @@ int TTestInitiator::Run()
     try {
         Term();
     } catch (...) {
-        STORAGE_ERROR(
-            "Error during shutdown: " << CurrentExceptionMessage());
+        STORAGE_ERROR("Error during shutdown: " << CurrentExceptionMessage());
     }
 
     return AtomicGet(ExitCode);
@@ -355,12 +352,9 @@ void TTestInitiator::Init()
     Client = NBD::CreateClient(Logging, Options->ThreadsCount);
     Client->Start();
 
-    ClientHandler = NBD::CreateClientHandler(
-        Logging,
-        Options->StructuredReply);
+    ClientHandler = NBD::CreateClientHandler(Logging, Options->StructuredReply);
 
-    auto connectAddress = TNetworkAddress(
-        TUnixSocketPath(Options->SocketPath));
+    auto connectAddress = TNetworkAddress(TUnixSocketPath(Options->SocketPath));
 
     Endpoint = Client->CreateEndpoint(
         connectAddress,
@@ -373,8 +367,8 @@ void TTestInitiator::Shoot()
 {
     const auto startTime = Now();
     const auto deadline = Options->TestDuration
-        ? Options->TestDuration.ToDeadLine(startTime)
-        : TInstant::Max();
+                              ? Options->TestDuration.ToDeadLine(startTime)
+                              : TInstant::Max();
 
     LastReportTs = startTime;
 
@@ -401,36 +395,37 @@ void TTestInitiator::Shoot()
     const auto bytes = stats.BytesRead + stats.BytesWritten;
 
     Cout << "===  Total  ===\n"
-        << "Reads        : " << stats.NumReadOps << "\n"
-        << "Writes       : " << stats.NumWriteOps << "\n"
-        << "Bytes read   : " << stats.BytesRead << "\n"
-        << "Bytes written: " << stats.BytesWritten << "\n\n";
+         << "Reads        : " << stats.NumReadOps << "\n"
+         << "Writes       : " << stats.NumWriteOps << "\n"
+         << "Bytes read   : " << stats.BytesRead << "\n"
+         << "Bytes written: " << stats.BytesWritten << "\n\n";
 
     Cout << "=== Average ===\n"
-        << "IOPS  : " << (ops / seconds) << "\n"
-        << "BW(r) : " << FormatByteSize(stats.BytesRead / seconds) << "/s\n"
-        << "BW(w) : " << FormatByteSize(stats.BytesWritten / seconds) << "/s\n"
-        << "BW(rw): " << FormatByteSize(bytes / seconds) << "/s\n\n";
+         << "IOPS  : " << (ops / seconds) << "\n"
+         << "BW(r) : " << FormatByteSize(stats.BytesRead / seconds) << "/s\n"
+         << "BW(w) : " << FormatByteSize(stats.BytesWritten / seconds) << "/s\n"
+         << "BW(rw): " << FormatByteSize(bytes / seconds) << "/s\n\n";
 
-    const TVector<TPercentileDesc> percentiles {
-        { 0.01,   "    1" },
-        { 0.10,   "   10" },
-        { 0.25,   "   25" },
-        { 0.50,   "   50" },
-        { 0.75,   "   75" },
-        { 0.90,   "   90" },
-        { 0.95,   "   95" },
-        { 0.98,   "   98" },
-        { 0.99,   "   99" },
-        { 0.995,  " 99.5" },
-        { 0.999,  " 99.9" },
-        { 0.9999, "99.99" },
-        { 1.0000, "100.0" },
+    const TVector<TPercentileDesc> percentiles{
+        {0.01, "    1"},
+        {0.10, "   10"},
+        {0.25, "   25"},
+        {0.50, "   50"},
+        {0.75, "   75"},
+        {0.90, "   90"},
+        {0.95, "   95"},
+        {0.98, "   98"},
+        {0.99, "   99"},
+        {0.995, " 99.5"},
+        {0.999, " 99.9"},
+        {0.9999, "99.99"},
+        {1.0000, "100.0"},
     };
 
     Cout << "=== Latency (mcs) ===\n";
     for (const auto& [p, name]: percentiles) {
-        Cout << name << " : " << RequestSender->Latency.GetValueAtPercentile(100 * p) << "\n";
+        Cout << name << " : "
+             << RequestSender->Latency.GetValueAtPercentile(100 * p) << "\n";
     }
 }
 
@@ -445,11 +440,16 @@ void TTestInitiator::ReportProgress()
         const auto bytes = stats.BytesRead + stats.BytesWritten;
 
         STORAGE_INFO(
-            "IOPS  : " << (ops / seconds) << " "
-            "BW(r) : " << FormatByteSize(stats.BytesRead / seconds) << "/s "
-            "BW(w) : " << FormatByteSize(stats.BytesWritten / seconds) << "/s "
-            "BW(rw): " << FormatByteSize(bytes / seconds) << "/s"
-        );
+            "IOPS  : " << (ops / seconds)
+                       << " "
+                          "BW(r) : "
+                       << FormatByteSize(stats.BytesRead / seconds)
+                       << "/s "
+                          "BW(w) : "
+                       << FormatByteSize(stats.BytesWritten / seconds)
+                       << "/s "
+                          "BW(rw): "
+                       << FormatByteSize(bytes / seconds) << "/s");
 
         RequestSender->PrevStats = RequestSender->Stats;
         LastReportTs = now;

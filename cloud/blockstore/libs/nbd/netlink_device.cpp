@@ -1,14 +1,15 @@
-#include "client_handler.h"
 #include "netlink_device.h"
+
+#include "client_handler.h"
 #include "utils.h"
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/netlink/socket.h>
 
-#include <linux/nbd-netlink.h>
-
 #include <util/generic/scope.h>
 #include <util/stream/mem.h>
+
+#include <linux/nbd-netlink.h>
 
 namespace NCloud::NBlockStore::NBD {
 
@@ -25,10 +26,11 @@ constexpr TStringBuf NBD_DEVICE_PREFIX = "/dev/nbd";
 
 #pragma pack(push, NLMSG_ALIGNTO)
 
-using TNbdStatusRequest = TNetlinkRequest<
-    TNetlinkAttribute<NBD_ATTR_INDEX, ui32>>;
+using TNbdStatusRequest =
+    TNetlinkRequest<TNetlinkAttribute<NBD_ATTR_INDEX, ui32>>;
 
-struct TNbdStatusResponse {
+struct TNbdStatusResponse
+{
     TNetlinkHeader Headers;
     ::nlattr NbdDeviceListAttr;
     ::nlattr NbdDeviceItemAttr;
@@ -52,8 +54,10 @@ using TNbdConfigureRequest = TNetlinkRequest<
     TNetlinkAttribute<NBD_ATTR_SERVER_FLAGS, ui64>,
     TNetlinkAttribute<NBD_ATTR_TIMEOUT, ui64>,
     TNetlinkAttribute<NBD_ATTR_DEAD_CONN_TIMEOUT, ui64>,
-    TNetlinkAttribute<NBD_ATTR_SOCKETS,
-        TNetlinkAttribute<NBD_SOCK_ITEM,
+    TNetlinkAttribute<
+        NBD_ATTR_SOCKETS,
+        TNetlinkAttribute<
+            NBD_SOCK_ITEM,
             TNetlinkAttribute<NBD_SOCK_FD, ui32>>>>;
 
 using TNbdConfigureFreeRequest = TNetlinkRequest<
@@ -62,11 +66,14 @@ using TNbdConfigureFreeRequest = TNetlinkRequest<
     TNetlinkAttribute<NBD_ATTR_SERVER_FLAGS, ui64>,
     TNetlinkAttribute<NBD_ATTR_TIMEOUT, ui64>,
     TNetlinkAttribute<NBD_ATTR_DEAD_CONN_TIMEOUT, ui64>,
-    TNetlinkAttribute<NBD_ATTR_SOCKETS,
-        TNetlinkAttribute<NBD_SOCK_ITEM,
+    TNetlinkAttribute<
+        NBD_ATTR_SOCKETS,
+        TNetlinkAttribute<
+            NBD_SOCK_ITEM,
             TNetlinkAttribute<NBD_SOCK_FD, ui32>>>>;
 
-struct TNbdConfigureResponse {
+struct TNbdConfigureResponse
+{
     TNetlinkHeader Header;
     ::nlattr IndexAttr;
     ui32 Index;
@@ -77,15 +84,14 @@ struct TNbdConfigureResponse {
     }
 };
 
-using TNbdDisconnectRequest = TNetlinkRequest<
-    TNetlinkAttribute<NBD_ATTR_INDEX, ui32>>;
+using TNbdDisconnectRequest =
+    TNetlinkRequest<TNetlinkAttribute<NBD_ATTR_INDEX, ui32>>;
 
 #pragma pack(pop)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TNetlinkDevice final
-    : public IDevice
+class TNetlinkDevice final: public IDevice
 {
 private:
     const ui16 FamilyId;
@@ -136,12 +142,12 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TNetlinkDevice::TNetlinkDevice(
-        ILoggingServicePtr logging,
-        TNetworkAddress connectAddress,
-        TString devicePath,
-        TString devicePrefix,
-        TDuration requestTimeout,
-        TDuration connectionTimeout)
+    ILoggingServicePtr logging,
+    TNetworkAddress connectAddress,
+    TString devicePath,
+    TString devicePrefix,
+    TDuration requestTimeout,
+    TDuration connectionTimeout)
     : FamilyId(NNetlink::GetFamilyId(NBD_GENL_FAMILY_NAME))
     , Logging(std::move(logging))
     , ConnectAddress(std::move(connectAddress))
@@ -268,21 +274,17 @@ void TNetlinkDevice::Configure()
     STORAGE_INFO("query " << GetDevice());
 
     const auto& info = Handler->GetExportInfo();
-    socket.Send(
-        TNbdConfigureRequest(
-            FamilyId,
-            status.Msg.Connected ? NBD_CMD_RECONFIGURE : NBD_CMD_CONNECT,
-            *DeviceIndex,
-            static_cast<ui64>(info.Size),
-            static_cast<ui64>(info.MinBlockSize),
-            static_cast<ui64>(info.Flags),
-            RequestTimeout.Seconds(),
-            ConnectionTimeout.Seconds(),
-            TNetlinkAttribute<
-                NBD_SOCK_ITEM,
-                TNetlinkAttribute<
-                    NBD_SOCK_FD,
-                    ui32>>(static_cast<ui32>(Socket))));
+    socket.Send(TNbdConfigureRequest(
+        FamilyId,
+        status.Msg.Connected ? NBD_CMD_RECONFIGURE : NBD_CMD_CONNECT,
+        *DeviceIndex,
+        static_cast<ui64>(info.Size),
+        static_cast<ui64>(info.MinBlockSize),
+        static_cast<ui64>(info.Flags),
+        RequestTimeout.Seconds(),
+        ConnectionTimeout.Seconds(),
+        TNetlinkAttribute<NBD_SOCK_ITEM, TNetlinkAttribute<NBD_SOCK_FD, ui32>>(
+            static_cast<ui32>(Socket))));
 
     NNetlink::TNetlinkResponse<> configure;
     socket.Receive(configure);
@@ -297,20 +299,16 @@ void TNetlinkDevice::ConfigureFree()
     NNetlink::TNetlinkSocket socket;
 
     const auto& info = Handler->GetExportInfo();
-    socket.Send(
-        TNbdConfigureFreeRequest(
-            FamilyId,
-            NBD_CMD_CONNECT,
-            static_cast<ui64>(info.Size),
-            static_cast<ui64>(info.MinBlockSize),
-            static_cast<ui64>(info.Flags),
-            RequestTimeout.Seconds(),
-            ConnectionTimeout.Seconds(),
-            TNetlinkAttribute<
-                NBD_SOCK_ITEM,
-                TNetlinkAttribute<
-                    NBD_SOCK_FD,
-                    ui32>>(static_cast<ui32>(Socket))));
+    socket.Send(TNbdConfigureFreeRequest(
+        FamilyId,
+        NBD_CMD_CONNECT,
+        static_cast<ui64>(info.Size),
+        static_cast<ui64>(info.MinBlockSize),
+        static_cast<ui64>(info.Flags),
+        RequestTimeout.Seconds(),
+        ConnectionTimeout.Seconds(),
+        TNetlinkAttribute<NBD_SOCK_ITEM, TNetlinkAttribute<NBD_SOCK_FD, ui32>>(
+            static_cast<ui32>(Socket))));
 
     NNetlink::TNetlinkResponse<TNbdConfigureResponse> configure;
     socket.Receive(configure);
@@ -346,21 +344,19 @@ TFuture<NProto::TError> TNetlinkDevice::Resize(ui64 deviceSizeInBytes)
     try {
         const auto& info = Handler->GetExportInfo();
         NNetlink::TNetlinkSocket socket;
-        socket.Send(
-            TNbdConfigureRequest(
-                FamilyId,
-                NBD_CMD_RECONFIGURE,
-                *DeviceIndex,
-                deviceSizeInBytes,
-                static_cast<ui64>(info.MinBlockSize),
-                static_cast<ui64>(info.Flags),
-                RequestTimeout.Seconds(),
-                ConnectionTimeout.Seconds(),
-                TNetlinkAttribute<
-                    NBD_SOCK_ITEM,
-                    TNetlinkAttribute<
-                        NBD_SOCK_FD,
-                        ui32>>(static_cast<ui32>(Socket))));
+        socket.Send(TNbdConfigureRequest(
+            FamilyId,
+            NBD_CMD_RECONFIGURE,
+            *DeviceIndex,
+            deviceSizeInBytes,
+            static_cast<ui64>(info.MinBlockSize),
+            static_cast<ui64>(info.Flags),
+            RequestTimeout.Seconds(),
+            ConnectionTimeout.Seconds(),
+            TNetlinkAttribute<
+                NBD_SOCK_ITEM,
+                TNetlinkAttribute<NBD_SOCK_FD, ui32>>(
+                static_cast<ui32>(Socket))));
         NNetlink::TNetlinkResponse<> response;
         socket.Receive(response);
         STORAGE_INFO("resize " << GetDevice());
@@ -387,8 +383,7 @@ TString TNetlinkDevice::GetPath() const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TNetlinkDeviceFactory final
-    : public IDeviceFactory
+class TNetlinkDeviceFactory final: public IDeviceFactory
 {
 private:
     const ILoggingServicePtr Logging;
@@ -397,9 +392,9 @@ private:
 
 public:
     TNetlinkDeviceFactory(
-            ILoggingServicePtr logging,
-            TDuration requestTimeout,
-            TDuration connectionTimeout)
+        ILoggingServicePtr logging,
+        TDuration requestTimeout,
+        TDuration connectionTimeout)
         : Logging(std::move(logging))
         , RequestTimeout(requestTimeout)
         , ConnectionTimeout(connectionTimeout)

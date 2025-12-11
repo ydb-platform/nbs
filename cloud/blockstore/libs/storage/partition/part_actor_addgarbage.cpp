@@ -23,10 +23,8 @@ void TPartitionActor::HandleAddGarbage(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -51,8 +49,8 @@ bool TPartitionActor::PrepareAddGarbage(
     TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
 
-    return db.ReadNewBlobs(args.KnownBlobIds)
-        && db.ReadGarbageBlobs(args.KnownBlobIds);
+    return db.ReadNewBlobs(args.KnownBlobIds) &&
+           db.ReadGarbageBlobs(args.KnownBlobIds);
 }
 
 void TPartitionActor::ExecuteAddGarbage(
@@ -70,8 +68,10 @@ void TPartitionActor::ExecuteAddGarbage(
 
     TVector<TPartialBlobId> diff;
     std::set_difference(
-        args.BlobIds.begin(), args.BlobIds.end(),
-        args.KnownBlobIds.begin(), args.KnownBlobIds.end(),
+        args.BlobIds.begin(),
+        args.BlobIds.end(),
+        args.KnownBlobIds.begin(),
+        args.KnownBlobIds.end(),
         std::inserter(diff, diff.begin()));
 
     for (const auto& blobId: diff) {
@@ -95,7 +95,8 @@ void TPartitionActor::CompleteAddGarbage(
 {
     TRequestScope timer(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvPartitionPrivate::TEvAddGarbageResponse>();
+    auto response =
+        std::make_unique<TEvPartitionPrivate::TEvAddGarbageResponse>();
 
     LWTRACK(
         ResponseSent_Partition,

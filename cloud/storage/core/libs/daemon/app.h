@@ -36,7 +36,8 @@ int DoMain(TBootstrap& bootstrap, int argc, char** argv)
             bootstrap.Init();
             bootstrap.Start();
         } catch (...) {
-            Cerr << "main bootstrap start: " << CurrentExceptionMessage() << Endl;
+            Cerr << "main bootstrap start: " << CurrentExceptionMessage()
+                 << Endl;
             bootstrap.Stop();
             return 1;
         }
@@ -46,7 +47,8 @@ int DoMain(TBootstrap& bootstrap, int argc, char** argv)
         try {
             bootstrap.Stop();
         } catch (...) {
-            Cerr << "main bootstrap stop: " << CurrentExceptionMessage() << Endl;
+            Cerr << "main bootstrap stop: " << CurrentExceptionMessage()
+                 << Endl;
             return 1;
         }
 

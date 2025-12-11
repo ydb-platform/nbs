@@ -22,42 +22,32 @@ Y_UNIT_TEST_SUITE(TCompactionPolicyTest)
         UNIT_ASSERT_DOUBLES_EQUAL(
             3,
             policy->CalculateScore({4, 0, 0, 0, 0, 0, false, 0}).Score,
-            1e-4
-        );
+            1e-4);
         UNIT_ASSERT_DOUBLES_EQUAL(
             3,
             policy->CalculateScore({4, 1, 1, 2, 3, 4, false, 5}).Score,
-            1e-4
-        );
+            1e-4);
     }
 
     Y_UNIT_TEST(TestLoadOptimizationPolicy)
     {
-        auto policy = BuildLoadOptimizationCompactionPolicy({
-            4_MB,
-            4_KB,
-            400,
-            15_MB,
-            1000,
-            15_MB,
-            70
-        });
+        auto policy = BuildLoadOptimizationCompactionPolicy(
+            {4_MB, 4_KB, 400, 15_MB, 1000, 15_MB, 70});
 
         UNIT_ASSERT_VALUES_EQUAL(0, policy->CalculateScore({}).Score);
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            policy->CalculateScore({4, 0, 0, 0, 0, 0, false, 0}).Score
-        );
+            policy->CalculateScore({4, 0, 0, 0, 0, 0, false, 0}).Score);
 
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            policy->CalculateScore({70, 0, 0, 0, 0, 0, false, 0}).Score
-        );
+            policy->CalculateScore({70, 0, 0, 0, 0, 0, false, 0}).Score);
 
-        auto compactionScore = policy->CalculateScore(
-            {71, 0, 0, 0, 0, 0, false, 0});
+        auto compactionScore =
+            policy->CalculateScore({71, 0, 0, 0, 0, 0, false, 0});
         UNIT_ASSERT_VALUES_EQUAL(71, compactionScore.Score);
-        UNIT_ASSERT_EQUAL(compactionScore.Type,
+        UNIT_ASSERT_EQUAL(
+            compactionScore.Type,
             TCompactionScore::EType::BlobCount);
 
         /*
@@ -73,13 +63,13 @@ Y_UNIT_TEST_SUITE(TCompactionPolicyTest)
          *  ReadRequestBlockCount = 7680
          *  readCost = 400 / 400 + 7680/ 3840 = 3
          *  compactedReadCost = 30 / 400 + 7680 / 3840 = 2.075
-         *  compactionCost = 10 / 400 + 1024 / 3840 + 1 / 1000 + 1024 / 3840 = 0.58433
-         *  loadScore = 3 - 2.075 - 0.58433 = 0.34066
+         *  compactionCost = 10 / 400 + 1024 / 3840 + 1 / 1000 + 1024 / 3840 =
+         * 0.58433 loadScore = 3 - 2.075 - 0.58433 = 0.34066
          *
          */
 
-        compactionScore = policy->CalculateScore(
-            {20, 2048, 1024, 30, 400, 7500, false, 0});
+        compactionScore =
+            policy->CalculateScore({20, 2048, 1024, 30, 400, 7500, false, 0});
         UNIT_ASSERT_DOUBLES_EQUAL(0.36566, compactionScore.Score, 1e-5);
         UNIT_ASSERT_EQUAL(compactionScore.Type, TCompactionScore::EType::Read);
 
@@ -87,8 +77,8 @@ Y_UNIT_TEST_SUITE(TCompactionPolicyTest)
          * UsedBlockCount = 512
          */
 
-        compactionScore = policy->CalculateScore(
-            {20, 2048, 512, 30, 400, 7500, false, 0});
+        compactionScore =
+            policy->CalculateScore({20, 2048, 512, 30, 400, 7500, false, 0});
         UNIT_ASSERT_DOUBLES_EQUAL(0.64483, compactionScore.Score, 1e-5);
         UNIT_ASSERT_EQUAL(compactionScore.Type, TCompactionScore::EType::Read);
     }
@@ -114,13 +104,12 @@ Y_UNIT_TEST_SUITE(TCompactionPolicyTest)
         TStorageConfig storageConfig(
             storageConfigProto,
             std::make_shared<NFeatures::TFeaturesConfig>(
-                NCloud::NProto::TFeaturesConfig())
-        );
+                NCloud::NProto::TFeaturesConfig()));
         const ui32 siblingCount = 2;
         auto config = BuildLoadOptimizationCompactionPolicyConfig(
             partitionConfig,
             storageConfig,
-            66 / 2 // maxBlobsPerRange
+            66 / 2   // maxBlobsPerRange
         );
 
         UNIT_ASSERT_VALUES_EQUAL(2222, config.MaxReadIops);
@@ -133,12 +122,13 @@ Y_UNIT_TEST_SUITE(TCompactionPolicyTest)
 
         partitionConfig.SetBlockSize(64_KB);
         partitionConfig.SetMaxBlocksInBlob(128);
-        partitionConfig.SetStorageMediaKind(NCloud::NProto::STORAGE_MEDIA_HYBRID);
+        partitionConfig.SetStorageMediaKind(
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
 
         config = BuildLoadOptimizationCompactionPolicyConfig(
             partitionConfig,
             storageConfig,
-            44 / 2 // maxBlobsPerRange
+            44 / 2   // maxBlobsPerRange
         );
         UNIT_ASSERT_VALUES_EQUAL(222, config.MaxReadIops);
         UNIT_ASSERT_VALUES_EQUAL(22_MB, config.MaxReadBandwidth);
@@ -151,21 +141,16 @@ Y_UNIT_TEST_SUITE(TCompactionPolicyTest)
         partitionConfig.SetTabletVersion(2);
         partitionConfig.SetStorageMediaKind(NCloud::NProto::STORAGE_MEDIA_SSD);
 
-        auto maxBlobsPerRange = GetMaxBlobsPerRange(
-            partitionConfig,
-            storageConfig,
-            siblingCount
-        );
+        auto maxBlobsPerRange =
+            GetMaxBlobsPerRange(partitionConfig, storageConfig, siblingCount);
 
         UNIT_ASSERT_VALUES_EQUAL(3, maxBlobsPerRange);
 
-        partitionConfig.SetStorageMediaKind(NCloud::NProto::STORAGE_MEDIA_HYBRID);
+        partitionConfig.SetStorageMediaKind(
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
 
-        maxBlobsPerRange = GetMaxBlobsPerRange(
-            partitionConfig,
-            storageConfig,
-            siblingCount
-        );
+        maxBlobsPerRange =
+            GetMaxBlobsPerRange(partitionConfig, storageConfig, siblingCount);
 
         UNIT_ASSERT_VALUES_EQUAL(2, maxBlobsPerRange);
     }

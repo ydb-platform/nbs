@@ -23,8 +23,8 @@ constexpr TDuration FetchStatsPeriod = TDuration::Seconds(15);
 ////////////////////////////////////////////////////////////////////////////////
 
 TStatsFetcherActor::TStatsFetcherActor(
-        TStorageConfigPtr storageConfig,
-        NCloud::NStorage::IStatsFetcherPtr statsFetcher)
+    TStorageConfigPtr storageConfig,
+    NCloud::NStorage::IStatsFetcherPtr statsFetcher)
     : StorageConfig(std::move(storageConfig))
     , StatsFetcher(std::move(statsFetcher))
 {}

@@ -15,10 +15,8 @@ void TIndexTabletActor::HandleWriteCompactionMap(
 {
     const auto& msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     TVector<NProtoPrivate::TCompactionRangeStats> ranges(
@@ -68,8 +66,8 @@ void TIndexTabletActor::CompleteTx_WriteCompactionMap(
     const TActorContext& ctx,
     TTxIndexTablet::TWriteCompactionMap& args)
 {
-    auto response = std::make_unique<
-        TEvIndexTablet::TEvWriteCompactionMapResponse>();
+    auto response =
+        std::make_unique<TEvIndexTablet::TEvWriteCompactionMapResponse>();
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
 

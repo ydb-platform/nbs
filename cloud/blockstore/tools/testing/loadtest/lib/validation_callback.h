@@ -8,8 +8,7 @@ namespace NCloud::NBlockStore::NLoadTest {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TValidationCallback final
-    : public IValidationCallback
+class TValidationCallback final: public IValidationCallback
 {
 private:
     TAppContext& AppContext;
@@ -17,8 +16,7 @@ private:
 public:
     TValidationCallback(TAppContext& appContext)
         : AppContext(appContext)
-    {
-    }
+    {}
 
     void ReportError(const TString& message) override
     {
@@ -26,7 +24,9 @@ public:
 
         // not stopping the test immediately - letting it find and log more
         // validation errors
-        AppContext.ExitCode.store(EC_VALIDATION_FAILED, std::memory_order_release);
+        AppContext.ExitCode.store(
+            EC_VALIDATION_FAILED,
+            std::memory_order_release);
     }
 };
 

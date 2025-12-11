@@ -51,8 +51,10 @@ struct TBlockLocalityHasher: IBlockLocation2RangeIndex
 IBlockLocation2RangeIndexPtr CreateRangeIdHasher(ui32 type)
 {
     switch (type) {
-        case 0: return std::make_shared<TLegacyHasher>();
-        case 1: return std::make_shared<TBlockLocalityHasher>();
+        case 0:
+            return std::make_shared<TLegacyHasher>();
+        case 1:
+            return std::make_shared<TBlockLocalityHasher>();
     }
 
     return nullptr;

@@ -21,8 +21,7 @@ constexpr TDuration MinPostponeQueueFlushInterval = TDuration::MilliSeconds(1);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTabletThrottler final
-    : public ITabletThrottler
+class TTabletThrottler final: public ITabletThrottler
 {
 private:
     NActors::IActor& Owner;
@@ -42,9 +41,9 @@ private:
 
 public:
     TTabletThrottler(
-            NActors::IActor& owner,
-            ITabletThrottlerLogger& logger,
-            ITabletThrottlerPolicy& policy)
+        NActors::IActor& owner,
+        ITabletThrottlerLogger& logger,
+        ITabletThrottlerPolicy& policy)
         : Owner(owner)
         , Logger(logger)
         , Policy(policy)
@@ -141,7 +140,8 @@ public:
             if (postponeTs) {
                 queueTime = nowTs - postponeTs;
             }
-            const auto delay = Policy.SuggestDelay(nowTs, queueTime, requestInfo);
+            const auto delay =
+                Policy.SuggestDelay(nowTs, queueTime, requestInfo);
 
             if (delay.Defined()) {
                 if (delay->GetValue()) {
@@ -204,11 +204,9 @@ private:
         } else {
             callContext->Postpone(GetCycleCount());
             callContext->SetPostponeTs(ctx.Now());
-            PostponedRequests.push_back({
-                requestInfo,
-                std::move(callContext),
-                std::move(ev)});
-       }
+            PostponedRequests.push_back(
+                {requestInfo, std::move(callContext), std::move(ev)});
+        }
     }
 };
 

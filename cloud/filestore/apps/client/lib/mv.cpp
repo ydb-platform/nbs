@@ -10,8 +10,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TMvCommand final
-    : public TFileStoreCommand
+class TMvCommand final: public TFileStoreCommand
 {
 private:
     TString SrcPath;
@@ -49,9 +48,8 @@ public:
         request->SetNewParentId(dst[dst.size() - 2].Node.GetId());
         request->SetNewName(ToString(dst.back().Name));
 
-        auto response = WaitFor(session.RenameNode(
-            PrepareCallContext(),
-            std::move(request)));
+        auto response = WaitFor(
+            session.RenameNode(PrepareCallContext(), std::move(request)));
 
         CheckResponse(response);
 

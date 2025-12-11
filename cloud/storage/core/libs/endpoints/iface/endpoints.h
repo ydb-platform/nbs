@@ -44,9 +44,12 @@ TResultOrError<TString> SerializeEndpoint(const TRequest& request)
 {
     auto data = TString::Uninitialized(request.ByteSize());
 
-    if (!request.SerializeToArray(const_cast<char*>(data.data()), data.size())) {
-        return MakeError(E_ARGUMENT, TStringBuilder()
-            << "Could not serialize endpoint: " << request.ShortDebugString());
+    if (!request.SerializeToArray(const_cast<char*>(data.data()), data.size()))
+    {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "Could not serialize endpoint: "
+                             << request.ShortDebugString());
     }
 
     return data;

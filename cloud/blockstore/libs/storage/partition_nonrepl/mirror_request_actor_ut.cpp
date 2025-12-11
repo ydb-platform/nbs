@@ -3,6 +3,7 @@
 #include "ut_env.h"
 
 #include <cloud/blockstore/libs/storage/api/service.h>
+
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
 #include <contrib/ydb/core/mind/bscontroller/bsc.h>
@@ -22,8 +23,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestMirrorPartition
-    : public TActor<TTestMirrorPartition>
+class TTestMirrorPartition: public TActor<TTestMirrorPartition>
 {
 private:
     const TVector<TActorId> Partitions;
@@ -124,9 +124,8 @@ struct TFixture: public NUnitTest::TBaseFixture
                         "unable to allocate request");
                 }
 
-                const TActorId sender = emptySender
-                    ? TActorId{}
-                    : event->Recipient;
+                const TActorId sender =
+                    emptySender ? TActorId{} : event->Recipient;
 
                 runtime.SendAsync(new IEventHandle(
                     event->Sender,

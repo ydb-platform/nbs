@@ -8,8 +8,7 @@ namespace NVHostUser {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TGetProtocolFeature
-    : public IMessage
+class TGetProtocolFeature: public IMessage
 {
 private:
     uint64_t Features = 0;
@@ -17,7 +16,7 @@ private:
 public:
     enum EVhostUserFeatures
     {
-        //Don't rename these constants. Names are taken from specification
+        // Don't rename these constants. Names are taken from specification
         VHOST_USER_PROTOCOL_F_MQ = 0,
         VHOST_USER_PROTOCOL_F_LOG_SHMFD = 1,
         VHOST_USER_PROTOCOL_F_RARP = 2,
@@ -39,8 +38,7 @@ public:
 
     static TString ToString(EVhostUserFeatures feature)
     {
-        switch(feature)
-        {
+        switch (feature) {
             case VHOST_USER_PROTOCOL_F_MQ:
                 return "VHOST_USER_PROTOCOL_F_MQ";
             case VHOST_USER_PROTOCOL_F_LOG_SHMFD:
@@ -124,4 +122,4 @@ public:
     }
 };
 
-} // namespace NVHostUser
+}   // namespace NVHostUser

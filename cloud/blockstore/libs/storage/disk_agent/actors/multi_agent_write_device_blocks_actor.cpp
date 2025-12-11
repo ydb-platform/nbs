@@ -40,11 +40,11 @@ std::unique_ptr<TEvDiskAgent::TEvWriteDeviceBlocksRequest> PrepareRequest(
 }   // namespace
 
 TMultiAgentWriteDeviceBlocksActor::TMultiAgentWriteDeviceBlocksActor(
-        const TActorId& parent,
-        TRequestInfoPtr requestInfo,
-        NProto::TWriteDeviceBlocksRequest request,
-        TResponsePromise responsePromise,
-        TDuration maxRequestTimeout)
+    const TActorId& parent,
+    TRequestInfoPtr requestInfo,
+    NProto::TWriteDeviceBlocksRequest request,
+    TResponsePromise responsePromise,
+    TDuration maxRequestTimeout)
     : Parent(parent)
     , RequestInfo(std::move(requestInfo))
     , MaxRequestTimeout(maxRequestTimeout)
@@ -170,7 +170,7 @@ void TMultiAgentWriteDeviceBlocksActor::HandleTimeout(
     const NActors::TEvents::TEvWakeup::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    const auto * msg = ev->Get();
+    const auto* msg = ev->Get();
     const size_t requestId = msg->Tag;
 
     if (Responses[requestId]) {

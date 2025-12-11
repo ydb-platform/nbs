@@ -58,180 +58,179 @@ struct THistRange
 // Histogram ranges.
 
 // Default histogram range.
-#define HIST_RANGES(BUCKET, LAST_BUCKET)                                       \
-    BUCKET(1)                                                                  \
-    BUCKET(2)                                                                  \
-    BUCKET(5)                                                                  \
-    BUCKET(10)                                                                 \
-    BUCKET(20)                                                                 \
-    BUCKET(50)                                                                 \
-    BUCKET(100)                                                                \
-    BUCKET(200)                                                                \
-    BUCKET(500)                                                                \
-    BUCKET(1000)                                                               \
-    BUCKET(2000)                                                               \
-    BUCKET(5000)                                                               \
-    BUCKET(10000)                                                              \
-    LAST_BUCKET(35000)                                                         \
+#define HIST_RANGES(BUCKET, LAST_BUCKET) \
+    BUCKET(1)                            \
+    BUCKET(2)                            \
+    BUCKET(5)                            \
+    BUCKET(10)                           \
+    BUCKET(20)                           \
+    BUCKET(50)                           \
+    BUCKET(100)                          \
+    BUCKET(200)                          \
+    BUCKET(500)                          \
+    BUCKET(1000)                         \
+    BUCKET(2000)                         \
+    BUCKET(5000)                         \
+    BUCKET(10000)                        \
+    LAST_BUCKET(35000)                   \
 // HIST_RANGES
 
 // Special histogram range for microseconds.
-#define HIST_RANGES_MICROSECONDS(BUCKET, LAST_BUCKET)                          \
-    BUCKET(1)                                                                  \
-    BUCKET(100)                                                                \
-    BUCKET(200)                                                                \
-    BUCKET(300)                                                                \
-    BUCKET(400)                                                                \
-    BUCKET(500)                                                                \
-    BUCKET(600)                                                                \
-    BUCKET(700)                                                                \
-    BUCKET(800)                                                                \
-    BUCKET(900)                                                                \
-    BUCKET(1000)                                                               \
-    BUCKET(2000)                                                               \
-    BUCKET(5000)                                                               \
-    BUCKET(10000)                                                              \
-    BUCKET(20000)                                                              \
-    BUCKET(50000)                                                              \
-    BUCKET(100000)                                                             \
-    BUCKET(200000)                                                             \
-    BUCKET(500000)                                                             \
-    BUCKET(1000000)                                                            \
-    BUCKET(2000000)                                                            \
-    BUCKET(5000000)                                                            \
-    BUCKET(10000000)                                                           \
-    LAST_BUCKET(35000000)                                                      \
+#define HIST_RANGES_MICROSECONDS(BUCKET, LAST_BUCKET) \
+    BUCKET(1)                                         \
+    BUCKET(100)                                       \
+    BUCKET(200)                                       \
+    BUCKET(300)                                       \
+    BUCKET(400)                                       \
+    BUCKET(500)                                       \
+    BUCKET(600)                                       \
+    BUCKET(700)                                       \
+    BUCKET(800)                                       \
+    BUCKET(900)                                       \
+    BUCKET(1000)                                      \
+    BUCKET(2000)                                      \
+    BUCKET(5000)                                      \
+    BUCKET(10000)                                     \
+    BUCKET(20000)                                     \
+    BUCKET(50000)                                     \
+    BUCKET(100000)                                    \
+    BUCKET(200000)                                    \
+    BUCKET(500000)                                    \
+    BUCKET(1000000)                                   \
+    BUCKET(2000000)                                   \
+    BUCKET(5000000)                                   \
+    BUCKET(10000000)                                  \
+    LAST_BUCKET(35000000)                             \
 // HIST_RANGES_MICROSECONDS
 
 // Special histogram range for milliseconds.
-#define HIST_RANGES_MILLISECONDS(BUCKET, LAST_BUCKET)                          \
-    BUCKET(100)                                                                \
-    BUCKET(200)                                                                \
-    BUCKET(300)                                                                \
-    BUCKET(400)                                                                \
-    BUCKET(500)                                                                \
-    BUCKET(600)                                                                \
-    BUCKET(700)                                                                \
-    BUCKET(800)                                                                \
-    BUCKET(900)                                                                \
-    BUCKET(1000)                                                               \
-    BUCKET(2000)                                                               \
-    BUCKET(5000)                                                               \
-    BUCKET(10000)                                                              \
-    BUCKET(20000)                                                              \
-    LAST_BUCKET(35000)                                                         \
+#define HIST_RANGES_MILLISECONDS(BUCKET, LAST_BUCKET) \
+    BUCKET(100)                                       \
+    BUCKET(200)                                       \
+    BUCKET(300)                                       \
+    BUCKET(400)                                       \
+    BUCKET(500)                                       \
+    BUCKET(600)                                       \
+    BUCKET(700)                                       \
+    BUCKET(800)                                       \
+    BUCKET(900)                                       \
+    BUCKET(1000)                                      \
+    BUCKET(2000)                                      \
+    BUCKET(5000)                                      \
+    BUCKET(10000)                                     \
+    BUCKET(20000)                                     \
+    LAST_BUCKET(35000)                                \
 // HIST_RANGES_MILLISECONDS
 
 // Special histogram range for seconds.
-#define HIST_RANGES_SECONDS(BUCKET, LAST_BUCKET)                               \
-    BUCKET(1)                                                                  \
-    BUCKET(2)                                                                  \
-    BUCKET(3)                                                                  \
-    BUCKET(4)                                                                  \
-    BUCKET(5)                                                                  \
-    BUCKET(6)                                                                  \
-    BUCKET(7)                                                                  \
-    BUCKET(8)                                                                  \
-    BUCKET(9)                                                                  \
-    BUCKET(10)                                                                 \
-    BUCKET(15)                                                                 \
-    BUCKET(20)                                                                 \
-    BUCKET(25)                                                                 \
-    BUCKET(30)                                                                 \
-    LAST_BUCKET(35)                                                            \
+#define HIST_RANGES_SECONDS(BUCKET, LAST_BUCKET) \
+    BUCKET(1)                                    \
+    BUCKET(2)                                    \
+    BUCKET(3)                                    \
+    BUCKET(4)                                    \
+    BUCKET(5)                                    \
+    BUCKET(6)                                    \
+    BUCKET(7)                                    \
+    BUCKET(8)                                    \
+    BUCKET(9)                                    \
+    BUCKET(10)                                   \
+    BUCKET(15)                                   \
+    BUCKET(20)                                   \
+    BUCKET(25)                                   \
+    BUCKET(30)                                   \
+    LAST_BUCKET(35)                              \
 // HIST_RANGES_SECONDS
 
 // Special histogram range for B.
-#define HIST_RANGES_BYTES(BUCKET, LAST_BUCKET)                                 \
-    BUCKET(16)                                                                 \
-    BUCKET(32)                                                                 \
-    BUCKET(64)                                                                 \
-    BUCKET(128)                                                                \
-    BUCKET(256)                                                                \
-    BUCKET(512)                                                                \
-    BUCKET(1024)                                                               \
-    BUCKET(2048)                                                               \
-    BUCKET(4096)                                                               \
-    BUCKET(8192)                                                               \
-    BUCKET(16384)                                                              \
-    BUCKET(32768)                                                              \
-    BUCKET(65536)                                                              \
-    BUCKET(131072)                                                             \
-    BUCKET(262141)                                                             \
-    BUCKET(524288)                                                             \
-    LAST_BUCKET(1048576)                                                       \
+#define HIST_RANGES_BYTES(BUCKET, LAST_BUCKET) \
+    BUCKET(16)                                 \
+    BUCKET(32)                                 \
+    BUCKET(64)                                 \
+    BUCKET(128)                                \
+    BUCKET(256)                                \
+    BUCKET(512)                                \
+    BUCKET(1024)                               \
+    BUCKET(2048)                               \
+    BUCKET(4096)                               \
+    BUCKET(8192)                               \
+    BUCKET(16384)                              \
+    BUCKET(32768)                              \
+    BUCKET(65536)                              \
+    BUCKET(131072)                             \
+    BUCKET(262141)                             \
+    BUCKET(524288)                             \
+    LAST_BUCKET(1048576)                       \
 // HIST_RANGES_BYTES
 
 // Special histogram range for KiB.
-#define HIST_RANGES_KIBYTES(BUCKET, LAST_BUCKET)                               \
-    BUCKET(1)                                                                  \
-    BUCKET(2)                                                                  \
-    BUCKET(4)                                                                  \
-    BUCKET(8)                                                                  \
-    BUCKET(16)                                                                 \
-    BUCKET(32)                                                                 \
-    BUCKET(64)                                                                 \
-    BUCKET(128)                                                                \
-    BUCKET(256)                                                                \
-    BUCKET(512)                                                                \
-    BUCKET(1024)                                                               \
-    BUCKET(2048)                                                               \
-    BUCKET(4096)                                                               \
-    BUCKET(8192)                                                               \
-    BUCKET(16384)                                                              \
-    BUCKET(32768)                                                              \
-    LAST_BUCKET(65536)                                                         \
+#define HIST_RANGES_KIBYTES(BUCKET, LAST_BUCKET) \
+    BUCKET(1)                                    \
+    BUCKET(2)                                    \
+    BUCKET(4)                                    \
+    BUCKET(8)                                    \
+    BUCKET(16)                                   \
+    BUCKET(32)                                   \
+    BUCKET(64)                                   \
+    BUCKET(128)                                  \
+    BUCKET(256)                                  \
+    BUCKET(512)                                  \
+    BUCKET(1024)                                 \
+    BUCKET(2048)                                 \
+    BUCKET(4096)                                 \
+    BUCKET(8192)                                 \
+    BUCKET(16384)                                \
+    BUCKET(32768)                                \
+    LAST_BUCKET(65536)                           \
 // HIST_RANGES_KIBYTES
 
 // Special histogram range for MiB.
-#define HIST_RANGES_MIBYTES(BUCKET, LAST_BUCKET)                               \
-    BUCKET(1)                                                                  \
-    BUCKET(2)                                                                  \
-    BUCKET(4)                                                                  \
-    BUCKET(8)                                                                  \
-    BUCKET(16)                                                                 \
-    BUCKET(32)                                                                 \
-    LAST_BUCKET(64)                                                            \
-// HIST_RANGES_MIBYTES
+#define HIST_RANGES_MIBYTES(BUCKET, LAST_BUCKET) \
+    BUCKET(1)                                    \
+    BUCKET(2)                                    \
+    BUCKET(4)                                    \
+    BUCKET(8)                                    \
+    BUCKET(16)                                   \
+    BUCKET(32)                                   \
+    LAST_BUCKET(64)                              \
+    // HIST_RANGES_MIBYTES
 
 ////////////////////////////////////////////////////////////////////////////////
 //
 // Macros for generating body of TRangeTraits struct.
 
-#define DECLARE_HIST_RANGE_ENUM(value)                                         \
-    HIST_##value,                                                              \
-// DECLARE_HIST_RANGE_ENUM
+#define DECLARE_HIST_RANGE_ENUM(value) \
+    HIST_##value,   // DECLARE_HIST_RANGE_ENUM
 
-#define DECLARE_HIST_RANGE_DESC(value)                                         \
-    THistRange{ .Name = #value, .Value = value },                              \
-// DECLARE_HIST_RANGE_DESC
+#define DECLARE_HIST_RANGE_DESC(value) \
+    THistRange{.Name = #value, .Value = value},   // DECLARE_HIST_RANGE_DESC
 
-#define DECLARE_HIST_RANGE_DESC_EAT(value)                                     \
-// DECLARE_HIST_RANGE_DESC_EAT
+#define DECLARE_HIST_RANGE_DESC_EAT(value) // DECLARE_HIST_RANGE_DESC_EAT
 
-#define DECLARE_HIST_RANGE_DESC_MAX(value)                                     \
-    THistRange{ .Name = ">" #value, .Value = Max<i64>() }                      \
-// DECLARE_HIST_RANGE_DESC_MAX
+#define DECLARE_HIST_RANGE_DESC_MAX(value)      \
+    THistRange                                  \
+    {                                           \
+        .Name = ">" #value, .Value = Max<i64>() \
+    }                                           \
+    // DECLARE_HIST_RANGE_DESC_MAX
 
-#define DEFINE_HIST_RANGES(HIST_RANGES_MACRO)                                  \
-    enum EHistRange : ui32                                                     \
-    {                                                                          \
-        HIST_RANGES_MACRO(DECLARE_HIST_RANGE_ENUM, DECLARE_HIST_RANGE_ENUM)    \
-        HIST_MAX,                                                              \
-    };                                                                         \
-                                                                               \
-    static const THistRange& GetHistRanges(ui32 range)                         \
-    {                                                                          \
-        static const std::array<THistRange, HIST_MAX + 1> HistRanges = {       \
-            HIST_RANGES_MACRO(                                                 \
-                DECLARE_HIST_RANGE_DESC,                                       \
-                DECLARE_HIST_RANGE_DESC)                                       \
-            HIST_RANGES_MACRO(                                                 \
-                DECLARE_HIST_RANGE_DESC_EAT,                                   \
-                DECLARE_HIST_RANGE_DESC_MAX)                                   \
-        };                                                                     \
-        return HistRanges[range];                                              \
-    }                                                                          \
+#define DEFINE_HIST_RANGES(HIST_RANGES_MACRO)                               \
+    enum EHistRange : ui32                                                  \
+    {                                                                       \
+        HIST_RANGES_MACRO(DECLARE_HIST_RANGE_ENUM, DECLARE_HIST_RANGE_ENUM) \
+        HIST_MAX,                                                           \
+    };                                                                      \
+                                                                            \
+    static const THistRange& GetHistRanges(ui32 range)                      \
+    {                                                                       \
+        static const std::array<THistRange, HIST_MAX + 1> HistRanges = {    \
+            HIST_RANGES_MACRO(                                              \
+                DECLARE_HIST_RANGE_DESC,                                    \
+                DECLARE_HIST_RANGE_DESC)                                    \
+                HIST_RANGES_MACRO(                                          \
+                    DECLARE_HIST_RANGE_DESC_EAT,                            \
+                    DECLARE_HIST_RANGE_DESC_MAX)};                          \
+        return HistRanges[range];                                           \
+    }                                                                       \
 // DEFINE_HIST_RANGES
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -246,12 +245,12 @@ struct TRangeTraits
 };
 
 // Declares TRangeTraits struct specialization.
-#define RANGE_TRAITS(unit, HIST_RANGES_MACRO)                                  \
-    template <>                                                                \
-    struct TRangeTraits<unit>                                                  \
-    {                                                                          \
-        DEFINE_HIST_RANGES(HIST_RANGES_MACRO)                                  \
-    };                                                                         \
+#define RANGE_TRAITS(unit, HIST_RANGES_MACRO) \
+    template <>                               \
+    struct TRangeTraits<unit>                 \
+    {                                         \
+        DEFINE_HIST_RANGES(HIST_RANGES_MACRO) \
+    };                                        \
 // RANGE_TRAITS
 
 // All special histogram ranges must be defined here using RANGE_TRAITS.
@@ -427,13 +426,13 @@ inline TString GetUnitSuffix<EHistUnit::HU_SIZE_MIBYTES>()
 ////////////////////////////////////////////////////////////////////////////////
 
 template <EHistUnit Unit>
-class THistogram
-    : private TMetricNextFreeKey
+class THistogram: private TMetricNextFreeKey
 {
     using TMetricsRegistriesMap = THashMap<TMetricKey, IMetricsRegistryPtr>;
 
 private:
-    std::array<std::atomic<i64>, NImpl::TRangeTraits<Unit>::HIST_MAX + 1> Hist{0};
+    std::array<std::atomic<i64>, NImpl::TRangeTraits<Unit>::HIST_MAX + 1> Hist{
+        0};
 
     TMetricsRegistriesMap Registries;
     TAdaptiveLock RegistriesLock;
@@ -442,7 +441,8 @@ public:
     template <typename T>
     void Record(T value, ui32 count = 1)
     {
-        ui32 range = NImpl::GetHistRange<Unit>(NImpl::GetUnitValue<Unit>(value));
+        ui32 range =
+            NImpl::GetHistRange<Unit>(NImpl::GetUnitValue<Unit>(value));
         Hist[range].fetch_add(count, std::memory_order_relaxed);
     }
 

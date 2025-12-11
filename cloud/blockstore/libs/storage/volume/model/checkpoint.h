@@ -41,9 +41,9 @@ enum class ECheckpointType
 // The logical state of the checkpoint data. It is not persistently saved.
 enum class ECheckpointData
 {
-    DataPresent,     // The checkpoint has data and it can be read (after the
-                     // shadow disk is prepared)
-    DataDeleted,     // The checkpoint has no data
+    DataPresent,   // The checkpoint has data and it can be read (after the
+                   // shadow disk is prepared)
+    DataDeleted,   // The checkpoint has no data
 };
 
 // State of the shadow disk. It is persistently saved.
@@ -71,13 +71,13 @@ struct TCheckpointRequest
     TString CheckpointError;
 
     TCheckpointRequest(
-            ui64 requestId,
-            TString checkpointId,
-            TInstant timestamp,
-            ECheckpointRequestType reqType,
-            ECheckpointRequestState state,
-            ECheckpointType type,
-            bool useShadowDisk)
+        ui64 requestId,
+        TString checkpointId,
+        TInstant timestamp,
+        ECheckpointRequestType reqType,
+        ECheckpointRequestState state,
+        ECheckpointType type,
+        bool useShadowDisk)
         : RequestId(requestId)
         , CheckpointId(std::move(checkpointId))
         , Timestamp(timestamp)
@@ -89,16 +89,16 @@ struct TCheckpointRequest
     {}
 
     TCheckpointRequest(
-            ui64 requestId,
-            TString checkpointId,
-            TInstant timestamp,
-            ECheckpointRequestType reqType,
-            ECheckpointRequestState state,
-            ECheckpointType type,
-            TString shadowDiskId,
-            EShadowDiskState shadowDiskState,
-            ui64 shadowDiskProcessedBlockCount,
-            TString checkpointError)
+        ui64 requestId,
+        TString checkpointId,
+        TInstant timestamp,
+        ECheckpointRequestType reqType,
+        ECheckpointRequestState state,
+        ECheckpointType type,
+        TString shadowDiskId,
+        EShadowDiskState shadowDiskState,
+        ui64 shadowDiskProcessedBlockCount,
+        TString checkpointError)
         : RequestId(requestId)
         , CheckpointId(std::move(checkpointId))
         , Timestamp(timestamp)

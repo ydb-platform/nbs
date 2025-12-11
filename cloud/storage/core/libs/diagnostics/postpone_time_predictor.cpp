@@ -14,8 +14,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TPostponeTimePredictor
-    : public IPostponeTimePredictor
+class TPostponeTimePredictor: public IPostponeTimePredictor
 {
 private:
     struct TRequestState
@@ -41,16 +40,16 @@ private:
 
 public:
     TPostponeTimePredictor(
-            ITimerPtr timer,
-            TDuration delayWindowInterval,
-            double delayWindowPercentage,
-            TMaybe<TDuration> delayUpperBound)
+        ITimerPtr timer,
+        TDuration delayWindowInterval,
+        double delayWindowPercentage,
+        TMaybe<TDuration> delayUpperBound)
         : Timer(std::move(timer))
         , DelayWindowInterval(delayWindowInterval)
         , DelayWindowPercentage(delayWindowPercentage)
         , DelayUpperBound(std::move(delayUpperBound))
         , PostponedBySecond(
-            Max(1, static_cast<int>(DelayWindowInterval.Seconds())))
+              Max(1, static_cast<int>(DelayWindowInterval.Seconds())))
     {}
 
     void Register(TDuration postponeDelay) override
@@ -102,8 +101,9 @@ private:
         TRequestState removedState;
         while (!PostponedBySecond.IsEmpty()) {
             const auto& latest = PostponedBySecond.Front();
-            if (current - latest.Timestamp
-                    < TDuration::Seconds(PostponedBySecond.Capacity())) {
+            if (current - latest.Timestamp <
+                TDuration::Seconds(PostponedBySecond.Capacity()))
+            {
                 break;
             }
             removedState = SumStates(removedState, latest.RequestState);
@@ -142,9 +142,8 @@ private:
 
         const auto newData = TPostponeData{
             .Timestamp = PostponedBySecond.Back().Timestamp,
-            .RequestState = SumStates(
-                addedState,
-                PostponedBySecond.Back().RequestState)};
+            .RequestState =
+                SumStates(addedState, PostponedBySecond.Back().RequestState)};
         PostponedBySecond.PopBack();
         PostponedBySecond.PushBack(newData);
 
@@ -153,8 +152,7 @@ private:
 
     TDuration CalculatePossiblePostponeDuration() const
     {
-        if (!TotalRequestState.TotalCount
-                || !TotalRequestState.ThrottledCount)
+        if (!TotalRequestState.TotalCount || !TotalRequestState.ThrottledCount)
         {
             return TDuration::Zero();
         }
@@ -163,14 +161,13 @@ private:
             static_cast<double>(TotalRequestState.ThrottledCount);
         const double totalRequestCountD =
             static_cast<double>(TotalRequestState.TotalCount);
-        if (throttledRequestCountD
-                < totalRequestCountD * DelayWindowPercentage)
+        if (throttledRequestCountD < totalRequestCountD * DelayWindowPercentage)
         {
             return TDuration::Zero();
         }
 
-        const ui64 postponeDurationSum
-            = TotalRequestState.ThrottledDelay.MicroSeconds();
+        const ui64 postponeDurationSum =
+            TotalRequestState.ThrottledDelay.MicroSeconds();
 
         const auto result = TDuration::MicroSeconds(
             postponeDurationSum / TotalRequestState.ThrottledCount);
@@ -180,8 +177,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TPostponeTimePredictorStub
-    : public IPostponeTimePredictor
+class TPostponeTimePredictorStub: public IPostponeTimePredictor
 {
 public:
     void Register(TDuration postponeDelay) override

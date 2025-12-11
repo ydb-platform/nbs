@@ -33,8 +33,9 @@ void TDiskRegistryActor::HandleUpdateAgentStats(
             FormatError(error).c_str());
     }
 
-    auto response = std::make_unique<TEvDiskRegistry::TEvUpdateAgentStatsResponse>(
-        std::move(error));
+    auto response =
+        std::make_unique<TEvDiskRegistry::TEvUpdateAgentStatsResponse>(
+            std::move(error));
 
     NCloud::Reply(ctx, *ev, std::move(response));
 
@@ -46,7 +47,8 @@ void TDiskRegistryActor::HandleUpdateAgentStats(
             LogTitle.GetWithTime().c_str(),
             uuid.c_str());
 
-        auto request = std::make_unique<TEvDiskRegistry::TEvChangeDeviceStateRequest>();
+        auto request =
+            std::make_unique<TEvDiskRegistry::TEvChangeDeviceStateRequest>();
         request->Record.SetDeviceUUID(uuid);
         request->Record.SetDeviceState(NProto::DEVICE_STATE_ERROR);
         request->Record.SetReason("IO errors");

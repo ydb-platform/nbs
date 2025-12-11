@@ -9,7 +9,8 @@ namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
 struct IPivotalCommitStorage
 {
-    virtual ~IPivotalCommitStorage() {}
+    virtual ~IPivotalCommitStorage()
+    {}
 
     virtual ui64 RebaseCommitId(ui64 commitId) const = 0;
 };

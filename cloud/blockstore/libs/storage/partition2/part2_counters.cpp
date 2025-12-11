@@ -10,7 +10,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define UPDATE_FIELD(l, r, name)    l.Set##name(l.Get##name() + r.Get##name());
+#define UPDATE_FIELD(l, r, name) l.Set##name(l.Get##name() + r.Get##name());
 
 template <typename T1, typename T2>
 void UpdateIOCounters(T1& l, const T2& r)
@@ -28,23 +28,19 @@ void UpdateIOCounters(T1& l, const T2& r)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_COUNTER_NAME(name, category, ...)    #category "/" #name,
+#define BLOCKSTORE_COUNTER_NAME(name, category, ...) #category "/" #name,
 
 const char* const TPartitionCounters::SimpleCounterNames[] = {
-    BLOCKSTORE_PARTITION2_SIMPLE_COUNTERS(BLOCKSTORE_COUNTER_NAME)
-};
+    BLOCKSTORE_PARTITION2_SIMPLE_COUNTERS(BLOCKSTORE_COUNTER_NAME)};
 
 const char* const TPartitionCounters::CumulativeCounterNames[] = {
-    BLOCKSTORE_PARTITION2_CUMULATIVE_COUNTERS(BLOCKSTORE_COUNTER_NAME)
-};
+    BLOCKSTORE_PARTITION2_CUMULATIVE_COUNTERS(BLOCKSTORE_COUNTER_NAME)};
 
 const char* const TPartitionCounters::PercentileCounterNames[] = {
-    BLOCKSTORE_PARTITION2_PERCENTILE_COUNTERS(BLOCKSTORE_COUNTER_NAME)
-};
+    BLOCKSTORE_PARTITION2_PERCENTILE_COUNTERS(BLOCKSTORE_COUNTER_NAME)};
 
 const char* const TPartitionCounters::TransactionTypeNames[] = {
-    BLOCKSTORE_PARTITION2_TRANSACTIONS(BLOCKSTORE_COUNTER_NAME, Tx)
-};
+    BLOCKSTORE_PARTITION2_TRANSACTIONS(BLOCKSTORE_COUNTER_NAME, Tx)};
 
 #undef BLOCKSTORE_COUNTER_NAME
 
@@ -85,14 +81,10 @@ std::unique_ptr<TTabletCountersWithTxTypes> CreatePartitionCounters()
 }
 
 template <typename TCounters>
-void UpdatePartitionCounters(
-    TCounters& l,
-    const NProto::TPartitionStats& r)
+void UpdatePartitionCounters(TCounters& l, const NProto::TPartitionStats& r)
 {
     if (r.HasUserReadCounters()) {
-        UpdateIOCounters(
-            *l.MutableUserReadCounters(),
-            r.GetUserReadCounters());
+        UpdateIOCounters(*l.MutableUserReadCounters(), r.GetUserReadCounters());
     }
 
     if (r.HasUserWriteCounters()) {
@@ -102,15 +94,11 @@ void UpdatePartitionCounters(
     }
 
     if (r.HasSysReadCounters()) {
-        UpdateIOCounters(
-            *l.MutableSysReadCounters(),
-            r.GetSysReadCounters());
+        UpdateIOCounters(*l.MutableSysReadCounters(), r.GetSysReadCounters());
     }
 
     if (r.HasSysWriteCounters()) {
-        UpdateIOCounters(
-            *l.MutableSysWriteCounters(),
-            r.GetSysWriteCounters());
+        UpdateIOCounters(*l.MutableSysWriteCounters(), r.GetSysWriteCounters());
     }
 }
 

@@ -8,8 +8,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TIncompleteRequestProcessorStub
-    : public IIncompleteRequestProcessor
+struct TIncompleteRequestProcessorStub: public IIncompleteRequestProcessor
 {
     void UpdateStats(bool updateIntervalFinished) override
     {
@@ -17,7 +16,7 @@ struct TIncompleteRequestProcessorStub
     }
 };
 
-}  // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

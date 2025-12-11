@@ -26,10 +26,8 @@ void TDiskRegistryActor::HandleUpdateConfig(
         msg->Record.ShortDebugString().c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     ExecuteTx<TUpdateConfig>(
         ctx,
@@ -107,13 +105,16 @@ void TDiskRegistryActor::HandleDescribeConfig(
 
     const auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
         "%s Received DescribeConfig request: %s %s",
         LogTitle.GetWithTime().c_str(),
         msg->Record.ShortDebugString().c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
-    auto response = std::make_unique<TEvDiskRegistry::TEvDescribeConfigResponse>();
+    auto response =
+        std::make_unique<TEvDiskRegistry::TEvDescribeConfigResponse>();
 
     *response->Record.MutableConfig() = State->GetConfig();
 

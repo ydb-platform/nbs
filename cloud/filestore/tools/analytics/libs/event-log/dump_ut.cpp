@@ -39,34 +39,32 @@ Y_UNIT_TEST_SUITE(TDumpTest)
 
     Y_UNIT_TEST(ShouldGetRequestNameByRequestType)
     {
-#define TEST_PUBLIC_API(name, ...)                                             \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        #name,                                                                 \
-        RequestName(static_cast<ui32>(EFileStoreRequest::name)));              \
-// TEST_PUBLIC_API
+#define TEST_PUBLIC_API(name, ...)                                \
+    UNIT_ASSERT_VALUES_EQUAL(                                     \
+        #name,                                                    \
+        RequestName(static_cast<ui32>(EFileStoreRequest::name))); \
+    // TEST_PUBLIC_API
 
         FILESTORE_REQUESTS(TEST_PUBLIC_API);
 
 #undef TEST_PUBLIC_API
 
-#define TEST_SYSTEM_API(name, ...)                                             \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        #name,                                                                 \
-        RequestName(                                                           \
-            static_cast<ui32>(NStorage::EFileStoreSystemRequest::name)));      \
-// TEST_SYSTEM_API
+#define TEST_SYSTEM_API(name, ...)                                        \
+    UNIT_ASSERT_VALUES_EQUAL(                                             \
+        #name,                                                            \
+        RequestName(                                                      \
+            static_cast<ui32>(NStorage::EFileStoreSystemRequest::name))); \
+    // TEST_SYSTEM_API
 
         FILESTORE_SYSTEM_REQUESTS(TEST_SYSTEM_API);
 
 #undef TEST_SYSTEM_API
 
-
-#define TEST_FUSE_API(name, ...)                                               \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        #name,                                                                 \
-        RequestName(                                                           \
-            static_cast<ui32>(NFuse::EFileStoreFuseRequest::name)));           \
-// TEST_FUSE_API
+#define TEST_FUSE_API(name, ...)                                             \
+    UNIT_ASSERT_VALUES_EQUAL(                                                \
+        #name,                                                               \
+        RequestName(static_cast<ui32>(NFuse::EFileStoreFuseRequest::name))); \
+    // TEST_FUSE_API
 
         FILESTORE_FUSE_REQUESTS(TEST_FUSE_API);
 
@@ -97,12 +95,11 @@ Y_UNIT_TEST_SUITE(TDumpTest)
         UNIT_ASSERT_VALUES_EQUAL(73, requests.size());
 
         ui32 index = 0;
-#define TEST_REQUEST_TYPE(id, name)                                            \
-    UNIT_ASSERT_VALUES_EQUAL(id, requests[index].Id);                          \
-    UNIT_ASSERT_VALUES_EQUAL(#name, requests[index].Name);                     \
+#define TEST_REQUEST_TYPE(id, name)                        \
+    UNIT_ASSERT_VALUES_EQUAL(id, requests[index].Id);      \
+    UNIT_ASSERT_VALUES_EQUAL(#name, requests[index].Name); \
     ++index;
-// TEST_REQUEST_TYPE
-
+        // TEST_REQUEST_TYPE
 
         // Public
         TEST_REQUEST_TYPE(0, Ping);
@@ -203,8 +200,8 @@ Y_UNIT_TEST_SUITE(TDumpTest)
             auto* req = record.AddRequests();
             req->SetTimestampMcs(50);
             req->SetDurationMcs(60);
-            req->SetRequestType(
-                static_cast<ui32>(NStorage::EFileStoreSystemRequest::Compaction));
+            req->SetRequestType(static_cast<ui32>(
+                NStorage::EFileStoreSystemRequest::Compaction));
             req->SetErrorCode(1);
         }
 
@@ -212,13 +209,16 @@ Y_UNIT_TEST_SUITE(TDumpTest)
 
         DumpRequest(record, 0, &testStream);
         UNIT_ASSERT_VALUES_EQUAL(
-            "1970-01-01T00:00:00.000010Z\tfs\tReadData\t0.000020s\tS_OK\t{no_info}\n",
+            "1970-01-01T00:00:00.000010Z\tfs\tReadData\t0.000020s\tS_OK\t{no_"
+            "info}\n",
             testStream.Str());
 
         DumpRequest(record, 1, &testStream);
         UNIT_ASSERT_VALUES_EQUAL(
-            "1970-01-01T00:00:00.000010Z\tfs\tReadData\t0.000020s\tS_OK\t{no_info}\n"
-            "1970-01-01T00:00:00.000050Z\tfs\tCompaction\t0.000060s\tS_FALSE\t{no_info}\n",
+            "1970-01-01T00:00:00.000010Z\tfs\tReadData\t0.000020s\tS_OK\t{no_"
+            "info}\n"
+            "1970-01-01T00:00:00.000050Z\tfs\tCompaction\t0.000060s\tS_FALSE\t{"
+            "no_info}\n",
             testStream.Str());
     }
 
@@ -230,9 +230,7 @@ Y_UNIT_TEST_SUITE(TDumpTest)
         TStringStream testStream;
 
         DumpDiscardedRequestCount(record, &testStream);
-        UNIT_ASSERT_VALUES_EQUAL(
-            "Discarded 77 requests\n",
-            testStream.Str());
+        UNIT_ASSERT_VALUES_EQUAL("Discarded 77 requests\n", testStream.Str());
     }
 }
 

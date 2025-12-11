@@ -15,16 +15,16 @@ namespace NCloud::NBlockStore::NTesting {
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
-* Runs a test scenario until Stop is requested.
-*
-* A test scenario is represented by a collection of concurrently executed
-* workers.
-*
-* Each worker is executed repeatedly by calling ITestScenarioWorker::Run.
-* It should initiate one or several read or write requests via the provided
-* service object. Next call of ITestScenarioWorker::Run is made when all
-* the requests are completed and handled.
-*/
+ * Runs a test scenario until Stop is requested.
+ *
+ * A test scenario is represented by a collection of concurrently executed
+ * workers.
+ *
+ * Each worker is executed repeatedly by calling ITestScenarioWorker::Run.
+ * It should initiate one or several read or write requests via the provided
+ * service object. Next call of ITestScenarioWorker::Run is made when all
+ * the requests are completed and handled.
+ */
 struct ITestExecutor
 {
     virtual ~ITestExecutor() = default;
@@ -49,20 +49,14 @@ struct ITestExecutorIOService
     // Initiates an asynchronous read operation and calls the callback when
     // the operation is completed successfully.
     // If it fails, the test is stopped and the error is reported.
-    virtual void Read(
-        void* buffer,
-        ui32 count,
-        ui64 offset,
-        TCallback callback) = 0;
+    virtual void
+    Read(void* buffer, ui32 count, ui64 offset, TCallback callback) = 0;
 
     // Initiates an asynchronous write operation and calls the callback when
     // the operation is completed successfully.
     // If it fails, the test is stopped and the error is reported.
-    virtual void Write(
-        const void* buffer,
-        ui32 count,
-        ui64 offset,
-        TCallback callback) = 0;
+    virtual void
+    Write(const void* buffer, ui32 count, ui64 offset, TCallback callback) = 0;
 
     // Gracefully stop the scenario
     virtual void Stop() = 0;

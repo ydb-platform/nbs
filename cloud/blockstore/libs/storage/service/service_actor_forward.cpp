@@ -25,7 +25,10 @@ bool ConvertToRemoteRequestAndForward(
     const TVolumeInfo& volume)
 {
     if (volume.VolumeClientActor) {
-        ForwardRequestWithNondeliveryTracking(ctx, volume.VolumeClientActor, *ev);
+        ForwardRequestWithNondeliveryTracking(
+            ctx,
+            volume.VolumeClientActor,
+            *ev);
         return true;
     }
     return false;
@@ -37,10 +40,12 @@ bool ConvertToRemoteRequestAndForward<TEvService::TReadBlocksLocalMethod>(
     const TEvService::TEvReadBlocksLocalRequest::TPtr& ev,
     const TVolumeInfo& volume)
 {
-    NCloud::Register(ctx, CreateReadBlocksRemoteActor(
-        ev,
-        volume.VolumeInfo->GetBlockSize(),
-        volume.VolumeClientActor));
+    NCloud::Register(
+        ctx,
+        CreateReadBlocksRemoteActor(
+            ev,
+            volume.VolumeInfo->GetBlockSize(),
+            volume.VolumeClientActor));
     return true;
 }
 
@@ -50,10 +55,12 @@ bool ConvertToRemoteRequestAndForward<TEvService::TWriteBlocksLocalMethod>(
     const TEvService::TEvWriteBlocksLocalRequest::TPtr& ev,
     const TVolumeInfo& volume)
 {
-    NCloud::Register(ctx, CreateWriteBlocksRemoteActor(
-        ev,
-        volume.VolumeInfo->GetBlockSize(),
-        volume.VolumeClientActor));
+    NCloud::Register(
+        ctx,
+        CreateWriteBlocksRemoteActor(
+            ev,
+            volume.VolumeInfo->GetBlockSize(),
+            volume.VolumeClientActor));
     return true;
 }
 
@@ -78,11 +85,10 @@ void TServiceActor::ForwardRequest(
     const TString& sessionId = GetSessionId(*msg);
     const TString& clientId = GetClientId(*msg);
 
-    auto replyError = [=] (
-        const TActorContext& ctx,
-        const typename TMethod::TRequest::TPtr& ev,
-        ui32 errorCode,
-        TString errorMessage)
+    auto replyError = [=](const TActorContext& ctx,
+                          const typename TMethod::TRequest::TPtr& ev,
+                          ui32 errorCode,
+                          TString errorMessage)
     {
         auto response = std::make_unique<typename TMethod::TResponse>(
             MakeError(errorCode, std::move(errorMessage)));
@@ -96,7 +102,9 @@ void TServiceActor::ForwardRequest(
             auto* clientInfo = volume->GetClientInfo(clientId);
             if (clientInfo) {
                 // forward request directly to the volume
-                LOG_TRACE(ctx, TBlockStoreComponents::SERVICE,
+                LOG_TRACE(
+                    ctx,
+                    TBlockStoreComponents::SERVICE,
                     "Forward %s request to volume: %lu %s",
                     TMethod::Name,
                     volume->TabletId,
@@ -194,23 +202,20 @@ void TServiceActor::ForwardRequest(
 
     if (volume->VolumeActor) {
         // forward request directly to the volume
-        LOG_TRACE(ctx, TBlockStoreComponents::SERVICE,
+        LOG_TRACE(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "Forward %s request to volume: %lu %s",
             TMethod::Name,
             volume->TabletId,
             ToString(volume->VolumeActor).data());
 
-        ForwardRequestWithNondeliveryTracking(
-            ctx,
-            volume->VolumeActor,
-            *ev);
+        ForwardRequestWithNondeliveryTracking(ctx, volume->VolumeActor, *ev);
         return;
     }
 
-    bool convertedToRemote = ConvertToRemoteRequestAndForward<TMethod>(
-        ctx,
-        ev,
-        *volume);
+    bool convertedToRemote =
+        ConvertToRemoteRequestAndForward<TMethod>(ctx, ev, *volume);
     if (convertedToRemote) {
         return;
     }
@@ -219,25 +224,25 @@ void TServiceActor::ForwardRequest(
     ctx.Send(ev->Forward(MakeVolumeProxyServiceId()));
 }
 
-#define BLOCKSTORE_FORWARD_REQUEST(name, ns)                                   \
-    void TServiceActor::Handle##name(                                          \
-        const ns::TEv##name##Request::TPtr& ev,                                \
-        const TActorContext& ctx)                                              \
-    {                                                                          \
-        ForwardRequest<ns::T##name##Method>(ctx, ev);                          \
-    }                                                                          \
-// BLOCKSTORE_FORWARD_REQUEST
+#define BLOCKSTORE_FORWARD_REQUEST(name, ns)          \
+    void TServiceActor::Handle##name(                 \
+        const ns::TEv##name##Request::TPtr& ev,       \
+        const TActorContext& ctx)                     \
+    {                                                 \
+        ForwardRequest<ns::T##name##Method>(ctx, ev); \
+    }                                                 \
+    // BLOCKSTORE_FORWARD_REQUEST
 
-BLOCKSTORE_FORWARD_REQUEST(ReadBlocks,          TEvService)
-BLOCKSTORE_FORWARD_REQUEST(WriteBlocks,         TEvService)
-BLOCKSTORE_FORWARD_REQUEST(ZeroBlocks,          TEvService)
-BLOCKSTORE_FORWARD_REQUEST(StatVolume,          TEvService)
-BLOCKSTORE_FORWARD_REQUEST(CreateCheckpoint,    TEvService)
-BLOCKSTORE_FORWARD_REQUEST(DeleteCheckpoint,    TEvService)
-BLOCKSTORE_FORWARD_REQUEST(GetChangedBlocks,    TEvService)
+BLOCKSTORE_FORWARD_REQUEST(ReadBlocks, TEvService)
+BLOCKSTORE_FORWARD_REQUEST(WriteBlocks, TEvService)
+BLOCKSTORE_FORWARD_REQUEST(ZeroBlocks, TEvService)
+BLOCKSTORE_FORWARD_REQUEST(StatVolume, TEvService)
+BLOCKSTORE_FORWARD_REQUEST(CreateCheckpoint, TEvService)
+BLOCKSTORE_FORWARD_REQUEST(DeleteCheckpoint, TEvService)
+BLOCKSTORE_FORWARD_REQUEST(GetChangedBlocks, TEvService)
 BLOCKSTORE_FORWARD_REQUEST(GetCheckpointStatus, TEvService)
-BLOCKSTORE_FORWARD_REQUEST(ReadBlocksLocal,     TEvService)
-BLOCKSTORE_FORWARD_REQUEST(WriteBlocksLocal,    TEvService)
+BLOCKSTORE_FORWARD_REQUEST(ReadBlocksLocal, TEvService)
+BLOCKSTORE_FORWARD_REQUEST(WriteBlocksLocal, TEvService)
 
 #undef BLOCKSTORE_FORWARD_REQUEST
 

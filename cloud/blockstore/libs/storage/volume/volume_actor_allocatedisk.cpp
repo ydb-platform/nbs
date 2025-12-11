@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/volume/model/helpers.h>
+
 #include <cloud/storage/core/libs/common/media.h>
 
 #include <util/generic/scope.h>
@@ -87,7 +88,7 @@ bool ValidateDevices(
         }
 
         if (checkDeviceId &&
-                newDeviceIt->GetDeviceUUID() != oldDeviceIt->GetDeviceUUID())
+            newDeviceIt->GetDeviceUUID() != oldDeviceIt->GetDeviceUUID())
         {
             LOG_WARN(
                 ctx,
@@ -248,7 +249,8 @@ NProto::TAllocateDiskRequest TVolumeActor::MakeAllocateDiskRequest() const
         request.SetReplicaCount(Config->GetMirror3DiskReplicaCount());
     }
 
-    request.SetStorageMediaKind(static_cast<NProto::EStorageMediaKind>(mediaKind));
+    request.SetStorageMediaKind(
+        static_cast<NProto::EStorageMediaKind>(mediaKind));
     request.SetPoolName(config.GetStoragePoolName());
 
     return request;
@@ -268,10 +270,7 @@ void TVolumeActor::AllocateDisk(const TActorContext& ctx)
         LogTitle.GetWithTime().c_str(),
         request->Record.Utf8DebugString().Quote().c_str());
 
-    NCloud::Send(
-        ctx,
-        MakeDiskRegistryProxyServiceId(),
-        std::move(request));
+    NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -335,8 +334,7 @@ void TVolumeActor::ScheduleAllocateDiskIfNeeded(const TActorContext& ctx)
 
         ctx.Schedule(
             TDuration::Seconds(1),
-            new TEvVolumePrivate::TEvAllocateDiskIfNeeded()
-        );
+            new TEvVolumePrivate::TEvAllocateDiskIfNeeded());
     }
 }
 
@@ -396,11 +394,12 @@ void TVolumeActor::HandleAllocateDiskResponse(
     const TEvDiskRegistry::TEvAllocateDiskResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_DEFER {
+    Y_DEFER
+    {
         if (UpdateVolumeConfigInProgress) {
             FinishUpdateVolumeConfig(ctx);
         }
-    };
+    }
 
     auto* msg = ev->Get();
 
@@ -442,12 +441,7 @@ void TVolumeActor::HandleAllocateDiskResponse(
         unavailableDeviceIds.push_back(std::move(deviceId));
     }
 
-    if (!CheckAllocationResult(
-            ctx,
-            devices,
-            replicas,
-            freshDeviceIds))
-    {
+    if (!CheckAllocationResult(ctx, devices, replicas, freshDeviceIds)) {
         return;
     }
 
@@ -482,15 +476,17 @@ void TVolumeActor::HandleUpdateDevices(
     auto* msg = ev->Get();
 
     if (!StateLoadFinished) {
-        auto response = std::make_unique<TEvVolumePrivate::TEvUpdateDevicesResponse>(
-            MakeError(E_REJECTED, "State load not finished"));
+        auto response =
+            std::make_unique<TEvVolumePrivate::TEvUpdateDevicesResponse>(
+                MakeError(E_REJECTED, "State load not finished"));
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
 
     if (UpdateVolumeConfigInProgress) {
-        auto response = std::make_unique<TEvVolumePrivate::TEvUpdateDevicesResponse>(
-            MakeError(E_REJECTED, "Update volume config in progress"));
+        auto response =
+            std::make_unique<TEvVolumePrivate::TEvUpdateDevicesResponse>(
+                MakeError(E_REJECTED, "Update volume config in progress"));
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
@@ -604,8 +600,11 @@ bool TVolumeActor::CheckAllocationResult(
     }
 
     if (ok && allocatedSize < expectedSize) {
-        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME,
-            "%s Bad disk allocation result, allocatedSize=%lu, expectedSize=%lu",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Bad disk allocation result, allocatedSize=%lu, "
+            "expectedSize=%lu",
             LogTitle.GetWithTime().c_str(),
             allocatedSize,
             expectedSize);

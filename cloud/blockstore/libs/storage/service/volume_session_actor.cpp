@@ -42,7 +42,8 @@ void TVolumeSessionActor::DescribeVolume(const TActorContext& ctx)
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
-        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(VolumeInfo->DiskId));
+        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+            VolumeInfo->DiskId));
 }
 
 void TVolumeSessionActor::HandleDescribeVolumeResponse(
@@ -79,8 +80,7 @@ void TVolumeSessionActor::HandleDescribeVolumeResponse(
                 InitialClientId,
                 TemporaryServer,
                 VolumeInfo->DiskId,
-                TabletId
-            ));
+                TabletId));
         VolumeInfo->VolumeClientActor = VolumeClient;
         VolumeInfo->StorageMediaKind = static_cast<NProto::EStorageMediaKind>(
             volumeDescription.GetVolumeConfig().GetStorageMediaKind());
@@ -94,8 +94,7 @@ void TVolumeSessionActor::HandleDescribeVolumeResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TVolumeSessionActor::ReceiveNextMountOrUnmountRequest(
-    const TActorContext&)
+void TVolumeSessionActor::ReceiveNextMountOrUnmountRequest(const TActorContext&)
 {
     if (MountUnmountRequests.empty()) {
         return;
@@ -121,11 +120,12 @@ void TVolumeSessionActor::RemoveInactiveClients(const TActorContext& ctx)
             continue;
         }
 
-        if (MountUnmountRequests.empty()
-            && !MountRequestActor
-            && !UnmountRequestActor)
+        if (MountUnmountRequests.empty() && !MountRequestActor &&
+            !UnmountRequestActor)
         {
-            LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::SERVICE,
                 "%s Unmounting client %s as it has been inactive "
                 "for too long (last activity at %s, timeout is %s)",
                 LogTitle.GetWithTime().c_str(),
@@ -133,7 +133,8 @@ void TVolumeSessionActor::RemoveInactiveClients(const TActorContext& ctx)
                 ToString(clientInfo->LastActivityTime).c_str(),
                 FormatDuration(inactiveClientsTimeout).c_str());
 
-            auto request = std::make_unique<TEvService::TEvUnmountVolumeRequest>();
+            auto request =
+                std::make_unique<TEvService::TEvUnmountVolumeRequest>();
             request->Record.MutableHeaders()->SetClientId(clientInfo->ClientId);
             request->Record.SetDiskId(VolumeInfo->DiskId);
             request->Record.SetSessionId(VolumeInfo->SessionId);
@@ -157,7 +158,8 @@ void TVolumeSessionActor::RemoveInactiveClients(const TActorContext& ctx)
     ScheduleInactiveClientsRemoval(ctx);
 }
 
-void TVolumeSessionActor::ScheduleInactiveClientsRemoval(const TActorContext& ctx)
+void TVolumeSessionActor::ScheduleInactiveClientsRemoval(
+    const TActorContext& ctx)
 {
     if (IsClientsCheckScheduled) {
         return;
@@ -203,9 +205,7 @@ void TVolumeSessionActor::ScheduleInactiveClientsRemoval(const TActorContext& ct
         FormatDuration(nextTimeout).c_str());
 
     IsClientsCheckScheduled = true;
-    ctx.Schedule(
-        nextTimeout,
-        new TEvServicePrivate::TEvInactiveClientsTimeout);
+    ctx.Schedule(nextTimeout, new TEvServicePrivate::TEvInactiveClientsTimeout);
 }
 
 void TVolumeSessionActor::NotifyAndDie(const TActorContext& ctx)
@@ -225,7 +225,8 @@ void TVolumeSessionActor::NotifyAndDie(const TActorContext& ctx)
         StartVolumeActor = {};
     }
 
-    auto notification = std::make_unique<TEvServicePrivate::TEvSessionActorDied>();
+    auto notification =
+        std::make_unique<TEvServicePrivate::TEvSessionActorDied>();
     notification->DiskId = VolumeInfo->DiskId;
     NCloud::Send(ctx, MakeStorageServiceId(), std::move(notification));
 
@@ -249,7 +250,8 @@ void TVolumeSessionActor::FailPendingRequestsAndDie(
 
     Y_DEBUG_ABORT_UNLESS(
         FAILED(error.GetCode()),
-        "Shutdown requested with a successful code: %u", error.GetCode());
+        "Shutdown requested with a successful code: %u",
+        error.GetCode());
     ShuttingDownError = std::move(error);
 
     while (!MountUnmountRequests.empty()) {
@@ -263,7 +265,6 @@ void TVolumeSessionActor::FailPendingRequestsAndDie(
 STFUNC(TVolumeSessionActor::StateDescribe)
 {
     switch (ev->GetTypeRewrite()) {
-
         HFunc(
             TEvSSProxy::TEvDescribeVolumeResponse,
             HandleDescribeVolumeResponse);
@@ -290,7 +291,6 @@ STFUNC(TVolumeSessionActor::StateDescribe)
 STFUNC(TVolumeSessionActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-
         HFunc(
             TEvServicePrivate::TEvInternalMountVolumeRequest,
             HandleInternalMountVolume);
@@ -313,9 +313,7 @@ STFUNC(TVolumeSessionActor::StateWork)
             TEvServicePrivate::TEvStartVolumeRequest,
             HandleStartVolumeRequest);
 
-        HFunc(
-            TEvServicePrivate::TEvStopVolumeRequest,
-            HandleStopVolumeRequest);
+        HFunc(TEvServicePrivate::TEvStopVolumeRequest, HandleStopVolumeRequest);
 
         HFunc(
             TEvServicePrivate::TEvVolumeTabletStatus,
@@ -325,7 +323,7 @@ STFUNC(TVolumeSessionActor::StateWork)
             TEvServicePrivate::TEvStartVolumeActorStopped,
             HandleStartVolumeActorStopped);
 
-        HFunc(TEvServicePrivate::TEvVolumePipeReset , HandleVolumePipeReset);
+        HFunc(TEvServicePrivate::TEvVolumePipeReset, HandleVolumePipeReset);
 
         HFunc(
             TEvService::TEvChangeVolumeBindingRequest,

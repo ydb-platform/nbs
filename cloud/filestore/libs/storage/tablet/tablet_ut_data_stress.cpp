@@ -35,8 +35,7 @@ enum EStepType : ui32
     MAX
 };
 
-struct TEnvironment
-    : public NUnitTest::TBaseFixture
+struct TEnvironment: public NUnitTest::TBaseFixture
 {
     TTestEnv Env;
     std::unique_ptr<TIndexTabletClient> Tablet;
@@ -54,7 +53,8 @@ struct TEnvironment
     char Fill = 'a';
     ui64 MaxSize = 0;
 
-    TEnvironment() : Log(Env.CreateLog())
+    TEnvironment()
+        : Log(Env.CreateLog())
     {}
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
@@ -78,9 +78,7 @@ struct TEnvironment
             Env.GetRuntime(),
             nodeIdx,
             tabletId,
-            TFileSystemConfig{
-                .BlockCount = MaxBlocks
-            });
+            TFileSystemConfig{.BlockCount = MaxBlocks});
         Tablet->InitSession("client", "session");
 
         Id = CreateNode(*Tablet, TCreateNodeArgs::File(RootNodeId, "test"));
@@ -145,7 +143,9 @@ struct TEnvironment
     {
         const ui64 currentSize = GetNodeAttrs().GetSize();
 
-        std::uniform_int_distribution<ui64> offsetDist(0, MaxBlocks * BlockSize);
+        std::uniform_int_distribution<ui64> offsetDist(
+            0,
+            MaxBlocks * BlockSize);
         std::uniform_int_distribution<ui64> sizeDist(1, MaxBlocks * BlockSize);
 
         ui64 allocOffset = 0;
@@ -170,18 +170,23 @@ struct TEnvironment
 
         const auto data = ReadFullData();
         if (const ui64 diff = Min<ui64>(allocOffset, currentSize)) {
-            UNIT_ASSERT_VALUES_EQUAL(Data.substr(0, diff), data.substr(0, diff));
+            UNIT_ASSERT_VALUES_EQUAL(
+                Data.substr(0, diff),
+                data.substr(0, diff));
         }
 
         if (allocOffset < currentSize) {
-            const ui64 rightBorder = Min<ui64>(currentSize, allocOffset + allocSize);
+            const ui64 rightBorder =
+                Min<ui64>(currentSize, allocOffset + allocSize);
             if (const ui64 diff = rightBorder - allocOffset;
                 HasFlag(flags, NProto::TAllocateDataRequest::F_PUNCH_HOLE) ||
                 HasFlag(flags, NProto::TAllocateDataRequest::F_ZERO_RANGE))
             {
                 TString expected;
                 expected.resize(diff, 0);
-                UNIT_ASSERT_VALUES_EQUAL(expected, data.substr(allocOffset, diff));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expected,
+                    data.substr(allocOffset, diff));
 
                 WriteData(allocOffset, diff);
             } else {
@@ -197,10 +202,15 @@ struct TEnvironment
                     data.substr(rightBorder, diff));
             } else {
                 if (const ui64 diff = newSize - currentSize;
-                    !HasFlag(flags, NProto::TAllocateDataRequest::F_KEEP_SIZE) && diff)
+                    !HasFlag(
+                        flags,
+                        NProto::TAllocateDataRequest::F_KEEP_SIZE) &&
+                    diff)
                 {
                     TString expected(diff, '\0');
-                    UNIT_ASSERT_VALUES_EQUAL(expected, data.substr(currentSize, diff));
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        expected,
+                        data.substr(currentSize, diff));
 
                     WriteData(currentSize, diff);
                 }
@@ -210,7 +220,9 @@ struct TEnvironment
                 !HasFlag(flags, NProto::TAllocateDataRequest::F_KEEP_SIZE))
             {
                 TString expected(diff, '\0');
-                UNIT_ASSERT_VALUES_EQUAL(expected, data.substr(currentSize, diff));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expected,
+                    data.substr(currentSize, diff));
 
                 WriteData(currentSize, diff);
             }
@@ -235,9 +247,12 @@ struct TEnvironment
             UNIT_ASSERT_VALUES_EQUAL(Data.substr(0, newSize), data);
         } else {
             UNIT_ASSERT_VALUES_EQUAL(Data, data.substr(0, currentSize));
-            if (const ui64 diff = newSize - currentSize; newSize != currentSize) {
+            if (const ui64 diff = newSize - currentSize; newSize != currentSize)
+            {
                 TString expected(diff, '\0');
-                UNIT_ASSERT_VALUES_EQUAL(expected, data.substr(currentSize, diff));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expected,
+                    data.substr(currentSize, diff));
 
                 WriteData(currentSize, diff);
             }
@@ -263,7 +278,8 @@ struct TEnvironment
             maxFileBlocks.FirstBlock(),
             maxFileBlocks.BlockCount(),
             BlockGroupSize,
-            [&] (ui32 blockOffset, ui32 blocksCount) {
+            [&](ui32 blockOffset, ui32 blocksCount)
+            {
                 rangeIds.push_back(GetMixedRangeIndex(
                     *hasher,
                     Id,
@@ -271,7 +287,7 @@ struct TEnvironment
                     blocksCount));
             });
 
-        for (const ui32 rangeId : rangeIds) {
+        for (const ui32 rangeId: rangeIds) {
             Tablet->Compaction(rangeId);
         }
     }
@@ -307,25 +323,26 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
                 }                                                              \
                 case EStepType::AllocatePunch: {                               \
                     PerformAllocate(                                           \
-                        ProtoFlag(NProto::TAllocateDataRequest::F_PUNCH_HOLE) |\
+                        ProtoFlag(                                             \
+                            NProto::TAllocateDataRequest::F_PUNCH_HOLE) |      \
                         ProtoFlag(NProto::TAllocateDataRequest::F_KEEP_SIZE)); \
                     break;                                                     \
                 }                                                              \
                 case EStepType::AllocateZero: {                                \
-                    PerformAllocate(                                           \
-                        ProtoFlag(NProto::TAllocateDataRequest::F_ZERO_RANGE));\
+                    PerformAllocate(ProtoFlag(                                 \
+                        NProto::TAllocateDataRequest::F_ZERO_RANGE));          \
                     break;                                                     \
                 }                                                              \
                 case EStepType::AllocateZeroKeepSize: {                        \
                     PerformAllocate(                                           \
-                        ProtoFlag(NProto::TAllocateDataRequest::F_ZERO_RANGE) |\
+                        ProtoFlag(                                             \
+                            NProto::TAllocateDataRequest::F_ZERO_RANGE) |      \
                         ProtoFlag(NProto::TAllocateDataRequest::F_KEEP_SIZE)); \
                     break;                                                     \
                 }                                                              \
                 case EStepType::AllocateUnshare: {                             \
-                    PerformAllocate(                                           \
-                        ProtoFlag(                                             \
-                            NProto::TAllocateDataRequest::F_UNSHARE_RANGE));   \
+                    PerformAllocate(ProtoFlag(                                 \
+                        NProto::TAllocateDataRequest::F_UNSHARE_RANGE));       \
                     break;                                                     \
                 }                                                              \
                 default: {                                                     \
@@ -350,12 +367,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedBlobsCount());               \
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetGarbageBlocksCount());            \
     }                                                                          \
-// PERFORM_TEST
+    // PERFORM_TEST
 
         const auto sanitizerType = GetEnv("SANITIZER_TYPE");
         // temporary logging
         Cerr << "sanitizer: " << sanitizerType << Endl;
-        const THashSet<TString> slowSanitizers({"thread", "undefined", "address"});
+        const THashSet<TString> slowSanitizers(
+            {"thread", "undefined", "address"});
         const ui32 d = slowSanitizers.contains(sanitizerType) ? 20 : 1;
 
         PERFORM_TEST(5'000 / d);
@@ -411,8 +429,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
         const auto expectedWriteCount = nodeCount * collisions;
         // should be 140 x 64 x 4KiB == 35MiB for builds without slow sanitizers
         const auto expectedBlockCount = expectedWriteCount * BlockGroupSize;
-        const auto expectedBlobCount = static_cast<ui32>(ceil(
-            static_cast<double>(expectedBlockCount) / (4_MB / block)));
+        const auto expectedBlobCount = static_cast<ui32>(
+            ceil(static_cast<double>(expectedBlockCount) / (4_MB / block)));
         UNIT_ASSERT_C(
             compactionThreshold < expectedBlobCount,
             TStringBuilder() << "expectedBlobCount: " << expectedBlobCount);
@@ -460,9 +478,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_Stress)
                 expectedBlobCount + expectedExcessBlobCount,
                 stats.GetMixedBlobsCount());
             UNIT_ASSERT_VALUES_EQUAL(1, stats.GetUsedCompactionRanges());
-            UNIT_ASSERT_VALUES_EQUAL(
-                256,
-                stats.GetAllocatedCompactionRanges());
+            UNIT_ASSERT_VALUES_EQUAL(256, stats.GetAllocatedCompactionRanges());
             UNIT_ASSERT_VALUES_EQUAL(1, stats.CompactionRangeStatsSize());
             // The amount of GarbageBlocksCount is 0 since the blocks
             // were not overwritten

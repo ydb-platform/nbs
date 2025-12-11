@@ -16,8 +16,8 @@ private:
 
 public:
     TEncryptionKeyFile(
-            const TString& key,
-            const TString& filePath = "test_key_file")
+        const TString& key,
+        const TString& filePath = "test_key_file")
         : File(filePath, EOpenModeFlag::CreateAlways | EOpenModeFlag::RdWr)
     {
         File.Write(key.data(), key.size());

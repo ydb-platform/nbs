@@ -55,8 +55,7 @@ private:
 public:
     TApp()
         : AliasedVolumes(Log)
-    {
-    }
+    {}
 
     static TApp* GetInstance()
     {
@@ -92,7 +91,9 @@ private:
 
     void RunGraph(const NProto::TActionGraph& graph, TBootstrap& bootstrap);
 
-    void InitTestConfig(TBootstrap& bootstrap, NProto::TActionGraph* testConfig);
+    void InitTestConfig(
+        TBootstrap& bootstrap,
+        NProto::TActionGraph* testConfig);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -108,7 +109,8 @@ int TApp::Run(TBootstrap& bootstrap)
     try {
         InitTestConfig(bootstrap, &graph);
     } catch (...) {
-        STORAGE_ERROR("Could not load tests configuration: "
+        STORAGE_ERROR(
+            "Could not load tests configuration: "
             << CurrentExceptionMessage());
 
         return EC_FAILED_TO_LOAD_TESTS_CONFIGURATION;
@@ -119,9 +121,7 @@ int TApp::Run(TBootstrap& bootstrap)
     if (options->Timeout != TDuration::Zero()) {
         bootstrap.GetScheduler()->Schedule(
             bootstrap.GetTimer()->Now() + options->Timeout,
-            [=, this] {
-                Stop(EC_TIMEOUT);
-            });
+            [=, this] { Stop(EC_TIMEOUT); });
     }
 
     RunGraph(graph, bootstrap);
@@ -129,21 +129,22 @@ int TApp::Run(TBootstrap& bootstrap)
     try {
         AliasedVolumes.DestroyAliasedVolumesUnsafe(bootstrap);
     } catch (...) {
-        STORAGE_ERROR("Could not destroy aliased volumes: "
-            << CurrentExceptionMessage());
+        STORAGE_ERROR(
+            "Could not destroy aliased volumes: " << CurrentExceptionMessage());
 
         return EC_FAILED_TO_DESTROY_ALIASED_VOLUMES;
     }
 
     auto& out = options->GetOutputStream();
-    for (const auto& testContext : TestContexts) {
+    for (const auto& testContext: TestContexts) {
         out << testContext.Result.Str() << Endl;
     }
 
     TestContexts.clear();
 
     if (AppContext.FailedTests) {
-        STORAGE_WARN("Several tests ("
+        STORAGE_WARN(
+            "Several tests ("
             << AppContext.FailedTests.load(std::memory_order_acquire)
             << ") failed.");
     }
@@ -196,8 +197,7 @@ void TApp::RunLoadTest(
         bootstrap.GetRequestStats(),
         bootstrap.GetVolumeStats(),
         bootstrap,
-        testContext
-    );
+        testContext);
 
     if (auto code = runner.Run(test, dependencies)) {
         Stop(code);
@@ -215,8 +215,7 @@ void TApp::RunControlPlaneAction(
         AliasedVolumes,
         VolumeInfos,
         std::move(client),
-        testContext
-    );
+        testContext);
 
     if (auto code = runner.Run(action)) {
         Stop(code);
@@ -239,8 +238,7 @@ void TApp::RunCompareDataAction(
         bootstrap.GetRequestStats(),
         bootstrap.GetVolumeStats(),
         bootstrap,
-        testContext
-    );
+        testContext);
 
     if (auto code = runner.Run(action)) {
         Stop(code);
@@ -305,13 +303,14 @@ void TApp::RunGraph(const NProto::TActionGraph& graph, TBootstrap& bootstrap)
         auto vertex = graph.GetVertices(i);
         const auto& dependencies = vidx2dependencies[i];
         if (dependencyVertices.contains(i)) {
-            TestContexts[i].DigestCalculator = bootstrap.CreateDigestCalculator();
+            TestContexts[i].DigestCalculator =
+                bootstrap.CreateDigestCalculator();
             TestContexts[i].BlockChecksums.set_empty_key(
-                NStorage::InvalidBlockIndex
-            );
+                NStorage::InvalidBlockIndex);
         }
 
-        ag.Vertices[i] = [this, vertex, i, dependencies, &bootstrap] () {
+        ag.Vertices[i] = [this, vertex, i, dependencies, &bootstrap]()
+        {
             if (AppContext.ShouldStop.load(std::memory_order_acquire)) {
                 return;
             }
@@ -322,13 +321,17 @@ void TApp::RunGraph(const NProto::TActionGraph& graph, TBootstrap& bootstrap)
                     const auto& test = vertex.GetTest();
                     for (ui32 j = 0; j < Max(1u, test.GetRepetitions()); ++j) {
                         if (j) {
-                            testContext.ShouldStop.store(false, std::memory_order_release);
+                            testContext.ShouldStop.store(
+                                false,
+                                std::memory_order_release);
                             testContext.Result << Endl;
                         }
 
                         RunLoadTest(bootstrap, testContext, test, dependencies);
 
-                        if (AppContext.ShouldStop.load(std::memory_order_acquire)) {
+                        if (AppContext.ShouldStop.load(
+                                std::memory_order_acquire))
+                        {
                             return;
                         }
                     }
@@ -345,7 +348,9 @@ void TApp::RunGraph(const NProto::TActionGraph& graph, TBootstrap& bootstrap)
 
                         RunControlPlaneAction(testContext, client, cpa);
 
-                        if (AppContext.ShouldStop.load(std::memory_order_acquire)) {
+                        if (AppContext.ShouldStop.load(
+                                std::memory_order_acquire))
+                        {
                             return;
                         }
                     }
@@ -364,8 +369,7 @@ void TApp::RunGraph(const NProto::TActionGraph& graph, TBootstrap& bootstrap)
                     RunCompareDataAction(
                         bootstrap,
                         testContext,
-                        vertex.GetCompareData()
-                    );
+                        vertex.GetCompareData());
                     break;
                 }
 
@@ -377,15 +381,16 @@ void TApp::RunGraph(const NProto::TActionGraph& graph, TBootstrap& bootstrap)
                     break;
                 }
 
-                default: Y_ABORT_UNLESS(0);
+                default:
+                    Y_ABORT_UNLESS(0);
             }
         };
     }
 
     // initializing edges
-    for (const auto& x : graph.GetDependencies()) {
+    for (const auto& x: graph.GetDependencies()) {
         const auto vidx = name2vidx.at(x.first);
-        for (const auto& dep : x.second.GetNames()) {
+        for (const auto& dep: x.second.GetNames()) {
             ag.Edges[vidx].push_back(name2vidx.at(dep));
         }
     }
@@ -394,7 +399,9 @@ void TApp::RunGraph(const NProto::TActionGraph& graph, TBootstrap& bootstrap)
     TGraphExecutor(std::move(ag)).Run();
 }
 
-void TApp::InitTestConfig(TBootstrap& bootstrap, NProto::TActionGraph* testConfig)
+void TApp::InitTestConfig(
+    TBootstrap& bootstrap,
+    NProto::TActionGraph* testConfig)
 {
     auto options = bootstrap.GetOptions();
     if (options->TestConfig) {
@@ -445,7 +452,9 @@ void AppStop(int exitCode)
     TApp::GetInstance()->Stop(exitCode);
 }
 
-int DoMain(int argc, char** argv,
+int DoMain(
+    int argc,
+    char** argv,
     std::shared_ptr<TModuleFactories> moduleFactories)
 {
     ConfigureSignals();

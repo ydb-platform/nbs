@@ -66,7 +66,7 @@ void TIndexTabletActor::CompleteTx_ReadNodeRefs(
     response->Record.SetNextNodeId(args.NextNodeId);
     response->Record.SetNextCookie(args.NextCookie);
     response->Record.MutableNodeRefs()->Reserve(args.Refs.size());
-    for (const auto& ref : args.Refs) {
+    for (const auto& ref: args.Refs) {
         auto* nodeRef = response->Record.AddNodeRefs();
         nodeRef->SetNodeId(ref.NodeId);
         nodeRef->SetName(ref.Name);
@@ -91,10 +91,7 @@ void TIndexTabletActor::HandleReadNodeRefs(
 
     AddTransaction<TEvIndexTablet::TReadNodeRefsMethod>(*requestInfo);
 
-    ExecuteTx<TReadNodeRefs>(
-        ctx,
-        std::move(requestInfo),
-        msg->Record);
+    ExecuteTx<TReadNodeRefs>(ctx, std::move(requestInfo), msg->Record);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

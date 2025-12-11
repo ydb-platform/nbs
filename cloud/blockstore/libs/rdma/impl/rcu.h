@@ -18,7 +18,7 @@ class TRCUList
     using TListPtr = std::shared_ptr<TList>;
 
 private:
-    TListPtr List { new TList() };
+    TListPtr List{new TList()};
     TAdaptiveLock Lock;
 
 public:

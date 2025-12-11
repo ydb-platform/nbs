@@ -1,4 +1,5 @@
 #include "disk_registry.h"
+
 #include "disk_registry_actor.h"
 
 #include <cloud/blockstore/config/disk.pb.h>
@@ -22,46 +23,51 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 {
     Y_UNIT_TEST(ShouldFinishReplicationForMirroredDisk)
     {
-        const auto agent1 = CreateAgentConfig("agent-1", {
-            Device("dev-1", "uuid-1", "rack-1", 10_GB),
-            Device("dev-2", "uuid-2", "rack-1", 10_GB),
-        });
+        const auto agent1 = CreateAgentConfig(
+            "agent-1",
+            {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-2", "rack-1", 10_GB),
+            });
 
-        const auto agent2 = CreateAgentConfig("agent-2", {
-            Device("dev-1", "uuid-3", "rack-2", 10_GB),
-            Device("dev-2", "uuid-4", "rack-2", 10_GB),
-        });
+        const auto agent2 = CreateAgentConfig(
+            "agent-2",
+            {
+                Device("dev-1", "uuid-3", "rack-2", 10_GB),
+                Device("dev-2", "uuid-4", "rack-2", 10_GB),
+            });
 
-        const auto agent3 = CreateAgentConfig("agent-3", {
-            Device("dev-1", "uuid-5", "rack-3", 10_GB),
-            Device("dev-2", "uuid-6", "rack-3", 10_GB),
-        });
+        const auto agent3 = CreateAgentConfig(
+            "agent-3",
+            {
+                Device("dev-1", "uuid-5", "rack-3", 10_GB),
+                Device("dev-2", "uuid-6", "rack-3", 10_GB),
+            });
 
-        auto runtime = TTestRuntimeBuilder()
-            .WithAgents({ agent1, agent2, agent3 })
-            .Build();
+        auto runtime =
+            TTestRuntimeBuilder().WithAgents({agent1, agent2, agent3}).Build();
 
         TDiskRegistryClient diskRegistry(*runtime);
         diskRegistry.WaitReady();
         diskRegistry.SetWritableState(true);
 
         diskRegistry.UpdateConfig(
-            CreateRegistryConfig(0, {agent1, agent2, agent3 }));
+            CreateRegistryConfig(0, {agent1, agent2, agent3}));
 
         RegisterAgents(*runtime, 3);
         WaitForAgents(*runtime, 3);
-        WaitForSecureErase(*runtime, {agent1, agent2, agent3 });
+        WaitForSecureErase(*runtime, {agent1, agent2, agent3});
 
         {
             auto response = diskRegistry.AllocateDisk(
                 "disk-1",
                 20_GB,
                 DefaultLogicalBlockSize,
-                "", // placementGroupId
-                0,  // placementPartitionIndex
-                "", // cloudId
-                "", // folderId
-                1   // replicaCount
+                "",   // placementGroupId
+                0,    // placementPartitionIndex
+                "",   // cloudId
+                "",   // folderId
+                1     // replicaCount
             );
 
             auto& msg = response->Record;
@@ -99,11 +105,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 "disk-1",
                 20_GB,
                 DefaultLogicalBlockSize,
-                "", // placementGroupId
-                0,  // placementPartitionIndex
-                "", // cloudId
-                "", // folderId
-                1   // replicaCount
+                "",   // placementGroupId
+                0,    // placementPartitionIndex
+                "",   // cloudId
+                "",   // folderId
+                1     // replicaCount
             );
 
             auto& msg = response->Record;
@@ -148,11 +154,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 "disk-1",
                 20_GB,
                 DefaultLogicalBlockSize,
-                "", // placementGroupId
-                0,  // placementPartitionIndex
-                "", // cloudId
-                "", // folderId
-                1   // replicaCount
+                "",   // placementGroupId
+                0,    // placementPartitionIndex
+                "",   // cloudId
+                "",   // folderId
+                1     // replicaCount
             );
 
             auto& msg = response->Record;
@@ -190,46 +196,51 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
     void ShouldFinishMigrationForMirroredDiskImpl(bool rebootTable)
     {
-        const auto agent1 = CreateAgentConfig("agent-1", {
-            Device("dev-1", "uuid-1", "rack-1", 10_GB),
-            Device("dev-2", "uuid-2", "rack-1", 10_GB),
-        });
+        const auto agent1 = CreateAgentConfig(
+            "agent-1",
+            {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-2", "rack-1", 10_GB),
+            });
 
-        const auto agent2 = CreateAgentConfig("agent-2", {
-            Device("dev-1", "uuid-3", "rack-2", 10_GB),
-            Device("dev-2", "uuid-4", "rack-2", 10_GB),
-        });
+        const auto agent2 = CreateAgentConfig(
+            "agent-2",
+            {
+                Device("dev-1", "uuid-3", "rack-2", 10_GB),
+                Device("dev-2", "uuid-4", "rack-2", 10_GB),
+            });
 
-        const auto agent3 = CreateAgentConfig("agent-3", {
-            Device("dev-1", "uuid-5", "rack-3", 10_GB),
-            Device("dev-2", "uuid-6", "rack-3", 10_GB),
-        });
+        const auto agent3 = CreateAgentConfig(
+            "agent-3",
+            {
+                Device("dev-1", "uuid-5", "rack-3", 10_GB),
+                Device("dev-2", "uuid-6", "rack-3", 10_GB),
+            });
 
-        auto runtime = TTestRuntimeBuilder()
-            .WithAgents({ agent1, agent2, agent3 })
-            .Build();
+        auto runtime =
+            TTestRuntimeBuilder().WithAgents({agent1, agent2, agent3}).Build();
 
         TDiskRegistryClient diskRegistry(*runtime);
         diskRegistry.WaitReady();
         diskRegistry.SetWritableState(true);
 
         diskRegistry.UpdateConfig(
-            CreateRegistryConfig(0, {agent1, agent2, agent3 }));
+            CreateRegistryConfig(0, {agent1, agent2, agent3}));
 
         RegisterAgents(*runtime, 3);
         WaitForAgents(*runtime, 3);
-        WaitForSecureErase(*runtime, {agent1, agent2, agent3 });
+        WaitForSecureErase(*runtime, {agent1, agent2, agent3});
 
         {
             auto response = diskRegistry.AllocateDisk(
                 "disk-1",
                 20_GB,
                 DefaultLogicalBlockSize,
-                "", // placementGroupId
-                0,  // placementPartitionIndex
-                "", // cloudId
-                "", // folderId
-                1   // replicaCount
+                "",   // placementGroupId
+                0,    // placementPartitionIndex
+                "",   // cloudId
+                "",   // folderId
+                1     // replicaCount
             );
 
             auto& msg = response->Record;
@@ -264,11 +275,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 "disk-1",
                 20_GB,
                 DefaultLogicalBlockSize,
-                "", // placementGroupId
-                0,  // placementPartitionIndex
-                "", // cloudId
-                "", // folderId
-                1   // replicaCount
+                "",   // placementGroupId
+                0,    // placementPartitionIndex
+                "",   // cloudId
+                "",   // folderId
+                1     // replicaCount
             );
 
             auto& msg = response->Record;
@@ -317,11 +328,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 "disk-1",
                 20_GB,
                 DefaultLogicalBlockSize,
-                "", // placementGroupId
-                0,  // placementPartitionIndex
-                "", // cloudId
-                "", // folderId
-                1   // replicaCount
+                "",   // placementGroupId
+                0,    // placementPartitionIndex
+                "",   // cloudId
+                "",   // folderId
+                1     // replicaCount
             );
 
             auto& msg = response->Record;
@@ -372,11 +383,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 "disk-1",
                 20_GB,
                 DefaultLogicalBlockSize,
-                "", // placementGroupId
-                0,  // placementPartitionIndex
-                "", // cloudId
-                "", // folderId
-                1   // replicaCount
+                "",   // placementGroupId
+                0,    // placementPartitionIndex
+                "",   // cloudId
+                "",   // folderId
+                1     // replicaCount
             );
 
             auto& msg = response->Record;

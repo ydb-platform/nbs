@@ -546,7 +546,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
             1,
             statsAfter.ROCacheMissCount - statsBefore.ROCacheMissCount);
         UNIT_ASSERT_VALUES_EQUAL(5, statsAfter.RWCount - statsBefore.RWCount);
-        UNIT_ASSERT_VALUES_EQUAL(2, statsAfter.NodeAttrsCount - statsBefore.NodeAttrsCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            statsAfter.NodeAttrsCount - statsBefore.NodeAttrsCount);
     }
 
     Y_UNIT_TEST(ShouldUpdateCacheUponRemoveNodeXAttr)
@@ -948,12 +950,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
         tablet.InitSession("client", "session");
 
-        auto id1 = tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test1"))
-                       ->Record.GetNode()
-                       .GetId();
-        auto id2 = tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test2"))
-                       ->Record.GetNode()
-                       .GetId();
+        auto id1 =
+            tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test1"))
+                ->Record.GetNode()
+                .GetId();
+        auto id2 =
+            tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test2"))
+                ->Record.GetNode()
+                .GetId();
 
         tablet.RebootTablet();
         tablet.InitSession("client", "session");
@@ -1103,7 +1107,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
 
         // Now let us ensure that the cache is evicted
         for (int i = 0; i < 100; ++i) {
-            tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, std::to_string(i)));
+            tablet.CreateNode(
+                TCreateNodeArgs::File(RootNodeId, std::to_string(i)));
         }
 
         statsBefore = statsAfter;
@@ -1245,10 +1250,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         // of them leading to a cache miss upon listing
         {
             for (int i = 4; i <= 11; ++i) {
-                tablet.CreateNode(
-                    TCreateNodeArgs::File(
-                        RootNodeId,
-                        "test" + std::to_string(i)));
+                tablet.CreateNode(TCreateNodeArgs::File(
+                    RootNodeId,
+                    "test" + std::to_string(i)));
             }
             UNIT_ASSERT_VALUES_EQUAL(
                 12,

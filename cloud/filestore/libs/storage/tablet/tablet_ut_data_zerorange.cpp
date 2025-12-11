@@ -1,4 +1,5 @@
 #include "tablet.h"
+
 #include "tablet_schema.h"
 
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
@@ -17,8 +18,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEnvironment
-    : public NUnitTest::TBaseFixture
+struct TEnvironment: public NUnitTest::TBaseFixture
 {
     TTestEnv Env;
     std::unique_ptr<TIndexTabletClient> Tablet;
@@ -36,8 +36,7 @@ struct TEnvironment
         Tablet = std::make_unique<TIndexTabletClient>(
             Env.GetRuntime(),
             nodeIdx,
-            tabletId
-        );
+            tabletId);
         Tablet->InitSession("client", "session");
 
         Id = CreateNode(*Tablet, TCreateNodeArgs::File(RootNodeId, "test"));
@@ -90,7 +89,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_ZeroRange)
 
         memset(&expected[3_KB], 0, 4_KB);
         UNIT_ASSERT_EQUAL(ReadData(4_KB), expected.substr(0, 4_KB));
-        UNIT_ASSERT_VALUES_EQUAL(ReadData(4_KB, 4_KB), expected.substr(4_KB, 4_KB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            ReadData(4_KB, 4_KB),
+            expected.substr(4_KB, 4_KB));
     }
 
     Y_UNIT_TEST_F(ShouldSimultaneouslyZeroRange, TEnvironment)
@@ -134,9 +135,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data_ZeroRange)
         ZeroRange(14_KB, 4_KB);
         UNIT_ASSERT_VALUES_EQUAL(GetNodeAttrs().GetSize(), 18_KB);
         {
-            const TString expected =
-                TString(6_KB, '1') + TString(2_KB, 0) +
-                TString(6_KB, '1') + TString(4_KB, 0);
+            const TString expected = TString(6_KB, '1') + TString(2_KB, 0) +
+                                     TString(6_KB, '1') + TString(4_KB, 0);
             UNIT_ASSERT_VALUES_EQUAL(ReadData(18_KB), expected);
         }
 

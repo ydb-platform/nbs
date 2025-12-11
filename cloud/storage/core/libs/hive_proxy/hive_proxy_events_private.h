@@ -73,8 +73,8 @@ struct TEvHiveProxyPrivate
         TReadTabletBootInfoBackupResponse() = default;
 
         TReadTabletBootInfoBackupResponse(
-                NKikimr::TTabletStorageInfoPtr storageInfo,
-                ui32 suggestedGeneration)
+            NKikimr::TTabletStorageInfoPtr storageInfo,
+            ui32 suggestedGeneration)
             : StorageInfo(std::move(storageInfo))
             , SuggestedGeneration(suggestedGeneration)
         {}
@@ -90,8 +90,8 @@ struct TEvHiveProxyPrivate
         ui32 SuggestedGeneration;
 
         TUpdateTabletBootInfoBackupRequest(
-                NKikimr::TTabletStorageInfoPtr storageInfo,
-                ui32 suggestedGeneration)
+            NKikimr::TTabletStorageInfoPtr storageInfo,
+            ui32 suggestedGeneration)
             : StorageInfo(std::move(storageInfo))
             , SuggestedGeneration(suggestedGeneration)
         {}
@@ -110,7 +110,7 @@ struct TEvHiveProxyPrivate
         TVector<TTabletBootInfo> TabletBootInfos;
 
         explicit TListTabletBootInfoBackupsResponse(
-                TVector<TTabletBootInfo> tabletBootInfos)
+            TVector<TTabletBootInfo> tabletBootInfos)
             : TabletBootInfos(std::move(tabletBootInfos))
         {}
     };
@@ -134,20 +134,26 @@ struct TEvHiveProxyPrivate
         EvEnd
     };
 
-
-    static_assert(EvEnd < (int)TStoragePrivateEvents::HIVE_PROXY_END,
+    static_assert(
+        EvEnd < (int)TStoragePrivateEvents::HIVE_PROXY_END,
         "EvEnd expected to be < TStoragePrivateEvents::HIVE_PROXY_END");
 
-    using TEvRequestFinished = TRequestEvent<TRequestFinished, EvRequestFinished>;
-    using TEvChangeTabletClient = TRequestEvent<TChangeTabletClient, EvChangeTabletClient>;
-    using TEvSendTabletMetrics = TRequestEvent<TSendTabletMetrics, EvSendTabletMetrics>;
+    using TEvRequestFinished =
+        TRequestEvent<TRequestFinished, EvRequestFinished>;
+    using TEvChangeTabletClient =
+        TRequestEvent<TChangeTabletClient, EvChangeTabletClient>;
+    using TEvSendTabletMetrics =
+        TRequestEvent<TSendTabletMetrics, EvSendTabletMetrics>;
 
     using TEvReadTabletBootInfoBackupRequest = TRequestEvent<
-        TReadTabletBootInfoBackupRequest, EvReadTabletBootInfoBackupRequest>;
+        TReadTabletBootInfoBackupRequest,
+        EvReadTabletBootInfoBackupRequest>;
     using TEvReadTabletBootInfoBackupResponse = TResponseEvent<
-        TReadTabletBootInfoBackupResponse, EvReadTabletBootInfoBackupResponse>;
+        TReadTabletBootInfoBackupResponse,
+        EvReadTabletBootInfoBackupResponse>;
     using TEvUpdateTabletBootInfoBackupRequest = TRequestEvent<
-        TUpdateTabletBootInfoBackupRequest, EvUpdateTabletBootInfoBackupRequest>;
+        TUpdateTabletBootInfoBackupRequest,
+        EvUpdateTabletBootInfoBackupRequest>;
 };
 
 }   // namespace NCloud::NStorage

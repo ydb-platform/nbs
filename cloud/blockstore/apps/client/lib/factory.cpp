@@ -57,49 +57,51 @@ struct THandlerFactory
     using TFactoryFunc = std::function<TCommandPtr(IBlockStorePtr)>;
 
     THashMap<TString, TFactoryFunc> HandlerFactoryFuncs = {
-        { "alterplacementgroupmembership", NewAlterPlacementGroupMembershipCommand },
-        { "altervolume", NewAlterVolumeCommand },
-        { "assignvolume", NewAssignVolumeCommand },
-        { "backupvolume", NewBackupVolumeCommand },
-        { "checkrange", NewCheckRangeCommand },
-        { "createcheckpoint", NewCreateCheckpointCommand },
-        { "createplacementgroup", NewCreatePlacementGroupCommand },
-        { "createvolume", NewCreateVolumeCommand },
-        { "createvolumefromdevice", NewCreateVolumeFromDeviceCommand },
-        { "createvolumelink", NewCreateVolumeLinkCommand },
-        { "deletecheckpoint", NewDeleteCheckpointCommand },
-        { "getcheckpointstatus", NewGetCheckpointStatusCommand },
-        { "describediskregistryconfig", NewDescribeDiskRegistryConfigCommand },
-        { "describeendpoint", NewDescribeEndpointCommand },
-        { "describeplacementgroup", NewDescribePlacementGroupCommand },
-        { "describevolume", NewDescribeVolumeCommand },
-        { "describevolumemodel", NewDescribeVolumeModelCommand },
-        { "destroyplacementgroup", NewDestroyPlacementGroupCommand },
-        { "destroyvolume", NewDestroyVolumeCommand },
-        { "destroyvolumelink", NewDestroyVolumeLinkCommand },
-        { "discoverinstances", NewDiscoverInstancesCommand },
-        { "executeaction", NewExecuteActionCommand },
-        { "getchangedblocks", NewGetChangedBlocksCommand },
-        { "kickendpoint", NewKickEndpointCommand },
-        { "listendpoints", NewListEndpointsCommand },
-        { "listkeyrings", NewListKeyringsCommand },
-        { "listplacementgroups", NewListPlacementGroupsCommand },
-        { "listvolumes", NewListVolumesCommand },
-        { "ping", NewPingCommand },
-        { "queryagentsinfo", NewQueryAgentsInfoCommand },
-        { "queryavailablestorage", NewQueryAvailableStorageCommand },
-        { "readblocks", NewReadBlocksCommand },
-        { "refreshendpoint", NewRefreshEndpointCommand },
-        { "resizevolume", NewResizeVolumeCommand },
-        { "restorevolume", NewRestoreVolumeCommand },
-        { "resumedevice", NewResumeDeviceCommand },
-        { "startendpoint", NewStartEndpointCommand },
-        { "statvolume", NewStatVolumeCommand },
-        { "stopendpoint", NewStopEndpointCommand },
-        { "updatediskregistryconfig", NewUpdateDiskRegistryConfigCommand },
-        { "writeblocks", NewWriteBlocksCommand },
-        { "zeroblocks", NewZeroBlocksCommand },
-        { "updatevolumethrottlingconfig", NewUpdateVolumeThrottlingConfigCommand },
+        {"alterplacementgroupmembership",
+         NewAlterPlacementGroupMembershipCommand},
+        {"altervolume", NewAlterVolumeCommand},
+        {"assignvolume", NewAssignVolumeCommand},
+        {"backupvolume", NewBackupVolumeCommand},
+        {"checkrange", NewCheckRangeCommand},
+        {"createcheckpoint", NewCreateCheckpointCommand},
+        {"createplacementgroup", NewCreatePlacementGroupCommand},
+        {"createvolume", NewCreateVolumeCommand},
+        {"createvolumefromdevice", NewCreateVolumeFromDeviceCommand},
+        {"createvolumelink", NewCreateVolumeLinkCommand},
+        {"deletecheckpoint", NewDeleteCheckpointCommand},
+        {"getcheckpointstatus", NewGetCheckpointStatusCommand},
+        {"describediskregistryconfig", NewDescribeDiskRegistryConfigCommand},
+        {"describeendpoint", NewDescribeEndpointCommand},
+        {"describeplacementgroup", NewDescribePlacementGroupCommand},
+        {"describevolume", NewDescribeVolumeCommand},
+        {"describevolumemodel", NewDescribeVolumeModelCommand},
+        {"destroyplacementgroup", NewDestroyPlacementGroupCommand},
+        {"destroyvolume", NewDestroyVolumeCommand},
+        {"destroyvolumelink", NewDestroyVolumeLinkCommand},
+        {"discoverinstances", NewDiscoverInstancesCommand},
+        {"executeaction", NewExecuteActionCommand},
+        {"getchangedblocks", NewGetChangedBlocksCommand},
+        {"kickendpoint", NewKickEndpointCommand},
+        {"listendpoints", NewListEndpointsCommand},
+        {"listkeyrings", NewListKeyringsCommand},
+        {"listplacementgroups", NewListPlacementGroupsCommand},
+        {"listvolumes", NewListVolumesCommand},
+        {"ping", NewPingCommand},
+        {"queryagentsinfo", NewQueryAgentsInfoCommand},
+        {"queryavailablestorage", NewQueryAvailableStorageCommand},
+        {"readblocks", NewReadBlocksCommand},
+        {"refreshendpoint", NewRefreshEndpointCommand},
+        {"resizevolume", NewResizeVolumeCommand},
+        {"restorevolume", NewRestoreVolumeCommand},
+        {"resumedevice", NewResumeDeviceCommand},
+        {"startendpoint", NewStartEndpointCommand},
+        {"statvolume", NewStatVolumeCommand},
+        {"stopendpoint", NewStopEndpointCommand},
+        {"updatediskregistryconfig", NewUpdateDiskRegistryConfigCommand},
+        {"writeblocks", NewWriteBlocksCommand},
+        {"zeroblocks", NewZeroBlocksCommand},
+        {"updatevolumethrottlingconfig",
+         NewUpdateVolumeThrottlingConfigCommand},
     };
 };
 
@@ -107,9 +109,7 @@ struct THandlerFactory
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCommandPtr GetHandler(
-    const TString& name,
-    IBlockStorePtr client)
+TCommandPtr GetHandler(const TString& name, IBlockStorePtr client)
 {
     auto& factoryFuncs = Singleton<THandlerFactory>()->HandlerFactoryFuncs;
     auto* func = factoryFuncs.FindPtr(name);
@@ -122,7 +122,8 @@ TCommandPtr GetHandler(
 
 TVector<TString> GetHandlerNames()
 {
-    const auto& factoryFuncs = Singleton<THandlerFactory>()->HandlerFactoryFuncs;
+    const auto& factoryFuncs =
+        Singleton<THandlerFactory>()->HandlerFactoryFuncs;
 
     TVector<TString> names;
     names.reserve(factoryFuncs.size());

@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+
 #include <cloud/storage/core/libs/common/helpers.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -37,7 +38,6 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
-
     void HandleSuccess(const TActorContext& ctx, const TString& output);
     void HandleError(const TActorContext& ctx, const NProto::TError& error);
 
@@ -45,25 +45,33 @@ private:
     STFUNC(StateWork);
 
     void HandleUpdateDiskRegistryAgentListParamsResponse(
-        const TEvDiskRegistry::TEvUpdateDiskRegistryAgentListParamsResponse::TPtr& ev,
+        const TEvDiskRegistry::TEvUpdateDiskRegistryAgentListParamsResponse::
+            TPtr& ev,
         const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TUpdateDiskRegistryAgentListParamsActor::TUpdateDiskRegistryAgentListParamsActor(
+TUpdateDiskRegistryAgentListParamsActor::
+    TUpdateDiskRegistryAgentListParamsActor(
         TRequestInfoPtr requestInfo,
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
 
-void TUpdateDiskRegistryAgentListParamsActor::Bootstrap(const TActorContext& ctx)
+void TUpdateDiskRegistryAgentListParamsActor::Bootstrap(
+    const TActorContext& ctx)
 {
-    auto request = std::make_unique<TEvDiskRegistry::TEvUpdateDiskRegistryAgentListParamsRequest>(
+    auto request = std::make_unique<
+        TEvDiskRegistry::TEvUpdateDiskRegistryAgentListParamsRequest>(
         RequestInfo->CallContext);
 
-    if (!google::protobuf::util::JsonStringToMessage(Input, request->Record.MutableParams()).ok()) {
+    if (!google::protobuf::util::JsonStringToMessage(
+             Input,
+             request->Record.MutableParams())
+             .ok())
+    {
         HandleError(ctx, MakeError(E_ARGUMENT, "Failed to parse input"));
         return;
     }
@@ -97,7 +105,8 @@ void TUpdateDiskRegistryAgentListParamsActor::HandleError(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(error);
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(error);
 
     LWTRACK(
         ResponseSent_Service,
@@ -127,9 +136,11 @@ STFUNC(TUpdateDiskRegistryAgentListParamsActor::StateWork)
     }
 }
 
-void TUpdateDiskRegistryAgentListParamsActor::HandleUpdateDiskRegistryAgentListParamsResponse(
-    const TEvDiskRegistry::TEvUpdateDiskRegistryAgentListParamsResponse::TPtr& ev,
-    const TActorContext& ctx)
+void TUpdateDiskRegistryAgentListParamsActor::
+    HandleUpdateDiskRegistryAgentListParamsResponse(
+        const TEvDiskRegistry::TEvUpdateDiskRegistryAgentListParamsResponse::
+            TPtr& ev,
+        const TActorContext& ctx)
 {
     auto* msg = ev->Get();
     auto error = msg->GetError();
@@ -145,7 +156,9 @@ void TUpdateDiskRegistryAgentListParamsActor::HandleUpdateDiskRegistryAgentListP
     TString response;
     google::protobuf::util::MessageToJsonString(msg->Record, &response);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Execute action private API: disk registry params updater response: %s",
         response.data());
 
@@ -156,7 +169,8 @@ void TUpdateDiskRegistryAgentListParamsActor::HandleUpdateDiskRegistryAgentListP
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<IActorPtr> TServiceActor::CreateUpdateDiskRegistryAgentListParamsActor(
+TResultOrError<IActorPtr>
+TServiceActor::CreateUpdateDiskRegistryAgentListParamsActor(
     TRequestInfoPtr requestInfo,
     TString input)
 {

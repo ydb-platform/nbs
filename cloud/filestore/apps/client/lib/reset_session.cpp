@@ -10,8 +10,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TResetSessionCommand final
-    : public TFileStoreCommand
+class TResetSessionCommand final: public TFileStoreCommand
 {
 private:
     TString SessionId;
@@ -31,9 +30,8 @@ public:
             .Required()
             .StoreResult(&ClientId);
 
-        Opts.AddLongOption("seq-no")
-            .RequiredArgument("SEQ_NO")
-            .StoreResult(&SeqNo);
+        Opts.AddLongOption("seq-no").RequiredArgument("SEQ_NO").StoreResult(
+            &SeqNo);
 
         Opts.AddLongOption("session-state")
             .RequiredArgument("BASE64_SESSION_STATE")
@@ -51,9 +49,8 @@ public:
             request->SetSessionState(Base64Decode(SessionState));
         }
 
-        auto response = WaitFor(Client->ResetSession(
-            PrepareCallContext(),
-            std::move(request)));
+        auto response = WaitFor(
+            Client->ResetSession(PrepareCallContext(), std::move(request)));
 
         CheckResponse(response);
 

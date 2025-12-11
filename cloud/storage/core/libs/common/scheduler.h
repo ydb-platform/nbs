@@ -16,15 +16,12 @@ using TCallback = std::function<void()>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IScheduler
-    : public IStartable
+struct IScheduler: public IStartable
 {
     virtual ~IScheduler() = default;
 
-    virtual void Schedule(
-        ITaskQueue* taskQueue,
-        TInstant deadline,
-        TCallback callback) = 0;
+    virtual void
+    Schedule(ITaskQueue* taskQueue, TInstant deadline, TCallback callback) = 0;
 
     template <typename T>
     void Schedule(TInstant deadLine, T callback)

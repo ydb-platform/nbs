@@ -194,7 +194,8 @@ public:
 
             Y_ENSURE(
                 PhaseDuration > 0,
-                "Alternating phase duration should be a positive non-zero value");
+                "Alternating phase duration should be a positive non-zero "
+                "value");
         }
 
         WriteRate = config.GetWriteRate();
@@ -253,8 +254,8 @@ void TAlignedTestScenario::OnResponse(
     const auto d = now - startTs;
     if (d > SlowRequestThreshold) {
         STORAGE_WARN(
-            "Slow " << reqType << " request: "
-                    << "range=" << rangeIdx << ", duration=" << d);
+            "Slow " << reqType << " request: " << "range=" << rangeIdx
+                    << ", duration=" << d);
     }
 }
 

@@ -23,13 +23,12 @@ Y_UNIT_TEST_SUITE(TThreadPoolTest)
     {
         auto threadPool = CreateThreadPool("thread", 1);
         threadPool->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             threadPool->Stop();
-        };
+        }
 
-        auto future = threadPool->Execute([] {
-            return 42;
-        });
+        auto future = threadPool->Execute([] { return 42; });
 
         UNIT_ASSERT_EQUAL(future.GetValue(WaitTimeout), 42);
     }
@@ -59,7 +58,7 @@ Y_UNIT_TEST_SUITE(TThreadPoolTest)
         Y_DEFER
         {
             threadPool->Stop();
-        };
+        }
 
         thread.join();
     }
@@ -73,9 +72,7 @@ Y_UNIT_TEST_SUITE(TLongRunningTaskExecutorTest)
     {
         auto executor = CreateLongRunningTaskExecutor("thread");
 
-        auto future = executor->Execute([] {
-            return 42;
-        });
+        auto future = executor->Execute([] { return 42; });
 
         UNIT_ASSERT_EQUAL(future.GetValue(WaitTimeout), 42);
     }

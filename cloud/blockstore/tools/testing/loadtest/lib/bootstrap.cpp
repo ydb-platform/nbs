@@ -56,19 +56,17 @@ const TString TestInstanceId = "TestInstanceId";
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRetryPolicyImpl final
-    : IRetryPolicy
+struct TRetryPolicyImpl final: IRetryPolicy
 {
     IRetryPolicyPtr Policy;
     TVector<ui32> NonretriableErrorCodes;
 
     TRetryPolicyImpl(
-            IRetryPolicyPtr policy,
-            TVector<ui32> nonretriableErrorCodes)
+        IRetryPolicyPtr policy,
+        TVector<ui32> nonretriableErrorCodes)
         : Policy(std::move(policy))
         , NonretriableErrorCodes(std::move(nonretriableErrorCodes))
-    {
-    }
+    {}
 
     TRetrySpec ShouldRetry(
         TRetryState& state,
@@ -77,8 +75,7 @@ struct TRetryPolicyImpl final
         const auto it = Find(
             NonretriableErrorCodes.begin(),
             NonretriableErrorCodes.end(),
-            error.GetCode()
-        );
+            error.GetCode());
 
         if (it != NonretriableErrorCodes.end()) {
             return {};
@@ -90,8 +87,7 @@ struct TRetryPolicyImpl final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDigestCalculatorImpl final
-    : IBlockDigestCalculator
+struct TDigestCalculatorImpl final: IBlockDigestCalculator
 {
     ui64 Calculate(ui64 blockIndex, const TStringBuf block) const override
     {
@@ -114,7 +110,7 @@ TNVMeEndpointConfig CreateNVMeEndpointConfig(
     const TClientAppConfig& config,
     const TString& socketPath)
 {
-    return TNVMeEndpointConfig {
+    return TNVMeEndpointConfig{
         .DeviceTransportId = config.GetNvmeDeviceTransportId(),
         .DeviceNqn = config.GetNvmeDeviceNqn(),
         .SocketPath = socketPath,
@@ -125,7 +121,7 @@ TSCSIEndpointConfig CreateSCSIEndpointConfig(
     const TClientAppConfig& config,
     const TString& socketPath)
 {
-    return TSCSIEndpointConfig {
+    return TSCSIEndpointConfig{
         .DeviceUrl = config.GetScsiDeviceUrl(),
         .InitiatorIqn = config.GetScsiInitiatorIqn(),
         .SocketPath = socketPath,
@@ -134,7 +130,7 @@ TSCSIEndpointConfig CreateSCSIEndpointConfig(
 
 TRdmaEndpointConfig CreateRdmaEndpointConfig(const TClientAppConfig& config)
 {
-    return TRdmaEndpointConfig {
+    return TRdmaEndpointConfig{
         .Address = config.GetRdmaDeviceAddress(),
         .Port = config.GetRdmaDevicePort(),
     };
@@ -145,8 +141,8 @@ TRdmaEndpointConfig CreateRdmaEndpointConfig(const TClientAppConfig& config)
 ////////////////////////////////////////////////////////////////////////////////
 
 TBootstrap::TBootstrap(
-        TOptionsPtr options,
-        std::shared_ptr<TModuleFactories> moduleFactories)
+    TOptionsPtr options,
+    std::shared_ptr<TModuleFactories> moduleFactories)
     : Options(std::move(options))
     , ModuleFactories(std::move(moduleFactories))
 {}
@@ -169,15 +165,15 @@ void TBootstrap::Init()
     TLogSettings logSettings;
 
     if (logConfig.HasLogLevel()) {
-        logSettings.FiltrationLevel = static_cast<ELogPriority>(
-            logConfig.GetLogLevel());
+        logSettings.FiltrationLevel =
+            static_cast<ELogPriority>(logConfig.GetLogLevel());
     }
 
     if (Options->VerboseLevel) {
         auto level = GetLogLevel(Options->VerboseLevel);
         if (!level) {
             ythrow yexception()
-                << "unknown log level: " << Options->VerboseLevel.Quote();
+                << "unknown log level: " << Options -> VerboseLevel.Quote();
         }
         logSettings.FiltrationLevel = *level;
     }
@@ -200,14 +196,12 @@ void TBootstrap::Init()
         Monitoring = CreateMonitoringServiceStub();
     }
 
-    auto rootGroup = Monitoring->GetCounters()
-        ->GetSubgroup("counters", "blockstore");
+    auto rootGroup =
+        Monitoring->GetCounters()->GetSubgroup("counters", "blockstore");
 
     auto clientGroup = rootGroup->GetSubgroup("component", "client");
-    auto versionCounter = clientGroup->GetNamedCounter(
-        "version",
-        GetFullVersionString(),
-        false);
+    auto versionCounter =
+        clientGroup->GetNamedCounter("version", GetFullVersionString(), false);
     *versionCounter = 1;
 
     RequestStats = CreateClientRequestStats(
@@ -261,7 +255,8 @@ TClientAppConfigPtr CreateClientConfig(
     NProto::TClientAppConfig appConfig;
     appConfig.MutableClientConfig()->CopyFrom(config->GetClientConfig());
     appConfig.MutableLogConfig()->CopyFrom(config->GetLogConfig());
-    appConfig.MutableMonitoringConfig()->CopyFrom(config->GetMonitoringConfig());
+    appConfig.MutableMonitoringConfig()->CopyFrom(
+        config->GetMonitoringConfig());
 
     auto& clientConfig = *appConfig.MutableClientConfig();
 
@@ -336,9 +331,7 @@ NBD::IClientPtr TBootstrap::CreateAndStartNbdClient(TString clientId)
     // TODO
     Y_UNUSED(clientStats);
 
-    auto client = NBD::CreateClient(
-        Logging,
-        config->GetNbdThreadsCount());
+    auto client = NBD::CreateClient(Logging, config->GetNbdThreadsCount());
 
     client->Start();
     Clients.Enqueue(client);
@@ -563,7 +556,7 @@ void TBootstrap::InitClientConfig()
         monConfig.SetThreadsCount(Options->MonitoringThreads);
     }
     if (!monConfig.GetThreadsCount()) {
-        monConfig.SetThreadsCount(1);  // reasonable defaults
+        monConfig.SetThreadsCount(1);   // reasonable defaults
     }
 
     ClientConfig = std::make_shared<TClientAppConfig>(appConfig);

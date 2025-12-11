@@ -54,11 +54,11 @@ void DoUpdate(ui64 diskSize, benchmark::State& state)
 
 }   // namespace
 
-#define DECLARE_BENCH(diskSize)                              \
+#define DECLARE_BENCH(diskSize)                     \
     void Update_##diskSize(benchmark::State& state) \
-    {                                                        \
+    {                                               \
         DoUpdate(diskSize, state);                  \
-    }                                                        \
+    }                                               \
     BENCHMARK(Update_##diskSize);
 
 DECLARE_BENCH(1_TB)

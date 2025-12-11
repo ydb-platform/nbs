@@ -14,8 +14,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TMountCommand final
-    : public TFileStoreCommand
+class TMountCommand final: public TFileStoreCommand
 {
 private:
     TString MountPath;

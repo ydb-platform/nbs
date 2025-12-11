@@ -1,8 +1,8 @@
 #include "disk_registry.h"
+
 #include "disk_registry_actor.h"
 
 #include <cloud/blockstore/config/disk.pb.h>
-
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
@@ -27,11 +27,9 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-auto GetBackup(TDiskRegistryClient& dr)
-    -> NProto::TDiskRegistryStateBackup
+auto GetBackup(TDiskRegistryClient& dr) -> NProto::TDiskRegistryStateBackup
 {
-    auto response = dr.BackupDiskRegistryState(
-        false // localDB
+    auto response = dr.BackupDiskRegistryState(false   // localDB
     );
 
     return response->Record.GetBackup();
@@ -55,19 +53,17 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 {
     Y_UNIT_TEST(ShouldAllocateOnTargetAgentId)
     {
-        const TVector agents {
-            CreateAgentConfig("agent-1", {
-                Device("dev-1", "uuid-1", "rack-1", 10_GB),
-                Device("dev-2", "uuid-2", "rack-1", 10_GB)
-            }),
-            CreateAgentConfig("agent-2", {
-                Device("dev-1", "uuid-3", "rack-1", 10_GB),
-                Device("dev-2", "uuid-4", "rack-1", 10_GB)
-            })};
+        const TVector agents{
+            CreateAgentConfig(
+                "agent-1",
+                {Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                 Device("dev-2", "uuid-2", "rack-1", 10_GB)}),
+            CreateAgentConfig(
+                "agent-2",
+                {Device("dev-1", "uuid-3", "rack-1", 10_GB),
+                 Device("dev-2", "uuid-4", "rack-1", 10_GB)})};
 
-        auto runtime = TTestRuntimeBuilder()
-            .WithAgents(agents)
-            .Build();
+        auto runtime = TTestRuntimeBuilder().WithAgents(agents).Build();
 
         TDiskRegistryClient diskRegistry(*runtime);
         diskRegistry.WaitReady();
@@ -77,12 +73,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         RegisterAndWaitForAgents(*runtime, agents);
 
-        auto getDiskCount = [&] {
+        auto getDiskCount = [&]
+        {
             return GetBackup(diskRegistry).DisksSize();
         };
 
-        auto allocateAt = [&] (TString diskId, TString agentId) {
-            auto request = diskRegistry.CreateAllocateDiskRequest(diskId, 10_GB);
+        auto allocateAt = [&](TString diskId, TString agentId)
+        {
+            auto request =
+                diskRegistry.CreateAllocateDiskRequest(diskId, 10_GB);
             *request->Record.MutableAgentIds()->Add() = agentId;
             diskRegistry.SendRequest(std::move(request));
             return diskRegistry.RecvAllocateDiskResponse();
@@ -116,7 +115,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         {
             auto response = allocateAt("disk-3", "agent-1");
-            UNIT_ASSERT_VALUES_EQUAL(E_BS_DISK_ALLOCATION_FAILED, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_BS_DISK_ALLOCATION_FAILED,
+                response->GetStatus());
             UNIT_ASSERT_VALUES_EQUAL(2, getDiskCount());
         }
 
@@ -133,48 +134,49 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
     Y_UNIT_TEST(ShouldQueryAvailableStorage)
     {
-        const TVector agents {
-            CreateAgentConfig("agent-1", {
-                Device("dev-1", "uuid-1"),
-                Device("dev-2", "uuid-2") | WithPool("foo", NProto::DEVICE_POOL_KIND_LOCAL),
-                Device("dev-3", "uuid-3"),
-                Device("dev-4", "uuid-4") | WithPool("foo", NProto::DEVICE_POOL_KIND_LOCAL)
-            }),
-            CreateAgentConfig("agent-2", {
-                Device("dev-1", "uuid-5"),
-                Device("dev-2", "uuid-6")
-            }),
-            CreateAgentConfig("agent-3", {
-                Device("dev-1", "uuid-7") | WithPool("bar", NProto::DEVICE_POOL_KIND_LOCAL),
-                Device("dev-2", "uuid-8") | WithPool("bar", NProto::DEVICE_POOL_KIND_LOCAL),
-                Device("dev-3", "uuid-9")
-            })
-        };
+        const TVector agents{
+            CreateAgentConfig(
+                "agent-1",
+                {Device("dev-1", "uuid-1"),
+                 Device("dev-2", "uuid-2") |
+                     WithPool("foo", NProto::DEVICE_POOL_KIND_LOCAL),
+                 Device("dev-3", "uuid-3"),
+                 Device("dev-4", "uuid-4") |
+                     WithPool("foo", NProto::DEVICE_POOL_KIND_LOCAL)}),
+            CreateAgentConfig(
+                "agent-2",
+                {Device("dev-1", "uuid-5"), Device("dev-2", "uuid-6")}),
+            CreateAgentConfig(
+                "agent-3",
+                {Device("dev-1", "uuid-7") |
+                     WithPool("bar", NProto::DEVICE_POOL_KIND_LOCAL),
+                 Device("dev-2", "uuid-8") |
+                     WithPool("bar", NProto::DEVICE_POOL_KIND_LOCAL),
+                 Device("dev-3", "uuid-9")})};
 
-        auto runtime = TTestRuntimeBuilder()
-            .WithAgents(agents)
-            .Build();
+        auto runtime = TTestRuntimeBuilder().WithAgents(agents).Build();
 
         TDiskRegistryClient diskRegistry(*runtime);
         diskRegistry.WaitReady();
         diskRegistry.SetWritableState(true);
 
-        diskRegistry.UpdateConfig([&] {
-            auto config = CreateRegistryConfig(0, agents);
+        diskRegistry.UpdateConfig(
+            [&]
+            {
+                auto config = CreateRegistryConfig(0, agents);
 
-            auto* foo = config.AddDevicePoolConfigs();
-            foo->SetName("foo");
-            foo->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
-            foo->SetAllocationUnit(3_GB);
+                auto* foo = config.AddDevicePoolConfigs();
+                foo->SetName("foo");
+                foo->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                foo->SetAllocationUnit(3_GB);
 
-            auto* bar = config.AddDevicePoolConfigs();
-            bar->SetName("bar");
-            bar->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
-            bar->SetAllocationUnit(4_GB);
+                auto* bar = config.AddDevicePoolConfigs();
+                bar->SetName("bar");
+                bar->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                bar->SetAllocationUnit(4_GB);
 
-            return config;
-        }());
-
+                return config;
+            }());
 
         RegisterAgents(*runtime, agents.size());
         WaitForAgents(*runtime, agents.size());
@@ -182,16 +184,17 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(4, GetSuspendedDeviceCount(diskRegistry));
         WaitForSecureErase(*runtime, GetDirtyDeviceCount(diskRegistry));
 
-        auto query = [&] (TVector<TString> ids, const TString& pool) {
+        auto query = [&](TVector<TString> ids, const TString& pool)
+        {
             auto response = diskRegistry.QueryAvailableStorage(
                 ids,
                 pool,
                 NProto::STORAGE_POOL_KIND_LOCAL);
 
             auto& msg = response->Record;
-            SortBy(*msg.MutableAvailableStorage(), [] (auto& info) {
-                return info.GetAgentId();
-            });
+            SortBy(
+                *msg.MutableAvailableStorage(),
+                [](auto& info) { return info.GetAgentId(); });
             return msg;
         };
 
@@ -200,25 +203,34 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             UNIT_ASSERT_VALUES_EQUAL(3, msg.AvailableStorageSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-1", msg.GetAvailableStorage(0).GetAgentId());
+                "agent-1",
+                msg.GetAvailableStorage(0).GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-2", msg.GetAvailableStorage(1).GetAgentId());
+                "agent-2",
+                msg.GetAvailableStorage(1).GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-3", msg.GetAvailableStorage(2).GetAgentId());
+                "agent-3",
+                msg.GetAvailableStorage(2).GetAgentId());
 
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(0).GetChunkSize());
+                0,
+                msg.GetAvailableStorage(0).GetChunkSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(1).GetChunkSize());
+                0,
+                msg.GetAvailableStorage(1).GetChunkSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(2).GetChunkSize());
+                0,
+                msg.GetAvailableStorage(2).GetChunkSize());
 
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(0).GetChunkCount());
+                0,
+                msg.GetAvailableStorage(0).GetChunkCount());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(1).GetChunkCount());
+                0,
+                msg.GetAvailableStorage(1).GetChunkCount());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(2).GetChunkCount());
+                0,
+                msg.GetAvailableStorage(2).GetChunkCount());
         }
 
         diskRegistry.ResumeDevice("agent-1", "dev-2", /*dryRun=*/false);
@@ -233,25 +245,34 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             UNIT_ASSERT_VALUES_EQUAL(3, msg.AvailableStorageSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-1", msg.GetAvailableStorage(0).GetAgentId());
+                "agent-1",
+                msg.GetAvailableStorage(0).GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-2", msg.GetAvailableStorage(1).GetAgentId());
+                "agent-2",
+                msg.GetAvailableStorage(1).GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-3", msg.GetAvailableStorage(2).GetAgentId());
+                "agent-3",
+                msg.GetAvailableStorage(2).GetAgentId());
 
             UNIT_ASSERT_VALUES_EQUAL(
-                3_GB, msg.GetAvailableStorage(0).GetChunkSize());
+                3_GB,
+                msg.GetAvailableStorage(0).GetChunkSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(1).GetChunkSize());
+                0,
+                msg.GetAvailableStorage(1).GetChunkSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(2).GetChunkSize());
+                0,
+                msg.GetAvailableStorage(2).GetChunkSize());
 
             UNIT_ASSERT_VALUES_EQUAL(
-                1, msg.GetAvailableStorage(0).GetChunkCount());
+                1,
+                msg.GetAvailableStorage(0).GetChunkCount());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(1).GetChunkCount());
+                0,
+                msg.GetAvailableStorage(1).GetChunkCount());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(2).GetChunkCount());
+                0,
+                msg.GetAvailableStorage(2).GetChunkCount());
         }
 
         diskRegistry.ResumeDevice("agent-1", "dev-4", /*dryRun=*/false);
@@ -263,29 +284,39 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(0, GetSuspendedDeviceCount(diskRegistry));
 
         {
-            auto msg = query({"agent-1", "agent-2", "agent-3", "agent-2"}, "foo");
+            auto msg =
+                query({"agent-1", "agent-2", "agent-3", "agent-2"}, "foo");
 
             UNIT_ASSERT_VALUES_EQUAL(3, msg.AvailableStorageSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-1", msg.GetAvailableStorage(0).GetAgentId());
+                "agent-1",
+                msg.GetAvailableStorage(0).GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-2", msg.GetAvailableStorage(1).GetAgentId());
+                "agent-2",
+                msg.GetAvailableStorage(1).GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-3", msg.GetAvailableStorage(2).GetAgentId());
+                "agent-3",
+                msg.GetAvailableStorage(2).GetAgentId());
 
             UNIT_ASSERT_VALUES_EQUAL(
-                3_GB, msg.GetAvailableStorage(0).GetChunkSize());
+                3_GB,
+                msg.GetAvailableStorage(0).GetChunkSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(1).GetChunkSize());
+                0,
+                msg.GetAvailableStorage(1).GetChunkSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(2).GetChunkSize());
+                0,
+                msg.GetAvailableStorage(2).GetChunkSize());
 
             UNIT_ASSERT_VALUES_EQUAL(
-                2, msg.GetAvailableStorage(0).GetChunkCount());
+                2,
+                msg.GetAvailableStorage(0).GetChunkCount());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(1).GetChunkCount());
+                0,
+                msg.GetAvailableStorage(1).GetChunkCount());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(2).GetChunkCount());
+                0,
+                msg.GetAvailableStorage(2).GetChunkCount());
         }
 
         {
@@ -293,25 +324,34 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             UNIT_ASSERT_VALUES_EQUAL(3, msg.AvailableStorageSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-1", msg.GetAvailableStorage(0).GetAgentId());
+                "agent-1",
+                msg.GetAvailableStorage(0).GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-2", msg.GetAvailableStorage(1).GetAgentId());
+                "agent-2",
+                msg.GetAvailableStorage(1).GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-3", msg.GetAvailableStorage(2).GetAgentId());
+                "agent-3",
+                msg.GetAvailableStorage(2).GetAgentId());
 
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(0).GetChunkSize());
+                0,
+                msg.GetAvailableStorage(0).GetChunkSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(1).GetChunkSize());
+                0,
+                msg.GetAvailableStorage(1).GetChunkSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                4_GB, msg.GetAvailableStorage(2).GetChunkSize());
+                4_GB,
+                msg.GetAvailableStorage(2).GetChunkSize());
 
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(0).GetChunkCount());
+                0,
+                msg.GetAvailableStorage(0).GetChunkCount());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(1).GetChunkCount());
+                0,
+                msg.GetAvailableStorage(1).GetChunkCount());
             UNIT_ASSERT_VALUES_EQUAL(
-                2, msg.GetAvailableStorage(2).GetChunkCount());
+                2,
+                msg.GetAvailableStorage(2).GetChunkCount());
         }
 
         {
@@ -319,25 +359,34 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             UNIT_ASSERT_VALUES_EQUAL(3, msg.AvailableStorageSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-1", msg.GetAvailableStorage(0).GetAgentId());
+                "agent-1",
+                msg.GetAvailableStorage(0).GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-2", msg.GetAvailableStorage(1).GetAgentId());
+                "agent-2",
+                msg.GetAvailableStorage(1).GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-3", msg.GetAvailableStorage(2).GetAgentId());
+                "agent-3",
+                msg.GetAvailableStorage(2).GetAgentId());
 
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(0).GetChunkSize());
+                0,
+                msg.GetAvailableStorage(0).GetChunkSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(1).GetChunkSize());
+                0,
+                msg.GetAvailableStorage(1).GetChunkSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(2).GetChunkSize());
+                0,
+                msg.GetAvailableStorage(2).GetChunkSize());
 
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(0).GetChunkCount());
+                0,
+                msg.GetAvailableStorage(0).GetChunkCount());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(1).GetChunkCount());
+                0,
+                msg.GetAvailableStorage(1).GetChunkCount());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(2).GetChunkCount());
+                0,
+                msg.GetAvailableStorage(2).GetChunkCount());
         }
 
         {
@@ -345,11 +394,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             UNIT_ASSERT_VALUES_EQUAL(1, msg.AvailableStorageSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-1", msg.GetAvailableStorage(0).GetAgentId());
+                "agent-1",
+                msg.GetAvailableStorage(0).GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(0).GetChunkSize());
+                0,
+                msg.GetAvailableStorage(0).GetChunkSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(0).GetChunkCount());
+                0,
+                msg.GetAvailableStorage(0).GetChunkCount());
         }
 
         {
@@ -357,11 +409,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             UNIT_ASSERT_VALUES_EQUAL(1, msg.AvailableStorageSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-2", msg.GetAvailableStorage(0).GetAgentId());
+                "agent-2",
+                msg.GetAvailableStorage(0).GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(0).GetChunkSize());
+                0,
+                msg.GetAvailableStorage(0).GetChunkSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(0).GetChunkCount());
+                0,
+                msg.GetAvailableStorage(0).GetChunkCount());
         }
 
         {
@@ -369,31 +424,42 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             UNIT_ASSERT_VALUES_EQUAL(3, msg.AvailableStorageSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-1", msg.GetAvailableStorage(0).GetAgentId());
+                "agent-1",
+                msg.GetAvailableStorage(0).GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-2", msg.GetAvailableStorage(1).GetAgentId());
+                "agent-2",
+                msg.GetAvailableStorage(1).GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-3", msg.GetAvailableStorage(2).GetAgentId());
+                "agent-3",
+                msg.GetAvailableStorage(2).GetAgentId());
 
             UNIT_ASSERT_VALUES_EQUAL(
-                3_GB, msg.GetAvailableStorage(0).GetChunkSize());
+                3_GB,
+                msg.GetAvailableStorage(0).GetChunkSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(1).GetChunkSize());
+                0,
+                msg.GetAvailableStorage(1).GetChunkSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                4_GB, msg.GetAvailableStorage(2).GetChunkSize());
+                4_GB,
+                msg.GetAvailableStorage(2).GetChunkSize());
 
             UNIT_ASSERT_VALUES_EQUAL(
-                2, msg.GetAvailableStorage(0).GetChunkCount());
+                2,
+                msg.GetAvailableStorage(0).GetChunkCount());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(1).GetChunkCount());
+                0,
+                msg.GetAvailableStorage(1).GetChunkCount());
             UNIT_ASSERT_VALUES_EQUAL(
-                2, msg.GetAvailableStorage(2).GetChunkCount());
+                2,
+                msg.GetAvailableStorage(2).GetChunkCount());
         }
 
         // allocate local ssd on agent-1
         {
-            auto request = diskRegistry.CreateAllocateDiskRequest("disk-1", 3_GB);
-            request->Record.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_LOCAL);
+            auto request =
+                diskRegistry.CreateAllocateDiskRequest("disk-1", 3_GB);
+            request->Record.SetStorageMediaKind(
+                NProto::STORAGE_MEDIA_SSD_LOCAL);
             *request->Record.MutableAgentIds()->Add() = "agent-1";
             diskRegistry.SendRequest(std::move(request));
             auto response = diskRegistry.RecvAllocateDiskResponse();
@@ -405,19 +471,22 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(1, msg.DevicesSize());
             auto& d = msg.GetDevices(0);
             UNIT_ASSERT_VALUES_EQUAL("agent-1", d.GetAgentId());
-            UNIT_ASSERT("uuid-2" == d.GetDeviceUUID()
-                     || "uuid-4" == d.GetDeviceUUID());
+            UNIT_ASSERT(
+                "uuid-2" == d.GetDeviceUUID() || "uuid-4" == d.GetDeviceUUID());
         }
 
         {
             auto msg = query({"agent-1"}, {});
             UNIT_ASSERT_VALUES_EQUAL(1, msg.AvailableStorageSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-1", msg.GetAvailableStorage(0).GetAgentId());
+                "agent-1",
+                msg.GetAvailableStorage(0).GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL(
-                3_GB, msg.GetAvailableStorage(0).GetChunkSize());
+                3_GB,
+                msg.GetAvailableStorage(0).GetChunkSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                2, msg.GetAvailableStorage(0).GetChunkCount());
+                2,
+                msg.GetAvailableStorage(0).GetChunkCount());
         }
 
         diskRegistry.MarkDiskForCleanup("disk-1");
@@ -428,20 +497,21 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             auto msg = query({"agent-1"}, {});
             UNIT_ASSERT_VALUES_EQUAL(1, msg.AvailableStorageSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-1", msg.GetAvailableStorage(0).GetAgentId());
+                "agent-1",
+                msg.GetAvailableStorage(0).GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL(
-                3_GB, msg.GetAvailableStorage(0).GetChunkSize());
+                3_GB,
+                msg.GetAvailableStorage(0).GetChunkSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                2, msg.GetAvailableStorage(0).GetChunkCount());
+                2,
+                msg.GetAvailableStorage(0).GetChunkCount());
         }
 
         // wait for celanup
         {
             TDispatchOptions options;
-            options.FinalEvents = {
-                TDispatchOptions::TFinalEventCondition(
-                    TEvDiskRegistryPrivate::EvSecureEraseResponse)
-            };
+            options.FinalEvents = {TDispatchOptions::TFinalEventCondition(
+                TEvDiskRegistryPrivate::EvSecureEraseResponse)};
             runtime->DispatchEvents(options);
         }
 
@@ -449,11 +519,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             auto msg = query({"agent-1"}, {});
             UNIT_ASSERT_VALUES_EQUAL(1, msg.AvailableStorageSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-1", msg.GetAvailableStorage(0).GetAgentId());
+                "agent-1",
+                msg.GetAvailableStorage(0).GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL(
-                3_GB, msg.GetAvailableStorage(0).GetChunkSize());
+                3_GB,
+                msg.GetAvailableStorage(0).GetChunkSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                2, msg.GetAvailableStorage(0).GetChunkCount());
+                2,
+                msg.GetAvailableStorage(0).GetChunkCount());
         }
 
         diskRegistry.ChangeAgentState("agent-3", NProto::AGENT_STATE_WARNING);
@@ -463,86 +536,104 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             auto msg = query({"agent-1", "agent-3"}, {});
             UNIT_ASSERT_VALUES_EQUAL(2, msg.AvailableStorageSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-1", msg.GetAvailableStorage(0).GetAgentId());
+                "agent-1",
+                msg.GetAvailableStorage(0).GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-3", msg.GetAvailableStorage(1).GetAgentId());
+                "agent-3",
+                msg.GetAvailableStorage(1).GetAgentId());
 
             UNIT_ASSERT_VALUES_EQUAL(
-                3_GB, msg.GetAvailableStorage(0).GetChunkSize());
+                3_GB,
+                msg.GetAvailableStorage(0).GetChunkSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                4_GB, msg.GetAvailableStorage(1).GetChunkSize());
+                4_GB,
+                msg.GetAvailableStorage(1).GetChunkSize());
 
             UNIT_ASSERT_VALUES_EQUAL(
-                1, msg.GetAvailableStorage(0).GetChunkCount());
+                1,
+                msg.GetAvailableStorage(0).GetChunkCount());
             UNIT_ASSERT_VALUES_EQUAL(
-                2, msg.GetAvailableStorage(1).GetChunkCount());
+                2,
+                msg.GetAvailableStorage(1).GetChunkCount());
         }
 
         {
             auto msg = query({"agent-1", "agent-3"}, "foo");
             UNIT_ASSERT_VALUES_EQUAL(2, msg.AvailableStorageSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-1", msg.GetAvailableStorage(0).GetAgentId());
+                "agent-1",
+                msg.GetAvailableStorage(0).GetAgentId());
             UNIT_ASSERT_VALUES_EQUAL(
-                "agent-3", msg.GetAvailableStorage(1).GetAgentId());
+                "agent-3",
+                msg.GetAvailableStorage(1).GetAgentId());
 
             UNIT_ASSERT_VALUES_EQUAL(
-                3_GB, msg.GetAvailableStorage(0).GetChunkSize());
+                3_GB,
+                msg.GetAvailableStorage(0).GetChunkSize());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(1).GetChunkSize());
+                0,
+                msg.GetAvailableStorage(1).GetChunkSize());
 
             UNIT_ASSERT_VALUES_EQUAL(
-                1, msg.GetAvailableStorage(0).GetChunkCount());
+                1,
+                msg.GetAvailableStorage(0).GetChunkCount());
             UNIT_ASSERT_VALUES_EQUAL(
-                0, msg.GetAvailableStorage(1).GetChunkCount());
+                0,
+                msg.GetAvailableStorage(1).GetChunkCount());
         }
     }
 
     Y_UNIT_TEST(ShouldNotSuspendDevices)
     {
-        const TVector agents {
-            CreateAgentConfig("agent-1", {
-                Device("dev-1", "uuid-1"),
-                Device("dev-2", "uuid-2") | WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL),
-                Device("dev-3", "uuid-3"),
-                Device("dev-4", "uuid-4") | WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL)
-            }),
-            CreateAgentConfig("agent-2", {
-                Device("dev-1", "uuid-5"),
-                Device("dev-2", "uuid-6")
-            }),
-            CreateAgentConfig("agent-3", {
-                Device("dev-1", "uuid-7") | WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL),
-                Device("dev-2", "uuid-8") | WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL),
-                Device("dev-3", "uuid-9")
-            })
-        };
+        const TVector agents{
+            CreateAgentConfig(
+                "agent-1",
+                {Device("dev-1", "uuid-1"),
+                 Device("dev-2", "uuid-2") |
+                     WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL),
+                 Device("dev-3", "uuid-3"),
+                 Device("dev-4", "uuid-4") |
+                     WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL)}),
+            CreateAgentConfig(
+                "agent-2",
+                {Device("dev-1", "uuid-5"), Device("dev-2", "uuid-6")}),
+            CreateAgentConfig(
+                "agent-3",
+                {Device("dev-1", "uuid-7") |
+                     WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL),
+                 Device("dev-2", "uuid-8") |
+                     WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL),
+                 Device("dev-3", "uuid-9")})};
 
-        auto runtime = TTestRuntimeBuilder()
-            .With([] {
-                auto config = CreateDefaultStorageConfig();
-                config.SetNonReplicatedDontSuspendDevices(true);
+        auto runtime =
+            TTestRuntimeBuilder()
+                .With(
+                    []
+                    {
+                        auto config = CreateDefaultStorageConfig();
+                        config.SetNonReplicatedDontSuspendDevices(true);
 
-                return config;
-            }())
-            .WithAgents(agents)
-            .Build();
+                        return config;
+                    }())
+                .WithAgents(agents)
+                .Build();
 
         TDiskRegistryClient diskRegistry(*runtime);
         diskRegistry.WaitReady();
         diskRegistry.SetWritableState(true);
 
-        diskRegistry.UpdateConfig([&] {
-            auto config = CreateRegistryConfig(0, agents);
+        diskRegistry.UpdateConfig(
+            [&]
+            {
+                auto config = CreateRegistryConfig(0, agents);
 
-            auto* ssd = config.AddDevicePoolConfigs();
-            ssd->SetName("local-ssd");
-            ssd->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
-            ssd->SetAllocationUnit(8_GB);
+                auto* ssd = config.AddDevicePoolConfigs();
+                ssd->SetName("local-ssd");
+                ssd->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                ssd->SetAllocationUnit(8_GB);
 
-            return config;
-        }());
-
+                return config;
+            }());
 
         RegisterAgents(*runtime, agents.size());
         WaitForAgents(*runtime, agents.size());
@@ -551,9 +642,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(9, GetDirtyDeviceCount(diskRegistry));
         WaitForSecureErase(*runtime, GetDirtyDeviceCount(diskRegistry));
 
-        auto allocateSSD = [&] (TString diskId) {
-            auto request = diskRegistry.CreateAllocateDiskRequest(diskId, 16_GB);
-            request->Record.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_LOCAL);
+        auto allocateSSD = [&](TString diskId)
+        {
+            auto request =
+                diskRegistry.CreateAllocateDiskRequest(diskId, 16_GB);
+            request->Record.SetStorageMediaKind(
+                NProto::STORAGE_MEDIA_SSD_LOCAL);
             diskRegistry.SendRequest(std::move(request));
             return diskRegistry.RecvAllocateDiskResponse();
         };

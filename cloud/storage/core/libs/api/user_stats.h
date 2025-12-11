@@ -31,14 +31,12 @@ struct TEvUserStats
         EvEnd < (int)TStoragePrivateEvents::USER_STATS_END,
         "EvEnd expected to be < TStoragePrivateEvents::USER_STATS_END");
 
-    using TEvUserStatsProviderCreate = TRequestEvent<
-        TUserStatsProviderCreate,
-        EvUserStatsProviderCreate
-    >;
+    using TEvUserStatsProviderCreate =
+        TRequestEvent<TUserStatsProviderCreate, EvUserStatsProviderCreate>;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 NActors::TActorId MakeStorageUserStatsId();
 
-}   // NCloud::NStorage
+}   // namespace NCloud::NStorage

@@ -1,4 +1,5 @@
 #include "fresh_bytes.h"
+
 #include "verify.h"
 
 #include <cloud/storage/core/libs/tablet/model/commit.h>
@@ -57,18 +58,15 @@ void TFreshBytes::DeleteBytes(
             }
         }
 
-        if (hi != c.Refs.end()
-                && hi->first.NodeId == nodeId
-                && hi->second.Offset < end)
+        if (hi != c.Refs.end() && hi->first.NodeId == nodeId &&
+            hi->second.Offset < end)
         {
             // cutting hi from the left side
             // hi might be equal to lo - it's not a problem
             TABLET_VERIFY_DEBUG(hi->second.CommitId < commitId);
             const auto shift = end - hi->second.Offset;
-            hi->second.Buf = hi->second.Buf.substr(
-                shift,
-                hi->second.Buf.size() - shift
-            );
+            hi->second.Buf =
+                hi->second.Buf.substr(shift, hi->second.Buf.size() - shift);
             hi->second.Offset = end;
         }
 
@@ -95,7 +93,7 @@ NProto::TError TFreshBytes::CheckBytes(
         return MakeError(
             E_REJECTED,
             TStringBuilder() << "bytes' commitId too old: " << commitId << " < "
-                << c.FirstCommitId);
+                             << c.FirstCommitId);
     }
 
     return {};
@@ -148,12 +146,8 @@ void TFreshBytes::AddDeletionMarker(
     c.TotalDeletedBytes += len;
     TotalDeletedBytes += len;
 
-    c.DeletionMarkers.push_back({
-        nodeId,
-        offset,
-        len,
-        commitId,
-        InvalidCommitId});
+    c.DeletionMarkers.push_back(
+        {nodeId, offset, len, commitId, InvalidCommitId});
     DeleteBytes(c, nodeId, offset, len, commitId);
 }
 
@@ -200,9 +194,7 @@ TFlushBytesCleanupInfo TFreshBytes::StartCleanup(
     return {Chunks.front().Id, Chunks.front().ClosingCommitId};
 }
 
-void TFreshBytes::VisitTop(
-    ui64 itemLimit,
-    const TChunkVisitor& visitor)
+void TFreshBytes::VisitTop(ui64 itemLimit, const TChunkVisitor& visitor)
 {
     ui64 cnt = 0;
     for (const auto& e: Chunks.front().Data) {
@@ -279,15 +271,13 @@ void TFreshBytes::FindBytes(
     ui64 commitId) const
 {
     auto it = chunk.Refs.upper_bound({nodeId, byteRange.Offset});
-    while (it != chunk.Refs.end()
-            && it->first.NodeId == nodeId
-            && it->second.Offset < byteRange.End())
+    while (it != chunk.Refs.end() && it->first.NodeId == nodeId &&
+           it->second.Offset < byteRange.End())
     {
         TByteRange itRange(
             it->second.Offset,
             it->first.End - it->second.Offset,
-            byteRange.BlockSize
-        );
+            byteRange.BlockSize);
 
         const auto intersection = itRange.Intersect(byteRange);
         if (it->second.CommitId <= commitId && intersection.Length) {
@@ -295,13 +285,13 @@ void TFreshBytes::FindBytes(
                 intersection.Offset - itRange.Offset,
                 intersection.Length);
 
-            visitor.Accept({
-                nodeId,
-                intersection.Offset,
-                intersection.Length,
-                it->second.CommitId,
-                InvalidCommitId
-            }, data);
+            visitor.Accept(
+                {nodeId,
+                 intersection.Offset,
+                 intersection.Length,
+                 it->second.CommitId,
+                 InvalidCommitId},
+                data);
         }
 
         ++it;

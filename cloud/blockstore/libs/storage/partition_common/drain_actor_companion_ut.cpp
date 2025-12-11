@@ -5,9 +5,9 @@
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
-
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/events.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 using namespace NActors;
@@ -143,11 +143,13 @@ private:
         return CurrentWriteRequestInProgress != 0;
     }
 
-    void WaitForInFlightWrites() override {
+    void WaitForInFlightWrites() override
+    {
         WaitingForInFlightWrites = true;
     }
 
-    bool IsWaitingForInFlightWrites() const override {
+    bool IsWaitingForInFlightWrites() const override
+    {
         return WaitingForInFlightWrites && WriteRequestInProgress();
     }
 
@@ -159,7 +161,8 @@ private:
     }
 
     void HandleWaitForInFlightWrites(
-        const NPartition::TEvPartition::TEvWaitForInFlightWritesRequest::TPtr& ev,
+        const NPartition::TEvPartition::TEvWaitForInFlightWritesRequest::TPtr&
+            ev,
         const TActorContext& ctx)
     {
         drainCompanion.HandleWaitForInFlightWrites(ev, ctx);
@@ -195,7 +198,7 @@ Y_UNIT_TEST_SUITE(TDrainActorCompanionTest)
             std::make_unique<NPartition::TEvPartition::TEvDrainRequest>());
         testEnv.DispatchEvents();
 
-        {  // Get drain response
+        {   // Get drain response
             auto drainResponse = testEnv.GrabDrainResponse();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, drainResponse->GetStatus());
         }
@@ -216,7 +219,7 @@ Y_UNIT_TEST_SUITE(TDrainActorCompanionTest)
             std::make_unique<NPartition::TEvPartition::TEvDrainRequest>());
         testEnv.DispatchEvents();
 
-        {  // Assert drain not finished since write in progress
+        {   // Assert drain not finished since write in progress
             auto drainResponse = testEnv.GrabDrainResponse();
             UNIT_ASSERT_VALUES_EQUAL(nullptr, drainResponse);
         }
@@ -225,7 +228,7 @@ Y_UNIT_TEST_SUITE(TDrainActorCompanionTest)
         testEnv.Send(actorId, std::make_unique<TEvSetWriteInProgressCount>(0));
         testEnv.DispatchEvents();
 
-        {  // Get drain response
+        {   // Get drain response
             auto drainResponse = testEnv.GrabDrainResponse();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, drainResponse->GetStatus());
         }
@@ -246,7 +249,7 @@ Y_UNIT_TEST_SUITE(TDrainActorCompanionTest)
             std::make_unique<NPartition::TEvPartition::TEvDrainRequest>());
         testEnv.DispatchEvents();
 
-        {  // Assert drain not finished since write in progress
+        {   // Assert drain not finished since write in progress
             auto drainResponse = testEnv.GrabDrainResponse();
             UNIT_ASSERT_VALUES_EQUAL(nullptr, drainResponse);
         }
@@ -255,7 +258,7 @@ Y_UNIT_TEST_SUITE(TDrainActorCompanionTest)
         testEnv.Send(actorId, std::make_unique<TEvSetWriteInProgressCount>(2));
         testEnv.DispatchEvents();
 
-        {  // Assert drain not finished since write in progress
+        {   // Assert drain not finished since write in progress
             auto drainResponse = testEnv.GrabDrainResponse();
             UNIT_ASSERT_VALUES_EQUAL(nullptr, drainResponse);
         }
@@ -264,7 +267,7 @@ Y_UNIT_TEST_SUITE(TDrainActorCompanionTest)
         testEnv.Send(actorId, std::make_unique<TEvSetWriteInProgressCount>(1));
         testEnv.DispatchEvents();
 
-        {  // Assert drain not finished since write in progress
+        {   // Assert drain not finished since write in progress
             auto drainResponse = testEnv.GrabDrainResponse();
             UNIT_ASSERT_VALUES_EQUAL(nullptr, drainResponse);
         }
@@ -273,7 +276,7 @@ Y_UNIT_TEST_SUITE(TDrainActorCompanionTest)
         testEnv.Send(actorId, std::make_unique<TEvSetWriteInProgressCount>(0));
         testEnv.DispatchEvents();
 
-        {  // Get drain response
+        {   // Get drain response
             auto drainResponse = testEnv.GrabDrainResponse();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, drainResponse->GetStatus());
         }
@@ -297,7 +300,7 @@ Y_UNIT_TEST_SUITE(TDrainActorCompanionTest)
             std::make_unique<NPartition::TEvPartition::TEvDrainRequest>());
         testEnv.DispatchEvents();
 
-        {  // Assert drain not finished since write in progress
+        {   // Assert drain not finished since write in progress
             auto drainResponse = testEnv.GrabDrainResponse();
             UNIT_ASSERT_VALUES_EQUAL(nullptr, drainResponse);
         }
@@ -306,17 +309,17 @@ Y_UNIT_TEST_SUITE(TDrainActorCompanionTest)
         testEnv.Send(actorId, std::make_unique<TEvSetWriteInProgressCount>(0));
         testEnv.DispatchEvents();
 
-        {  // Get first drain response
+        {   // Get first drain response
             auto drainResponse = testEnv.GrabDrainResponse();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, drainResponse->GetStatus());
         }
 
-        {  // Get second drain response
+        {   // Get second drain response
             auto drainResponse = testEnv.GrabDrainResponse();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, drainResponse->GetStatus());
         }
 
-        {  // Assert no more drain responses
+        {   // Assert no more drain responses
             auto drainResponse = testEnv.GrabDrainResponse();
             UNIT_ASSERT_VALUES_EQUAL(nullptr, drainResponse);
         }
@@ -345,7 +348,7 @@ Y_UNIT_TEST_SUITE(TDrainActorCompanionTest)
         testEnv.Send(
             actorId,
             std::make_unique<NPartition::TEvPartition::TEvDrainRequest>());
-        {  // Assert drain rejected
+        {   // Assert drain rejected
             auto drainResponse = testEnv.GrabDrainResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, drainResponse->GetStatus());
         }
@@ -356,13 +359,13 @@ Y_UNIT_TEST_SUITE(TDrainActorCompanionTest)
 
         // Expect MaxDrainRequestCount drain responses
         for (ui32 i = 0; i < MaxDrainRequestCount; ++i) {
-            {  // Get first drain response
+            {   // Get first drain response
                 auto drainResponse = testEnv.GrabDrainResponse();
                 UNIT_ASSERT_VALUES_EQUAL(S_OK, drainResponse->GetStatus());
             }
         }
 
-        {  // Assert no more drain responses
+        {   // Assert no more drain responses
             auto drainResponse = testEnv.GrabDrainResponse();
             UNIT_ASSERT_VALUES_EQUAL(nullptr, drainResponse);
         }
@@ -431,4 +434,4 @@ Y_UNIT_TEST_SUITE(TDrainActorCompanionTest)
     }
 }
 
-}  // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NBlockStore::NStorage

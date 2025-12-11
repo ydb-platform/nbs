@@ -43,8 +43,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TInitFreshZonesActor::TInitFreshZonesActor(
-        const TActorId& partitionActorId,
-        TVector<TBlockRange32> blockRanges)
+    const TActorId& partitionActorId,
+    TVector<TBlockRange32> blockRanges)
     : PartitionActorId(partitionActorId)
     , BlockRanges(std::move(blockRanges))
 {}
@@ -88,7 +88,9 @@ STFUNC(TInitFreshZonesActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvPartitionPrivate::TEvInitIndexResponse, HandleInitIndexResponse);
+        HFunc(
+            TEvPartitionPrivate::TEvInitIndexResponse,
+            HandleInitIndexResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -105,16 +107,15 @@ STFUNC(TInitFreshZonesActor::StateWork)
 
 void TPartitionActor::LoadFreshBlobs(const TActorContext& ctx)
 {
-    auto freshChannels = State->GetChannelsByKind([](auto kind) {
-        return kind == EChannelDataKind::Fresh;
-    });
+    auto freshChannels = State->GetChannelsByKind(
+        [](auto kind) { return kind == EChannelDataKind::Fresh; });
 
     auto actor = NCloud::Register<TLoadFreshBlobsActor>(
         ctx,
         SelfId(),
         Info(),
         StorageAccessMode,
-        0,  // trimFreshLogToCommitId
+        0,   // trimFreshLogToCommitId
         std::move(freshChannels));
 
     Actors.insert(actor);
@@ -127,20 +128,23 @@ void TPartitionActor::HandleLoadFreshBlobsCompleted(
     auto* msg = ev->Get();
 
     if (FAILED(msg->GetStatus())) {
-        LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION,
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::PARTITION,
             "[" << TabletID() << "]"
-            << " LoadFreshBlobs failed: " << msg->GetStatus()
-            << " reason: " << msg->GetError().GetMessage().Quote());
+                << " LoadFreshBlobs failed: " << msg->GetStatus()
+                << " reason: " << msg->GetError().GetMessage().Quote());
 
         ReportInitFreshBlocksError(
-            TStringBuilder()
-            << "[" << TabletID()
-            << "] LoadFreshBlobs failed: " << msg->GetStatus());
+            TStringBuilder() << "[" << TabletID() << "] LoadFreshBlobs failed: "
+                             << msg->GetStatus());
         Suicide(ctx);
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%lu] Loaded fresh blobs",
         TabletID());
 
@@ -158,11 +162,12 @@ void TPartitionActor::HandleLoadFreshBlobsCompleted(
             updates);
 
         if (HasError(error)) {
-            LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION,
-                "[" << TabletID() << "]"
-                << " Failed to parse fresh blob "
-                << "(blob commitId: " << blob.CommitId << "): "
-                << FormatError(error));
+            LOG_ERROR_S(
+                ctx,
+                TBlockStoreComponents::PARTITION,
+                "[" << TabletID() << "]" << " Failed to parse fresh blob "
+                    << "(blob commitId: " << blob.CommitId
+                    << "): " << FormatError(error));
 
             ReportInitFreshBlocksError(
                 TStringBuilder()
@@ -173,10 +178,13 @@ void TPartitionActor::HandleLoadFreshBlobsCompleted(
         }
     }
 
-    Sort(blocks, [] (const auto& lhs, const auto& rhs) {
-        return std::make_pair(lhs.Meta.BlockIndex, lhs.Meta.MinCommitId)
-            <  std::make_pair(rhs.Meta.BlockIndex, rhs.Meta.MinCommitId);
-    });
+    Sort(
+        blocks,
+        [](const auto& lhs, const auto& rhs)
+        {
+            return std::make_pair(lhs.Meta.BlockIndex, lhs.Meta.MinCommitId) <
+                   std::make_pair(rhs.Meta.BlockIndex, rhs.Meta.MinCommitId);
+        });
 
     State->InitFreshBlocks(blocks);
     State->ApplyFreshBlockUpdates();

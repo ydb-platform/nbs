@@ -13,10 +13,12 @@ void TVolumeActor::HandleUpdateUsedBlocks(
     const TEvVolume::TEvUpdateUsedBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto replyFalse = [&ctx, &ev](){
+    auto replyFalse = [&ctx, &ev]()
+    {
         // should neither cause a non-retriable error nor be retried
-        auto response = std::make_unique<TEvVolume::TEvUpdateUsedBlocksResponse>(
-            MakeError(S_FALSE, "Used block tracking not set up"));
+        auto response =
+            std::make_unique<TEvVolume::TEvUpdateUsedBlocksResponse>(
+                MakeError(S_FALSE, "Used block tracking not set up"));
 
         NCloud::Reply(ctx, *ev, std::move(response));
     };
@@ -34,12 +36,10 @@ void TVolumeActor::HandleUpdateUsedBlocks(
     const auto used = msg->Record.GetUsed();
 
     if (startIndices.size() != blockCounts.size()) {
-        auto response = std::make_unique<TEvVolume::TEvUpdateUsedBlocksResponse>(
-            MakeError(
+        auto response =
+            std::make_unique<TEvVolume::TEvUpdateUsedBlocksResponse>(MakeError(
                 E_ARGUMENT,
-                "StartIndices' and BlockCounts' sizes should be equal"
-            )
-        );
+                "StartIndices' and BlockCounts' sizes should be equal"));
 
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
@@ -47,10 +47,8 @@ void TVolumeActor::HandleUpdateUsedBlocks(
 
     TVector<TBlockRange64> ranges;
     for (int i = 0; i < startIndices.size(); ++i) {
-        ranges.push_back(TBlockRange64::WithLength(
-            startIndices[i],
-            blockCounts[i]
-        ));
+        ranges.push_back(
+            TBlockRange64::WithLength(startIndices[i], blockCounts[i]));
     }
 
     if (needTrackInMemory) {
@@ -63,10 +61,8 @@ void TVolumeActor::HandleUpdateUsedBlocks(
         return replyFalse();
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     auto& ub = State->AccessUsedBlocks();
 
@@ -123,9 +119,8 @@ void TVolumeActor::ExecuteUpdateUsedBlocks(
     TVolumeDatabase db(tx.DB);
 
     for (const auto& range: args.Ranges) {
-        auto serializer = State->GetUsedBlocks().RangeSerializer(
-            range.Start,
-            range.End + 1);
+        auto serializer =
+            State->GetUsedBlocks().RangeSerializer(range.Start, range.End + 1);
 
         TCompressedBitmap::TSerializedChunk sc;
         while (serializer.Next(&sc)) {

@@ -17,25 +17,30 @@ Y_UNIT_TEST_SUITE(TFilteredServiceTest)
         auto testService = std::make_shared<TTestService>();
 
         testService->StartEndpointHandler =
-            [&] (std::shared_ptr<NProto::TStartEndpointRequest>) {
-                return MakeFuture<NProto::TStartEndpointResponse>();
-            };
+            [&](std::shared_ptr<NProto::TStartEndpointRequest>)
+        {
+            return MakeFuture<NProto::TStartEndpointResponse>();
+        };
         testService->StopEndpointHandler =
-            [&] (std::shared_ptr<NProto::TStopEndpointRequest>) {
-                return MakeFuture<NProto::TStopEndpointResponse>();
-            };
+            [&](std::shared_ptr<NProto::TStopEndpointRequest>)
+        {
+            return MakeFuture<NProto::TStopEndpointResponse>();
+        };
         testService->ListEndpointsHandler =
-            [&] (std::shared_ptr<NProto::TListEndpointsRequest>) {
-                return MakeFuture<NProto::TListEndpointsResponse>();
-            };
+            [&](std::shared_ptr<NProto::TListEndpointsRequest>)
+        {
+            return MakeFuture<NProto::TListEndpointsResponse>();
+        };
         testService->KickEndpointHandler =
-            [&] (std::shared_ptr<NProto::TKickEndpointRequest>) {
-                return MakeFuture<NProto::TKickEndpointResponse>();
-            };
+            [&](std::shared_ptr<NProto::TKickEndpointRequest>)
+        {
+            return MakeFuture<NProto::TKickEndpointResponse>();
+        };
 
         auto service = CreateFilteredService(
             testService,
-            { EBlockStoreRequest::KickEndpoint, EBlockStoreRequest::StopEndpoint });
+            {EBlockStoreRequest::KickEndpoint,
+             EBlockStoreRequest::StopEndpoint});
 
         {
             auto future = service->StartEndpoint(

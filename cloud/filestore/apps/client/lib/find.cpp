@@ -19,8 +19,7 @@ bool MatchesGlob(const TString& pattern, const TString& name)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFindCommand final
-    : public TFileStoreCommand
+class TFindCommand final: public TFileStoreCommand
 {
 private:
     TString Glob;
@@ -30,9 +29,7 @@ private:
 public:
     TFindCommand()
     {
-        Opts.AddLongOption("glob")
-            .RequiredArgument("GLOB")
-            .StoreResult(&Glob);
+        Opts.AddLongOption("glob").RequiredArgument("GLOB").StoreResult(&Glob);
 
         Opts.AddLongOption("depth")
             .RequiredArgument("NUM")

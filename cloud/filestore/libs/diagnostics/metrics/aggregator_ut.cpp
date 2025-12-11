@@ -127,7 +127,9 @@ Y_UNIT_TEST_SUITE(TMetricImplTest)
 
         aggregator.Unregister(secondKey);
 
-        UNIT_ASSERT_VALUES_EQUAL(Max<i64>(), aggregator.Aggregate(TInstant::Now()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            Max<i64>(),
+            aggregator.Aggregate(TInstant::Now()));
     }
 
     Y_UNIT_TEST(ShouldMaxAbsAggregateMetrics)
@@ -167,7 +169,9 @@ Y_UNIT_TEST_SUITE(TMetricImplTest)
 
         aggregator.Unregister(firstKey);
 
-        UNIT_ASSERT_VALUES_EQUAL(Min<i64>(), aggregator.Aggregate(TInstant::Now()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            Min<i64>(),
+            aggregator.Aggregate(TInstant::Now()));
     }
 
     Y_UNIT_TEST(ShouldSumDerAggregateMetrics)
@@ -287,7 +291,9 @@ Y_UNIT_TEST_SUITE(TMetricImplTest)
 
         aggregator.Unregister(secondKey);
 
-        UNIT_ASSERT_VALUES_EQUAL(Max<i64>(), aggregator.Aggregate(TInstant::Now()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            Max<i64>(),
+            aggregator.Aggregate(TInstant::Now()));
     }
 
     Y_UNIT_TEST(ShouldMaxDerAggregateMetrics)
@@ -327,7 +333,9 @@ Y_UNIT_TEST_SUITE(TMetricImplTest)
 
         aggregator.Unregister(firstKey);
 
-        UNIT_ASSERT_VALUES_EQUAL(Min<i64>(), aggregator.Aggregate(TInstant::Now()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            Min<i64>(),
+            aggregator.Aggregate(TInstant::Now()));
     }
 }
 

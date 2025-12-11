@@ -36,9 +36,7 @@ bool TVolumeClientState::IsPreempted(ui64 hostNodeId) const
         });
 }
 
-void TVolumeClientState::RemovePipe(
-    NActors::TActorId serverId,
-    TInstant ts)
+void TVolumeClientState::RemovePipe(NActors::TActorId serverId, TInstant ts)
 {
     if (!serverId) {
         Pipes.clear();
@@ -104,8 +102,7 @@ bool TVolumeClientState::AnyPipeAlive() const
 {
     return AnyOf(
         Pipes,
-        [&](const auto& p)
-        {
+        [&](const auto& p) {
             return p.second.State !=
                    TVolumeClientState::EPipeState::DEACTIVATED;
         });
@@ -196,10 +193,10 @@ NProto::TError TVolumeClientState::CheckWritePermission(
     // Keep in sync with TAlignedDeviceHandler::ReportCriticalError()
     return MakeError(
         code,
-        TStringBuilder()
-            << "Request " << methodName << " is not allowed for client "
-            << VolumeClientInfo.GetClientId().Quote() << " and volume "
-            << diskId.Quote(),
+        TStringBuilder() << "Request " << methodName
+                         << " is not allowed for client "
+                         << VolumeClientInfo.GetClientId().Quote()
+                         << " and volume " << diskId.Quote(),
         flags);
 }
 

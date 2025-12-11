@@ -42,7 +42,8 @@ Y_UNIT_TEST_SUITE(TLabelTest)
         const TLabel sameLabel = CreateLabel("test_name", "test_value");
         const TLabel wrongName = CreateLabel("test_wrong_name", "test_value");
         const TLabel wrongValue = CreateLabel("test_name", "test_wrong_value");
-        const TLabel wrongLabel = CreateLabel("test_wrong_name", "test_wrong_value");
+        const TLabel wrongLabel =
+            CreateLabel("test_wrong_name", "test_wrong_value");
 
         UNIT_ASSERT(label == sameLabel);
         UNIT_ASSERT(label == sameLabel);
@@ -61,10 +62,9 @@ Y_UNIT_TEST_SUITE(TLabelTest)
 
     Y_UNIT_TEST(ShouldGetCorrectLabels)
     {
-        TLabels labels {
+        TLabels labels{
             CreateLabel("test_name", "test_value"),
-            CreateSensor("test_sensor")
-        };
+            CreateSensor("test_sensor")};
 
         UNIT_ASSERT_VALUES_EQUAL(2, labels.size());
 
@@ -78,56 +78,47 @@ Y_UNIT_TEST_SUITE(TLabelTest)
     Y_UNIT_TEST(ShouldCorrectlyCheckLabelsEquality)
     {
         {
-            TLabels lhv {
+            TLabels lhv{
                 CreateLabel("test_name", "test_value"),
-                CreateSensor("test_sensor")
-            };
+                CreateSensor("test_sensor")};
 
-            TLabels rhv {
+            TLabels rhv{
                 CreateLabel("test_name", "test_value"),
-                CreateSensor("test_sensor")
-            };
+                CreateSensor("test_sensor")};
 
             UNIT_ASSERT(lhv == rhv);
         }
 
         {
-            TLabels lhv {
+            TLabels lhv{
                 CreateLabel("test_name", "test_value"),
-                CreateSensor("test_sensor")
-            };
+                CreateSensor("test_sensor")};
 
-            TLabels rhv {
-                CreateLabel("test_name", "test_value")
-            };
+            TLabels rhv{CreateLabel("test_name", "test_value")};
 
             UNIT_ASSERT(lhv != rhv);
         }
 
         {
-            TLabels lhv {
+            TLabels lhv{
                 CreateLabel("test_name", "test_value"),
-                CreateSensor("first_sensor")
-            };
+                CreateSensor("first_sensor")};
 
-            TLabels rhv {
+            TLabels rhv{
                 CreateLabel("test_name", "test_value"),
-                CreateSensor("second_sensor")
-            };
+                CreateSensor("second_sensor")};
 
             UNIT_ASSERT(lhv != rhv);
         }
 
         {
-            TLabels lhv {
+            TLabels lhv{
                 CreateLabel("test_name", "test_value"),
-                CreateSensor("test")
-            };
+                CreateSensor("test")};
 
-            TLabels rhv {
+            TLabels rhv{
                 CreateSensor("test"),
-                CreateLabel("test_name", "test_value")
-            };
+                CreateLabel("test_name", "test_value")};
 
             UNIT_ASSERT(lhv != rhv);
         }

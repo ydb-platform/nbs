@@ -30,10 +30,12 @@ namespace {
 
 template <typename T>
 concept HasGetLockType = requires(T t) {
-    { t.GetLockType() } -> std::same_as<NProto::ELockType>;
+    {
+        t.GetLockType()
+    } -> std::same_as<NProto::ELockType>;
 };
 
-template<typename T>
+template <typename T>
 void InitProfileLogLockRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
     const T& request)
@@ -94,7 +96,7 @@ ui32 CalculateChecksum(TStringBuf buf)
     return 0;
 }
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -105,8 +107,7 @@ namespace NFuse {
 #define FILESTORE_MATERIALIZE_REQUEST(name, ...) #name,
 
 static const TString FuseRequestNames[] = {
-    FILESTORE_FUSE_REQUESTS(FILESTORE_MATERIALIZE_REQUEST)
-};
+    FILESTORE_FUSE_REQUESTS(FILESTORE_MATERIALIZE_REQUEST)};
 
 #undef FILESTORE_MATERIALIZE_REQUEST
 
@@ -114,7 +115,7 @@ const TString& GetFileStoreFuseRequestName(EFileStoreFuseRequest requestType)
 {
     const auto index = static_cast<size_t>(requestType);
     if (index >= FileStoreFuseRequestStart &&
-            index < FileStoreFuseRequestStart + FileStoreFuseRequestCount)
+        index < FileStoreFuseRequestStart + FileStoreFuseRequestCount)
     {
         return FuseRequestNames[index - FileStoreFuseRequestStart];
     }
@@ -148,49 +149,48 @@ void FinalizeProfileLogRequestInfo(
     profileLog->Write({fileSystemId, std::move(profileLogRequest)});
 }
 
-
-}  // namespace NFuse
+}   // namespace NFuse
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define IMPLEMENT_DEFAULT_METHOD(name)                                         \
-    template <>                                                                \
-    void InitProfileLogRequestInfo(                                            \
-        NProto::TProfileLogRequestInfo& profileLogRequest,                     \
-        const NProto::T##name##Request& request)                               \
-    {                                                                          \
-        Y_UNUSED(profileLogRequest, request);                                  \
-    }                                                                          \
-// IMPLEMENT_DEFAULT_METHOD
+#define IMPLEMENT_DEFAULT_METHOD(name)                     \
+    template <>                                            \
+    void InitProfileLogRequestInfo(                        \
+        NProto::TProfileLogRequestInfo& profileLogRequest, \
+        const NProto::T##name##Request& request)           \
+    {                                                      \
+        Y_UNUSED(profileLogRequest, request);              \
+    }                                                      \
+    // IMPLEMENT_DEFAULT_METHOD
 
-    IMPLEMENT_DEFAULT_METHOD(Ping)
-    IMPLEMENT_DEFAULT_METHOD(CreateFileStore)
-    IMPLEMENT_DEFAULT_METHOD(DestroyFileStore)
-    IMPLEMENT_DEFAULT_METHOD(AlterFileStore)
-    IMPLEMENT_DEFAULT_METHOD(ResizeFileStore)
-    IMPLEMENT_DEFAULT_METHOD(DescribeFileStoreModel)
-    IMPLEMENT_DEFAULT_METHOD(GetFileStoreInfo)
-    IMPLEMENT_DEFAULT_METHOD(ListFileStores)
-    IMPLEMENT_DEFAULT_METHOD(CreateSession)
-    IMPLEMENT_DEFAULT_METHOD(DestroySession)
-    IMPLEMENT_DEFAULT_METHOD(PingSession)
-    IMPLEMENT_DEFAULT_METHOD(AddClusterNode)
-    IMPLEMENT_DEFAULT_METHOD(RemoveClusterNode)
-    IMPLEMENT_DEFAULT_METHOD(ListClusterNodes)
-    IMPLEMENT_DEFAULT_METHOD(AddClusterClients)
-    IMPLEMENT_DEFAULT_METHOD(RemoveClusterClients)
-    IMPLEMENT_DEFAULT_METHOD(ListClusterClients)
-    IMPLEMENT_DEFAULT_METHOD(UpdateCluster)
-    IMPLEMENT_DEFAULT_METHOD(StatFileStore)
-    IMPLEMENT_DEFAULT_METHOD(SubscribeSession)
-    IMPLEMENT_DEFAULT_METHOD(GetSessionEvents)
-    IMPLEMENT_DEFAULT_METHOD(ResetSession)
-    IMPLEMENT_DEFAULT_METHOD(ResolvePath)
-    IMPLEMENT_DEFAULT_METHOD(StartEndpoint)
-    IMPLEMENT_DEFAULT_METHOD(StopEndpoint)
-    IMPLEMENT_DEFAULT_METHOD(ListEndpoints)
-    IMPLEMENT_DEFAULT_METHOD(KickEndpoint)
-    IMPLEMENT_DEFAULT_METHOD(ExecuteAction)
+IMPLEMENT_DEFAULT_METHOD(Ping)
+IMPLEMENT_DEFAULT_METHOD(CreateFileStore)
+IMPLEMENT_DEFAULT_METHOD(DestroyFileStore)
+IMPLEMENT_DEFAULT_METHOD(AlterFileStore)
+IMPLEMENT_DEFAULT_METHOD(ResizeFileStore)
+IMPLEMENT_DEFAULT_METHOD(DescribeFileStoreModel)
+IMPLEMENT_DEFAULT_METHOD(GetFileStoreInfo)
+IMPLEMENT_DEFAULT_METHOD(ListFileStores)
+IMPLEMENT_DEFAULT_METHOD(CreateSession)
+IMPLEMENT_DEFAULT_METHOD(DestroySession)
+IMPLEMENT_DEFAULT_METHOD(PingSession)
+IMPLEMENT_DEFAULT_METHOD(AddClusterNode)
+IMPLEMENT_DEFAULT_METHOD(RemoveClusterNode)
+IMPLEMENT_DEFAULT_METHOD(ListClusterNodes)
+IMPLEMENT_DEFAULT_METHOD(AddClusterClients)
+IMPLEMENT_DEFAULT_METHOD(RemoveClusterClients)
+IMPLEMENT_DEFAULT_METHOD(ListClusterClients)
+IMPLEMENT_DEFAULT_METHOD(UpdateCluster)
+IMPLEMENT_DEFAULT_METHOD(StatFileStore)
+IMPLEMENT_DEFAULT_METHOD(SubscribeSession)
+IMPLEMENT_DEFAULT_METHOD(GetSessionEvents)
+IMPLEMENT_DEFAULT_METHOD(ResetSession)
+IMPLEMENT_DEFAULT_METHOD(ResolvePath)
+IMPLEMENT_DEFAULT_METHOD(StartEndpoint)
+IMPLEMENT_DEFAULT_METHOD(StopEndpoint)
+IMPLEMENT_DEFAULT_METHOD(ListEndpoints)
+IMPLEMENT_DEFAULT_METHOD(KickEndpoint)
+IMPLEMENT_DEFAULT_METHOD(ExecuteAction)
 
 #undef IMPLEMENT_DEFAULT_METHOD
 
@@ -534,61 +534,61 @@ void InitProfileLogRequestInfo(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define IMPLEMENT_DEFAULT_METHOD(name, ns)                                     \
-    template <>                                                                \
-    void FinalizeProfileLogRequestInfo(                                        \
-        NProto::TProfileLogRequestInfo& profileLogRequest,                     \
-        const ns::T##name##Response& response)                                 \
-    {                                                                          \
-        Y_UNUSED(profileLogRequest, response);                                 \
-    }                                                                          \
-// IMPLEMENT_DEFAULT_METHOD
+#define IMPLEMENT_DEFAULT_METHOD(name, ns)                 \
+    template <>                                            \
+    void FinalizeProfileLogRequestInfo(                    \
+        NProto::TProfileLogRequestInfo& profileLogRequest, \
+        const ns::T##name##Response& response)             \
+    {                                                      \
+        Y_UNUSED(profileLogRequest, response);             \
+    }                                                      \
+    // IMPLEMENT_DEFAULT_METHOD
 
-    IMPLEMENT_DEFAULT_METHOD(Ping, NProto)
-    IMPLEMENT_DEFAULT_METHOD(CreateFileStore, NProto)
-    IMPLEMENT_DEFAULT_METHOD(DestroyFileStore, NProto)
-    IMPLEMENT_DEFAULT_METHOD(AlterFileStore, NProto)
-    IMPLEMENT_DEFAULT_METHOD(ResizeFileStore, NProto)
-    IMPLEMENT_DEFAULT_METHOD(DescribeFileStoreModel, NProto)
-    IMPLEMENT_DEFAULT_METHOD(GetFileStoreInfo, NProto)
-    IMPLEMENT_DEFAULT_METHOD(ListFileStores, NProto)
-    IMPLEMENT_DEFAULT_METHOD(CreateSession, NProto)
-    IMPLEMENT_DEFAULT_METHOD(DestroySession, NProto)
-    IMPLEMENT_DEFAULT_METHOD(PingSession, NProto)
-    IMPLEMENT_DEFAULT_METHOD(AddClusterNode, NProto)
-    IMPLEMENT_DEFAULT_METHOD(RemoveClusterNode, NProto)
-    IMPLEMENT_DEFAULT_METHOD(ListClusterNodes, NProto)
-    IMPLEMENT_DEFAULT_METHOD(AddClusterClients, NProto)
-    IMPLEMENT_DEFAULT_METHOD(RemoveClusterClients, NProto)
-    IMPLEMENT_DEFAULT_METHOD(ListClusterClients, NProto)
-    IMPLEMENT_DEFAULT_METHOD(UpdateCluster, NProto)
-    IMPLEMENT_DEFAULT_METHOD(StatFileStore, NProto)
-    IMPLEMENT_DEFAULT_METHOD(SubscribeSession, NProto)
-    IMPLEMENT_DEFAULT_METHOD(GetSessionEvents, NProto)
-    IMPLEMENT_DEFAULT_METHOD(ResetSession, NProto)
-    IMPLEMENT_DEFAULT_METHOD(CreateCheckpoint, NProto)
-    IMPLEMENT_DEFAULT_METHOD(DestroyCheckpoint, NProto)
-    IMPLEMENT_DEFAULT_METHOD(ResolvePath, NProto)
-    IMPLEMENT_DEFAULT_METHOD(UnlinkNode, NProto)
-    IMPLEMENT_DEFAULT_METHOD(RenameNode, NProto)
-    IMPLEMENT_DEFAULT_METHOD(AccessNode, NProto)
-    IMPLEMENT_DEFAULT_METHOD(ReadLink, NProto)
-    IMPLEMENT_DEFAULT_METHOD(RemoveNodeXAttr, NProto)
-    IMPLEMENT_DEFAULT_METHOD(DestroyHandle, NProto)
-    IMPLEMENT_DEFAULT_METHOD(AcquireLock, NProto)
-    IMPLEMENT_DEFAULT_METHOD(ReleaseLock, NProto)
-    IMPLEMENT_DEFAULT_METHOD(WriteData, NProto)
-    IMPLEMENT_DEFAULT_METHOD(AllocateData, NProto)
-    IMPLEMENT_DEFAULT_METHOD(StartEndpoint, NProto)
-    IMPLEMENT_DEFAULT_METHOD(StopEndpoint, NProto)
-    IMPLEMENT_DEFAULT_METHOD(ListEndpoints, NProto)
-    IMPLEMENT_DEFAULT_METHOD(KickEndpoint, NProto)
-    IMPLEMENT_DEFAULT_METHOD(ExecuteAction, NProto)
-    IMPLEMENT_DEFAULT_METHOD(DescribeData, NProtoPrivate)
-    IMPLEMENT_DEFAULT_METHOD(GenerateBlobIds, NProtoPrivate)
-    IMPLEMENT_DEFAULT_METHOD(AddData, NProtoPrivate)
-    IMPLEMENT_DEFAULT_METHOD(Fsync, NProto)
-    IMPLEMENT_DEFAULT_METHOD(FsyncDir, NProto)
+IMPLEMENT_DEFAULT_METHOD(Ping, NProto)
+IMPLEMENT_DEFAULT_METHOD(CreateFileStore, NProto)
+IMPLEMENT_DEFAULT_METHOD(DestroyFileStore, NProto)
+IMPLEMENT_DEFAULT_METHOD(AlterFileStore, NProto)
+IMPLEMENT_DEFAULT_METHOD(ResizeFileStore, NProto)
+IMPLEMENT_DEFAULT_METHOD(DescribeFileStoreModel, NProto)
+IMPLEMENT_DEFAULT_METHOD(GetFileStoreInfo, NProto)
+IMPLEMENT_DEFAULT_METHOD(ListFileStores, NProto)
+IMPLEMENT_DEFAULT_METHOD(CreateSession, NProto)
+IMPLEMENT_DEFAULT_METHOD(DestroySession, NProto)
+IMPLEMENT_DEFAULT_METHOD(PingSession, NProto)
+IMPLEMENT_DEFAULT_METHOD(AddClusterNode, NProto)
+IMPLEMENT_DEFAULT_METHOD(RemoveClusterNode, NProto)
+IMPLEMENT_DEFAULT_METHOD(ListClusterNodes, NProto)
+IMPLEMENT_DEFAULT_METHOD(AddClusterClients, NProto)
+IMPLEMENT_DEFAULT_METHOD(RemoveClusterClients, NProto)
+IMPLEMENT_DEFAULT_METHOD(ListClusterClients, NProto)
+IMPLEMENT_DEFAULT_METHOD(UpdateCluster, NProto)
+IMPLEMENT_DEFAULT_METHOD(StatFileStore, NProto)
+IMPLEMENT_DEFAULT_METHOD(SubscribeSession, NProto)
+IMPLEMENT_DEFAULT_METHOD(GetSessionEvents, NProto)
+IMPLEMENT_DEFAULT_METHOD(ResetSession, NProto)
+IMPLEMENT_DEFAULT_METHOD(CreateCheckpoint, NProto)
+IMPLEMENT_DEFAULT_METHOD(DestroyCheckpoint, NProto)
+IMPLEMENT_DEFAULT_METHOD(ResolvePath, NProto)
+IMPLEMENT_DEFAULT_METHOD(UnlinkNode, NProto)
+IMPLEMENT_DEFAULT_METHOD(RenameNode, NProto)
+IMPLEMENT_DEFAULT_METHOD(AccessNode, NProto)
+IMPLEMENT_DEFAULT_METHOD(ReadLink, NProto)
+IMPLEMENT_DEFAULT_METHOD(RemoveNodeXAttr, NProto)
+IMPLEMENT_DEFAULT_METHOD(DestroyHandle, NProto)
+IMPLEMENT_DEFAULT_METHOD(AcquireLock, NProto)
+IMPLEMENT_DEFAULT_METHOD(ReleaseLock, NProto)
+IMPLEMENT_DEFAULT_METHOD(WriteData, NProto)
+IMPLEMENT_DEFAULT_METHOD(AllocateData, NProto)
+IMPLEMENT_DEFAULT_METHOD(StartEndpoint, NProto)
+IMPLEMENT_DEFAULT_METHOD(StopEndpoint, NProto)
+IMPLEMENT_DEFAULT_METHOD(ListEndpoints, NProto)
+IMPLEMENT_DEFAULT_METHOD(KickEndpoint, NProto)
+IMPLEMENT_DEFAULT_METHOD(ExecuteAction, NProto)
+IMPLEMENT_DEFAULT_METHOD(DescribeData, NProtoPrivate)
+IMPLEMENT_DEFAULT_METHOD(GenerateBlobIds, NProtoPrivate)
+IMPLEMENT_DEFAULT_METHOD(AddData, NProtoPrivate)
+IMPLEMENT_DEFAULT_METHOD(Fsync, NProto)
+IMPLEMENT_DEFAULT_METHOD(FsyncDir, NProto)
 
 #undef IMPLEMENT_DEFAULT_METHOD
 
@@ -765,15 +765,14 @@ void CalculateChecksums(
         }
 
         for (ui64 i = 0; i < range.AlignedBlockCount(); ++i) {
-            profileLogRange.AddBlockChecksums(CalculateChecksum(TStringBuf(
-                buffer.data() + bufferOffset, blockSize)));
+            profileLogRange.AddBlockChecksums(CalculateChecksum(
+                TStringBuf(buffer.data() + bufferOffset, blockSize)));
             bufferOffset += blockSize;
         }
 
         if (range.UnalignedTailLength()) {
-            profileLogRange.AddBlockChecksums(CalculateChecksum(buffer.substr(
-                bufferOffset,
-                range.UnalignedTailLength())));
+            profileLogRange.AddBlockChecksums(CalculateChecksum(
+                buffer.substr(bufferOffset, range.UnalignedTailLength())));
         }
     }
 }

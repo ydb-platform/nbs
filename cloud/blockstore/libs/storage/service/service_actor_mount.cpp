@@ -6,7 +6,6 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 
 #include <contrib/ydb/core/tablet/tablet_setup.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -19,8 +18,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TMountVolumeActor final
-    : public TActorBootstrapped<TMountVolumeActor>
+class TMountVolumeActor final: public TActorBootstrapped<TMountVolumeActor>
 {
 private:
     const TActorId SessionActor;
@@ -29,14 +27,13 @@ private:
 
 public:
     TMountVolumeActor(
-            TActorId sessionActor,
-            TRequestInfoPtr requestInfo,
-            NProto::TMountVolumeRequest&& request)
+        TActorId sessionActor,
+        TRequestInfoPtr requestInfo,
+        NProto::TMountVolumeRequest&& request)
         : SessionActor(sessionActor)
         , RequestInfo(std::move(requestInfo))
         , Request(std::move(request))
-    {
-    }
+    {}
 
     void Bootstrap(const TActorContext& ctx)
     {
@@ -64,9 +61,8 @@ private:
         auto* msg = ev->Get();
 
         *msg->Record.MutableError() = msg->GetError();
-        auto response =
-            std::make_unique<TEvService::TEvMountVolumeResponse>(
-                std::move(msg->Record));
+        auto response = std::make_unique<TEvService::TEvMountVolumeResponse>(
+            std::move(msg->Record));
 
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
         Die(ctx);
@@ -78,9 +74,8 @@ private:
     {
         Y_UNUSED(ev);
 
-        auto response =
-            std::make_unique<TEvService::TEvMountVolumeResponse>(
-                MakeTabletIsDeadError(E_REJECTED, __LOCATION__));
+        auto response = std::make_unique<TEvService::TEvMountVolumeResponse>(
+            MakeTabletIsDeadError(E_REJECTED, __LOCATION__));
 
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
         Die(ctx);
@@ -119,10 +114,8 @@ void TServiceActor::HandleMountVolume(
     const auto& diskId = msg->Record.GetDiskId();
     const auto& clientId = msg->Record.GetHeaders().GetClientId();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     auto volume = State.GetOrAddVolume(diskId);
 

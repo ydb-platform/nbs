@@ -10,10 +10,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static const TPartialBlobId blobId1 = { 1, 0 };
-static const TPartialBlobId blobId2 = { 2, 0 };
-static const TPartialBlobId blobId3 = { 3, 0 };
-static const TPartialBlobId blobId4 = { 4, 0 };
+static const TPartialBlobId blobId1 = {1, 0};
+static const TPartialBlobId blobId2 = {2, 0};
+static const TPartialBlobId blobId3 = {3, 0};
+static const TPartialBlobId blobId4 = {4, 0};
 
 }   // namespace
 
@@ -66,7 +66,9 @@ Y_UNIT_TEST_SUITE(TCheckpointStorageTest)
         UNIT_ASSERT_VALUES_EQUAL(5, checkpoints.RebaseCommitId(5));
         UNIT_ASSERT_VALUES_EQUAL(8, checkpoints.RebaseCommitId(6));
         UNIT_ASSERT_VALUES_EQUAL(8, checkpoints.RebaseCommitId(8));
-        UNIT_ASSERT_VALUES_EQUAL(InvalidCommitId, checkpoints.RebaseCommitId(9));
+        UNIT_ASSERT_VALUES_EQUAL(
+            InvalidCommitId,
+            checkpoints.RebaseCommitId(9));
     }
 }
 
@@ -80,15 +82,9 @@ Y_UNIT_TEST_SUITE(TCheckpointsToDeleteTest)
 
         UNIT_ASSERT(checkpoints.IsEmpty());
 
-        checkpoints.Put(1, TCheckpointInfo({
-            blobId1,
-            blobId2
-        }));
+        checkpoints.Put(1, TCheckpointInfo({blobId1, blobId2}));
 
-        checkpoints.Put(5, TCheckpointInfo({
-            blobId3,
-            blobId4
-        }));
+        checkpoints.Put(5, TCheckpointInfo({blobId3, blobId4}));
 
         UNIT_ASSERT(!checkpoints.IsEmpty());
 
@@ -96,45 +92,33 @@ Y_UNIT_TEST_SUITE(TCheckpointsToDeleteTest)
 
         ASSERT_VECTORS_EQUAL(
             checkpoints.ExtractBlobsToCleanup(1, &commitId),
-            TVector<TPartialBlobId>({blobId1})
-        );
+            TVector<TPartialBlobId>({blobId1}));
         UNIT_ASSERT_VALUES_EQUAL(0, commitId);
 
         ASSERT_VECTORS_EQUAL(
             checkpoints.ExtractBlobsToCleanup(1, &commitId),
-            TVector<TPartialBlobId>({blobId2})
-        );
+            TVector<TPartialBlobId>({blobId2}));
         UNIT_ASSERT_VALUES_EQUAL(1, commitId);
 
         ASSERT_VECTORS_EQUAL(
             checkpoints.DeleteNextCheckpoint(),
-            TVector<TPartialBlobId>({
-                blobId1,
-                blobId2
-            })
-        );
+            TVector<TPartialBlobId>({blobId1, blobId2}));
 
         commitId = 0;
 
         ASSERT_VECTORS_EQUAL(
             checkpoints.ExtractBlobsToCleanup(1, &commitId),
-            TVector<TPartialBlobId>({blobId3})
-        );
+            TVector<TPartialBlobId>({blobId3}));
         UNIT_ASSERT_VALUES_EQUAL(0, commitId);
 
         ASSERT_VECTORS_EQUAL(
             checkpoints.ExtractBlobsToCleanup(1, &commitId),
-            TVector<TPartialBlobId>({blobId4})
-        );
+            TVector<TPartialBlobId>({blobId4}));
         UNIT_ASSERT_VALUES_EQUAL(5, commitId);
 
         ASSERT_VECTORS_EQUAL(
             checkpoints.DeleteNextCheckpoint(),
-            TVector<TPartialBlobId>({
-                blobId3,
-                blobId4
-            })
-        );
+            TVector<TPartialBlobId>({blobId3, blobId4}));
 
         UNIT_ASSERT(checkpoints.IsEmpty());
     }

@@ -12,15 +12,13 @@ const ui32 InvalidBlockIndex = Max<ui32>();
 
 TFreshBlock FindBlock(const TBlockIndex& index, ui32 blockIndex, ui64 commitId)
 {
-    struct TVisitor final
-        : IFreshBlocksIndexVisitor
+    struct TVisitor final: IFreshBlocksIndexVisitor
     {
         TFreshBlock Block;
 
         TVisitor()
             : Block({InvalidBlockIndex, 0, true}, 0)
-        {
-        }
+        {}
 
         bool Visit(const TFreshBlock& block) override
         {
@@ -81,4 +79,4 @@ Y_UNIT_TEST_SUITE(TPartition1BlockIndexTest)
     }
 }
 
-}   // namespace NCloud::NBlockStore::NStorage::NPartition::NPartition
+}   // namespace NCloud::NBlockStore::NStorage::NPartition

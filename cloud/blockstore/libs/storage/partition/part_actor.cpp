@@ -1,12 +1,11 @@
 #include "part_actor.h"
 
-#include <cloud/storage/core/libs/common/format.h>
-
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/verify.h>
 
 #include <contrib/ydb/core/base/tablet_pipe.h>
@@ -29,15 +28,16 @@ using namespace NCloud::NStorage;
 ////////////////////////////////////////////////////////////////////////////////
 
 static constexpr TDuration YellowStateUpdateInterval = TDuration::Seconds(15);
-static constexpr TDuration BackpressureReportSendInterval = TDuration::Seconds(5);
+static constexpr TDuration BackpressureReportSendInterval =
+    TDuration::Seconds(5);
 
 ////////////////////////////////////////////////////////////////////////////////
 
 const TPartitionActor::TStateInfo TPartitionActor::States[STATE_MAX] = {
-    { "Boot",   (IActor::TReceiveFunc)&TPartitionActor::StateBoot   },
-    { "Init",   (IActor::TReceiveFunc)&TPartitionActor::StateInit   },
-    { "Work",   (IActor::TReceiveFunc)&TPartitionActor::StateWork   },
-    { "Zombie", (IActor::TReceiveFunc)&TPartitionActor::StateZombie },
+    {"Boot", (IActor::TReceiveFunc)&TPartitionActor::StateBoot},
+    {"Init", (IActor::TReceiveFunc)&TPartitionActor::StateInit},
+    {"Work", (IActor::TReceiveFunc)&TPartitionActor::StateWork},
+    {"Zombie", (IActor::TReceiveFunc)&TPartitionActor::StateZombie},
 };
 
 const TString PartitionTransactions[] = {
@@ -98,18 +98,18 @@ TString TPartitionActor::GetStateName(ui32 state)
 
 void TPartitionActor::Enqueue(STFUNC_SIG)
 {
-    ALOG_ERROR(TBlockStoreComponents::PARTITION,
-        "[" << TabletID() << "]"
-        << " IGNORING message type# " << ev->GetTypeRewrite()
-        << " from Sender# " << ToString(ev->Sender)
-        << " in StateBoot");
+    ALOG_ERROR(
+        TBlockStoreComponents::PARTITION,
+        "[" << TabletID() << "]" << " IGNORING message type# "
+            << ev->GetTypeRewrite() << " from Sender# " << ToString(ev->Sender)
+            << " in StateBoot");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 void TPartitionActor::DefaultSignalTabletActive(const TActorContext& ctx)
 {
-    Y_UNUSED(ctx); // postpone until LoadState transaction completes
+    Y_UNUSED(ctx);   // postpone until LoadState transaction completes
 }
 
 void TPartitionActor::Activate(const TActorContext& ctx)
@@ -123,7 +123,7 @@ void TPartitionActor::Activate(const TActorContext& ctx)
     SendPendingRequests(ctx, PendingRequests);
 
     // TODO: it is too expensive for huge volumes
-    //State->CollectGarbageHardRequested = true;
+    // State->CollectGarbageHardRequested = true;
     EnqueueCollectGarbageIfNeeded(ctx);
 
     EnqueueFlushIfNeeded(ctx);
@@ -205,7 +205,8 @@ void TPartitionActor::RegisterCounters(const TActorContext& ctx)
 void TPartitionActor::ScheduleCountersUpdate(const TActorContext& ctx)
 {
     if (!UpdateCountersScheduled) {
-        ctx.Schedule(UpdateCountersInterval,
+        ctx.Schedule(
+            UpdateCountersInterval,
             new TEvPartitionPrivate::TEvUpdateCounters());
         UpdateCountersScheduled = true;
     }
@@ -227,10 +228,13 @@ void TPartitionActor::UpdateCounters(const TActorContext& ctx)
         ui64 value = stats.Get##category##Counters().Get##name();             \
         Y_DEBUG_ABORT_UNLESS(value >= counter.Get());                         \
         if (value < counter.Get()) {                                          \
-            ReportCounterUpdateRace(                                          \
-                {{"disk", PartitionConfig.GetDiskId()},                       \
-                 {"category", TString(#category)},                            \
-                 {"counter", TString(#name)}});                               \
+            ReportCounterUpdateRace({                                         \
+                {"disk", PartitionConfig.GetDiskId()},                        \
+                {                                                             \
+                    "category", TString(#category)                            \
+                }                                                             \
+                , {"counter", TString(#name)}                                 \
+            });                                                               \
             LOG_ERROR(                                                        \
                 ctx,                                                          \
                 TBlockStoreComponents::PARTITION,                             \
@@ -260,7 +264,8 @@ void TPartitionActor::UpdateCounters(const TActorContext& ctx)
 void TPartitionActor::ScheduleYellowStateUpdate(const TActorContext& ctx)
 {
     if (!UpdateYellowStateScheduled) {
-        ctx.Schedule(YellowStateUpdateInterval,
+        ctx.Schedule(
+            YellowStateUpdateInterval,
             new TEvPartitionPrivate::TEvUpdateYellowState());
         UpdateYellowStateScheduled = true;
     }
@@ -271,12 +276,13 @@ void TPartitionActor::UpdateYellowState(const TActorContext& ctx)
     ctx.Register(CreateTabletDSChecker(SelfId(), Info()));
 }
 
-void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx)
+void TPartitionActor::ReassignChannelsIfNeeded(
+    const NActors::TActorContext& ctx)
 {
     const auto timeout = Config->GetReassignRequestRetryTimeout();
 
-    if (ReassignRequestSentTs.GetValue()
-            && ReassignRequestSentTs + timeout >= ctx.Now())
+    if (ReassignRequestSentTs.GetValue() &&
+        ReassignRequestSentTs + timeout >= ctx.Now())
     {
         return;
     }
@@ -317,7 +323,7 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
     NCloud::Send<TEvHiveProxy::TEvReassignTabletRequest>(
         ctx,
         MakeHiveProxyServiceId(),
-        0,  // cookie
+        0,   // cookie
         TabletID(),
         std::move(channels));
 
@@ -358,7 +364,8 @@ void TPartitionActor::OnActivateExecutor(const TActorContext& ctx)
 
     RegisterCounters(ctx);
 
-    ctx.Schedule(BackpressureReportSendInterval,
+    ctx.Schedule(
+        BackpressureReportSendInterval,
         new TEvPartitionPrivate::TEvSendBackpressureReport());
 
     if (!Executor()->GetStats().IsFollower) {
@@ -499,8 +506,12 @@ void TPartitionActor::UpdateWriteThroughput(
     const NKikimr::NMetrics::TGroupId& group,
     ui64 value)
 {
-    GetResourceMetrics()->WriteThroughput[std::make_pair(channel, group)].Increment(value, now);
-    GetResourceMetrics()->WriteIops[std::make_pair(channel, group)].Increment(1, now);
+    GetResourceMetrics()
+        ->WriteThroughput[std::make_pair(channel, group)]
+        .Increment(value, now);
+    GetResourceMetrics()->WriteIops[std::make_pair(channel, group)].Increment(
+        1,
+        now);
 }
 
 void TPartitionActor::UpdateReadThroughput(
@@ -512,8 +523,9 @@ void TPartitionActor::UpdateReadThroughput(
 {
     if (isOverlayDisk) {
         const TString& overlayKind = Config->GetCommonOverlayPrefixPoolKind();
-        auto& tabletOps = OverlayMetrics.PoolKind2TabletOps
-            [overlayKind][std::make_pair(channel, group)];
+        auto& tabletOps =
+            OverlayMetrics.PoolKind2TabletOps[overlayKind]
+                                             [std::make_pair(channel, group)];
         tabletOps.ReadOperations.ByteCount += value;
         tabletOps.ReadOperations.Iops += 1;
     } else {
@@ -524,9 +536,7 @@ void TPartitionActor::UpdateReadThroughput(
     }
 }
 
-void TPartitionActor::UpdateNetworkStat(
-    const TInstant& now,
-    ui64 value)
+void TPartitionActor::UpdateNetworkStat(const TInstant& now, ui64 value)
 {
     GetResourceMetrics()->Network.Increment(value, now);
 }
@@ -554,9 +564,9 @@ bool TPartitionActor::InitReadWriteBlockRange(
 
     *range = TBlockRange64::WithLength(blockIndex, blockCount);
 
-    return
-        State->CheckBlockRange(*range) &&
-        (range->Size() <= Config->GetMaxReadWriteRangeSize() / State->GetBlockSize());
+    return State->CheckBlockRange(*range) &&
+           (range->Size() <=
+            Config->GetMaxReadWriteRangeSize() / State->GetBlockSize());
 }
 
 bool TPartitionActor::InitChangedBlocksRange(
@@ -570,9 +580,8 @@ bool TPartitionActor::InitChangedBlocksRange(
 
     *range = TBlockRange64::WithLength(blockIndex, blockCount);
 
-    return
-        State->CheckBlockRange(*range) &&
-        (range->Size() <= Config->GetMaxChangedBlocksRangeBlocksCount());
+    return State->CheckBlockRange(*range) &&
+           (range->Size() <= Config->GetMaxChangedBlocksRangeBlocksCount());
 }
 
 void TPartitionActor::UpdateChannelPermissions(
@@ -592,8 +601,7 @@ void TPartitionActor::SendBackpressureReport(const TActorContext& ctx) const
         LauncherID(),
         std::make_unique<TEvPartition::TEvBackpressureReport>(
             MakeIntrusive<TCallContext>(),
-            State->CalculateCurrentBackpressure()
-        ));
+            State->CalculateCurrentBackpressure()));
 }
 
 void TPartitionActor::SendGarbageCollectorCompleted(
@@ -607,7 +615,8 @@ void TPartitionActor::SendGarbageCollectorCompleted(
     NCloud::Send(
         ctx,
         LauncherID(),
-        std::make_unique<TEvPartition::TEvGarbageCollectorCompleted>(TabletID()));
+        std::make_unique<TEvPartition::TEvGarbageCollectorCompleted>(
+            TabletID()));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -660,7 +669,8 @@ void TPartitionActor::HandleSendBackpressureReport(
         SendBackpressureReport(ctx);
     }
 
-    ctx.Schedule(BackpressureReportSendInterval,
+    ctx.Schedule(
+        BackpressureReportSendInterval,
         new TEvPartitionPrivate::TEvSendBackpressureReport());
 }
 
@@ -704,9 +714,12 @@ void TPartitionActor::HandleCheckBlobstorageStatusResult(
         bool diskSpaceYellowStop = false;
         bool diskSpaceLightOrange = false;
         if (auto latestEntry = channel.LatestEntry()) {
-            diskSpaceYellowMove = IsIn(msg->LightYellowMoveGroups, latestEntry->GroupID);
-            diskSpaceYellowStop = IsIn(msg->YellowStopGroups, latestEntry->GroupID);
-            diskSpaceLightOrange = IsIn(msg->LightOrangeGroups, latestEntry->GroupID);
+            diskSpaceYellowMove =
+                IsIn(msg->LightYellowMoveGroups, latestEntry->GroupID);
+            diskSpaceYellowStop =
+                IsIn(msg->YellowStopGroups, latestEntry->GroupID);
+            diskSpaceLightOrange =
+                IsIn(msg->LightOrangeGroups, latestEntry->GroupID);
         }
 
         EChannelPermissions permissions = {};
@@ -727,8 +740,7 @@ void TPartitionActor::HandleCheckBlobstorageStatusResult(
     }
 }
 
-void TPartitionActor::MapBaseDiskIdToTabletId(
-    const NActors::TActorContext& ctx)
+void TPartitionActor::MapBaseDiskIdToTabletId(const NActors::TActorContext& ctx)
 {
     if (State && State->GetBaseDiskTabletId() != 0) {
         auto request = std::make_unique<TEvVolume::TEvMapBaseDiskIdToTabletId>(
@@ -757,8 +769,8 @@ void TPartitionActor::ClearBaseDiskIdToTabletIdMapping(
     const NActors::TActorContext& ctx)
 {
     if (State && State->GetBaseDiskTabletId() != 0) {
-        auto request = std::make_unique<
-            TEvVolume::TEvClearBaseDiskIdToTabletIdMapping>(
+        auto request =
+            std::make_unique<TEvVolume::TEvClearBaseDiskIdToTabletIdMapping>(
                 State->GetBaseDiskId());
 
         auto event = std::make_unique<IEventHandle>(
@@ -776,7 +788,6 @@ void TPartitionActor::ClearBaseDiskIdToTabletIdMapping(
         ctx.Send(event.release());
     }
 }
-
 
 void TPartitionActor::HandleReassignTabletResponse(
     const TEvHiveProxy::TEvReassignTabletResponse::TPtr& ev,
@@ -922,7 +933,9 @@ STFUNC(TPartitionActor::StateBoot)
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
 
         HFunc(TEvPartitionPrivate::TEvUpdateCounters, HandleUpdateCounters);
-        HFunc(TEvPartitionPrivate::TEvSendBackpressureReport, HandleSendBackpressureReport);
+        HFunc(
+            TEvPartitionPrivate::TEvSendBackpressureReport,
+            HandleSendBackpressureReport);
 
         HFunc(
             TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
@@ -952,10 +965,18 @@ STFUNC(TPartitionActor::StateInit)
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
 
         HFunc(TEvPartitionPrivate::TEvUpdateCounters, HandleUpdateCounters);
-        HFunc(TEvPartitionPrivate::TEvSendBackpressureReport, HandleSendBackpressureReport);
-        HFunc(TEvPartitionCommonPrivate::TEvLoadFreshBlobsCompleted, HandleLoadFreshBlobsCompleted);
-        HFunc(TEvPartitionPrivate::TEvConfirmBlobsCompleted, HandleConfirmBlobsCompleted);
-        HFunc(TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest, HandleLoadCompactionMapChunk);
+        HFunc(
+            TEvPartitionPrivate::TEvSendBackpressureReport,
+            HandleSendBackpressureReport);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvLoadFreshBlobsCompleted,
+            HandleLoadFreshBlobsCompleted);
+        HFunc(
+            TEvPartitionPrivate::TEvConfirmBlobsCompleted,
+            HandleConfirmBlobsCompleted);
+        HFunc(
+            TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest,
+            HandleLoadCompactionMapChunk);
 
         HFunc(TEvVolume::TEvGetUsedBlocksResponse, HandleGetUsedBlocksResponse);
 
@@ -970,12 +991,10 @@ STFUNC(TPartitionActor::StateInit)
         // TPartitionActor::BootWakeupEventTag tag.
         IgnoreFunc(TEvents::TEvWakeup)
 
-        IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
+            IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 
         default:
-            if (!RejectRequests(ev) &&
-                !HandleDefaultEvents(ev, SelfId()))
-            {
+            if (!RejectRequests(ev) && !HandleDefaultEvents(ev, SelfId())) {
                 HandleUnexpectedEvent(
                     ev,
                     TBlockStoreComponents::PARTITION,
@@ -991,39 +1010,83 @@ STFUNC(TPartitionActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvTablet::TEvCheckBlobstorageStatusResult, HandleCheckBlobstorageStatusResult);
+        HFunc(
+            TEvTablet::TEvCheckBlobstorageStatusResult,
+            HandleCheckBlobstorageStatusResult);
 
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
 
         HFunc(TEvPartitionPrivate::TEvUpdateCounters, HandleUpdateCounters);
-        HFunc(TEvPartitionPrivate::TEvUpdateYellowState, HandleUpdateYellowState);
-        HFunc(TEvPartitionPrivate::TEvSendBackpressureReport, HandleSendBackpressureReport);
-        HFunc(TEvPartitionPrivate::TEvProcessWriteQueue, HandleProcessWriteQueue);
+        HFunc(
+            TEvPartitionPrivate::TEvUpdateYellowState,
+            HandleUpdateYellowState);
+        HFunc(
+            TEvPartitionPrivate::TEvSendBackpressureReport,
+            HandleSendBackpressureReport);
+        HFunc(
+            TEvPartitionPrivate::TEvProcessWriteQueue,
+            HandleProcessWriteQueue);
 
-        HFunc(TEvPartitionCommonPrivate::TEvReadBlobCompleted, HandleReadBlobCompleted);
-        HFunc(TEvPartitionCommonPrivate::TEvLongRunningOperation, HandleLongRunningBlobOperation);
-        HFunc(TEvPartitionPrivate::TEvWriteBlobCompleted, HandleWriteBlobCompleted);
-        HFunc(TEvPartitionPrivate::TEvPatchBlobCompleted, HandlePatchBlobCompleted);
-        HFunc(TEvPartitionPrivate::TEvReadBlocksCompleted, HandleReadBlocksCompleted);
-        HFunc(TEvPartitionPrivate::TEvWriteBlocksCompleted, HandleWriteBlocksCompleted);
-        HFunc(TEvPartitionPrivate::TEvZeroBlocksCompleted, HandleZeroBlocksCompleted);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvReadBlobCompleted,
+            HandleReadBlobCompleted);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvLongRunningOperation,
+            HandleLongRunningBlobOperation);
+        HFunc(
+            TEvPartitionPrivate::TEvWriteBlobCompleted,
+            HandleWriteBlobCompleted);
+        HFunc(
+            TEvPartitionPrivate::TEvPatchBlobCompleted,
+            HandlePatchBlobCompleted);
+        HFunc(
+            TEvPartitionPrivate::TEvReadBlocksCompleted,
+            HandleReadBlocksCompleted);
+        HFunc(
+            TEvPartitionPrivate::TEvWriteBlocksCompleted,
+            HandleWriteBlocksCompleted);
+        HFunc(
+            TEvPartitionPrivate::TEvZeroBlocksCompleted,
+            HandleZeroBlocksCompleted);
         HFunc(TEvPartitionPrivate::TEvFlushCompleted, HandleFlushCompleted);
-        HFunc(TEvPartitionCommonPrivate::TEvTrimFreshLogCompleted, HandleTrimFreshLogCompleted);
-        HFunc(TEvPartitionPrivate::TEvCompactionCompleted, HandleCompactionCompleted);
-        HFunc(TEvPartitionPrivate::TEvMetadataRebuildCompleted, HandleMetadataRebuildCompleted);
-        HFunc(TEvPartitionPrivate::TEvScanDiskCompleted, HandleScanDiskCompleted);
-        HFunc(TEvPartitionPrivate::TEvCollectGarbageCompleted, HandleCollectGarbageCompleted);
-        HFunc(TEvPartitionPrivate::TEvForcedCompactionCompleted, HandleForcedCompactionCompleted);
-        HFunc(TEvPartitionPrivate::TEvGetChangedBlocksCompleted, HandleGetChangedBlocksCompleted);
-        HFunc(TEvPartitionPrivate::TEvAddConfirmedBlobsCompleted, HandleAddConfirmedBlobsCompleted);
-        HFunc(TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted, HandleDescribeBlocksCompleted);
-        HFunc(TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest, HandleLoadCompactionMapChunk);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvTrimFreshLogCompleted,
+            HandleTrimFreshLogCompleted);
+        HFunc(
+            TEvPartitionPrivate::TEvCompactionCompleted,
+            HandleCompactionCompleted);
+        HFunc(
+            TEvPartitionPrivate::TEvMetadataRebuildCompleted,
+            HandleMetadataRebuildCompleted);
+        HFunc(
+            TEvPartitionPrivate::TEvScanDiskCompleted,
+            HandleScanDiskCompleted);
+        HFunc(
+            TEvPartitionPrivate::TEvCollectGarbageCompleted,
+            HandleCollectGarbageCompleted);
+        HFunc(
+            TEvPartitionPrivate::TEvForcedCompactionCompleted,
+            HandleForcedCompactionCompleted);
+        HFunc(
+            TEvPartitionPrivate::TEvGetChangedBlocksCompleted,
+            HandleGetChangedBlocksCompleted);
+        HFunc(
+            TEvPartitionPrivate::TEvAddConfirmedBlobsCompleted,
+            HandleAddConfirmedBlobsCompleted);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted,
+            HandleDescribeBlocksCompleted);
+        HFunc(
+            TEvPartitionPrivate::TEvLoadCompactionMapChunkRequest,
+            HandleLoadCompactionMapChunk);
         HFunc(
             TEvPartitionCommonPrivate::TEvGetPartCountersRequest,
             HandleGetPartCountersRequest);
 
-        HFunc(TEvHiveProxy::TEvReassignTabletResponse, HandleReassignTabletResponse);
+        HFunc(
+            TEvHiveProxy::TEvReassignTabletResponse,
+            HandleReassignTabletResponse);
 
         IgnoreFunc(TEvPartitionPrivate::TEvCleanupResponse);
         IgnoreFunc(TEvPartitionPrivate::TEvCollectGarbageResponse);
@@ -1039,16 +1102,15 @@ STFUNC(TPartitionActor::StateWork)
         // TPartitionActor::BootWakeupEventTag tag.
         IgnoreFunc(TEvents::TEvWakeup)
 
-        default:
-            if (!HandleRequests(ev) &&
-                !HandleDefaultEvents(ev, SelfId()))
-            {
-                HandleUnexpectedEvent(
-                    ev,
-                    TBlockStoreComponents::PARTITION,
-                    __PRETTY_FUNCTION__);
-            }
-            break;
+            default
+            : if (!HandleRequests(ev) && !HandleDefaultEvents(ev, SelfId()))
+        {
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION,
+                __PRETTY_FUNCTION__);
+        }
+        break;
     }
 }
 
@@ -1102,14 +1164,14 @@ STFUNC(TPartitionActor::StateZombie)
         // TPartitionActor::BootWakeupEventTag tag.
         IgnoreFunc(TEvents::TEvWakeup)
 
-        default:
-            if (!RejectRequests(ev)) {
-                HandleUnexpectedEvent(
-                    ev,
-                    TBlockStoreComponents::PARTITION,
-                    __PRETTY_FUNCTION__);
-            }
-            break;
+            default: if (!RejectRequests(ev))
+        {
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::PARTITION,
+                __PRETTY_FUNCTION__);
+        }
+        break;
     }
 }
 
@@ -1174,11 +1236,10 @@ NProto::TError VerifyBlockChecksum(
         // we might read proper data upon retry - let's give it a chance
         return MakeError(
             E_REJECTED,
-            TStringBuilder() << "block digest mismatch, block="
-                << blockIndex << ", offset=" << blobOffset
-                << ", blobId=" << blobID
-                << ", expected=" << expectedChecksum
-                << ", actual=" << actualChecksum);
+            TStringBuilder() << "block digest mismatch, block=" << blockIndex
+                             << ", offset=" << blobOffset << ", blobId="
+                             << blobID << ", expected=" << expectedChecksum
+                             << ", actual=" << actualChecksum);
     }
 
     return {};

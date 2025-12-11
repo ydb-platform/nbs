@@ -21,11 +21,10 @@ struct TCompactionScore
 
     TCompactionScore(float score, EType type)
         : Score(score)
-        , Type(type)
-    {
-    };
+        , Type(type){};
 
-    TCompactionScore(float score) : Score(score) {};
+    TCompactionScore(float score)
+        : Score(score){};
 };
 
 struct TRangeStat
@@ -42,16 +41,15 @@ struct TRangeStat
     TRangeStat() = default;
 
     TRangeStat(
-            ui16 blobCount,
-            ui16 blockCount,
-            ui16 usedBlockCount,
-            ui16 readRequestCount,
-            ui16 readRequestBlobCount,
-            ui16 readRequestBlockCount,
-            bool compacted,
-            float score,
-            TCompactionScore::EType scoreType =
-                TCompactionScore::EType::BlobCount)
+        ui16 blobCount,
+        ui16 blockCount,
+        ui16 usedBlockCount,
+        ui16 readRequestCount,
+        ui16 readRequestBlobCount,
+        ui16 readRequestBlockCount,
+        bool compacted,
+        float score,
+        TCompactionScore::EType scoreType = TCompactionScore::EType::BlobCount)
         : BlobCount(blobCount)
         , BlockCount(blockCount)
         , UsedBlockCount(usedBlockCount)
@@ -60,8 +58,7 @@ struct TRangeStat
         , ReadRequestBlockCount(readRequestBlockCount)
         , Compacted(compacted)
         , CompactionScore(score, scoreType)
-    {
-    }
+    {}
 
     ui16 GarbageBlockCount() const
     {
@@ -78,7 +75,8 @@ struct TRangeStat
 
 struct ICompactionPolicy
 {
-    virtual ~ICompactionPolicy() {}
+    virtual ~ICompactionPolicy()
+    {}
 
     virtual TCompactionScore CalculateScore(const TRangeStat& stat) const = 0;
     virtual bool BackpressureEnabled() const = 0;
@@ -107,7 +105,8 @@ struct TLoadOptimizationCompactionPolicyConfig
 ICompactionPolicyPtr BuildLoadOptimizationCompactionPolicy(
     const TLoadOptimizationCompactionPolicyConfig& config);
 
-TLoadOptimizationCompactionPolicyConfig BuildLoadOptimizationCompactionPolicyConfig(
+TLoadOptimizationCompactionPolicyConfig
+BuildLoadOptimizationCompactionPolicyConfig(
     const NProto::TPartitionConfig& partitionConfig,
     const TStorageConfig& storageConfig,
     const ui32 siblingCount);

@@ -3,13 +3,12 @@
 #include "public.h"
 
 #include <cloud/storage/core/libs/api/ss_proxy.h>
-#include <cloud/storage/core/libs/ss_proxy/protos/path_description_backup.pb.h>
-#include <cloud/storage/core/libs/ss_proxy/ss_proxy_events_private.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 #include <cloud/storage/core/libs/kikimr/public.h>
+#include <cloud/storage/core/libs/ss_proxy/protos/path_description_backup.pb.h>
+#include <cloud/storage/core/libs/ss_proxy/ss_proxy_events_private.h>
 
 #include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
@@ -57,7 +56,8 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleUpdatePathDescriptionBackup(
-        const TEvSSProxyPrivate::TEvUpdatePathDescriptionBackupRequest::TPtr& ev,
+        const TEvSSProxyPrivate::TEvUpdatePathDescriptionBackupRequest::TPtr&
+            ev,
         const NActors::TActorContext& ctx);
 
     void HandleBackupPathDescriptions(

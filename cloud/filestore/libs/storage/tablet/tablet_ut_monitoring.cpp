@@ -6,6 +6,7 @@
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
 #include <contrib/ydb/library/actors/core/mon.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -17,7 +18,6 @@ using namespace NMonitoring;
 
 Y_UNIT_TEST_SUITE(TIndexTabletTest_Monitoring)
 {
-
     Y_UNIT_TEST(ShouldHandleHttpInfo)
     {
         TTestEnv env;

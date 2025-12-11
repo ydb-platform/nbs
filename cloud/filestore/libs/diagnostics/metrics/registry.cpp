@@ -43,10 +43,10 @@ struct TAggregatorStorage
     TAggregatorStorage& operator=(TAggregatorStorage&&) = delete;
 
     TAggregatorStorage(
-            TDynamicCountersPtr root,
-            const TLabels& labels,
-            EAggregationType aggrType,
-            EMetricType metrType)
+        TDynamicCountersPtr root,
+        const TLabels& labels,
+        EAggregationType aggrType,
+        EMetricType metrType)
         : Aggregator(aggrType, metrType)
     {
         Y_ABORT_UNLESS(!labels.empty());
@@ -60,7 +60,7 @@ struct TAggregatorStorage
         Subgroups.push(currentSubgroup);
 
         for (ui32 i = 0; i < labels.size() - 1; ++i) {
-        currentSubgroup = currentSubgroup->GetSubgroup(
+            currentSubgroup = currentSubgroup->GetSubgroup(
                 labels[i].GetName(),
                 labels[i].GetValue());
             Subgroups.push(currentSubgroup);
@@ -106,7 +106,8 @@ static_assert(!std::is_copy_assignable_v<TAggregatorStorage>);
 static_assert(!std::is_move_constructible_v<TAggregatorStorage>);
 static_assert(!std::is_move_assignable_v<TAggregatorStorage>);
 
-using TAggregatorStoragesList = TList<TAggregatorStorage::TAggregatorStorageRef>;
+using TAggregatorStoragesList =
+    TList<TAggregatorStorage::TAggregatorStorageRef>;
 
 struct TMetricKeyStorage
 {
@@ -148,8 +149,8 @@ private:
 
 public:
     TMainMetricsRegistry(
-            TLabels commonLabels,
-            NMonitoring::TDynamicCountersPtr rootCounters)
+        TLabels commonLabels,
+        NMonitoring::TDynamicCountersPtr rootCounters)
         : CommonLabels(std::move(commonLabels))
         , Root(std::move(rootCounters))
     {}
@@ -177,13 +178,13 @@ public:
         auto it = Aggregators.find(aggregatorLabels);
         if (it == Aggregators.end()) {
             it = Aggregators
-                .try_emplace(
-                    aggregatorLabels,
-                    Root,
-                    aggregatorLabels,
-                    aggrType,
-                    metrType)
-                .first;
+                     .try_emplace(
+                         aggregatorLabels,
+                         Root,
+                         aggregatorLabels,
+                         aggrType,
+                         metrType)
+                     .first;
             AggregatorStoragesOrder.push_front(it->second);
             it->second.Item = AggregatorStoragesOrder.begin();
         }
@@ -191,7 +192,8 @@ public:
         Y_ABORT_UNLESS(aggrType == it->second.Aggregator.GetAggregationType());
         Y_ABORT_UNLESS(metrType == it->second.Aggregator.GetMetricType());
 
-        TMetricKey metricKey = it->second.Aggregator.Register(std::move(metric));
+        TMetricKey metricKey =
+            it->second.Aggregator.Register(std::move(metric));
         TMetricKeyStorage keys(std::move(aggregatorLabels), metricKey);
 
         const TMetricKey key(this, GenerateNextFreeKey());
@@ -288,8 +290,8 @@ private:
 
 public:
     TScopedMetricsRegistry(
-            TLabels commonLabels,
-            TVector<IMetricsRegistryPtr> subRegistries)
+        TLabels commonLabels,
+        TVector<IMetricsRegistryPtr> subRegistries)
         : CommonLabels(std::move(commonLabels))
         , SubRegistries(std::move(subRegistries))
     {}
@@ -353,8 +355,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TMetricsRegistryStub
-    : public IMetricsRegistry
+class TMetricsRegistryStub: public IMetricsRegistry
 {
 public:
     // IMetricsRegistry

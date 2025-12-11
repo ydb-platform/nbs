@@ -24,7 +24,7 @@ struct TMmapRegionMetadata
 {
     TString FilePath;
     void* Address = nullptr;
-    size_t Size = 0; // in bytes
+    size_t Size = 0;   // in bytes
     ui64 Id = 0;
 
     bool operator<(const TMmapRegionMetadata& other) const
@@ -38,16 +38,12 @@ struct TMmapRegion
 {
 public:
     TMmapRegion(
-            TString filePath,
-            void* address,
-            size_t size,
-            ui64 id,
-            TFileHandle fd)
-        : Metadata{
-            .FilePath = std::move(filePath),
-            .Address = address,
-            .Size = size,
-            .Id = id}
+        TString filePath,
+        void* address,
+        size_t size,
+        ui64 id,
+        TFileHandle fd)
+        : Metadata{.FilePath = std::move(filePath), .Address = address, .Size = size, .Id = id}
         , Fd(std::move(fd))
     {}
 

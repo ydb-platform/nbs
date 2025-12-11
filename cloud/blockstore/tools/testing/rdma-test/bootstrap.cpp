@@ -17,8 +17,8 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
-#include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/diagnostics/trace_processor.h>
+#include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/diagnostics/trace_reader.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
@@ -71,11 +71,8 @@ void TBootstrap::Init()
 
         Verbs = NRdma::NVerbs::CreateVerbs();
 
-        Server = NRdma::CreateServer(
-            Verbs,
-            Logging,
-            Monitoring,
-            std::move(config));
+        Server =
+            NRdma::CreateServer(Verbs, Logging, Monitoring, std::move(config));
     } else if (Options->StorageKind == EStorageKind::Rdma) {
         auto config = std::make_unique<NRdma::TClientConfig>();
         config->QueueSize = Options->QueueSize;
@@ -86,11 +83,8 @@ void TBootstrap::Init()
 
         Verbs = NRdma::NVerbs::CreateVerbs();
 
-        Client = NRdma::CreateClient(
-            Verbs,
-            Logging,
-            Monitoring,
-            std::move(config));
+        Client =
+            NRdma::CreateClient(Verbs, Logging, Monitoring, std::move(config));
     }
 }
 
@@ -143,7 +137,9 @@ void TBootstrap::InitTracing()
 
 void TBootstrap::Start()
 {
-#define START(c) if (c) (c)->Start();
+#define START(c) \
+    if (c)       \
+        (c)->Start();
 
     START(Scheduler);
     START(Logging);
@@ -159,7 +155,9 @@ void TBootstrap::Start()
 
 void TBootstrap::Stop()
 {
-#define STOP(c) if (c) (c)->Stop();
+#define STOP(c) \
+    if (c)      \
+        (c)->Stop();
 
     STOP(Storage);
     STOP(Client);
@@ -176,39 +174,38 @@ void TBootstrap::Stop()
 IRunnablePtr TBootstrap::CreateTest()
 {
     switch (Options->StorageKind) {
-    case EStorageKind::Null:
-        Storage = CreateNullStorage();
-        break;
+        case EStorageKind::Null:
+            Storage = CreateNullStorage();
+            break;
 
-    case EStorageKind::Memory:
-        Storage = CreateMemoryStorage(
-            Options->BlockSize,
-            Options->BlocksCount);
-        break;
+        case EStorageKind::Memory:
+            Storage =
+                CreateMemoryStorage(Options->BlockSize, Options->BlocksCount);
+            break;
 
-    case EStorageKind::LocalAIO:
-        Storage = CreateLocalAIOStorage(
-            Options->StoragePath,
-            Options->BlockSize,
-            Options->BlocksCount);
-        break;
+        case EStorageKind::LocalAIO:
+            Storage = CreateLocalAIOStorage(
+                Options->StoragePath,
+                Options->BlockSize,
+                Options->BlocksCount);
+            break;
 
-    case EStorageKind::LocalURing:
-        Storage = CreateLocalURingStorage(
-            Options->StoragePath,
-            Options->BlockSize,
-            Options->BlocksCount);
-        break;
+        case EStorageKind::LocalURing:
+            Storage = CreateLocalURingStorage(
+                Options->StoragePath,
+                Options->BlockSize,
+                Options->BlocksCount);
+            break;
 
-    case EStorageKind::Rdma:
-        Y_ABORT_UNLESS(Options->TestMode == ETestMode::Initiator);
-        Storage = CreateRdmaStorage(
-            Client,
-            ThreadPool,
-            Options->Host,
-            Options->Port,
-            TDuration::Seconds(Options->ConnectTimeout));
-        break;
+        case EStorageKind::Rdma:
+            Y_ABORT_UNLESS(Options->TestMode == ETestMode::Initiator);
+            Storage = CreateRdmaStorage(
+                Client,
+                ThreadPool,
+                Options->Host,
+                Options->Port,
+                TDuration::Seconds(Options->ConnectTimeout));
+            break;
     }
 
     Storage->Start();

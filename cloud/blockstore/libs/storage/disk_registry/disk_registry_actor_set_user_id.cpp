@@ -27,16 +27,10 @@ void TDiskRegistryActor::HandleSetUserId(
         msg->Record.ShortDebugString().c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-    ExecuteTx<TSetUserId>(
-        ctx,
-        std::move(requestInfo),
-        diskId,
-        userId);
+    ExecuteTx<TSetUserId>(ctx, std::move(requestInfo), diskId, userId);
 }
 
 bool TDiskRegistryActor::PrepareSetUserId(

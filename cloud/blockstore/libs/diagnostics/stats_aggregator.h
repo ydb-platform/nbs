@@ -12,8 +12,7 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IStatsAggregator
-    : public IStartable
+struct IStatsAggregator: public IStartable
 {
     using TCommitCallback = std::function<void(
         NMonitoring::TDynamicCountersPtr,
@@ -29,8 +28,7 @@ struct IStatsAggregator
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IClientPercentileCalculator
-    : public IStartable
+struct IClientPercentileCalculator: public IStartable
 {
     virtual void CalculatePercentiles(
         NMonitoring::TDynamicCountersPtr updatedCounters) = 0;
@@ -54,7 +52,6 @@ void UpdateClientStats(
     NMonitoring::TDynamicCountersPtr updatedCounters,
     NMonitoring::TDynamicCountersPtr baseCounters);
 
-IMetricConsumerPtr CreateStatsParser(
-    NMonitoring::TDynamicCountersPtr counters);
+IMetricConsumerPtr CreateStatsParser(NMonitoring::TDynamicCountersPtr counters);
 
 }   // namespace NCloud::NBlockStore

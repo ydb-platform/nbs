@@ -3,7 +3,7 @@
 #include <memory>
 
 namespace google::protobuf {
-    class Message;
+class Message;
 }
 
 namespace NCloud::NBlockStore::NRdma {

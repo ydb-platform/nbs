@@ -32,15 +32,15 @@ void TIndexTabletActor::HandleFilterAliveNodes(
 {
     auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s FilterAliveNodes %s",
         LogTag.c_str(),
         DescribeNodes(msg->Nodes).c_str());
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     FILESTORE_TRACK(
@@ -48,10 +48,7 @@ void TIndexTabletActor::HandleFilterAliveNodes(
         msg->CallContext,
         "FilterAliveNodes");
 
-    ExecuteTx<TFilterAliveNodes>(
-        ctx,
-        std::move(requestInfo),
-        msg->Nodes);
+    ExecuteTx<TFilterAliveNodes>(ctx, std::move(requestInfo), msg->Nodes);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -98,7 +95,9 @@ void TIndexTabletActor::CompleteTx_FilterAliveNodes(
     const TActorContext& ctx,
     TTxIndexTablet::TFilterAliveNodes& args)
 {
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s FilterAliveNodes %s completed. Result: %s",
         LogTag.c_str(),
         DescribeNodes(args.Nodes).c_str(),

@@ -51,9 +51,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TMarkReplacementDevicesActor::TMarkReplacementDevicesActor(
-        const TActorId& owner,
-        TRequestInfoPtr requestInfo,
-        NProto::TFinishMigrationRequest request)
+    const TActorId& owner,
+    TRequestInfoPtr requestInfo,
+    NProto::TFinishMigrationRequest request)
     : Owner(owner)
     , RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
@@ -68,8 +68,9 @@ void TMarkReplacementDevicesActor::Bootstrap(const TActorContext& ctx)
 
 void TMarkReplacementDevicesActor::ReplyAndDie(const TActorContext& ctx)
 {
-    auto response = std::make_unique<TEvDiskRegistry::TEvFinishMigrationResponse>(
-        std::move(Error));
+    auto response =
+        std::make_unique<TEvDiskRegistry::TEvFinishMigrationResponse>(
+            std::move(Error));
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
@@ -80,25 +81,21 @@ void TMarkReplacementDevicesActor::ReplyAndDie(const TActorContext& ctx)
     Die(ctx);
 }
 
-void TMarkReplacementDevicesActor::MarkReplacementDevices(const TActorContext& ctx)
+void TMarkReplacementDevicesActor::MarkReplacementDevices(
+    const TActorContext& ctx)
 {
     PendingOperations = Request.MigrationsSize();
 
     ui64 cookie = 0;
     for (const auto& m: Request.GetMigrations()) {
-        auto request =
-            std::make_unique<TEvDiskRegistry::TEvMarkReplacementDeviceRequest>();
+        auto request = std::make_unique<
+            TEvDiskRegistry::TEvMarkReplacementDeviceRequest>();
         request->Record.SetDiskId(Request.GetDiskId());
         request->Record.SetDeviceId(m.GetTargetDeviceId());
         // Mark that the device has completed the replacement.
         // Explicitly setting the default value for the proto field for clarity.
         request->Record.SetIsReplacement(false);
-        NCloud::Send(
-            ctx,
-            Owner,
-            std::move(request),
-            cookie++
-        );
+        NCloud::Send(ctx, Owner, std::move(request), cookie++);
     }
 }
 
@@ -138,7 +135,9 @@ STFUNC(TMarkReplacementDevicesActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvDiskRegistry::TEvMarkReplacementDeviceResponse, HandleResponse);
+        HFunc(
+            TEvDiskRegistry::TEvMarkReplacementDeviceResponse,
+            HandleResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -169,10 +168,11 @@ void TDiskRegistryActor::HandleFinishMigration(
         record.ShortDebugString().c_str(),
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
-    auto requestInfo = CreateRequestInfo<TEvDiskRegistry::TFinishMigrationMethod>(
-        ev->Sender,
-        ev->Cookie,
-        ev->Get()->CallContext);
+    auto requestInfo =
+        CreateRequestInfo<TEvDiskRegistry::TFinishMigrationMethod>(
+            ev->Sender,
+            ev->Cookie,
+            ev->Get()->CallContext);
 
     auto diskId = record.GetDiskId();
     auto migrations = record.GetMigrations();
@@ -215,8 +215,7 @@ void TDiskRegistryActor::HandleFinishMigration(
                 ctx,
                 SelfId(),
                 std::move(requestInfo),
-                std::move(record)
-            );
+                std::move(record));
             Actors.insert(actor);
 
             return;
@@ -228,8 +227,7 @@ void TDiskRegistryActor::HandleFinishMigration(
         std::move(requestInfo),
         std::move(diskId),
         std::move(migrations),
-        ctx.Now()
-    );
+        ctx.Now());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -309,8 +307,9 @@ void TDiskRegistryActor::CompleteFinishMigration(
     PublishDiskStates(ctx);
     SecureErase(ctx);
 
-    auto response = std::make_unique<TEvDiskRegistry::TEvFinishMigrationResponse>(
-        std::move(args.Error));
+    auto response =
+        std::make_unique<TEvDiskRegistry::TEvFinishMigrationResponse>(
+            std::move(args.Error));
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
@@ -329,9 +328,11 @@ void TDiskRegistryActor::StartMigration(const NActors::TActorContext& ctx)
 
     StartMigrationInProgress = true;
 
-    auto request = std::make_unique<TEvDiskRegistryPrivate::TEvStartMigrationRequest>();
+    auto request =
+        std::make_unique<TEvDiskRegistryPrivate::TEvStartMigrationRequest>();
 
-    auto deadline = Min(StartMigrationStartTs, ctx.Now()) + TDuration::Seconds(5);
+    auto deadline =
+        Min(StartMigrationStartTs, ctx.Now()) + TDuration::Seconds(5);
     if (deadline > ctx.Now()) {
         LOG_INFO(
             ctx,
@@ -343,7 +344,10 @@ void TDiskRegistryActor::StartMigration(const NActors::TActorContext& ctx)
 
         ctx.Schedule(
             deadline,
-            std::make_unique<IEventHandle>(ctx.SelfID, ctx.SelfID, request.release()));
+            std::make_unique<IEventHandle>(
+                ctx.SelfID,
+                ctx.SelfID,
+                request.release()));
     } else {
         LOG_INFO(
             ctx,
@@ -370,9 +374,7 @@ void TDiskRegistryActor::HandleStartMigration(
         CreateRequestInfo<TEvDiskRegistryPrivate::TStartMigrationMethod>(
             ev->Sender,
             ev->Cookie,
-            ev->Get()->CallContext
-        )
-    );
+            ev->Get()->CallContext));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -397,30 +399,34 @@ void TDiskRegistryActor::ExecuteStartMigration(
     TDiskRegistryDatabase db(tx.DB);
 
     for (const auto& [diskId, deviceId]: State->BuildMigrationList()) {
-        const auto result = State->StartDeviceMigration(ctx.Now(), db, diskId, deviceId);
+        const auto result =
+            State->StartDeviceMigration(ctx.Now(), db, diskId, deviceId);
 
         if (HasError(result)) {
-            LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::DISK_REGISTRY,
                 "[%lu] Start migration failed. DiskId=%s DeviceId=%s Error=%s",
                 TabletID(),
                 diskId.Quote().c_str(),
                 deviceId.Quote().c_str(),
-                FormatError(result.GetError()).Quote().c_str()
-            );
+                FormatError(result.GetError()).Quote().c_str());
         } else {
             ++args.StartedDeviceMigrationsCount;
 
             const auto& target = result.GetResult();
-            LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-                "[%lu] Start migration success. DiskId=%s DeviceId=%s TargetId={ %s %u %lu(%lu) }",
+            LOG_INFO(
+                ctx,
+                TBlockStoreComponents::DISK_REGISTRY,
+                "[%lu] Start migration success. DiskId=%s DeviceId=%s "
+                "TargetId={ %s %u %lu(%lu) }",
                 TabletID(),
                 diskId.Quote().c_str(),
                 deviceId.Quote().c_str(),
                 target.GetDeviceUUID().Quote().c_str(),
                 target.GetBlockSize(),
                 target.GetBlocksCount(),
-                target.GetUnadjustedBlockCount()
-            );
+                target.GetUnadjustedBlockCount());
         }
     }
 }
@@ -449,7 +455,6 @@ void TDiskRegistryActor::HandleStartMigrationResponse(
     StartMigration(ctx);
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskRegistryActor::HandleStartForceMigration(
@@ -470,17 +475,17 @@ void TDiskRegistryActor::HandleStartForceMigration(
 
     if (msg->Record.GetSourceDiskId().empty() ||
         msg->Record.GetSourceDeviceId().empty() ||
-        msg->Record.GetTargetDeviceId().empty() )
+        msg->Record.GetTargetDeviceId().empty())
     {
-        auto response = std::make_unique<
-            TEvDiskRegistry::TEvStartForceMigrationResponse>();
+        auto response =
+            std::make_unique<TEvDiskRegistry::TEvStartForceMigrationResponse>();
         *response->Record.MutableError() = MakeError(
             E_ARGUMENT,
-            TStringBuilder() <<
-            "Failed to start disk migration " <<
-            msg->Record.GetSourceDiskId().Quote() <<
-            " device " << msg->Record.GetSourceDeviceId().Quote() <<
-            " to device " << msg->Record.GetTargetDeviceId().Quote());
+            TStringBuilder()
+                << "Failed to start disk migration "
+                << msg->Record.GetSourceDiskId().Quote() << " device "
+                << msg->Record.GetSourceDeviceId().Quote() << " to device "
+                << msg->Record.GetTargetDeviceId().Quote());
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
@@ -490,8 +495,7 @@ void TDiskRegistryActor::HandleStartForceMigration(
         CreateRequestInfo<TEvDiskRegistryPrivate::TStartMigrationMethod>(
             ev->Sender,
             ev->Cookie,
-            msg->CallContext
-        ),
+            msg->CallContext),
         msg->Record.GetSourceDiskId(),
         msg->Record.GetSourceDeviceId(),
         msg->Record.GetTargetDeviceId());
@@ -529,25 +533,29 @@ void TDiskRegistryActor::ExecuteStartForceMigration(
 
     if (HasError(result)) {
         args.Error = result.GetError();
-        LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Failed to start forced migration. DiskId=%s DeviceId=%s Error=%s",
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "[%lu] Failed to start forced migration. DiskId=%s DeviceId=%s "
+            "Error=%s",
             TabletID(),
             args.SourceDiskId.Quote().c_str(),
             args.SourceDeviceId.Quote().c_str(),
-            FormatError(result.GetError()).Quote().c_str()
-        );
+            FormatError(result.GetError()).Quote().c_str());
     } else {
         const auto& target = result.GetResult();
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-            "[%lu] Start force migration success. DiskId=%s DeviceId=%s TargetId={ %s %u %lu(%lu) }",
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
+            "[%lu] Start force migration success. DiskId=%s DeviceId=%s "
+            "TargetId={ %s %u %lu(%lu) }",
             TabletID(),
             args.SourceDiskId.Quote().c_str(),
             args.SourceDeviceId.Quote().c_str(),
             target.GetDeviceUUID().Quote().c_str(),
             target.GetBlockSize(),
             target.GetBlocksCount(),
-            target.GetUnadjustedBlockCount()
-        );
+            target.GetUnadjustedBlockCount());
     }
 }
 
@@ -561,7 +569,8 @@ void TDiskRegistryActor::CompleteStartForceMigration(
     NCloud::Reply(
         ctx,
         *args.RequestInfo,
-        std::make_unique<TEvDiskRegistry::TEvStartForceMigrationResponse>(args.Error));
+        std::make_unique<TEvDiskRegistry::TEvStartForceMigrationResponse>(
+            args.Error));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

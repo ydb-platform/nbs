@@ -11,41 +11,43 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_VFS_CONFIG(xxx)                                              \
-    xxx(FileSystemId,           TString,        ""                            )\
-    xxx(ClientId,               TString,        ""                            )\
-                                                                               \
-    xxx(SocketPath,             TString,        ""                            )\
-    xxx(MountPath,              TString,        ""                            )\
-    xxx(ReadOnly,               bool,           false                         )\
-    xxx(Debug,                  bool,           false                         )\
-                                                                               \
-    xxx(MaxWritePages,          ui32,           256                           )\
-    xxx(MaxBackground,          ui32,           128                           )\
-    xxx(MountSeqNumber,         ui64,           0                             )\
-    xxx(VhostQueuesCount,       ui32,           0                             )\
-                                                                               \
-    xxx(HandleOpsQueuePath,     TString,        ""                            )\
-    xxx(HandleOpsQueueSize,     ui32,           1_GB                          )\
-                                                                               \
-    xxx(WriteBackCachePath,                 TString,   ""                     )\
-    xxx(WriteBackCacheCapacity,             ui64,      1_GB                   )\
-    xxx(WriteBackCacheAutomaticFlushPeriod, TDuration,                         \
-                                            TDuration::MilliSeconds(100)      )\
-    xxx(WriteBackCacheFlushRetryPeriod,     TDuration,                         \
-                                            TDuration::MilliSeconds(100)      )\
-                                                                               \
-    xxx(WriteBackCacheFlushMaxWriteRequestSize,     ui32,       1_MB          )\
-    xxx(WriteBackCacheFlushMaxWriteRequestsCount,   ui32,       64            )\
-    xxx(WriteBackCacheFlushMaxSumWriteRequestsSize, ui32,       32_MB         )\
-                                                                               \
-    xxx(DirectoryHandlesStoragePath,        TString,   ""                     )\
-    xxx(DirectoryHandlesInitialDataSize,    ui64,      1_GB                   )\
-// FILESTORE_VFS_CONFIG
+#define FILESTORE_VFS_CONFIG(xxx)                                \
+    xxx(FileSystemId, TString, "")                               \
+    xxx(ClientId, TString, "")                                   \
+                                                                 \
+    xxx(SocketPath, TString, "")                                 \
+    xxx(MountPath, TString, "")                                  \
+    xxx(ReadOnly, bool, false)                                   \
+    xxx(Debug, bool, false)                                      \
+                                                                 \
+    xxx(MaxWritePages, ui32, 256)                                \
+    xxx(MaxBackground, ui32, 128)                                \
+    xxx(MountSeqNumber, ui64, 0)                                 \
+    xxx(VhostQueuesCount, ui32, 0)                               \
+                                                                 \
+    xxx(HandleOpsQueuePath, TString, "")                         \
+    xxx(HandleOpsQueueSize, ui32, 1_GB)                          \
+                                                                 \
+    xxx(WriteBackCachePath, TString, "")                         \
+    xxx(WriteBackCacheCapacity, ui64, 1_GB)                      \
+    xxx(WriteBackCacheAutomaticFlushPeriod,                      \
+        TDuration,                                               \
+        TDuration::MilliSeconds(100))                            \
+    xxx(WriteBackCacheFlushRetryPeriod,                          \
+        TDuration,                                               \
+        TDuration::MilliSeconds(100))                            \
+                                                                 \
+    xxx(WriteBackCacheFlushMaxWriteRequestSize, ui32, 1_MB)      \
+    xxx(WriteBackCacheFlushMaxWriteRequestsCount, ui32, 64)      \
+    xxx(WriteBackCacheFlushMaxSumWriteRequestsSize, ui32, 32_MB) \
+                                                                 \
+    xxx(DirectoryHandlesStoragePath, TString, "")                \
+    xxx(DirectoryHandlesInitialDataSize, ui64, 1_GB)             \
+    // FILESTORE_VFS_CONFIG
 
-#define FILESTORE_VFS_DECLARE_CONFIG(name, type, value)                        \
-    Y_DECLARE_UNUSED static const type TVFSConfigDefault##name = value;        \
-// FILESTORE_VFS_DECLARE_CONFIG
+#define FILESTORE_VFS_DECLARE_CONFIG(name, type, value)                 \
+    Y_DECLARE_UNUSED static const type TVFSConfigDefault##name = value; \
+    // FILESTORE_VFS_DECLARE_CONFIG
 
 FILESTORE_VFS_CONFIG(FILESTORE_VFS_DECLARE_CONFIG)
 
@@ -75,19 +77,19 @@ void DumpImpl(const T& t, IOutputStream& os)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_CONFIG_GETTER(class, name, type, ...)                        \
-type class::Get##name() const                                                  \
-{                                                                              \
-    if (ProtoConfig.Has##name()) {                                             \
-        return ConvertValue<type>(ProtoConfig.Get##name());                    \
-    }                                                                          \
-    return class##Default##name;                                               \
-}                                                                              \
-// FILESTORE_CONFIG_GETTER
+#define FILESTORE_CONFIG_GETTER(class, name, type, ...)         \
+    type class ::Get##name() const                              \
+    {                                                           \
+        if (ProtoConfig.Has##name()) {                          \
+            return ConvertValue<type>(ProtoConfig.Get##name()); \
+        }                                                       \
+        return class##Default##name;                            \
+    }                                                           \
+    // FILESTORE_CONFIG_GETTER
 
-#define FILESTORE_VFS_GETTER(name, type, ...)                                  \
-    FILESTORE_CONFIG_GETTER(TVFSConfig, name, type, ...)                       \
-// FILESTORE_VFS_GETTER
+#define FILESTORE_VFS_GETTER(name, type, ...)            \
+    FILESTORE_CONFIG_GETTER(TVFSConfig, name, type, ...) \
+    // FILESTORE_VFS_GETTER
 
 FILESTORE_VFS_CONFIG(FILESTORE_VFS_GETTER)
 
@@ -96,11 +98,11 @@ FILESTORE_VFS_CONFIG(FILESTORE_VFS_GETTER)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_CONFIG_DUMP(name, ...)                                       \
-    out << #name << ": ";                                                      \
-    DumpImpl(Get##name(), out);                                                \
-    out << Endl;                                                               \
-// FILESTORE_CONFIG_DUMP
+#define FILESTORE_CONFIG_DUMP(name, ...) \
+    out << #name << ": ";                \
+    DumpImpl(Get##name(), out);          \
+    out << Endl;                         \
+    // FILESTORE_CONFIG_DUMP
 
 void TVFSConfig::Dump(IOutputStream& out) const
 {
@@ -111,18 +113,23 @@ void TVFSConfig::Dump(IOutputStream& out) const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_CONFIG_DUMP(name, ...)                                       \
-    TABLER() {                                                                 \
-        TABLED() { out << #name; }                                             \
-        TABLED() { DumpImpl(Get##name(), out); }                               \
-    }                                                                          \
-// FILESTORE_CONFIG_DUMP
+#define FILESTORE_CONFIG_DUMP(name, ...) \
+    TABLER () {                          \
+        TABLED () {                      \
+            out << #name;                \
+        }                                \
+        TABLED () {                      \
+            DumpImpl(Get##name(), out);  \
+        }                                \
+    }                                    \
+    // FILESTORE_CONFIG_DUMP
 
 void TVFSConfig::DumpHtml(IOutputStream& out) const
 {
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
+    HTML (out) {
+        TABLE_CLASS ("table table-condensed") {
+            TABLEBODY()
+            {
                 FILESTORE_VFS_CONFIG(FILESTORE_CONFIG_DUMP);
             }
         }

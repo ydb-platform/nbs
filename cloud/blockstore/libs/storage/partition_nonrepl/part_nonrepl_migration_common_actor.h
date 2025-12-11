@@ -280,8 +280,8 @@ private:
     bool OverlapsWithInflightWriteAndZero(TBlockRange64 range) const;
 
     std::optional<TBlockRange64> GetNextMigrationRange() const;
-    std::optional<TBlockRange64>
-    TakeNextMigrationRange(const NActors::TActorContext& ctx);
+    std::optional<TBlockRange64> TakeNextMigrationRange(
+        const NActors::TActorContext& ctx);
 
     void ScheduleCountersUpdate(const NActors::TActorContext& ctx);
     void SendStats(const NActors::TActorContext& ctx);

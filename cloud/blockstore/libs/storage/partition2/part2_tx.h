@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include "part2_database.h" // XXX
+#include "part2_database.h"   // XXX
 
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
@@ -27,26 +27,26 @@ namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_PARTITION2_TRANSACTIONS(xxx, ...)                           \
-    xxx(InitSchema,             __VA_ARGS__)                                   \
-    xxx(LoadState,              __VA_ARGS__)                                   \
-    xxx(ZeroBlocks,             __VA_ARGS__)                                   \
-    xxx(InitIndex,              __VA_ARGS__)                                   \
-    xxx(ReadBlocks,             __VA_ARGS__)                                   \
-    xxx(AddBlobs,               __VA_ARGS__)                                   \
-    xxx(Compaction,             __VA_ARGS__)                                   \
-    xxx(Cleanup,                __VA_ARGS__)                                   \
-    xxx(UpdateIndexStructures,  __VA_ARGS__)                                   \
-    xxx(CollectGarbage,         __VA_ARGS__)                                   \
-    xxx(AddGarbage,             __VA_ARGS__)                                   \
-    xxx(DeleteGarbage,          __VA_ARGS__)                                   \
-    xxx(CreateCheckpoint,       __VA_ARGS__)                                   \
-    xxx(DeleteCheckpoint,       __VA_ARGS__)                                   \
-    xxx(DescribeRange,          __VA_ARGS__)                                   \
-    xxx(DescribeBlob,           __VA_ARGS__)                                   \
-    xxx(GetChangedBlocks,       __VA_ARGS__)                                   \
-    xxx(DescribeBlocks,         __VA_ARGS__)                                   \
-// BLOCKSTORE_PARTITION2_TRANSACTIONS
+#define BLOCKSTORE_PARTITION2_TRANSACTIONS(xxx, ...) \
+    xxx(InitSchema, __VA_ARGS__)                     \
+    xxx(LoadState, __VA_ARGS__)                      \
+    xxx(ZeroBlocks, __VA_ARGS__)                     \
+    xxx(InitIndex, __VA_ARGS__)                      \
+    xxx(ReadBlocks, __VA_ARGS__)                     \
+    xxx(AddBlobs, __VA_ARGS__)                       \
+    xxx(Compaction, __VA_ARGS__)                     \
+    xxx(Cleanup, __VA_ARGS__)                        \
+    xxx(UpdateIndexStructures, __VA_ARGS__)          \
+    xxx(CollectGarbage, __VA_ARGS__)                 \
+    xxx(AddGarbage, __VA_ARGS__)                     \
+    xxx(DeleteGarbage, __VA_ARGS__)                  \
+    xxx(CreateCheckpoint, __VA_ARGS__)               \
+    xxx(DeleteCheckpoint, __VA_ARGS__)               \
+    xxx(DescribeRange, __VA_ARGS__)                  \
+    xxx(DescribeBlob, __VA_ARGS__)                   \
+    xxx(GetChangedBlocks, __VA_ARGS__)               \
+    xxx(DescribeBlocks, __VA_ARGS__)                 \
+    // BLOCKSTORE_PARTITION2_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -112,8 +112,8 @@ struct TTxPartition
         ui64 CommitId = 0;
 
         TZeroBlocks(
-                TRequestInfoPtr requestInfo,
-                const TBlockRange32& writeRange)
+            TRequestInfoPtr requestInfo,
+            const TBlockRange32& writeRange)
             : RequestInfo(std::move(requestInfo))
             , WriteRange(writeRange)
         {}
@@ -131,16 +131,14 @@ struct TTxPartition
         const TVector<TBlockRange32> BlockRanges;
 
         TInitIndex(
-                const NActors::TActorId& actorId,
-                TVector<TBlockRange32> blockRanges)
+            const NActors::TActorId& actorId,
+            TVector<TBlockRange32> blockRanges)
             : ActorId(actorId)
             , BlockRanges(std::move(blockRanges))
-        {
-        }
+        {}
 
         void Clear()
-        {
-        }
+        {}
     };
 
     //
@@ -173,12 +171,12 @@ struct TTxPartition
         TVector<IProfileLog::TBlockInfo> BlockInfos;
 
         TReadBlocks(
-                TRequestInfoPtr requestInfo,
-                ui64 checkpointId,
-                const TBlockRange32& readRange,
-                IReadBlocksHandlerPtr readHandler,
-                bool replyLocal,
-                bool shouldReportBlobIdsOnFailure)
+            TRequestInfoPtr requestInfo,
+            ui64 checkpointId,
+            const TBlockRange32& readRange,
+            IReadBlocksHandlerPtr readHandler,
+            bool replyLocal,
+            bool shouldReportBlobIdsOnFailure)
             : RequestInfo(std::move(requestInfo))
             , CheckpointId(checkpointId)
             , ReadRange(readRange)
@@ -216,13 +214,13 @@ struct TTxPartition
         bool Success = true;
 
         TAddBlobs(
-                TRequestInfoPtr requestInfo,
-                EAddBlobMode mode,
-                TVector<TAddBlob> newBlobs,
-                TGarbageInfo garbageInfo,
-                TAffectedBlobInfos affectedBlobInfos,
-                ui32 blobsSkippedByCompaction,
-                ui32 blocksSkippedByCompaction)
+            TRequestInfoPtr requestInfo,
+            EAddBlobMode mode,
+            TVector<TAddBlob> newBlobs,
+            TGarbageInfo garbageInfo,
+            TAffectedBlobInfos affectedBlobInfos,
+            ui32 blobsSkippedByCompaction,
+            ui32 blocksSkippedByCompaction)
             : RequestInfo(std::move(requestInfo))
             , Mode(mode)
             , NewBlobs(std::move(newBlobs))
@@ -256,17 +254,15 @@ struct TTxPartition
         ui32 BlocksSkipped = 0;
 
         TCompaction(
-                TRequestInfoPtr requestInfo,
-                const TBlockRange32& blockRange,
-                TCompactionOptions compactionOptions)
+            TRequestInfoPtr requestInfo,
+            const TBlockRange32& blockRange,
+            TCompactionOptions compactionOptions)
             : RequestInfo(std::move(requestInfo))
             , BlockRange(blockRange)
             , CompactionOptions(compactionOptions)
         {}
 
-        TCompaction(
-                TRequestInfoPtr requestInfo,
-                TGarbageInfo garbageInfo)
+        TCompaction(TRequestInfoPtr requestInfo, TGarbageInfo garbageInfo)
             : RequestInfo(std::move(requestInfo))
             , GarbageInfo(std::move(garbageInfo))
         {}
@@ -301,9 +297,9 @@ struct TTxPartition
         TVector<TBlobUpdate> BlobUpdates;
 
         TCleanup(
-                TRequestInfoPtr requestInfo,
-                ui64 commitId,
-                TEvPartitionPrivate::ECleanupMode mode)
+            TRequestInfoPtr requestInfo,
+            ui64 commitId,
+            TEvPartitionPrivate::ECleanupMode mode)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
             , Mode(mode)
@@ -329,8 +325,8 @@ struct TTxPartition
         TVector<TBlockRange64> ConvertedToRangeMap;
 
         TUpdateIndexStructures(
-                TRequestInfoPtr requestInfo,
-                const TBlockRange32& blockRange)
+            TRequestInfoPtr requestInfo,
+            const TBlockRange32& blockRange)
             : RequestInfo(std::move(requestInfo))
             , BlockRange(blockRange)
         {}
@@ -377,8 +373,8 @@ struct TTxPartition
         TVector<TPartialBlobId> KnownBlobIds;
 
         TAddGarbage(
-                TRequestInfoPtr requestInfo,
-                TVector<TPartialBlobId> blobIds)
+            TRequestInfoPtr requestInfo,
+            TVector<TPartialBlobId> blobIds)
             : RequestInfo(std::move(requestInfo))
             , BlobIds(std::move(blobIds))
         {}
@@ -402,10 +398,10 @@ struct TTxPartition
         const TVector<TPartialBlobId> GarbageBlobs;
 
         TDeleteGarbage(
-                TRequestInfoPtr requestInfo,
-                ui64 commitId,
-                TVector<TPartialBlobId> newBlobs,
-                TVector<TPartialBlobId> garbageBlobs)
+            TRequestInfoPtr requestInfo,
+            ui64 commitId,
+            TVector<TPartialBlobId> newBlobs,
+            TVector<TPartialBlobId> garbageBlobs)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
             , NewBlobs(std::move(newBlobs))
@@ -430,8 +426,8 @@ struct TTxPartition
         ui64 CommitId = 0;
 
         TCreateCheckpoint(
-                TRequestInfoPtr requestInfo,
-                NProto::TCheckpointMeta meta)
+            TRequestInfoPtr requestInfo,
+            NProto::TCheckpointMeta meta)
             : RequestInfo(std::move(requestInfo))
             , Meta(std::move(meta))
         {}
@@ -455,9 +451,9 @@ struct TTxPartition
         TVector<TPartialBlobId> BlobIds;
 
         TDeleteCheckpoint(
-                TRequestInfoPtr requestInfo,
-                ui64 commitId,
-                TString checkpointId)
+            TRequestInfoPtr requestInfo,
+            ui64 commitId,
+            TString checkpointId)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
             , CheckpointId(std::move(checkpointId))
@@ -481,8 +477,8 @@ struct TTxPartition
         TVector<TBlockRef> Blocks;
 
         TDescribeRange(
-                TRequestInfoPtr requestInfo,
-                const TBlockRange32& blockRange)
+            TRequestInfoPtr requestInfo,
+            const TBlockRange32& blockRange)
             : RequestInfo(std::move(requestInfo))
             , BlockRange(blockRange)
         {}
@@ -504,9 +500,7 @@ struct TTxPartition
 
         TVector<TBlockRef> Blocks;
 
-        TDescribeBlob(
-                TRequestInfoPtr requestInfo,
-                const TPartialBlobId& blobId)
+        TDescribeBlob(TRequestInfoPtr requestInfo, const TPartialBlobId& blobId)
             : RequestInfo(std::move(requestInfo))
             , BlobId(blobId)
         {}
@@ -539,11 +533,11 @@ struct TTxPartition
         TVector<ui8> ChangedBlocks;
 
         TGetChangedBlocks(
-                TRequestInfoPtr requestInfo,
-                const TBlockRange32& readRange,
-                ui64 lowCommitId,
-                ui64 highCommitId,
-                bool ignoreBaseDisk)
+            TRequestInfoPtr requestInfo,
+            const TBlockRange32& readRange,
+            ui64 lowCommitId,
+            ui64 highCommitId,
+            bool ignoreBaseDisk)
             : RequestInfo(std::move(requestInfo))
             , ReadRange(readRange)
             , LowCommitId(lowCommitId)
@@ -597,30 +591,27 @@ struct TTxPartition
         {
             TBlockMark() = default;
 
-            TBlockMark(
-                    ui32 blockIndex,
-                    ui64 minCommitId,
-                    TString content)
+            TBlockMark(ui32 blockIndex, ui64 minCommitId, TString content)
                 : BlockIndex(blockIndex)
                 , MinCommitId(minCommitId)
                 , Content(std::move(content))
             {}
 
             TBlockMark(
-                    ui32 blockIndex,
-                    ui64 minCommitId,
-                    const TPartialBlobId& blobId,
-                    ui16 blobOffset)
+                ui32 blockIndex,
+                ui64 minCommitId,
+                const TPartialBlobId& blobId,
+                ui16 blobOffset)
                 : BlockIndex(blockIndex)
                 , MinCommitId(minCommitId)
                 , BlobId(blobId)
                 , BlobOffset(blobOffset)
             {}
 
-            bool operator <(const TBlockMark& other) const
+            bool operator<(const TBlockMark& other) const
             {
-                return BlobId < other.BlobId ||
-                    (BlobId == other.BlobId && BlobOffset < other.BlobOffset);
+                return BlobId < other.BlobId || (BlobId == other.BlobId &&
+                                                 BlobOffset < other.BlobOffset);
             }
 
             ui32 BlockIndex = 0;
@@ -633,9 +624,9 @@ struct TTxPartition
         TVector<TBlockMark> Marks;
 
         TDescribeBlocks(
-                TRequestInfoPtr requestInfo,
-                ui64 commitId,
-                const TBlockRange32& describeRange)
+            TRequestInfoPtr requestInfo,
+            ui64 commitId,
+            const TBlockRange32& describeRange)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
             , DescribeRange(describeRange)
@@ -653,10 +644,7 @@ struct TTxPartition
             return blockIndex - DescribeRange.Start;
         }
 
-        void MarkBlock(
-            ui32 blockIndex,
-            ui64 minCommitId,
-            TStringBuf content)
+        void MarkBlock(ui32 blockIndex, ui64 minCommitId, TStringBuf content)
         {
             auto& mark = Marks[GetBlockMarkIndex(blockIndex)];
 

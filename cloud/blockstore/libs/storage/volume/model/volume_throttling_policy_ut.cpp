@@ -1,4 +1,5 @@
 #include "volume_throttling_policy.h"
+
 #include "cloud/storage/core/libs/throttling/helpers.h"
 
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
@@ -57,8 +58,7 @@ NProto::TVolumePerformanceProfile MakeSimpleConfig(
         boostTime,
         boostRefillTime,
         boostPercentage,
-        maxPostponedWeight
-    );
+        maxPostponedWeight);
 }
 
 }   // namespace
@@ -69,34 +69,31 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
 {
     using EOpType = TVolumeThrottlingPolicy::EOpType;
 
-#define DO_TEST_V(tp, expectedDelayMcs, nowMcs, byteCount, opType, cv)      \
-    UNIT_ASSERT_VALUES_EQUAL(                                               \
-        TDuration::MicroSeconds(expectedDelayMcs),                          \
-        tp.SuggestDelay(                                                    \
-            TInstant::MicroSeconds(nowMcs),                                 \
-            TDuration::Zero(),                                              \
-            {byteCount, opType, cv}                                         \
-        ).GetOrElse(TDuration::Max())                                       \
-    )                                                                       \
-// DO_TEST_V
+#define DO_TEST_V(tp, expectedDelayMcs, nowMcs, byteCount, opType, cv) \
+    UNIT_ASSERT_VALUES_EQUAL(                                          \
+        TDuration::MicroSeconds(expectedDelayMcs),                     \
+        tp.SuggestDelay(                                               \
+              TInstant::MicroSeconds(nowMcs),                          \
+              TDuration::Zero(),                                       \
+              {byteCount, opType, cv})                                 \
+            .GetOrElse(TDuration::Max()))                              \
+    // DO_TEST_V
 
-#define DO_TEST(tp, expectedDelayMcs, nowMcs, byteCount, opType)            \
-    DO_TEST_V(tp, expectedDelayMcs, nowMcs, byteCount, opType, 1)           \
-// DO_TEST
+#define DO_TEST(tp, expectedDelayMcs, nowMcs, byteCount, opType)  \
+    DO_TEST_V(tp, expectedDelayMcs, nowMcs, byteCount, opType, 1) \
+    // DO_TEST
 
-#define DO_TEST_REJECT_V(tp, nowMcs, byteCount, opType, cv)                 \
-    UNIT_ASSERT(                                                            \
-        !tp.SuggestDelay(                                                   \
-            TInstant::MicroSeconds(nowMcs),                                 \
-            TDuration::Zero(),                                              \
-            {byteCount, opType, cv}                                         \
-        ).Defined()                                                         \
-    )                                                                       \
-// DO_TEST_REJECT_V
+#define DO_TEST_REJECT_V(tp, nowMcs, byteCount, opType, cv) \
+    UNIT_ASSERT(!tp.SuggestDelay(                           \
+                       TInstant::MicroSeconds(nowMcs),      \
+                       TDuration::Zero(),                   \
+                       {byteCount, opType, cv})             \
+                     .Defined())                            \
+    // DO_TEST_REJECT_V
 
-#define DO_TEST_REJECT(tp, nowMcs, byteCount, opType)                       \
-    DO_TEST_REJECT_V(tp, nowMcs, byteCount, opType, 1)                      \
-// DO_TEST
+#define DO_TEST_REJECT(tp, nowMcs, byteCount, opType)  \
+    DO_TEST_REJECT_V(tp, nowMcs, byteCount, opType, 1) \
+    // DO_TEST
 
     Y_UNIT_TEST(Params)
     {
@@ -114,13 +111,12 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         TVolumeThrottlingPolicy tp(
             config,
             TThrottlerConfig(
-                TDuration::Max(),            // maxDelay
-                Max<ui32>(),                 // maxWriteCostMultiplier
-                1,                           // defaultPostponedRequestWeight
-                CalculateBoostTime(config),  // initialBoostBudget
-                false                        // useDiskSpaceScore
-            )
-        );
+                TDuration::Max(),             // maxDelay
+                Max<ui32>(),                  // maxWriteCostMultiplier
+                1,                            // defaultPostponedRequestWeight
+                CalculateBoostTime(config),   // initialBoostBudget
+                false                         // useDiskSpaceScore
+                ));
 
         UNIT_ASSERT_VALUES_EQUAL(1039, tp.C1(EOpType::Read));
         UNIT_ASSERT_VALUES_EQUAL(102, tp.C2(EOpType::Read) / 1_MB);
@@ -136,13 +132,12 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         TVolumeThrottlingPolicy tp(
             MakeConfig(100_MB, 200_MB, 1000, 5000, 200, 0, 0, 0, 1000),
             TThrottlerConfig(
-                TDuration::Max(),        // maxDelay
-                Max<ui32>(),             // maxWriteCostMultiplier
-                1,                       // defaultPostponedRequestWeight
-                TDuration::Seconds(10),  // initialBoostBudget
-                false                    // useDiskSpaceScore
-            )
-        );
+                TDuration::Max(),         // maxDelay
+                Max<ui32>(),              // maxWriteCostMultiplier
+                1,                        // defaultPostponedRequestWeight
+                TDuration::Seconds(10),   // initialBoostBudget
+                false                     // useDiskSpaceScore
+                ));
 
         UNIT_ASSERT_VALUES_EQUAL(1039, tp.C1(EOpType::Read));
         UNIT_ASSERT_VALUES_EQUAL(102, tp.C2(EOpType::Read) / 1_MB);
@@ -150,7 +145,9 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         UNIT_ASSERT_VALUES_EQUAL(201, tp.C2(EOpType::Write) / 1_MB);
         UNIT_ASSERT_VALUES_EQUAL(1000, tp.C1(EOpType::Describe));
         UNIT_ASSERT_VALUES_EQUAL(0, tp.C2(EOpType::Describe));
-        UNIT_ASSERT_VALUES_EQUAL(10'000, tp.GetCurrentBoostBudget().MilliSeconds());
+        UNIT_ASSERT_VALUES_EQUAL(
+            10'000,
+            tp.GetCurrentBoostBudget().MilliSeconds());
     }
 
     Y_UNIT_TEST(InconsistentParams)
@@ -169,13 +166,12 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         TVolumeThrottlingPolicy tp(
             config,
             TThrottlerConfig(
-                TDuration::Max(),            // maxDelay
-                Max<ui32>(),                 // maxWriteCostMultiplier
-                1,                           // defaultPostponedRequestWeight
-                CalculateBoostTime(config),  // initialBoostBudget
-                false                        // useDiskSpaceScore
-            )
-        );
+                TDuration::Max(),             // maxDelay
+                Max<ui32>(),                  // maxWriteCostMultiplier
+                1,                            // defaultPostponedRequestWeight
+                CalculateBoostTime(config),   // initialBoostBudget
+                false                         // useDiskSpaceScore
+                ));
 
         UNIT_ASSERT_VALUES_EQUAL(1024, tp.C1(EOpType::Read));
         UNIT_ASSERT_VALUES_EQUAL(4, tp.C2(EOpType::Read) / 1_MB);
@@ -191,13 +187,12 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         TVolumeThrottlingPolicy tp(
             MakeConfig(4_MB, 20_MB, 1024, 5 * 1024, 200, 0, 0, 0, 1000),
             TThrottlerConfig(
-                TDuration::Max(),        // maxDelay
-                Max<ui32>(),             // maxWriteCostMultiplier
-                1,                       // defaultPostponedRequestWeight
-                TDuration::Seconds(10),  // initialBoostBudget
-                false                    // useDiskSpaceScore
-            )
-        );
+                TDuration::Max(),         // maxDelay
+                Max<ui32>(),              // maxWriteCostMultiplier
+                1,                        // defaultPostponedRequestWeight
+                TDuration::Seconds(10),   // initialBoostBudget
+                false                     // useDiskSpaceScore
+                ));
 
         UNIT_ASSERT_VALUES_EQUAL(1024, tp.C1(EOpType::Read));
         UNIT_ASSERT_VALUES_EQUAL(4, tp.C2(EOpType::Read) / 1_MB);
@@ -205,7 +200,9 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         UNIT_ASSERT_VALUES_EQUAL(19, tp.C2(EOpType::Write) / 1_MB);
         UNIT_ASSERT_VALUES_EQUAL(1024, tp.C1(EOpType::Describe));
         UNIT_ASSERT_VALUES_EQUAL(0, tp.C2(EOpType::Describe));
-        UNIT_ASSERT_VALUES_EQUAL(10'000, tp.GetCurrentBoostBudget().MilliSeconds());
+        UNIT_ASSERT_VALUES_EQUAL(
+            10'000,
+            tp.GetCurrentBoostBudget().MilliSeconds());
     }
 
     Y_UNIT_TEST(BasicThrottling)
@@ -222,13 +219,12 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         TVolumeThrottlingPolicy tp(
             config,
             TThrottlerConfig(
-                TDuration::Max(),            // maxDelay
-                Max<ui32>(),                 // maxWriteCostMultiplier
-                1_KB,                        // defaultPostponedRequestWeight
-                CalculateBoostTime(config),  // initialBoostBudget
-                false                        // useDiskSpaceScore
-            )
-        );
+                TDuration::Max(),             // maxDelay
+                Max<ui32>(),                  // maxWriteCostMultiplier
+                1_KB,                         // defaultPostponedRequestWeight
+                CalculateBoostTime(config),   // initialBoostBudget
+                false                         // useDiskSpaceScore
+                ));
 
         // the results are not exactly equal to what's actually expected due to
         // rounding errors
@@ -250,14 +246,21 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         // MaxPostponedWeight test
 
         for (ui32 i = 0; i < 8; ++i) {
-            DO_TEST(tp, 103'813, 151'944, 4_KB, static_cast<ui32>(EOpType::Read));
+            DO_TEST(
+                tp,
+                103'813,
+                151'944,
+                4_KB,
+                static_cast<ui32>(EOpType::Read));
         }
 
         DO_TEST_REJECT(tp, 151'944, 4_KB, static_cast<ui32>(EOpType::Write));
         DO_TEST_REJECT(tp, 151'944, 4_KB, static_cast<ui32>(EOpType::Read));
 
         for (ui32 i = 0; i < 8; ++i) {
-            tp.OnPostponedEvent({}, {4_KB, static_cast<ui32>(EOpType::Read), 1});
+            tp.OnPostponedEvent(
+                {},
+                {4_KB, static_cast<ui32>(EOpType::Read), 1});
         }
 
         DO_TEST(tp, 103'813, 151'944, 4_KB, static_cast<ui32>(EOpType::Write));
@@ -273,7 +276,12 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
             DO_TEST(tp, 0, 10'000'000, 4_KB, static_cast<ui32>(EOpType::Read));
         }
         DO_TEST(tp, 38'131, 10'000'000, 4_KB, static_cast<ui32>(EOpType::Read));
-        DO_TEST(tp, 38'131, 10'000'000, 4_KB, static_cast<ui32>(EOpType::Write));
+        DO_TEST(
+            tp,
+            38'131,
+            10'000'000,
+            4_KB,
+            static_cast<ui32>(EOpType::Write));
         tp.OnPostponedEvent({}, {4_KB, static_cast<ui32>(EOpType::Read), 1});
         tp.OnPostponedEvent({}, {4_KB, static_cast<ui32>(EOpType::Write), 1});
         DO_TEST(tp, 0, 10'038'131, 4_KB, static_cast<ui32>(EOpType::Read));
@@ -293,13 +301,12 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         TVolumeThrottlingPolicy tp(
             config,
             TThrottlerConfig(
-                TDuration::Max(),            // maxDelay
-                Max<ui32>(),                 // maxWriteCostMultiplier
-                1,                           // defaultPostponedRequestWeight
-                CalculateBoostTime(config),  // initialBoostBudge
-                false                        // useDiskSpaceScore
-            )
-        );
+                TDuration::Max(),             // maxDelay
+                Max<ui32>(),                  // maxWriteCostMultiplier
+                1,                            // defaultPostponedRequestWeight
+                CalculateBoostTime(config),   // initialBoostBudge
+                false                         // useDiskSpaceScore
+                ));
 
         for (ui32 i = 0; i < 9; ++i) {
             DO_TEST(tp, 0, 10'000, 4_KB, static_cast<ui32>(EOpType::Read));
@@ -310,7 +317,12 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
 
         DO_TEST(tp, 1'075'954, 48'131, 1_MB, static_cast<ui32>(EOpType::Read));
         DO_TEST(tp, 1'075'954, 48'131, 1_MB, static_cast<ui32>(EOpType::Write));
-        DO_TEST(tp, 100'000, 48'131, 1_MB, static_cast<ui32>(EOpType::Describe));
+        DO_TEST(
+            tp,
+            100'000,
+            48'131,
+            1_MB,
+            static_cast<ui32>(EOpType::Describe));
     }
 
     Y_UNIT_TEST(SmallMaxBurst)
@@ -327,13 +339,12 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         TVolumeThrottlingPolicy tp(
             config,
             TThrottlerConfig(
-                TDuration::Max(),            // maxDelay
-                Max<ui32>(),                 // maxWriteCostMultiplier
-                1,                           // defaultPostponedRequestWeight
-                CalculateBoostTime(config),  // initialBoostBudget
-                false                        // useDiskSpaceScore
-            )
-        );
+                TDuration::Max(),             // maxDelay
+                Max<ui32>(),                  // maxWriteCostMultiplier
+                1,                            // defaultPostponedRequestWeight
+                CalculateBoostTime(config),   // initialBoostBudget
+                false                         // useDiskSpaceScore
+                ));
 
         DO_TEST(tp, 0, 10'000, 4_KB, static_cast<ui32>(EOpType::Read));
         DO_TEST(tp, 7'626, 10'000, 4_KB, static_cast<ui32>(EOpType::Read));
@@ -353,70 +364,78 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         TVolumeThrottlingPolicy tp(
             config,
             TThrottlerConfig(
-                TDuration::Max(),            // maxDelay
-                Max<ui32>(),                 // maxWriteCostMultiplier
-                1,                           // defaultPostponedRequestWeight
-                CalculateBoostTime(config),  // initialBoostBudget
-                false                        // useDiskSpaceScore
-            )
-        );
-        tp.OnBackpressureReport({}, {0., 0., 0.}, 0);       // should cause no discount
+                TDuration::Max(),             // maxDelay
+                Max<ui32>(),                  // maxWriteCostMultiplier
+                1,                            // defaultPostponedRequestWeight
+                CalculateBoostTime(config),   // initialBoostBudget
+                false                         // useDiskSpaceScore
+                ));
+        tp.OnBackpressureReport(
+            {},
+            {0., 0., 0.},
+            0);   // should cause no discount
 
-        TInstant t = TInstant::Seconds(1337);               // initial ts does not matter
+        TInstant t = TInstant::Seconds(1337);   // initial ts does not matter
         const auto eternity = TDuration::Hours(1);
         for (size_t i = 0; i < 9; ++i) {
-            DO_TEST(tp, 0, t.MicroSeconds(), 4_KB, static_cast<ui32>(EOpType::Write));
+            DO_TEST(
+                tp,
+                0,
+                t.MicroSeconds(),
+                4_KB,
+                static_cast<ui32>(EOpType::Write));
         }
-        DO_TEST(tp, 38'131, t.MicroSeconds(), 4_KB, static_cast<ui32>(EOpType::Write));
+        DO_TEST(
+            tp,
+            38'131,
+            t.MicroSeconds(),
+            4_KB,
+            static_cast<ui32>(EOpType::Write));
 
 #define TEST_FEATURE(featureName)                                              \
-        {                                                                      \
-            t += eternity;                                                     \
-            TBackpressureReport report;                                        \
-            report.featureName = 2;                                            \
-            tp.OnBackpressureReport({}, report, 0);                            \
-            for (ui32 i = 0; i < 9; ++i) {                                     \
-                DO_TEST(                                                       \
-                    tp,                                                        \
-                    0,                                                         \
-                    t.MicroSeconds(),                                          \
-                    4_KB,                                                      \
-                    static_cast<ui32>(EOpType::Read));                         \
-            }                                                                  \
+    {                                                                          \
+        t += eternity;                                                         \
+        TBackpressureReport report;                                            \
+        report.featureName = 2;                                                \
+        tp.OnBackpressureReport({}, report, 0);                                \
+        for (ui32 i = 0; i < 9; ++i) {                                         \
             DO_TEST(                                                           \
                 tp,                                                            \
-                38'131,                                                        \
+                0,                                                             \
                 t.MicroSeconds(),                                              \
                 4_KB,                                                          \
                 static_cast<ui32>(EOpType::Read));                             \
-            tp.OnPostponedEvent(                                               \
-                {},                                                            \
-                {4_KB, static_cast<ui32>(EOpType::Read), 1});                  \
+        }                                                                      \
+        DO_TEST(                                                               \
+            tp,                                                                \
+            38'131,                                                            \
+            t.MicroSeconds(),                                                  \
+            4_KB,                                                              \
+            static_cast<ui32>(EOpType::Read));                                 \
+        tp.OnPostponedEvent({}, {4_KB, static_cast<ui32>(EOpType::Read), 1});  \
                                                                                \
-            t += eternity;                                                     \
-            for (ui32 i = 0; i < 4; ++i) {                                     \
-                DO_TEST(                                                       \
-                    tp,                                                        \
-                    0,                                                         \
-                    t.MicroSeconds(),                                          \
-                    4_KB,                                                      \
-                    static_cast<ui32>(EOpType::Write));                        \
-            }                                                                  \
+        t += eternity;                                                         \
+        for (ui32 i = 0; i < 4; ++i) {                                         \
             DO_TEST(                                                           \
                 tp,                                                            \
-                38'130,                                                        \
+                0,                                                             \
                 t.MicroSeconds(),                                              \
                 4_KB,                                                          \
                 static_cast<ui32>(EOpType::Write));                            \
-            tp.OnPostponedEvent(                                               \
-                {},                                                            \
-                {4_KB, static_cast<ui32>(EOpType::Write), 1});                 \
         }                                                                      \
-// TEST_FEATURE
+        DO_TEST(                                                               \
+            tp,                                                                \
+            38'130,                                                            \
+            t.MicroSeconds(),                                                  \
+            4_KB,                                                              \
+            static_cast<ui32>(EOpType::Write));                                \
+        tp.OnPostponedEvent({}, {4_KB, static_cast<ui32>(EOpType::Write), 1}); \
+    }                                                                          \
+    // TEST_FEATURE
 
         TEST_FEATURE(FreshIndexScore);
         TEST_FEATURE(CompactionScore);
-        //TEST_FEATURE(DiskSpaceScore);
+        // TEST_FEATURE(DiskSpaceScore);
         TEST_FEATURE(CleanupScore);
 
 #undef TEST_FEATURE
@@ -438,14 +457,16 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         TVolumeThrottlingPolicy tp(
             config,
             TThrottlerConfig(
-                TDuration::Max(),            // maxDelay
-                Max<ui32>(),                 // maxWriteCostMultiplier
-                1,                           // defaultPostponedRequestWeight
-                CalculateBoostTime(config),  // initialBoostBudget
-                false                        // useDiskSpaceScore
-            )
-        );
-        tp.OnBackpressureReport({}, {1000, 100, 10}, 0);    // => WriteCostMultiplier = 1000
+                TDuration::Max(),             // maxDelay
+                Max<ui32>(),                  // maxWriteCostMultiplier
+                1,                            // defaultPostponedRequestWeight
+                CalculateBoostTime(config),   // initialBoostBudget
+                false                         // useDiskSpaceScore
+                ));
+        tp.OnBackpressureReport(
+            {},
+            {1000, 100, 10},
+            0);   // => WriteCostMultiplier = 1000
 
         auto now = 10'000;
         auto delay = 1'074'954'000;
@@ -454,12 +475,12 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
 
         for (int i = 0; i < 9; ++i) {
             UNIT_ASSERT(tp.TryPostpone(
-                TInstant::MicroSeconds(now), {1_MB, static_cast<ui32>(EOpType::Write)}
-            ));
+                TInstant::MicroSeconds(now),
+                {1_MB, static_cast<ui32>(EOpType::Write)}));
         }
         UNIT_ASSERT(!tp.TryPostpone(
-            TInstant::MicroSeconds(now), {1_MB, static_cast<ui32>(EOpType::Write)}
-        ));
+            TInstant::MicroSeconds(now),
+            {1_MB, static_cast<ui32>(EOpType::Write)}));
     }
 
     Y_UNIT_TEST(PostponeCountAndReset)
@@ -476,13 +497,12 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         TVolumeThrottlingPolicy tp(
             config,
             TThrottlerConfig(
-                TDuration::Max(),            // maxDelay
-                Max<ui32>(),                 // maxWriteCostMultiplier
-                1,                           // defaultPostponedRequestWeight
-                CalculateBoostTime(config),  // initialBoostBudget
-                false                        // useDiskSpaceScore
-            )
-        );
+                TDuration::Max(),             // maxDelay
+                Max<ui32>(),                  // maxWriteCostMultiplier
+                1,                            // defaultPostponedRequestWeight
+                CalculateBoostTime(config),   // initialBoostBudget
+                false                         // useDiskSpaceScore
+                ));
 
         const auto delay = 7'626;
         DO_TEST_V(tp, 0, 0, 4_KB, static_cast<ui32>(EOpType::Read), 1);
@@ -492,21 +512,24 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         tp.Reset(
             config,
             TThrottlerConfig(
-                TDuration::Max(),            // maxDelay
-                Max<ui32>(),                 // maxWriteCostMultiplier
-                1,                           // defaultPostponedRequestWeight
-                CalculateBoostTime(config),  // initialBoostBudget
-                false                        // useDiskSpaceScore
-            )
-        );
+                TDuration::Max(),             // maxDelay
+                Max<ui32>(),                  // maxWriteCostMultiplier
+                1,                            // defaultPostponedRequestWeight
+                CalculateBoostTime(config),   // initialBoostBudget
+                false                         // useDiskSpaceScore
+                ));
         DO_TEST_REJECT_V(tp, 0, 4_KB, static_cast<ui32>(EOpType::Read), 1);
         DO_TEST_REJECT_V(tp, 0, 4_KB, static_cast<ui32>(EOpType::Write), 1);
         DO_TEST_V(tp, 0, 0, 4_KB, static_cast<ui32>(EOpType::Read), 2);
         DO_TEST_V(tp, delay, 0, 4_KB, static_cast<ui32>(EOpType::Write), 2);
         DO_TEST_REJECT_V(tp, 0, 4_KB, static_cast<ui32>(EOpType::Write), 2);
-        tp.OnPostponedEvent(TInstant::Zero(), {4_KB, static_cast<ui32>(EOpType::Write), 1});
+        tp.OnPostponedEvent(
+            TInstant::Zero(),
+            {4_KB, static_cast<ui32>(EOpType::Write), 1});
         DO_TEST_REJECT_V(tp, 0, 4_KB, static_cast<ui32>(EOpType::Write), 2);
-        tp.OnPostponedEvent(TInstant::Zero(), {4_KB, static_cast<ui32>(EOpType::Write), 2});
+        tp.OnPostponedEvent(
+            TInstant::Zero(),
+            {4_KB, static_cast<ui32>(EOpType::Write), 2});
         DO_TEST_V(tp, delay, 0, 4_KB, static_cast<ui32>(EOpType::Write), 2);
     }
 
@@ -524,22 +547,29 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         TVolumeThrottlingPolicy tp(
             config,
             TThrottlerConfig(
-                TDuration::Max(),            // maxDelay
-                Max<ui32>(),                 // maxWriteCostMultiplier
-                1,                           // defaultPostponedRequestWeight
-                CalculateBoostTime(config),  // initialBoostBudget
-                false                        // useDiskSpaceScore
-            )
-        );
+                TDuration::Max(),             // maxDelay
+                Max<ui32>(),                  // maxWriteCostMultiplier
+                1,                            // defaultPostponedRequestWeight
+                CalculateBoostTime(config),   // initialBoostBudget
+                false                         // useDiskSpaceScore
+                ));
 
         DO_TEST(tp, 95'628, 10'000, 2_MB, static_cast<ui32>(EOpType::Read));
-        UNIT_ASSERT_VALUES_EQUAL(10'000, tp.GetCurrentBoostBudget().MilliSeconds());
+        UNIT_ASSERT_VALUES_EQUAL(
+            10'000,
+            tp.GetCurrentBoostBudget().MilliSeconds());
         DO_TEST(tp, 0, 105'628, 2_MB, static_cast<ui32>(EOpType::Read));
-        UNIT_ASSERT_VALUES_EQUAL(9'043, tp.GetCurrentBoostBudget().MilliSeconds());
+        UNIT_ASSERT_VALUES_EQUAL(
+            9'043,
+            tp.GetCurrentBoostBudget().MilliSeconds());
         DO_TEST(tp, 186'537, 105'628, 2_MB, static_cast<ui32>(EOpType::Read));
-        UNIT_ASSERT_VALUES_EQUAL(9'043, tp.GetCurrentBoostBudget().MilliSeconds());
+        UNIT_ASSERT_VALUES_EQUAL(
+            9'043,
+            tp.GetCurrentBoostBudget().MilliSeconds());
         DO_TEST(tp, 0, 10'000'000, 5_MB, static_cast<ui32>(EOpType::Read));
-        UNIT_ASSERT_VALUES_EQUAL(9'043, tp.GetCurrentBoostBudget().MilliSeconds());
+        UNIT_ASSERT_VALUES_EQUAL(
+            9'043,
+            tp.GetCurrentBoostBudget().MilliSeconds());
     }
 
     Y_UNIT_TEST(SeparateReadAndWriteLimits)
@@ -558,13 +588,12 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         TVolumeThrottlingPolicy tp(
             config,
             TThrottlerConfig(
-                TDuration::Max(),            // maxDelay
-                Max<ui32>(),                 // maxWriteCostMultiplier
-                1,                           // defaultPostponedRequestWeight
-                CalculateBoostTime(config),  // initialBoostBudget
-                false                        // useDiskSpaceScore
-            )
-        );
+                TDuration::Max(),             // maxDelay
+                Max<ui32>(),                  // maxWriteCostMultiplier
+                1,                            // defaultPostponedRequestWeight
+                CalculateBoostTime(config),   // initialBoostBudget
+                false                         // useDiskSpaceScore
+                ));
 
         for (ui32 i = 0; i < 9; ++i) {
             DO_TEST(tp, 0, 10'000, 4_KB, static_cast<ui32>(EOpType::Read));
@@ -580,66 +609,77 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         tp.OnPostponedEvent({}, {4_KB, static_cast<ui32>(EOpType::Write), 1});
         DO_TEST(tp, 0, 10'005'900, 4_KB, static_cast<ui32>(EOpType::Write));
 
-        DO_TEST(tp, 1'075'954, 10'005'900, 1_MB, static_cast<ui32>(EOpType::Read));
-        DO_TEST(tp, 513'666, 10'005'900, 1_MB, static_cast<ui32>(EOpType::Write));
+        DO_TEST(
+            tp,
+            1'075'954,
+            10'005'900,
+            1_MB,
+            static_cast<ui32>(EOpType::Read));
+        DO_TEST(
+            tp,
+            513'666,
+            10'005'900,
+            1_MB,
+            static_cast<ui32>(EOpType::Write));
     }
 
     Y_UNIT_TEST(MaxDelay)
     {
         const auto config = MakeSimpleConfig(
-            1_MB,  // maxBandwidth
-            10,    // maxIops
-            100,   // burstPercentage
-            0,     // boostTime
-            0,     // boostRefillTime
-            0,     // boostPercentage
-            1_GB   // maxPostponedWeight
+            1_MB,   // maxBandwidth
+            10,     // maxIops
+            100,    // burstPercentage
+            0,      // boostTime
+            0,      // boostRefillTime
+            0,      // boostPercentage
+            1_GB    // maxPostponedWeight
         );
         TVolumeThrottlingPolicy tp(
             config,
             TThrottlerConfig(
-                TDuration::Seconds(1),       // maxDelay
-                Max<ui32>(),                 // maxWriteCostMultiplier
-                1,                           // defaultPostponedRequestWeight
-                CalculateBoostTime(config),  // initialBoostBudget
-                false                        // useDiskSpaceScore
-            )
-        );
+                TDuration::Seconds(1),        // maxDelay
+                Max<ui32>(),                  // maxWriteCostMultiplier
+                1,                            // defaultPostponedRequestWeight
+                CalculateBoostTime(config),   // initialBoostBudget
+                false                         // useDiskSpaceScore
+                ));
 
         DO_TEST(tp, 75'955, 10'000, 1_MB, static_cast<ui32>(EOpType::Read));
         DO_TEST(tp, 0, 85'955, 1_MB, static_cast<ui32>(EOpType::Read));
         DO_TEST(tp, 587'977, 85'955, 512_KB, static_cast<ui32>(EOpType::Read));
         UNIT_ASSERT(!tp.SuggestDelay(
-            TInstant::MicroSeconds(85'955),
-            TDuration::Zero(),
-            {1_MB, static_cast<ui32>(EOpType::Read), 1}
-        ).Defined());
+                           TInstant::MicroSeconds(85'955),
+                           TDuration::Zero(),
+                           {1_MB, static_cast<ui32>(EOpType::Read), 1})
+                         .Defined());
     }
 
     Y_UNIT_TEST(MaxWriteCostMultiplier)
     {
         const auto config = MakeSimpleConfig(
-            1_MB,  // maxBandwidth
-            10,    // maxIops
-            100,   // burstPercentage
-            0,     // boostTime
-            0,     // boostRefillTime
-            0,     // boostPercentage
-            1_GB   // maxPostponedWeight
+            1_MB,   // maxBandwidth
+            10,     // maxIops
+            100,    // burstPercentage
+            0,      // boostTime
+            0,      // boostRefillTime
+            0,      // boostPercentage
+            1_GB    // maxPostponedWeight
         );
         TVolumeThrottlingPolicy tp(
             config,
             TThrottlerConfig(
-                TDuration::Max(),            // maxDelay
-                5,                           // maxWriteCostMultiplier
-                1,                           // defaultPostponedRequestWeight
-                CalculateBoostTime(config),  // initialBoostBudget
-                false                        // useDiskSpaceScore
-            )
-        );
-        tp.OnBackpressureReport({}, {1000, 100, 10}, 0);    // => WriteCostMultiplier = 1000
-                                                            // but due to MaxWriteCostMultiplier
-                                                            // we actually get 5
+                TDuration::Max(),             // maxDelay
+                5,                            // maxWriteCostMultiplier
+                1,                            // defaultPostponedRequestWeight
+                CalculateBoostTime(config),   // initialBoostBudget
+                false                         // useDiskSpaceScore
+                ));
+        tp.OnBackpressureReport(
+            {},
+            {1000, 100, 10},
+            0);   // => WriteCostMultiplier = 1000
+                  // but due to MaxWriteCostMultiplier
+                  // we actually get 5
 
         DO_TEST(tp, 4'379'770, 10'000, 1_MB, static_cast<ui32>(EOpType::Write));
     }
@@ -698,7 +738,8 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         UNIT_ASSERT_DOUBLES_EQUAL(splittedUsedQuota.Iops, 0, 1e-6);
     }
 
-    Y_UNIT_TEST(CalculateSplittedUsedQuotaCorrectlyWhenThrottlingByBandwidthDisabled)
+    Y_UNIT_TEST(
+        CalculateSplittedUsedQuotaCorrectlyWhenThrottlingByBandwidthDisabled)
     {
         const ui64 maxIops = 4;
 
@@ -758,13 +799,12 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
             // config doesn't really matter in this test
             config,
             TThrottlerConfig(
-                TDuration::Max(),            // maxDelay
-                5,                           // maxWriteCostMultiplier
-                1,                           // defaultPostponedRequestWeight
-                CalculateBoostTime(config),  // initialBoostBudget
-                false                        // useDiskSpaceScore
-            )
-        );
+                TDuration::Max(),             // maxDelay
+                5,                            // maxWriteCostMultiplier
+                1,                            // defaultPostponedRequestWeight
+                CalculateBoostTime(config),   // initialBoostBudget
+                false                         // useDiskSpaceScore
+                ));
 
         tp.OnBackpressureReport({}, {2, 1, 1}, 0);
         UNIT_ASSERT_VALUES_EQUAL(2, tp.GetWriteCostMultiplier());

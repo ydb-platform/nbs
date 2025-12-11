@@ -26,11 +26,11 @@ private:
 
 public:
     TErrorTransformService(
-            IBlockStorePtr service,
-            TMap<EErrorKind, EWellKnownResultCodes> errorTransformMap)
+        IBlockStorePtr service,
+        TMap<EErrorKind, EWellKnownResultCodes> errorTransformMap)
         : Service(std::move(service))
         , ErrorTransformMap(std::make_shared<TErrorTransformMap>(
-            std::move(errorTransformMap)))
+              std::move(errorTransformMap)))
     {}
 
     void Start() override

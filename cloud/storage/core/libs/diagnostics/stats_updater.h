@@ -17,8 +17,7 @@ struct IStats
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IStatsUpdater
-    : public IStartable
+struct IStatsUpdater: public IStartable
 {
     virtual ~IStatsUpdater() = default;
 };

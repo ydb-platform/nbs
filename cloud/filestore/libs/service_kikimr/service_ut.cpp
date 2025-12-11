@@ -28,30 +28,28 @@ constexpr TDuration WaitTimeout = TDuration::Seconds(5);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestServiceActor final
-    : public TActor<TTestServiceActor>
+struct TTestServiceActor final: public TActor<TTestServiceActor>
 {
     TTestServiceActor()
         : TActor(&TThis::StateWork)
     {}
 
-#define FILESTORE_IMPLEMENT_METHOD(name, ns)                                   \
-    using T##name##Handler = std::function<                                    \
-        std::unique_ptr<ns::TEv##name##Response>(                              \
-            const ns::TEv##name##Request::TPtr& ev)                            \
-        >;                                                                     \
-                                                                               \
-    T##name##Handler name##Handler;                                            \
-                                                                               \
-    void Handle##name(                                                         \
-        const ns::TEv##name##Request::TPtr& ev,                                \
-        const TActorContext& ctx)                                              \
-    {                                                                          \
-        if (auto response = name##Handler(ev)) {                               \
-            NCloud::Reply(ctx, *ev, std::move(response));                      \
-        }                                                                      \
-    }                                                                          \
-// FILESTORE_IMPLEMENT_METHOD
+#define FILESTORE_IMPLEMENT_METHOD(name, ns)                    \
+    using T##name##Handler =                                    \
+        std::function<std::unique_ptr<ns::TEv##name##Response>( \
+            const ns::TEv##name##Request::TPtr& ev)>;           \
+                                                                \
+    T##name##Handler name##Handler;                             \
+                                                                \
+    void Handle##name(                                          \
+        const ns::TEv##name##Request::TPtr& ev,                 \
+        const TActorContext& ctx)                               \
+    {                                                           \
+        if (auto response = name##Handler(ev)) {                \
+            NCloud::Reply(ctx, *ev, std::move(response));       \
+        }                                                       \
+    }                                                           \
+    // FILESTORE_IMPLEMENT_METHOD
 
     FILESTORE_REMOTE_SERVICE(FILESTORE_IMPLEMENT_METHOD, TEvService)
 
@@ -75,10 +73,11 @@ Y_UNIT_TEST_SUITE(TKikimrFileStore)
     {
         auto serviceActor = std::make_unique<TTestServiceActor>();
         serviceActor->CreateFileStoreHandler =
-            [] (const TEvService::TEvCreateFileStoreRequest::TPtr& ev) {
-                Y_UNUSED(ev);
-                return std::make_unique<TEvService::TEvCreateFileStoreResponse>();
-            };
+            [](const TEvService::TEvCreateFileStoreRequest::TPtr& ev)
+        {
+            Y_UNUSED(ev);
+            return std::make_unique<TEvService::TEvCreateFileStoreResponse>();
+        };
 
         auto actorSystem = MakeIntrusive<TTestActorSystem>();
         actorSystem->RegisterTestService(std::move(serviceActor));
@@ -89,9 +88,8 @@ Y_UNIT_TEST_SUITE(TKikimrFileStore)
         auto context = MakeIntrusive<TCallContext>();
         auto request = std::make_shared<NProto::TCreateFileStoreRequest>();
 
-        auto future = service->CreateFileStore(
-            std::move(context),
-            std::move(request));
+        auto future =
+            service->CreateFileStore(std::move(context), std::move(request));
 
         actorSystem->DispatchEvents(WaitTimeout);
 
@@ -115,9 +113,8 @@ Y_UNIT_TEST_SUITE(TKikimrFileStore)
             auto context = MakeIntrusive<TCallContext>();
             auto request = std::make_shared<NProto::TFsyncRequest>();
 
-            auto future = service->Fsync(
-                std::move(context),
-                std::move(request));
+            auto future =
+                service->Fsync(std::move(context), std::move(request));
 
             actorSystem->DispatchEvents(WaitTimeout);
 
@@ -132,9 +129,8 @@ Y_UNIT_TEST_SUITE(TKikimrFileStore)
             auto context = MakeIntrusive<TCallContext>();
             auto request = std::make_shared<NProto::TFsyncDirRequest>();
 
-            auto future = service->FsyncDir(
-                std::move(context),
-                std::move(request));
+            auto future =
+                service->FsyncDir(std::move(context), std::move(request));
 
             actorSystem->DispatchEvents(WaitTimeout);
 
@@ -154,11 +150,12 @@ Y_UNIT_TEST_SUITE(TKikimrFileStore)
 
         auto serviceActor = std::make_unique<TTestServiceActor>();
         serviceActor->GetSessionEventsHandler =
-            [&] (const TEvService::TEvGetSessionEventsRequest::TPtr& ev) {
-                Y_ABORT_UNLESS(ev->Cookie == TEvService::StreamCookie);
-                eventHandler = ev->Sender;
-                return std::make_unique<TEvService::TEvGetSessionEventsResponse>();
-            };
+            [&](const TEvService::TEvGetSessionEventsRequest::TPtr& ev)
+        {
+            Y_ABORT_UNLESS(ev->Cookie == TEvService::StreamCookie);
+            eventHandler = ev->Sender;
+            return std::make_unique<TEvService::TEvGetSessionEventsResponse>();
+        };
 
         auto actorSystem = MakeIntrusive<TTestActorSystem>();
         actorSystem->RegisterTestService(std::move(serviceActor));
@@ -179,7 +176,8 @@ Y_UNIT_TEST_SUITE(TKikimrFileStore)
         actorSystem->DispatchEvents(WaitTimeout);
         Y_ABORT_UNLESS(eventHandler);
 
-        auto response = std::make_unique<TEvService::TEvGetSessionEventsResponse>();
+        auto response =
+            std::make_unique<TEvService::TEvGetSessionEventsResponse>();
         auto* event = response->Record.AddEvents();
         event->SetSeqNo(1);
 

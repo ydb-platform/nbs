@@ -31,10 +31,8 @@ TBlockData ReadBlockData(TFile& file, ui64 offset)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TRangeValidationResult ValidateRange(
-    TFile& file,
-    IConfigHolderPtr configHolder,
-    ui32 rangeIdx)
+TRangeValidationResult
+ValidateRange(TFile& file, IConfigHolderPtr configHolder, ui32 rangeIdx)
 {
     const auto& config = configHolder->GetConfig().GetRanges()[rangeIdx];
 
@@ -50,9 +48,8 @@ TRangeValidationResult ValidateRange(
     auto sortedActual = actual;
     Sort(
         sortedActual,
-        [](const auto& l, const auto& r) {
-            return l.RequestNumber > r.RequestNumber;
-        });
+        [](const auto& l, const auto& r)
+        { return l.RequestNumber > r.RequestNumber; });
 
     {
         auto unique = UniqueBy(
@@ -71,7 +68,8 @@ TRangeValidationResult ValidateRange(
         [=](const auto& x) { return x.RequestNumber == maxRequestNumber; });
     const auto secondMaxIt = FindIf(
         actual,
-        [=](const auto& x) { return x.RequestNumber == secondMaxRequestNumber; });
+        [=](const auto& x)
+        { return x.RequestNumber == secondMaxRequestNumber; });
 
     TRangeValidationResult res;
     if (maxIt >= secondMaxIt) {
@@ -108,7 +106,7 @@ TRangeValidationResult ValidateRange(
 
     for (ui64 i = 0; i < len; ++i) {
         if (expectedRequestNumbers[i] != actual[i].RequestNumber) {
-            res.InvalidBlocks.push_back(TInvalidBlock {
+            res.InvalidBlocks.push_back(TInvalidBlock{
                 .BlockIdx = (i + startOffset),
                 .ExpectedRequestNumber = expectedRequestNumbers[i],
                 .ActualRequestNumber = actual[i].RequestNumber,
@@ -121,10 +119,8 @@ TRangeValidationResult ValidateRange(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TVector<TBlockData> ValidateBlocks(
-    TFile file,
-    ui64 blockSize,
-    TVector<ui64> blockIndices)
+TVector<TBlockData>
+ValidateBlocks(TFile file, ui64 blockSize, TVector<ui64> blockIndices)
 {
     constexpr ui64 MaxMirrorReplicas = 3;
 

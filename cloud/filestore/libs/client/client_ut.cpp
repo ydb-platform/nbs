@@ -56,7 +56,8 @@ Y_UNIT_TEST_SUITE(TFileStoreClientTest)
         auto logging = CreateLoggingService("console");
 
         auto service = std::make_shared<TFileStoreTest>();
-        service->PingHandler = [] (auto, auto) {
+        service->PingHandler = [](auto, auto)
+        {
             return MakeFuture<NProto::TPingResponse>();
         };
 
@@ -77,9 +78,7 @@ Y_UNIT_TEST_SUITE(TFileStoreClientTest)
         auto context = MakeIntrusive<TCallContext>();
         auto request = std::make_shared<NProto::TPingRequest>();
 
-        auto future = client->Ping(
-            std::move(context),
-            std::move(request));
+        auto future = client->Ping(std::move(context), std::move(request));
 
         const auto& response = future.GetValue(WaitTimeout);
         UNIT_ASSERT_C(!HasError(response), FormatError(response.GetError()));

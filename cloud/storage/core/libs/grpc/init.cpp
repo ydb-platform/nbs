@@ -51,9 +51,8 @@ ELogPriority LogSeverityToPriority(gpr_log_severity severity)
 
 void AddLog(gpr_log_func_args* args)
 {
-    auto file = ::NPrivate::StripRoot({
-        args->file,
-        static_cast<ui32>(strlen(args->file))});
+    auto file = ::NPrivate::StripRoot(
+        {args->file, static_cast<ui32>(strlen(args->file))});
 
     *GrpcLog.load(std::memory_order_acquire)
         << LogSeverityToPriority(args->severity)

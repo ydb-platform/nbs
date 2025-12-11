@@ -17,10 +17,14 @@ TLog VhostLog;
 ELogPriority GetLogPriority(LogLevel level)
 {
     switch (level) {
-        case LOG_ERROR: return TLOG_ERR;
-        case LOG_WARNING: return TLOG_WARNING;
-        case LOG_INFO: return TLOG_INFO;
-        case LOG_DEBUG: return TLOG_DEBUG;
+        case LOG_ERROR:
+            return TLOG_ERR;
+        case LOG_WARNING:
+            return TLOG_WARNING;
+        case LOG_INFO:
+            return TLOG_INFO;
+        case LOG_DEBUG:
+            return TLOG_DEBUG;
     }
 }
 

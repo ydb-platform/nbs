@@ -14,7 +14,6 @@
 #include <util/system/spinlock.h>
 #include <util/system/thread.h>
 
-
 namespace NCloud::NStorage::NClient {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -26,14 +25,14 @@ class TUdsSocketClient
 {
     using TThis = TUdsSocketClient<TBase, TCallContext>;
 
-    enum {
+    enum
+    {
         Disconnected = 0,
         Connecting = 1,
         Connected = 2,
     };
 
-    union TState
-    {
+    union TState {
         TState(ui64 value)
             : Raw(value)
         {}
@@ -54,9 +53,7 @@ private:
 
 public:
     template <typename... TArgs>
-    TUdsSocketClient(
-            TString socketPath,
-            TArgs&&... args)
+    TUdsSocketClient(TString socketPath, TArgs&&... args)
         : TBase(std::forward<TArgs>(args)...)
         , SocketPath(std::move(socketPath))
     {}
@@ -74,9 +71,7 @@ public:
 
         auto res = TBase::StartWithUds(SocketPath);
 
-        res = SetConnectionState(
-            res ? Connected : Disconnected,
-            Connecting);
+        res = SetConnectionState(res ? Connected : Disconnected, Connecting);
 
         STORAGE_VERIFY(res, "Socket", SocketPath);
     }
@@ -98,12 +93,14 @@ protected:
             std::move(request));
 
         auto weakPtr = TThis::weak_from_this();
-        return future.Apply([weakPtr = std::move(weakPtr)] (const auto& f) {
-            if (auto p = weakPtr.lock()) {
-                p->HandleResponse(f.GetValue());
-            }
-            return f;
-        });
+        return future.Apply(
+            [weakPtr = std::move(weakPtr)](const auto& f)
+            {
+                if (auto p = weakPtr.lock()) {
+                    p->HandleResponse(f.GetValue());
+                }
+                return f;
+            });
     }
 
     bool SetConnectionState(ui32 next, ui32 prev)
@@ -152,8 +149,8 @@ private:
     template <typename TResponse>
     void HandleResponse(const TResponse& response)
     {
-        if (response.HasError()
-            && response.GetError().GetCode() == E_GRPC_UNAVAILABLE)
+        if (response.HasError() &&
+            response.GetError().GetCode() == E_GRPC_UNAVAILABLE)
         {
             SetConnectionState(Disconnected, Connected);
         }

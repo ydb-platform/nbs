@@ -26,9 +26,7 @@ private:
     const TString FileSystemId;
 
 public:
-    TGetFileStoreInfoActor(
-        TRequestInfoPtr requestInfo,
-        TString fileSystemId);
+    TGetFileStoreInfoActor(TRequestInfoPtr requestInfo, TString fileSystemId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -56,8 +54,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TGetFileStoreInfoActor::TGetFileStoreInfoActor(
-        TRequestInfoPtr requestInfo,
-        TString fileSystemId)
+    TRequestInfoPtr requestInfo,
+    TString fileSystemId)
     : RequestInfo(std::move(requestInfo))
     , FileSystemId(std::move(fileSystemId))
 {}
@@ -70,8 +68,8 @@ void TGetFileStoreInfoActor::Bootstrap(const TActorContext& ctx)
 
 void TGetFileStoreInfoActor::DescribeFileStore(const TActorContext& ctx)
 {
-    auto request = std::make_unique<TEvSSProxy::TEvDescribeFileStoreRequest>(
-        FileSystemId);
+    auto request =
+        std::make_unique<TEvSSProxy::TEvDescribeFileStoreRequest>(FileSystemId);
 
     NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request));
 }
@@ -111,7 +109,8 @@ void TGetFileStoreInfoActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvService::TEvGetFileStoreInfoResponse>(error);
+    auto response =
+        std::make_unique<TEvService::TEvGetFileStoreInfoResponse>(error);
     ReplyAndDie(ctx, std::move(response));
 }
 
@@ -128,7 +127,9 @@ STFUNC(TGetFileStoreInfoActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvSSProxy::TEvDescribeFileStoreResponse, HandleDescribeFileStoreResponse);
+        HFunc(
+            TEvSSProxy::TEvDescribeFileStoreResponse,
+            HandleDescribeFileStoreResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -157,10 +158,7 @@ void TStorageServiceActor::HandleGetFileStoreInfo(
 
     InitProfileLogRequestInfo(inflight->ProfileLogRequest, msg->Record);
 
-    auto requestInfo = CreateRequestInfo(
-        SelfId(),
-        cookie,
-        msg->CallContext);
+    auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
     auto actor = std::make_unique<TGetFileStoreInfoActor>(
         std::move(requestInfo),

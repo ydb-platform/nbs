@@ -1,4 +1,5 @@
 #include "disk_registry_actor.h"
+
 #include "disk_registry_database.h"
 
 namespace NCloud::NBlockStore::NStorage {
@@ -17,10 +18,8 @@ void TDiskRegistryActor::HandleUpdateCmsHostState(
 
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     LOG_INFO(
         ctx,
@@ -95,8 +94,8 @@ void TDiskRegistryActor::CompleteUpdateCmsHostState(
             TStringStream out;
             out << "[";
             for (const auto& diskId: args.AffectedDisks) {
-                out << " " << diskId
-                    << ":" << NProto::EDiskState_Name(State->GetDiskState(diskId));
+                out << " " << diskId << ":"
+                    << NProto::EDiskState_Name(State->GetDiskState(diskId));
             }
             out << " ]";
             return out.Str();

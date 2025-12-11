@@ -16,7 +16,8 @@ Y_UNIT_TEST_SUITE(TUtilsTest)
         TTempDir sysBlockDir;
         TFsPath path = sysBlockDir.Path();
 
-        auto createPidFile = [](auto path) {
+        auto createPidFile = [](auto path)
+        {
             path.Parent().MkDir();
             TOFStream(path.GetPath()).Write("42");
         };

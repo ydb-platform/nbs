@@ -9,9 +9,11 @@
 #include <cloud/blockstore/libs/diagnostics/volume_stats_test.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service_test.h>
+
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer_test.h>
 
+#include <library/cpp/deprecated/atomic/atomic.h>
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/threading/future/subscription/wait_all.h>
 
@@ -20,7 +22,6 @@
 #include <util/generic/xrange.h>
 #include <util/random/entropy.h>
 #include <util/random/mersenne.h>
-#include <library/cpp/deprecated/atomic/atomic.h>
 #include <util/system/condvar.h>
 #include <util/system/mutex.h>
 #include <util/thread/factory.h>
@@ -40,58 +41,57 @@ constexpr auto SHORT_TIMEOUT = UPDATE_THROTTLER_USED_QUOTA_INTERVAL / 10;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_NODISK_SERVICE(xxx, ...)                                    \
-    xxx(Ping,                               __VA_ARGS__)                       \
-    xxx(ListVolumes,                        __VA_ARGS__)                       \
-    xxx(UploadClientMetrics,                __VA_ARGS__)                       \
-    xxx(DiscoverInstances,                  __VA_ARGS__)                       \
-    xxx(ExecuteAction,                      __VA_ARGS__)                       \
-    xxx(DescribeVolumeModel,                __VA_ARGS__)                       \
-    xxx(UpdateDiskRegistryConfig,           __VA_ARGS__)                       \
-    xxx(DescribeDiskRegistryConfig,         __VA_ARGS__)                       \
-    xxx(CreatePlacementGroup,               __VA_ARGS__)                       \
-    xxx(DestroyPlacementGroup,              __VA_ARGS__)                       \
-    xxx(AlterPlacementGroupMembership,      __VA_ARGS__)                       \
-    xxx(DescribePlacementGroup,             __VA_ARGS__)                       \
-    xxx(ListPlacementGroups,                __VA_ARGS__)                       \
-    xxx(CmsAction,                          __VA_ARGS__)                       \
-    xxx(StopEndpoint,                       __VA_ARGS__)                       \
-    xxx(ListEndpoints,                      __VA_ARGS__)                       \
-    xxx(KickEndpoint,                       __VA_ARGS__)                       \
-    xxx(ListKeyrings,                       __VA_ARGS__)                       \
-    xxx(DescribeEndpoint,                   __VA_ARGS__)                       \
-    xxx(RefreshEndpoint,                    __VA_ARGS__)                       \
-// BLOCKSTORE_NODISK_SERVICE
+#define BLOCKSTORE_NODISK_SERVICE(xxx, ...)         \
+    xxx(Ping, __VA_ARGS__)                          \
+    xxx(ListVolumes, __VA_ARGS__)                   \
+    xxx(UploadClientMetrics, __VA_ARGS__)           \
+    xxx(DiscoverInstances, __VA_ARGS__)             \
+    xxx(ExecuteAction, __VA_ARGS__)                 \
+    xxx(DescribeVolumeModel, __VA_ARGS__)           \
+    xxx(UpdateDiskRegistryConfig, __VA_ARGS__)      \
+    xxx(DescribeDiskRegistryConfig, __VA_ARGS__)    \
+    xxx(CreatePlacementGroup, __VA_ARGS__)          \
+    xxx(DestroyPlacementGroup, __VA_ARGS__)         \
+    xxx(AlterPlacementGroupMembership, __VA_ARGS__) \
+    xxx(DescribePlacementGroup, __VA_ARGS__)        \
+    xxx(ListPlacementGroups, __VA_ARGS__)           \
+    xxx(CmsAction, __VA_ARGS__)                     \
+    xxx(StopEndpoint, __VA_ARGS__)                  \
+    xxx(ListEndpoints, __VA_ARGS__)                 \
+    xxx(KickEndpoint, __VA_ARGS__)                  \
+    xxx(ListKeyrings, __VA_ARGS__)                  \
+    xxx(DescribeEndpoint, __VA_ARGS__)              \
+    xxx(RefreshEndpoint, __VA_ARGS__)               \
+    // BLOCKSTORE_NODISK_SERVICE
 
-#define BLOCKSTORE_NOBLOCKS_SERVICE(xxx, ...)                                  \
-    xxx(StartEndpoint,                      __VA_ARGS__)                       \
-    xxx(CreateVolume,                       __VA_ARGS__)                       \
-    xxx(DestroyVolume,                      __VA_ARGS__)                       \
-    xxx(ResizeVolume,                       __VA_ARGS__)                       \
-    xxx(StatVolume,                         __VA_ARGS__)                       \
-    xxx(AssignVolume,                       __VA_ARGS__)                       \
-    xxx(CreateCheckpoint,                   __VA_ARGS__)                       \
-    xxx(DeleteCheckpoint,                   __VA_ARGS__)                       \
-    xxx(AlterVolume,                        __VA_ARGS__)                       \
-    xxx(GetChangedBlocks,                   __VA_ARGS__)                       \
-    xxx(DescribeVolume,                     __VA_ARGS__)                       \
-// BLOCKSTORE_NOBLOCKS_SERVICE
+#define BLOCKSTORE_NOBLOCKS_SERVICE(xxx, ...) \
+    xxx(StartEndpoint, __VA_ARGS__)           \
+    xxx(CreateVolume, __VA_ARGS__)            \
+    xxx(DestroyVolume, __VA_ARGS__)           \
+    xxx(ResizeVolume, __VA_ARGS__)            \
+    xxx(StatVolume, __VA_ARGS__)              \
+    xxx(AssignVolume, __VA_ARGS__)            \
+    xxx(CreateCheckpoint, __VA_ARGS__)        \
+    xxx(DeleteCheckpoint, __VA_ARGS__)        \
+    xxx(AlterVolume, __VA_ARGS__)             \
+    xxx(GetChangedBlocks, __VA_ARGS__)        \
+    xxx(DescribeVolume, __VA_ARGS__)          \
+    // BLOCKSTORE_NOBLOCKS_SERVICE
 
-#define BLOCKSTORE_READ_SERVICE(xxx, ...)                                      \
-    xxx(ReadBlocks,                         __VA_ARGS__)                       \
-    xxx(ReadBlocksLocal,                    __VA_ARGS__)                       \
-    xxx(ZeroBlocks,                         __VA_ARGS__)                       \
-// BLOCKSTORE_READ_SERVICE
+#define BLOCKSTORE_READ_SERVICE(xxx, ...) \
+    xxx(ReadBlocks, __VA_ARGS__)          \
+    xxx(ReadBlocksLocal, __VA_ARGS__)     \
+    xxx(ZeroBlocks, __VA_ARGS__)          \
+    // BLOCKSTORE_READ_SERVICE
 
-#define BLOCKSTORE_WRITE_SERVICE(xxx, ...)                                     \
-    xxx(WriteBlocks,                        __VA_ARGS__)                       \
-    xxx(WriteBlocksLocal,                   __VA_ARGS__)                       \
-// BLOCKSTORE_WRITE_SERVICE
+#define BLOCKSTORE_WRITE_SERVICE(xxx, ...) \
+    xxx(WriteBlocks, __VA_ARGS__)          \
+    xxx(WriteBlocksLocal, __VA_ARGS__)     \
+    // BLOCKSTORE_WRITE_SERVICE
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TThrottlerPolicy final
-    : public IThrottlerPolicy
+class TThrottlerPolicy final: public IThrottlerPolicy
 {
 private:
     TDuration PostponeDelay = TDuration::Zero();
@@ -154,9 +154,8 @@ public:
 
 struct TMultiVolumeMultiClientProcessingPolicy
 {
-    TMap<
-        TString,
-        TMap<TString, std::shared_ptr<TTestVolumeInfo<>>>> VolumeInfos;
+    TMap<TString, TMap<TString, std::shared_ptr<TTestVolumeInfo<>>>>
+        VolumeInfos;
     mutable TMap<TString, TMap<TString, TAtomic>> VolumeClientCount;
 
     bool MountVolume(
@@ -187,9 +186,7 @@ struct TMultiVolumeMultiClientProcessingPolicy
         return true;
     }
 
-    void UnmountVolume(
-        const TString& diskId,
-        const TString& clientId)
+    void UnmountVolume(const TString& diskId, const TString& clientId)
     {
         if (auto volumeIt = VolumeInfos.find(diskId);
             volumeIt != VolumeInfos.end())
@@ -236,31 +233,26 @@ struct TMultiVolumeMultiClientProcessingPolicy
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TVolume CreateVolumeConfig(
-    const TString& diskId,
-    ui32 blockSize)
+NProto::TVolume CreateVolumeConfig(const TString& diskId, ui32 blockSize)
 {
-   NProto::TVolume volume;
+    NProto::TVolume volume;
 
-   volume.SetDiskId(diskId);
-   volume.SetBlockSize(blockSize);
+    volume.SetDiskId(diskId);
+    volume.SetBlockSize(blockSize);
 
-   return volume;
+    return volume;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TThrottlingClient final
-    : public IBlockStore
+class TThrottlingClient final: public IBlockStore
 {
 private:
     IBlockStorePtr Client;
     IThrottlerPtr Throttler;
 
 public:
-    TThrottlingClient(
-            IBlockStorePtr client,
-            IThrottlerPtr throttler)
+    TThrottlingClient(IBlockStorePtr client, IThrottlerPtr throttler)
         : Client(std::move(client))
         , Throttler(std::move(throttler))
     {}
@@ -282,17 +274,17 @@ public:
         return Client->AllocateBuffer(bytesCount);
     }
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        return Throttler->name(                                                \
-            Client,                                                            \
-            std::move(callContext),                                            \
-            std::move(request));                                               \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
+#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                      \
+    TFuture<NProto::T##name##Response> name(                        \
+        TCallContextPtr callContext,                                \
+        std::shared_ptr<NProto::T##name##Request> request) override \
+    {                                                               \
+        return Throttler->name(                                     \
+            Client,                                                 \
+            std::move(callContext),                                 \
+            std::move(request));                                    \
+    }                                                               \
+    // BLOCKSTORE_IMPLEMENT_METHOD
 
     BLOCKSTORE_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
 
@@ -322,16 +314,15 @@ public:
     void Add(F f)
     {
         Workers.push_back(SystemThreadFactory()->Run(
-            [this, f = std::move(f)]() {
+            [this, f = std::move(f)]()
+            {
                 WorkersLock.Acquire();
                 StartedCheck.Wait(
                     WorkersLock,
-                    [&started = this->Started]() { return started; }
-                );
+                    [&started = this->Started]() { return started; });
                 WorkersLock.Release();
                 f();
-            }
-        ));
+            }));
     }
 
     void Start()
@@ -354,8 +345,8 @@ public:
 
 struct TTestEnvironment final
 {
-    std::shared_ptr<
-        TTestVolumeStats<TMultiVolumeMultiClientProcessingPolicy>> VolumeStats;
+    std::shared_ptr<TTestVolumeStats<TMultiVolumeMultiClientProcessingPolicy>>
+        VolumeStats;
     std::shared_ptr<TTestThrottlerLogger> Logger;
     std::shared_ptr<TTestThrottlerMetrics> Metrics;
     std::shared_ptr<TThrottlerPolicy> Policy;
@@ -389,8 +380,8 @@ struct TTestEnvironment final
 
     TTestEnvironment()
         : VolumeStats(
-            std::make_shared<
-                TTestVolumeStats<TMultiVolumeMultiClientProcessingPolicy>>())
+              std::make_shared<
+                  TTestVolumeStats<TMultiVolumeMultiClientProcessingPolicy>>())
         , Logger(std::make_shared<TTestThrottlerLogger>())
         , Metrics(std::make_shared<TTestThrottlerMetrics>())
         , Policy(std::make_shared<TThrottlerPolicy>())
@@ -399,15 +390,15 @@ struct TTestEnvironment final
         , Scheduler(CreateScheduler(Timer))
         , Service(std::make_shared<TTestService>())
         , Throttler(CreateThrottler(
-            Logger,
-            Metrics,
-            Policy,
-            Tracker,
-            Timer,
-            Scheduler,
-            VolumeStats))
+              Logger,
+              Metrics,
+              Policy,
+              Tracker,
+              Timer,
+              Scheduler,
+              VolumeStats))
         , ThrottlingClient(
-            std::make_shared<TThrottlingClient>(Service, Throttler))
+              std::make_shared<TThrottlingClient>(Service, Throttler))
         , CallContext(MakeIntrusive<TCallContext>())
     {
         InitTestLogger();
@@ -421,12 +412,12 @@ struct TTestEnvironment final
     }
 
     TTestEnvironment(
-            std::shared_ptr<TTestTimer> timer,
-            ISchedulerPtr scheduler,
-            bool isManualSchedulerStop)
+        std::shared_ptr<TTestTimer> timer,
+        ISchedulerPtr scheduler,
+        bool isManualSchedulerStop)
         : VolumeStats(
-            std::make_shared<
-                TTestVolumeStats<TMultiVolumeMultiClientProcessingPolicy>>())
+              std::make_shared<
+                  TTestVolumeStats<TMultiVolumeMultiClientProcessingPolicy>>())
         , Logger(std::make_shared<TTestThrottlerLogger>())
         , Metrics(std::make_shared<TTestThrottlerMetrics>())
         , Policy(std::make_shared<TThrottlerPolicy>())
@@ -435,15 +426,15 @@ struct TTestEnvironment final
         , Scheduler(std::move(scheduler))
         , Service(std::make_shared<TTestService>())
         , Throttler(CreateThrottler(
-            Logger,
-            Metrics,
-            Policy,
-            Tracker,
-            Timer,
-            Scheduler,
-            VolumeStats))
+              Logger,
+              Metrics,
+              Policy,
+              Tracker,
+              Timer,
+              Scheduler,
+              VolumeStats))
         , ThrottlingClient(
-            std::make_shared<TThrottlingClient>(Service, Throttler))
+              std::make_shared<TThrottlingClient>(Service, Throttler))
         , CallContext(MakeIntrusive<TCallContext>())
         , IsManualSchedulerStartStop(isManualSchedulerStop)
     {
@@ -469,37 +460,36 @@ struct TTestEnvironment final
 
     void InitTestLogger()
     {
-#define SET_HANDLER(name, ...)                                                 \
-    Logger->name##LogPostponedRequestHandler =                                 \
-        [&PostponedCount = this->LoggerPostponed] (                            \
-            ui64,                                                              \
-            TCallContext&,                                                     \
-            IVolumeInfo*,                                                      \
-            const NProto::T##name##Request&,                                   \
-            TDuration)                                                         \
-    {                                                                          \
-        AtomicIncrement(                                                       \
-            PostponedCount[static_cast<size_t>(EBlockStoreRequest::name)]);    \
-    };                                                                         \
-                                                                               \
-    Logger->name##LogAdvancedRequestHandler =                                  \
-        [&AdvancedCount = this->LoggerAdvanced] (                              \
-            ui64,                                                              \
-            TCallContext&,                                                     \
-            IVolumeInfo*,                                                      \
-            const NProto::T##name##Request&)                                   \
-    {                                                                          \
-        AtomicIncrement(                                                       \
-            AdvancedCount[static_cast<size_t>(EBlockStoreRequest::name)]);     \
-    };                                                                         \
-                                                                               \
-    Logger->name##LogErrorHandler = [] (                                       \
-        const NProto::T##name##Request&,                                       \
-        const TString&)                                                        \
-    {                                                                          \
-        UNIT_ASSERT_C(false, "Error occured on " #name " request");            \
-    };                                                                         \
-// SET_HANDLER
+#define SET_HANDLER(name, ...)                                              \
+    Logger->name##LogPostponedRequestHandler =                              \
+        [&PostponedCount = this->LoggerPostponed](                          \
+            ui64,                                                           \
+            TCallContext&,                                                  \
+            IVolumeInfo*,                                                   \
+            const NProto::T##name##Request&,                                \
+            TDuration)                                                      \
+    {                                                                       \
+        AtomicIncrement(                                                    \
+            PostponedCount[static_cast<size_t>(EBlockStoreRequest::name)]); \
+    };                                                                      \
+                                                                            \
+    Logger->name##LogAdvancedRequestHandler =                               \
+        [&AdvancedCount = this->LoggerAdvanced](                            \
+            ui64,                                                           \
+            TCallContext&,                                                  \
+            IVolumeInfo*,                                                   \
+            const NProto::T##name##Request&)                                \
+    {                                                                       \
+        AtomicIncrement(                                                    \
+            AdvancedCount[static_cast<size_t>(EBlockStoreRequest::name)]);  \
+    };                                                                      \
+                                                                            \
+    Logger->name##LogErrorHandler =                                         \
+        [](const NProto::T##name##Request&, const TString&)                 \
+    {                                                                       \
+        UNIT_ASSERT_C(false, "Error occured on " #name " request");         \
+    };                                                                      \
+    // SET_HANDLER
 
         BLOCKSTORE_SERVICE(SET_HANDLER)
 
@@ -508,22 +498,20 @@ struct TTestEnvironment final
 
     void InitTestMetrics()
     {
-        Metrics->RegisterHandler = [&map = this->ClientToVolumeMap] (
-            const TString& diskId,
-            const TString& clientId)
+        Metrics->RegisterHandler = [&map = this->ClientToVolumeMap](
+                                       const TString& diskId,
+                                       const TString& clientId)
         {
-            if (auto clientIt = map.find(clientId);
-                clientIt != map.end())
-            {
+            if (auto clientIt = map.find(clientId); clientIt != map.end()) {
                 clientIt->second.emplace(diskId);
             } else {
                 map[clientId].insert(diskId);
             }
         };
 
-        Metrics->UnregisterHandler = [&map = this->ClientToVolumeMap] (
-            const TString& diskId,
-            const TString& clientId)
+        Metrics->UnregisterHandler = [&map = this->ClientToVolumeMap](
+                                         const TString& diskId,
+                                         const TString& clientId)
         {
             auto clientIt = map.find(clientId);
             auto volumeIt = clientIt->second.find(diskId);
@@ -534,20 +522,19 @@ struct TTestEnvironment final
             }
         };
 
-        Metrics->TrimHandler =
-            [&trimCount = this->TrimCount] (const TInstant&)
+        Metrics->TrimHandler = [&trimCount = this->TrimCount](const TInstant&)
         {
             ++trimCount;
         };
 
         Metrics->UpdateUsedQuotaHandler =
-            [&usedQuotaCount = this->UsedQuotaCount] (ui64)
+            [&usedQuotaCount = this->UsedQuotaCount](ui64)
         {
             AtomicIncrement(usedQuotaCount);
         };
 
         Metrics->UpdateMaxUsedQuotaHandler =
-            [&maxUsedQuotaCount = this->MaxUsedQuotaCount] ()
+            [&maxUsedQuotaCount = this->MaxUsedQuotaCount]()
         {
             ++maxUsedQuotaCount;
         };
@@ -555,35 +542,35 @@ struct TTestEnvironment final
 
     void InitTestTracker()
     {
-#define SET_HANDLER(name, ...)                                                 \
-    Tracker->name##TrackReceivedRequestHandler =                               \
-        [&ReceivedCount = this->TrackerReceived] (                             \
-            TCallContext&,                                                     \
-            IVolumeInfo*,                                                      \
-            const NProto::T##name##Request&)                                   \
-    {                                                                          \
-        AtomicIncrement(                                                       \
-            ReceivedCount[static_cast<size_t>(EBlockStoreRequest::name)]);     \
-    };                                                                         \
-                                                                               \
-    Tracker->name##TrackPostponedRequestHandler =                              \
-        [&PostponedCount = this->TrackerPostponed] (                           \
-            TCallContext&,                                                     \
-            const NProto::T##name##Request&)                                   \
-    {                                                                          \
-        AtomicIncrement(                                                       \
-            PostponedCount[static_cast<size_t>(EBlockStoreRequest::name)]);    \
-    };                                                                         \
-                                                                               \
-    Tracker->name##TrackAdvancedRequestHandler =                               \
-        [&AdvancedCount = this->TrackerAdvanced] (                             \
-            TCallContext&,                                                     \
-            const NProto::T##name##Request&)                                   \
-    {                                                                          \
-        AtomicIncrement(                                                       \
-            AdvancedCount[static_cast<size_t>(EBlockStoreRequest::name)]);     \
-    };                                                                         \
-// SET_HANDLER
+#define SET_HANDLER(name, ...)                                              \
+    Tracker->name##TrackReceivedRequestHandler =                            \
+        [&ReceivedCount = this->TrackerReceived](                           \
+            TCallContext&,                                                  \
+            IVolumeInfo*,                                                   \
+            const NProto::T##name##Request&)                                \
+    {                                                                       \
+        AtomicIncrement(                                                    \
+            ReceivedCount[static_cast<size_t>(EBlockStoreRequest::name)]);  \
+    };                                                                      \
+                                                                            \
+    Tracker->name##TrackPostponedRequestHandler =                           \
+        [&PostponedCount = this->TrackerPostponed](                         \
+            TCallContext&,                                                  \
+            const NProto::T##name##Request&)                                \
+    {                                                                       \
+        AtomicIncrement(                                                    \
+            PostponedCount[static_cast<size_t>(EBlockStoreRequest::name)]); \
+    };                                                                      \
+                                                                            \
+    Tracker->name##TrackAdvancedRequestHandler =                            \
+        [&AdvancedCount = this->TrackerAdvanced](                           \
+            TCallContext&,                                                  \
+            const NProto::T##name##Request&)                                \
+    {                                                                       \
+        AtomicIncrement(                                                    \
+            AdvancedCount[static_cast<size_t>(EBlockStoreRequest::name)]);  \
+    };                                                                      \
+    // SET_HANDLER
 
         BLOCKSTORE_SERVICE(SET_HANDLER)
 
@@ -592,15 +579,15 @@ struct TTestEnvironment final
 
     void InitTestService()
     {
-#define SET_HANDLER(name, ...)                                                 \
-    Service->name##Handler = [&RequestCount = this->RequestCount] (            \
-        std::shared_ptr<NProto::T##name##Request>)                             \
-    {                                                                          \
-        AtomicIncrement(                                                       \
-            RequestCount[static_cast<size_t>(EBlockStoreRequest::name)]);      \
-        return MakeFuture(NProto::T##name##Response());                        \
-    };                                                                         \
-// SET_HANDLER
+#define SET_HANDLER(name, ...)                                              \
+    Service->name##Handler = [&RequestCount = this->RequestCount](          \
+                                 std::shared_ptr<NProto::T##name##Request>) \
+    {                                                                       \
+        AtomicIncrement(                                                    \
+            RequestCount[static_cast<size_t>(EBlockStoreRequest::name)]);   \
+        return MakeFuture(NProto::T##name##Response());                     \
+    };                                                                      \
+    // SET_HANDLER
 
         BLOCKSTORE_NODISK_SERVICE(SET_HANDLER)
         BLOCKSTORE_NOBLOCKS_SERVICE(SET_HANDLER)
@@ -609,13 +596,13 @@ struct TTestEnvironment final
 
 #undef SET_HANDLER
 
-        Service->MountVolumeHandler = [
-            &RequestCount = this->RequestCount,
-            &VolumeStats = this->VolumeStats] (
-            std::shared_ptr<NProto::TMountVolumeRequest> request)
+        Service->MountVolumeHandler =
+            [&RequestCount = this->RequestCount,
+             &VolumeStats = this->VolumeStats](
+                std::shared_ptr<NProto::TMountVolumeRequest> request)
         {
-            AtomicIncrement(RequestCount[
-                static_cast<size_t>(EBlockStoreRequest::MountVolume)]);
+            AtomicIncrement(RequestCount[static_cast<size_t>(
+                EBlockStoreRequest::MountVolume)]);
 
             const auto diskId = request->GetDiskId();
             const auto clientId = GetClientId(*request);
@@ -625,8 +612,8 @@ struct TTestEnvironment final
                     CreateVolumeConfig(diskId, 4_MB),
                     clientId,
                     ""),
-                TStringBuilder() << "Volume " << diskId
-                    << " for client " << clientId << " was not mounted");
+                TStringBuilder() << "Volume " << diskId << " for client "
+                                 << clientId << " was not mounted");
 
             NProto::TMountVolumeResponse r;
             r.MutableVolume()->SetDiskId(diskId);
@@ -634,13 +621,13 @@ struct TTestEnvironment final
             return MakeFuture(std::move(r));
         };
 
-        Service->UnmountVolumeHandler = [
-            &RequestCount = this->RequestCount,
-            &VolumeStats = this->VolumeStats] (
-            std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        Service->UnmountVolumeHandler =
+            [&RequestCount = this->RequestCount,
+             &VolumeStats = this->VolumeStats](
+                std::shared_ptr<NProto::TUnmountVolumeRequest> request)
         {
-            AtomicIncrement(RequestCount[
-                static_cast<size_t>(EBlockStoreRequest::UnmountVolume)]);
+            AtomicIncrement(RequestCount[static_cast<size_t>(
+                EBlockStoreRequest::UnmountVolume)]);
 
             const auto diskId = request->GetDiskId();
             const auto clientId = GetClientId(*request);
@@ -649,38 +636,38 @@ struct TTestEnvironment final
 
             UNIT_ASSERT_C(
                 !VolumeStats->GetVolumeInfo(diskId, clientId),
-                TStringBuilder() << "Volume " << diskId
-                    << " for client " << clientId << " was not unmounted");
+                TStringBuilder() << "Volume " << diskId << " for client "
+                                 << clientId << " was not unmounted");
 
             return MakeFuture(NProto::TUnmountVolumeResponse());
         };
     }
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
-    std::shared_ptr<NProto::T##name##Request> Create##name##Request(           \
-        const TString& clientId)                                               \
-    {                                                                          \
-        NProto::T##name##Request r;                                            \
-        r.MutableHeaders()->SetClientId(clientId);                             \
-        return std::make_shared<NProto::T##name##Request>(std::move(r));       \
-    }                                                                          \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)                             \
+    std::shared_ptr<NProto::T##name##Request> Create##name##Request(     \
+        const TString& clientId)                                         \
+    {                                                                    \
+        NProto::T##name##Request r;                                      \
+        r.MutableHeaders()->SetClientId(clientId);                       \
+        return std::make_shared<NProto::T##name##Request>(std::move(r)); \
+    }                                                                    \
+    // BLOCKSTORE_DECLARE_METHOD
 
     BLOCKSTORE_NODISK_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
 #undef BLOCKSTORE_DECLARE_METHOD
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
-    std::shared_ptr<NProto::T##name##Request> Create##name##Request(           \
-        const TString& clientId,                                               \
-        const TString& diskId)                                                 \
-    {                                                                          \
-        NProto::T##name##Request r;                                            \
-        r.MutableHeaders()->SetClientId(clientId);                             \
-        r.SetDiskId(diskId);                                                   \
-        return std::make_shared<NProto::T##name##Request>(std::move(r));       \
-    }                                                                          \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)                             \
+    std::shared_ptr<NProto::T##name##Request> Create##name##Request(     \
+        const TString& clientId,                                         \
+        const TString& diskId)                                           \
+    {                                                                    \
+        NProto::T##name##Request r;                                      \
+        r.MutableHeaders()->SetClientId(clientId);                       \
+        r.SetDiskId(diskId);                                             \
+        return std::make_shared<NProto::T##name##Request>(std::move(r)); \
+    }                                                                    \
+    // BLOCKSTORE_DECLARE_METHOD
 
     BLOCKSTORE_NOBLOCKS_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
@@ -706,19 +693,19 @@ struct TTestEnvironment final
         return std::make_shared<NProto::TUnmountVolumeRequest>(std::move(r));
     }
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
-    std::shared_ptr<NProto::T##name##Request> Create##name##Request(           \
-        const TString& clientId,                                               \
-        const TString& diskId,                                                 \
-        ui32 blockCount)                                                       \
-    {                                                                          \
-        NProto::T##name##Request r;                                            \
-        r.MutableHeaders()->SetClientId(clientId);                             \
-        r.SetDiskId(diskId);                                                   \
-        r.SetBlocksCount(blockCount);                                          \
-        return std::make_shared<NProto::T##name##Request>(std::move(r));       \
-    }                                                                          \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)                             \
+    std::shared_ptr<NProto::T##name##Request> Create##name##Request(     \
+        const TString& clientId,                                         \
+        const TString& diskId,                                           \
+        ui32 blockCount)                                                 \
+    {                                                                    \
+        NProto::T##name##Request r;                                      \
+        r.MutableHeaders()->SetClientId(clientId);                       \
+        r.SetDiskId(diskId);                                             \
+        r.SetBlocksCount(blockCount);                                    \
+        return std::make_shared<NProto::T##name##Request>(std::move(r)); \
+    }                                                                    \
+    // BLOCKSTORE_DECLARE_METHOD
 
     BLOCKSTORE_READ_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
@@ -739,7 +726,8 @@ struct TTestEnvironment final
         return std::make_shared<NProto::TWriteBlocksRequest>(std::move(r));
     }
 
-    std::shared_ptr<NProto::TWriteBlocksLocalRequest> CreateWriteBlocksLocalRequest(
+    std::shared_ptr<NProto::TWriteBlocksLocalRequest>
+    CreateWriteBlocksLocalRequest(
         const TString& clientId,
         const TString& diskId,
         size_t blockCount)
@@ -751,57 +739,56 @@ struct TTestEnvironment final
         return std::make_shared<NProto::TWriteBlocksLocalRequest>(std::move(r));
     }
 
-////////////////////////////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
-    TVector<TFuture<NProto::T##name##Response>> Perform##name##Requests(       \
-        IBlockStorePtr service,                                                \
-        TCallContextPtr callContext,                                           \
-        ui32 count,                                                            \
-        const TString& clientId)                                               \
-    {                                                                          \
-        TVector<TFuture<NProto::T##name##Response>> res;                       \
-        for (ui32 i = 0; i < count; ++i) {                                     \
-            res.push_back(service->name(                                       \
-                callContext,                                                   \
-                Create##name##Request(clientId)));                             \
-        }                                                                      \
-        return res;                                                            \
-    }                                                                          \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                  \
+    TVector<TFuture<NProto::T##name##Response>> Perform##name##Requests(      \
+        IBlockStorePtr service,                                               \
+        TCallContextPtr callContext,                                          \
+        ui32 count,                                                           \
+        const TString& clientId)                                              \
+    {                                                                         \
+        TVector<TFuture<NProto::T##name##Response>> res;                      \
+        for (ui32 i = 0; i < count; ++i) {                                    \
+            res.push_back(                                                    \
+                service->name(callContext, Create##name##Request(clientId))); \
+        }                                                                     \
+        return res;                                                           \
+    }                                                                         \
+    // BLOCKSTORE_DECLARE_METHOD
 
     BLOCKSTORE_NODISK_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
 #undef BLOCKSTORE_DECLARE_METHOD
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
-    TVector<TFuture<NProto::T##name##Response>> Perform##name##Requests(       \
-        IBlockStorePtr service,                                                \
-        TCallContextPtr callContext,                                           \
-        ui32 count,                                                            \
-        const TString& clientId,                                               \
-        const TString& diskId)                                                 \
-    {                                                                          \
-        TVector<TFuture<NProto::T##name##Response>> res;                       \
-        for (ui32 i = 0; i < count; ++i) {                                     \
-            res.push_back(service->name(                                       \
-                callContext,                                                   \
-                Create##name##Request(clientId, diskId)));                     \
-        }                                                                      \
-        return res;                                                            \
-    }                                                                          \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)                             \
+    TVector<TFuture<NProto::T##name##Response>> Perform##name##Requests( \
+        IBlockStorePtr service,                                          \
+        TCallContextPtr callContext,                                     \
+        ui32 count,                                                      \
+        const TString& clientId,                                         \
+        const TString& diskId)                                           \
+    {                                                                    \
+        TVector<TFuture<NProto::T##name##Response>> res;                 \
+        for (ui32 i = 0; i < count; ++i) {                               \
+            res.push_back(service->name(                                 \
+                callContext,                                             \
+                Create##name##Request(clientId, diskId)));               \
+        }                                                                \
+        return res;                                                      \
+    }                                                                    \
+    // BLOCKSTORE_DECLARE_METHOD
 
     BLOCKSTORE_NOBLOCKS_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
 #undef BLOCKSTORE_DECLARE_METHOD
 
     TVector<TFuture<NProto::TMountVolumeResponse>> PerformMountVolumeRequests(
-            IBlockStorePtr service,
-            TCallContextPtr callContext,
-            ui32 count,
-            const TString& clientId,
-            const TString& diskId)
+        IBlockStorePtr service,
+        TCallContextPtr callContext,
+        ui32 count,
+        const TString& clientId,
+        const TString& diskId)
     {
         TVector<TFuture<NProto::TMountVolumeResponse>> res;
         for (ui32 i = 0; i < count; ++i) {
@@ -812,12 +799,13 @@ struct TTestEnvironment final
         return res;
     }
 
-    TVector<TFuture<NProto::TUnmountVolumeResponse>> PerformUnmountVolumeRequests(
-            IBlockStorePtr service,
-            TCallContextPtr callContext,
-            ui32 count,
-            const TString& clientId,
-            const TString& diskId)
+    TVector<TFuture<NProto::TUnmountVolumeResponse>>
+    PerformUnmountVolumeRequests(
+        IBlockStorePtr service,
+        TCallContextPtr callContext,
+        ui32 count,
+        const TString& clientId,
+        const TString& diskId)
     {
         TVector<TFuture<NProto::TUnmountVolumeResponse>> res;
         for (ui32 i = 0; i < count; ++i) {
@@ -828,35 +816,33 @@ struct TTestEnvironment final
         return res;
     }
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
-    TVector<TFuture<NProto::T##name##Response>> Perform##name##Requests(       \
-        IBlockStorePtr service,                                                \
-        TCallContextPtr callContext,                                           \
-        ui32 count,                                                            \
-        const TString& clientId,                                               \
-        const TString& diskId,                                                 \
-        ui32 blockCount)                                                       \
-    {                                                                          \
-        TVector<TFuture<NProto::T##name##Response>> res;                       \
-        for (ui32 i = 0; i < count; ++i) {                                     \
-            res.push_back(service->name(                                       \
-                callContext,                                                   \
-                Create##name##Request(clientId, diskId, blockCount)));         \
-        }                                                                      \
-        return res;                                                            \
-    }                                                                          \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)                             \
+    TVector<TFuture<NProto::T##name##Response>> Perform##name##Requests( \
+        IBlockStorePtr service,                                          \
+        TCallContextPtr callContext,                                     \
+        ui32 count,                                                      \
+        const TString& clientId,                                         \
+        const TString& diskId,                                           \
+        ui32 blockCount)                                                 \
+    {                                                                    \
+        TVector<TFuture<NProto::T##name##Response>> res;                 \
+        for (ui32 i = 0; i < count; ++i) {                               \
+            res.push_back(service->name(                                 \
+                callContext,                                             \
+                Create##name##Request(clientId, diskId, blockCount)));   \
+        }                                                                \
+        return res;                                                      \
+    }                                                                    \
+    // BLOCKSTORE_DECLARE_METHOD
 
     BLOCKSTORE_READ_SERVICE(BLOCKSTORE_DECLARE_METHOD)
     BLOCKSTORE_WRITE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
 #undef BLOCKSTORE_DECLARE_METHOD
 
-////////////////////////////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////////////
 
-    void MountVolume(
-        const TString& diskId,
-        const TString& clientId)
+    void MountVolume(const TString& diskId, const TString& clientId)
     {
         auto futuresMountVolume = PerformMountVolumeRequests(
             ThrottlingClient,
@@ -876,9 +862,7 @@ struct TTestEnvironment final
         }
     }
 
-    void UnmountVolume(
-        const TString& diskId,
-        const TString& clientId)
+    void UnmountVolume(const TString& diskId, const TString& clientId)
     {
         auto futuresUnmountVolume = PerformUnmountVolumeRequests(
             ThrottlingClient,
@@ -898,16 +882,16 @@ struct TTestEnvironment final
         }
     }
 
-////////////////////////////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////////////
 
     constexpr ui32 GetThrottableRequestTypeCount() const
     {
         ui32 result = 0;
-#define PERFORM_COUNT(name, ...)                                               \
-    if constexpr (ShouldBeThrottled<NProto::T##name##Request>()) {             \
-        ++result;                                                              \
-    }                                                                          \
-// PERFORM_COUNT
+#define PERFORM_COUNT(name, ...)                                   \
+    if constexpr (ShouldBeThrottled<NProto::T##name##Request>()) { \
+        ++result;                                                  \
+    }                                                              \
+    // PERFORM_COUNT
 
         BLOCKSTORE_SERVICE(PERFORM_COUNT)
 
@@ -926,7 +910,7 @@ struct TTestEnvironment final
         return result;
     }
 
-////////////////////////////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////////////
 
     void CheckThroughput(
         ui32 requestCountThrottled,
@@ -940,36 +924,33 @@ struct TTestEnvironment final
     {
 #define DO_TEST(name, ...)                                                     \
     UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        ShouldBeThrottled<NProto::T##name##Request>()                          \
-            ? requestCountThrottled                                            \
-            : requestCount,                                                    \
-        AtomicGet(RequestCount[                                                \
-            static_cast<size_t>(EBlockStoreRequest::name)]));                  \
+        ShouldBeThrottled<NProto::T##name##Request>() ? requestCountThrottled  \
+                                                      : requestCount,          \
+        AtomicGet(                                                             \
+            RequestCount[static_cast<size_t>(EBlockStoreRequest::name)]));     \
     UNIT_ASSERT_VALUES_EQUAL(                                                  \
         ShouldBeThrottled<NProto::T##name##Request>()                          \
             ? postponedCountThrottled                                          \
             : postponedCount,                                                  \
-        AtomicGet(LoggerPostponed[                                             \
-            static_cast<size_t>(EBlockStoreRequest::name)]));                  \
+        AtomicGet(                                                             \
+            LoggerPostponed[static_cast<size_t>(EBlockStoreRequest::name)]));  \
     UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        ShouldBeThrottled<NProto::T##name##Request>()                          \
-            ? advancedCountThrottled                                           \
-            : advancedCount,                                                   \
-        AtomicGet(LoggerAdvanced[                                              \
-            static_cast<size_t>(EBlockStoreRequest::name)]));                  \
+        ShouldBeThrottled<NProto::T##name##Request>() ? advancedCountThrottled \
+                                                      : advancedCount,         \
+        AtomicGet(                                                             \
+            LoggerAdvanced[static_cast<size_t>(EBlockStoreRequest::name)]));   \
     UNIT_ASSERT_VALUES_EQUAL(                                                  \
         ShouldBeThrottled<NProto::T##name##Request>()                          \
             ? postponedCountThrottled                                          \
             : postponedCount,                                                  \
-        AtomicGet(TrackerPostponed[                                            \
-            static_cast<size_t>(EBlockStoreRequest::name)]));                  \
+        AtomicGet(                                                             \
+            TrackerPostponed[static_cast<size_t>(EBlockStoreRequest::name)])); \
     UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        ShouldBeThrottled<NProto::T##name##Request>()                          \
-            ? advancedCountThrottled                                           \
-            : advancedCount,                                                   \
-        AtomicGet(TrackerAdvanced[                                             \
-            static_cast<size_t>(EBlockStoreRequest::name)]));                  \
-// DO_TEST
+        ShouldBeThrottled<NProto::T##name##Request>() ? advancedCountThrottled \
+                                                      : advancedCount,         \
+        AtomicGet(                                                             \
+            TrackerAdvanced[static_cast<size_t>(EBlockStoreRequest::name)]));  \
+    // DO_TEST
 
         BLOCKSTORE_NODISK_SERVICE(DO_TEST)
         BLOCKSTORE_NOBLOCKS_SERVICE(DO_TEST)
@@ -978,27 +959,27 @@ struct TTestEnvironment final
 
 #undef DO_TEST
 
-#define DO_TEST(name, ...)                                                     \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        receivedCountVolume,                                                   \
-        AtomicGet(TrackerReceived[                                             \
-            static_cast<size_t>(EBlockStoreRequest::name)]));                  \
-// DO_TEST
+#define DO_TEST(name, ...)                                                    \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        receivedCountVolume,                                                  \
+        AtomicGet(                                                            \
+            TrackerReceived[static_cast<size_t>(EBlockStoreRequest::name)])); \
+    // DO_TEST
 
-    BLOCKSTORE_NOBLOCKS_SERVICE(DO_TEST)
-    BLOCKSTORE_READ_SERVICE(DO_TEST)
-    BLOCKSTORE_WRITE_SERVICE(DO_TEST)
+        BLOCKSTORE_NOBLOCKS_SERVICE(DO_TEST)
+        BLOCKSTORE_READ_SERVICE(DO_TEST)
+        BLOCKSTORE_WRITE_SERVICE(DO_TEST)
 
 #undef DO_TEST
 
-#define DO_TEST(name, ...)                                                     \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        receivedCount,                                                         \
-        AtomicGet(TrackerReceived[                                             \
-            static_cast<size_t>(EBlockStoreRequest::name)]));                  \
-// DO_TEST
+#define DO_TEST(name, ...)                                                    \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        receivedCount,                                                        \
+        AtomicGet(                                                            \
+            TrackerReceived[static_cast<size_t>(EBlockStoreRequest::name)])); \
+    // DO_TEST
 
-    BLOCKSTORE_NODISK_SERVICE(DO_TEST)
+        BLOCKSTORE_NODISK_SERVICE(DO_TEST)
 
 #undef DO_TEST
 
@@ -1006,35 +987,36 @@ struct TTestEnvironment final
 
         UNIT_ASSERT_VALUES_EQUAL(
             totalCount,
-            AtomicGet(RequestCount[
-                static_cast<size_t>(EBlockStoreRequest::MountVolume)]));
+            AtomicGet(RequestCount[static_cast<size_t>(
+                EBlockStoreRequest::MountVolume)]));
         UNIT_ASSERT_VALUES_EQUAL(
             totalCount,
-            AtomicGet(TrackerReceived[
-                static_cast<size_t>(EBlockStoreRequest::MountVolume)]));
+            AtomicGet(TrackerReceived[static_cast<size_t>(
+                EBlockStoreRequest::MountVolume)]));
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            AtomicGet(LoggerPostponed[
-                static_cast<size_t>(EBlockStoreRequest::MountVolume)]));
+            AtomicGet(LoggerPostponed[static_cast<size_t>(
+                EBlockStoreRequest::MountVolume)]));
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            AtomicGet(LoggerAdvanced[
-                static_cast<size_t>(EBlockStoreRequest::MountVolume)]));
+            AtomicGet(LoggerAdvanced[static_cast<size_t>(
+                EBlockStoreRequest::MountVolume)]));
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            AtomicGet(TrackerPostponed[
-                static_cast<size_t>(EBlockStoreRequest::MountVolume)]));
+            AtomicGet(TrackerPostponed[static_cast<size_t>(
+                EBlockStoreRequest::MountVolume)]));
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            AtomicGet(TrackerAdvanced[
-                static_cast<size_t>(EBlockStoreRequest::MountVolume)]));
+            AtomicGet(TrackerAdvanced[static_cast<size_t>(
+                EBlockStoreRequest::MountVolume)]));
     }
 
-    void CheckDisks() const  {
-#define DISK_REQUESTS(name, ...)                                               \
-    count += AtomicGet(TrackerReceived[                                        \
-        static_cast<size_t>(EBlockStoreRequest::name)]);                       \
-// DISK_REQUESTS
+    void CheckDisks() const
+    {
+#define DISK_REQUESTS(name, ...)                                         \
+    count += AtomicGet(                                                  \
+        TrackerReceived[static_cast<size_t>(EBlockStoreRequest::name)]); \
+    // DISK_REQUESTS
 
         ui32 count = 0;
         BLOCKSTORE_NOBLOCKS_SERVICE(DISK_REQUESTS)
@@ -1065,22 +1047,22 @@ struct TTestEnvironment final
 
     void ShootSync()
     {
-#define SETUP_VECTORS(name, ...)                                               \
-    TVector<TFuture<NProto::T##name##Response>> futures##name;                 \
-// SETUP_VECTORS
+#define SETUP_VECTORS(name, ...)                               \
+    TVector<TFuture<NProto::T##name##Response>> futures##name; \
+    // SETUP_VECTORS
 
         BLOCKSTORE_SERVICE(SETUP_VECTORS)
 
 #undef SETUP_VECTORS
 
-#define PERFORM_TEST(name, clientId, diskId, ...)                              \
-    auto futures##name##clientId##diskId =                                     \
-        Perform##name##Requests(__VA_ARGS__);                                  \
-    futures##name.insert(                                                      \
-        futures##name.end(),                                                   \
-        futures##name##clientId##diskId.begin(),                               \
-        futures##name##clientId##diskId.end());                                \
-// PERFORM_TEST
+#define PERFORM_TEST(name, clientId, diskId, ...) \
+    auto futures##name##clientId##diskId =        \
+        Perform##name##Requests(__VA_ARGS__);     \
+    futures##name.insert(                         \
+        futures##name.end(),                      \
+        futures##name##clientId##diskId.begin(),  \
+        futures##name##clientId##diskId.end());   \
+    // PERFORM_TEST
 
         for (const auto& [diskId, clientMap]: VolumeStats->VolumeInfos) {
             for (const auto& [clientId, volumeInfo]: clientMap) {
@@ -1130,14 +1112,14 @@ struct TTestEnvironment final
 
 #undef PERFORM_TEST
 
-#define WAIT_FUTURES(name, ...)                                                \
-    NWait::WaitAll(futures##name).Wait();                                      \
-    for (const auto& future: futures##name) {                                  \
-        UNIT_ASSERT_C(                                                         \
-            future.HasValue(),                                                 \
-            #name " future doesn't contain value");                            \
-    }                                                                          \
-// WAIT_FUTURES
+#define WAIT_FUTURES(name, ...)                     \
+    NWait::WaitAll(futures##name).Wait();           \
+    for (const auto& future: futures##name) {       \
+        UNIT_ASSERT_C(                              \
+            future.HasValue(),                      \
+            #name " future doesn't contain value"); \
+    }                                               \
+    // WAIT_FUTURES
 
         BLOCKSTORE_NODISK_SERVICE(WAIT_FUTURES);
 
@@ -1166,28 +1148,28 @@ struct TTestEnvironment final
 
     void ShootAsync()
     {
-#define SETUP_VECTORS(name, ...)                                               \
-    TVector<TFuture<NProto::T##name##Response>> futures##name;                 \
-// SETUP_VECTORS
+#define SETUP_VECTORS(name, ...)                               \
+    TVector<TFuture<NProto::T##name##Response>> futures##name; \
+    // SETUP_VECTORS
 
         BLOCKSTORE_SERVICE(SETUP_VECTORS)
 
 #undef SETUP_VECTORS
 
-#define PERFORM_TEST(name, clientId, diskId, ...)                              \
-    scopedTasks.Add<std::function<void()>>(                                    \
-        [=, &futures##name, &requestsLock]() {                                 \
-            auto futures##name##clientId##diskId =                             \
-                Perform##name##Requests(__VA_ARGS__);                          \
-            with_lock (requestsLock) {                                         \
-                futures##name.insert(                                          \
-                    futures##name.end(),                                       \
-                    futures##name##clientId##diskId.begin(),                   \
-                    futures##name##clientId##diskId.end());                    \
-            }                                                                  \
-        }                                                                      \
-    );                                                                         \
-// PERFORM_TEST
+#define PERFORM_TEST(name, clientId, diskId, ...)            \
+    scopedTasks.Add<std::function<void()>>(                  \
+        [=, &futures##name, &requestsLock]()                 \
+        {                                                    \
+            auto futures##name##clientId##diskId =           \
+                Perform##name##Requests(__VA_ARGS__);        \
+            with_lock (requestsLock) {                       \
+                futures##name.insert(                        \
+                    futures##name.end(),                     \
+                    futures##name##clientId##diskId.begin(), \
+                    futures##name##clientId##diskId.end());  \
+            }                                                \
+        });                                                  \
+    // PERFORM_TEST
 
         TScopedTasks scopedTasks;
         TMutex requestsLock;
@@ -1243,14 +1225,14 @@ struct TTestEnvironment final
 
 #undef PERFORM_TEST
 
-#define WAIT_FUTURES(name, ...)                                                \
-    NWait::WaitAll(futures##name).Wait();                                      \
-    for (const auto& future: futures##name) {                                  \
-        UNIT_ASSERT_C(                                                         \
-            future.HasValue(),                                                 \
-            #name " future doesn't contain value");                            \
-    }                                                                          \
-// WAIT_FUTURES
+#define WAIT_FUTURES(name, ...)                     \
+    NWait::WaitAll(futures##name).Wait();           \
+    for (const auto& future: futures##name) {       \
+        UNIT_ASSERT_C(                              \
+            future.HasValue(),                      \
+            #name " future doesn't contain value"); \
+    }                                               \
+    // WAIT_FUTURES
 
         BLOCKSTORE_NODISK_SERVICE(WAIT_FUTURES);
 
@@ -1279,22 +1261,22 @@ struct TTestEnvironment final
 
     void ShootSyncWithPostpone()
     {
-#define SETUP_VECTORS(name, ...)                                               \
-    TVector<TFuture<NProto::T##name##Response>> futures##name;                 \
-// SETUP_VECTORS
+#define SETUP_VECTORS(name, ...)                               \
+    TVector<TFuture<NProto::T##name##Response>> futures##name; \
+    // SETUP_VECTORS
 
         BLOCKSTORE_SERVICE(SETUP_VECTORS)
 
 #undef SETUP_VECTORS
 
-#define PERFORM_TEST(name, clientId, diskId, ...)                              \
-    auto futures##name##clientId##diskId =                                     \
-        Perform##name##Requests(__VA_ARGS__);                                  \
-    futures##name.insert(                                                      \
-        futures##name.end(),                                                   \
-        futures##name##clientId##diskId.begin(),                               \
-        futures##name##clientId##diskId.end());                                \
-// PERFORM_TEST
+#define PERFORM_TEST(name, clientId, diskId, ...) \
+    auto futures##name##clientId##diskId =        \
+        Perform##name##Requests(__VA_ARGS__);     \
+    futures##name.insert(                         \
+        futures##name.end(),                      \
+        futures##name##clientId##diskId.begin(),  \
+        futures##name##clientId##diskId.end());   \
+    // PERFORM_TEST
 
         Policy->SetPostponeDelay(TDuration::Seconds(1));
 
@@ -1363,14 +1345,14 @@ struct TTestEnvironment final
         Policy->SetPostponeDelay(TDuration::Zero());
         Timer->AdvanceTime(TDuration::Seconds(1));
 
-#define WAIT_FUTURES(name, ...)                                                \
-    NWait::WaitAll(futures##name).Wait();                                      \
-    for (const auto& future: futures##name) {                                  \
-        UNIT_ASSERT_C(                                                         \
-            future.HasValue(),                                                 \
-            #name " future doesn't contain value");                            \
-    }                                                                          \
-// WAIT_FUTURES
+#define WAIT_FUTURES(name, ...)                     \
+    NWait::WaitAll(futures##name).Wait();           \
+    for (const auto& future: futures##name) {       \
+        UNIT_ASSERT_C(                              \
+            future.HasValue(),                      \
+            #name " future doesn't contain value"); \
+    }                                               \
+    // WAIT_FUTURES
 
         BLOCKSTORE_NODISK_SERVICE(WAIT_FUTURES);
 
@@ -1399,34 +1381,34 @@ struct TTestEnvironment final
 
     void ShootAsyncWithPostpone()
     {
-#define SETUP_VECTORS(name, ...)                                               \
-    TVector<TFuture<NProto::T##name##Response>> futures##name;                 \
-// SETUP_VECTORS
+#define SETUP_VECTORS(name, ...)                               \
+    TVector<TFuture<NProto::T##name##Response>> futures##name; \
+    // SETUP_VECTORS
 
         BLOCKSTORE_SERVICE(SETUP_VECTORS)
 
 #undef SETUP_VECTORS
 
-#define PERFORM_TEST(name, clientId, diskId, ...)                              \
-    scopedTasks.Add<std::function<void()>>(                                    \
-        [=, &requestsLock, &futures##name] () {                                \
-            TVector<TFuture<NProto::T##name##Response>>                        \
-                futures##name##clientId##diskId;                               \
-            for (ui32 i = 0; i < Requests; ++i) {                              \
-                futures##name##clientId##diskId.push_back(                     \
-                    ThrottlingClient->name(                                    \
-                        CallContext,                                           \
-                        Create##name##Request(__VA_ARGS__)));                  \
-            }                                                                  \
-            with_lock (requestsLock) {                                         \
-                futures##name.insert(                                          \
-                    futures##name.end(),                                       \
-                    futures##name##clientId##diskId.begin(),                   \
-                    futures##name##clientId##diskId.end());                    \
-            }                                                                  \
-        }                                                                      \
-    );                                                                         \
-// PERFORM_TEST
+#define PERFORM_TEST(name, clientId, diskId, ...)             \
+    scopedTasks.Add<std::function<void()>>(                   \
+        [=, &requestsLock, &futures##name]()                  \
+        {                                                     \
+            TVector<TFuture<NProto::T##name##Response>>       \
+                futures##name##clientId##diskId;              \
+            for (ui32 i = 0; i < Requests; ++i) {             \
+                futures##name##clientId##diskId.push_back(    \
+                    ThrottlingClient->name(                   \
+                        CallContext,                          \
+                        Create##name##Request(__VA_ARGS__))); \
+            }                                                 \
+            with_lock (requestsLock) {                        \
+                futures##name.insert(                         \
+                    futures##name.end(),                      \
+                    futures##name##clientId##diskId.begin(),  \
+                    futures##name##clientId##diskId.end());   \
+            }                                                 \
+        });                                                   \
+    // PERFORM_TEST
 
         Policy->SetRandomDelay(true);
         TScopedTasks scopedTasks;
@@ -1437,11 +1419,7 @@ struct TTestEnvironment final
                 auto disk = diskId;
                 auto client = clientId;
 
-                BLOCKSTORE_NODISK_SERVICE(
-                    PERFORM_TEST,
-                    Client,
-                    Disk,
-                    client);
+                BLOCKSTORE_NODISK_SERVICE(PERFORM_TEST, Client, Disk, client);
 
                 BLOCKSTORE_NOBLOCKS_SERVICE(
                     PERFORM_TEST,
@@ -1476,17 +1454,15 @@ struct TTestEnvironment final
         TAutoEvent notifier;
 
         std::uniform_int_distribution milliDist(
-            UPDATE_THROTTLER_USED_QUOTA_INTERVAL.MilliSeconds()
-                - SHORT_TIMEOUT.MilliSeconds(),
-            UPDATE_THROTTLER_USED_QUOTA_INTERVAL.MilliSeconds()
-                + SHORT_TIMEOUT.MilliSeconds());
+            UPDATE_THROTTLER_USED_QUOTA_INTERVAL.MilliSeconds() -
+                SHORT_TIMEOUT.MilliSeconds(),
+            UPDATE_THROTTLER_USED_QUOTA_INTERVAL.MilliSeconds() +
+                SHORT_TIMEOUT.MilliSeconds());
         for (ui32 i = 0; i < MAX_DELAY_COUNT; ++i) {
             auto delay = TDuration::MilliSeconds(milliDist(gen));
             Scheduler->Schedule(
                 Timer->Now() + delay,
-                [&] {
-                    notifier.Signal();
-                });
+                [&] { notifier.Signal(); });
             Timer->AdvanceTime(delay);
             UNIT_ASSERT_C(notifier.Wait(), "Locked on scheduler");
         }
@@ -1494,14 +1470,14 @@ struct TTestEnvironment final
         Policy->SetRandomDelay(false);
         Timer->AdvanceTime(TDuration::Days(60));
 
-#define WAIT_FUTURES(name, ...)                                                \
-    NWait::WaitAll(futures##name).Wait();                                      \
-    for (const auto& future: futures##name) {                                  \
-        UNIT_ASSERT_C(                                                         \
-            future.HasValue(),                                                 \
-            #name " future doesn't contain value");                            \
-    }                                                                          \
-// WAIT_FUTURES
+#define WAIT_FUTURES(name, ...)                     \
+    NWait::WaitAll(futures##name).Wait();           \
+    for (const auto& future: futures##name) {       \
+        UNIT_ASSERT_C(                              \
+            future.HasValue(),                      \
+            #name " future doesn't contain value"); \
+    }                                               \
+    // WAIT_FUTURES
 
         BLOCKSTORE_NODISK_SERVICE(WAIT_FUTURES);
 
@@ -1511,32 +1487,23 @@ struct TTestEnvironment final
 
 #undef WAIT_FUTURES
 
-
         ui64 totalMetrics = GetVolumeInfosCount();
 
-#define DO_TEST(name, ...)                                                     \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        __VA_ARGS__,                                                           \
-        AtomicGet(RequestCount[                                                \
-            static_cast<size_t>(EBlockStoreRequest::name)]));                  \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        __VA_ARGS__,                                                           \
-        AtomicGet(TrackerReceived[                                             \
-            static_cast<size_t>(EBlockStoreRequest::name)]));                  \
-// DO_TEST
+#define DO_TEST(name, ...)                                                    \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        __VA_ARGS__,                                                          \
+        AtomicGet(                                                            \
+            RequestCount[static_cast<size_t>(EBlockStoreRequest::name)]));    \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        __VA_ARGS__,                                                          \
+        AtomicGet(                                                            \
+            TrackerReceived[static_cast<size_t>(EBlockStoreRequest::name)])); \
+    // DO_TEST
 
-        BLOCKSTORE_NODISK_SERVICE(
-            DO_TEST,
-            Requests * totalMetrics);
-        BLOCKSTORE_NOBLOCKS_SERVICE(
-            DO_TEST,
-            Requests * totalMetrics);
-        BLOCKSTORE_READ_SERVICE(
-            DO_TEST,
-            Requests * totalMetrics);
-        BLOCKSTORE_WRITE_SERVICE(
-            DO_TEST,
-            Requests * totalMetrics);
+        BLOCKSTORE_NODISK_SERVICE(DO_TEST, Requests * totalMetrics);
+        BLOCKSTORE_NOBLOCKS_SERVICE(DO_TEST, Requests * totalMetrics);
+        BLOCKSTORE_READ_SERVICE(DO_TEST, Requests * totalMetrics);
+        BLOCKSTORE_WRITE_SERVICE(DO_TEST, Requests * totalMetrics);
 
 #undef DO_TEST
 
@@ -1544,30 +1511,30 @@ struct TTestEnvironment final
 
         UNIT_ASSERT_VALUES_EQUAL(
             totalMetrics,
-            AtomicGet(RequestCount[
-                static_cast<size_t>(EBlockStoreRequest::MountVolume)]));
+            AtomicGet(RequestCount[static_cast<size_t>(
+                EBlockStoreRequest::MountVolume)]));
         UNIT_ASSERT_VALUES_EQUAL(
             totalMetrics,
-            AtomicGet(TrackerReceived[
-                static_cast<size_t>(EBlockStoreRequest::MountVolume)]));
+            AtomicGet(TrackerReceived[static_cast<size_t>(
+                EBlockStoreRequest::MountVolume)]));
         UNIT_ASSERT_VALUES_EQUAL(
             ShouldBeThrottled<NProto::TMountVolumeRequest>()
                 ? VolumeStats->VolumeInfos.size()
                 : 0,
-            AtomicGet(LoggerAdvanced[
-                static_cast<size_t>(EBlockStoreRequest::MountVolume)]));
+            AtomicGet(LoggerAdvanced[static_cast<size_t>(
+                EBlockStoreRequest::MountVolume)]));
         UNIT_ASSERT_VALUES_EQUAL(
             ShouldBeThrottled<NProto::TMountVolumeRequest>()
                 ? VolumeStats->VolumeInfos.size()
                 : 0,
-            AtomicGet(TrackerPostponed[
-                static_cast<size_t>(EBlockStoreRequest::MountVolume)]));
+            AtomicGet(TrackerPostponed[static_cast<size_t>(
+                EBlockStoreRequest::MountVolume)]));
         UNIT_ASSERT_VALUES_EQUAL(
             ShouldBeThrottled<NProto::TMountVolumeRequest>()
                 ? VolumeStats->VolumeInfos.size()
                 : 0,
-            AtomicGet(TrackerAdvanced[
-                static_cast<size_t>(EBlockStoreRequest::MountVolume)]));
+            AtomicGet(TrackerAdvanced[static_cast<size_t>(
+                EBlockStoreRequest::MountVolume)]));
 
         CheckCount();
     }
@@ -1584,12 +1551,15 @@ Y_UNIT_TEST_SUITE(TThrottlerTest)
         TTestEnvironment env;
 
         const TVector<std::pair<TString, TString>> diskIds = {
-            { "first_test_disk_id" , "first_client"  },   // common first_client
-            { "second_test_disk_id", "first_client"  },   // common first_client
-            { "second_test_disk_id", "second_client" },   // common second_test_disk_id and second_client
-            { "third_test_disk_id" , "second_client" },   // common third_test_disk_id
-            { "third_test_disk_id" , "third_client"  },   // common third_test_disk_id
-            { "fourth_test_disk_id", "fourh_client"  }    // single disk and client
+            {"first_test_disk_id", "first_client"},    // common first_client
+            {"second_test_disk_id", "first_client"},   // common first_client
+            {"second_test_disk_id",
+             "second_client"},   // common second_test_disk_id and second_client
+            {"third_test_disk_id",
+             "second_client"},   // common third_test_disk_id
+            {"third_test_disk_id",
+             "third_client"},   // common third_test_disk_id
+            {"fourth_test_disk_id", "fourh_client"}   // single disk and client
         };
         for (const auto& [diskId, clientId]: diskIds) {
             env.MountVolume(diskId, clientId);
@@ -1605,12 +1575,15 @@ Y_UNIT_TEST_SUITE(TThrottlerTest)
         TTestEnvironment env;
 
         const TVector<std::pair<TString, TString>> diskIds = {
-            { "first_test_disk_id" , "first_client"  },   // common first_client
-            { "second_test_disk_id", "first_client"  },   // common first_client
-            { "second_test_disk_id", "second_client" },   // common second_test_disk_id and second_client
-            { "third_test_disk_id" , "second_client" },   // common third_test_disk_id
-            { "third_test_disk_id" , "third_client"  },   // common third_test_disk_id
-            { "fourth_test_disk_id", "fourh_client"  }    // single disk and client
+            {"first_test_disk_id", "first_client"},    // common first_client
+            {"second_test_disk_id", "first_client"},   // common first_client
+            {"second_test_disk_id",
+             "second_client"},   // common second_test_disk_id and second_client
+            {"third_test_disk_id",
+             "second_client"},   // common third_test_disk_id
+            {"third_test_disk_id",
+             "third_client"},   // common third_test_disk_id
+            {"fourth_test_disk_id", "fourh_client"}   // single disk and client
         };
         for (const auto& [diskId, clientId]: diskIds) {
             env.MountVolume(diskId, clientId);
@@ -1626,12 +1599,15 @@ Y_UNIT_TEST_SUITE(TThrottlerTest)
         TTestEnvironment env;
 
         const TVector<std::pair<TString, TString>> diskIds = {
-            { "first_test_disk_id" , "first_client"  },   // common first_client
-            { "second_test_disk_id", "first_client"  },   // common first_client
-            { "second_test_disk_id", "second_client" },   // common second_test_disk_id and second_client
-            { "third_test_disk_id" , "second_client" },   // common third_test_disk_id
-            { "third_test_disk_id" , "third_client"  },   // common third_test_disk_id
-            { "fourth_test_disk_id", "fourh_client"  }    // single disk and client
+            {"first_test_disk_id", "first_client"},    // common first_client
+            {"second_test_disk_id", "first_client"},   // common first_client
+            {"second_test_disk_id",
+             "second_client"},   // common second_test_disk_id and second_client
+            {"third_test_disk_id",
+             "second_client"},   // common third_test_disk_id
+            {"third_test_disk_id",
+             "third_client"},   // common third_test_disk_id
+            {"fourth_test_disk_id", "fourh_client"}   // single disk and client
         };
         for (const auto& [diskId, clientId]: diskIds) {
             env.MountVolume(diskId, clientId);
@@ -1647,12 +1623,15 @@ Y_UNIT_TEST_SUITE(TThrottlerTest)
         TTestEnvironment env;
 
         const TVector<std::pair<TString, TString>> diskIds = {
-            { "first_test_disk_id" , "first_client"  },   // common first_client
-            { "second_test_disk_id", "first_client"  },   // common first_client
-            { "second_test_disk_id", "second_client" },   // common second_test_disk_id and second_client
-            { "third_test_disk_id" , "second_client" },   // common third_test_disk_id
-            { "third_test_disk_id" , "third_client"  },   // common third_test_disk_id
-            { "fourth_test_disk_id", "fourh_client"  }    // single disk and client
+            {"first_test_disk_id", "first_client"},    // common first_client
+            {"second_test_disk_id", "first_client"},   // common first_client
+            {"second_test_disk_id",
+             "second_client"},   // common second_test_disk_id and second_client
+            {"third_test_disk_id",
+             "second_client"},   // common third_test_disk_id
+            {"third_test_disk_id",
+             "third_client"},   // common third_test_disk_id
+            {"fourth_test_disk_id", "fourh_client"}   // single disk and client
         };
         for (const auto& [diskId, clientId]: diskIds) {
             env.MountVolume(diskId, clientId);
@@ -1671,42 +1650,33 @@ Y_UNIT_TEST_SUITE(TThrottlerTest)
         // notify from scheduler
         auto notifier = std::make_shared<TAutoEvent>();
 
-       // Main thread:
-       // 1. Schedule "lock task"
-       // 2. Advance time
-       // 3. Wait on notifier for signal from scheduler
-       // 4. Read the MetricsCount
+        // Main thread:
+        // 1. Schedule "lock task"
+        // 2. Advance time
+        // 3. Wait on notifier for signal from scheduler
+        // 4. Read the MetricsCount
 
-       // Scheduler thread:
-       // 1. Execute all non-locking tasks (LogQuota)
-       // 2. Notify notifier (all read tasks have already been executed)
+        // Scheduler thread:
+        // 1. Execute all non-locking tasks (LogQuota)
+        // 2. Notify notifier (all read tasks have already been executed)
 
         env.Scheduler->Schedule(
             env.Timer->Now(),
-            [notifier] () {
-                notifier->Signal();
-            });
+            [notifier]() { notifier->Signal(); });
 
         // 0. Scheduler_task (Wait on condvar) <- locked here
         //       |
         // 1. Scheduler_task (MetricsUpdate)
 
         // Should log quota on throttler Start call
-        UNIT_ASSERT_C(
-            notifier->Wait(),
-            "Locked on scheduler");
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            env.MaxUsedQuotaCount);
+        UNIT_ASSERT_C(notifier->Wait(), "Locked on scheduler");
+        UNIT_ASSERT_VALUES_EQUAL(1, env.MaxUsedQuotaCount);
 
         // Event after update
         env.Scheduler->Schedule(
-            env.Timer->Now() +
-                UPDATE_THROTTLER_USED_QUOTA_INTERVAL +
+            env.Timer->Now() + UPDATE_THROTTLER_USED_QUOTA_INTERVAL +
                 SHORT_TIMEOUT,
-            [notifier] () {
-                notifier->Signal();
-            });
+            [notifier]() { notifier->Signal(); });
 
         // 0. Scheduler_task (Wait on condvar)
         //       |
@@ -1726,20 +1696,13 @@ Y_UNIT_TEST_SUITE(TThrottlerTest)
         // 3. Scheduler_task (MetricsUpdate)
 
         // Should log quota when interval is over
-        UNIT_ASSERT_C(
-            notifier->Wait(),
-            "Locked on scheduler");
-        UNIT_ASSERT_VALUES_EQUAL(
-            2,
-            env.MaxUsedQuotaCount);
+        UNIT_ASSERT_C(notifier->Wait(), "Locked on scheduler");
+        UNIT_ASSERT_VALUES_EQUAL(2, env.MaxUsedQuotaCount);
 
         env.Scheduler->Schedule(
-            env.Timer->Now() +
-                UPDATE_THROTTLER_USED_QUOTA_INTERVAL +
+            env.Timer->Now() + UPDATE_THROTTLER_USED_QUOTA_INTERVAL +
                 SHORT_TIMEOUT,
-            [notifier] () {
-                notifier->Signal();
-            });
+            [notifier]() { notifier->Signal(); });
 
         // 0. Scheduler_task (Wait on condvar)
         //       |
@@ -1767,12 +1730,8 @@ Y_UNIT_TEST_SUITE(TThrottlerTest)
         // 5. Scheduler_task (MetricsUpdate)
 
         // To be sure that everything is fine
-        UNIT_ASSERT_C(
-            notifier->Wait(),
-            "Locked on scheduler");
-        UNIT_ASSERT_VALUES_EQUAL(
-            3,
-            env.MaxUsedQuotaCount);
+        UNIT_ASSERT_C(notifier->Wait(), "Locked on scheduler");
+        UNIT_ASSERT_VALUES_EQUAL(3, env.MaxUsedQuotaCount);
     }
 
     Y_UNIT_TEST(ShouldNotAccessThisWhenThrottlerIsDestroyed)
@@ -1781,9 +1740,10 @@ Y_UNIT_TEST_SUITE(TThrottlerTest)
         auto scheduler = CreateScheduler(timer);
 
         scheduler->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             scheduler->Stop();
-        };
+        }
 
         auto notifier = std::make_shared<TAutoEvent>();
 
@@ -1794,23 +1754,17 @@ Y_UNIT_TEST_SUITE(TThrottlerTest)
 
         scheduler->Schedule(
             timer->Now() +
-                Max(
-                    UPDATE_THROTTLER_USED_QUOTA_INTERVAL,
+                Max(UPDATE_THROTTLER_USED_QUOTA_INTERVAL,
                     TRIM_THROTTLER_METRICS_INTERVAL) +
                 SHORT_TIMEOUT,
-            [notifier] () {
-                notifier->Signal();
-            });
+            [notifier]() { notifier->Signal(); });
 
         timer->AdvanceTime(
-            Max(
-                UPDATE_THROTTLER_USED_QUOTA_INTERVAL,
-                TRIM_THROTTLER_METRICS_INTERVAL)
-                + SHORT_TIMEOUT);
+            Max(UPDATE_THROTTLER_USED_QUOTA_INTERVAL,
+                TRIM_THROTTLER_METRICS_INTERVAL) +
+            SHORT_TIMEOUT);
 
-        UNIT_ASSERT_C(
-            notifier->Wait(),
-            "Locked on scheduler");
+        UNIT_ASSERT_C(notifier->Wait(), "Locked on scheduler");
     }
 
     Y_UNIT_TEST(ShouldMountAndUnmountProperly)
@@ -1818,120 +1772,126 @@ Y_UNIT_TEST_SUITE(TThrottlerTest)
         TTestEnvironment env;
 
         const TVector<std::pair<TString, TString>> diskIds = {
-            { "first_test_disk_id" , "first_client"  },   // common first_client
-            { "second_test_disk_id", "first_client"  },   // common first_client
-            { "second_test_disk_id", "second_client" }    // common second_test_disk_id and second_client
+            {"first_test_disk_id", "first_client"},    // common first_client
+            {"second_test_disk_id", "first_client"},   // common first_client
+            {"second_test_disk_id",
+             "second_client"}   // common second_test_disk_id and second_client
         };
 
         env.MountVolume(diskIds[0].first, diskIds[0].second);
         UNIT_ASSERT_C(
             env.ClientToVolumeMap.size() == 1,
-            TStringBuilder() << "Only client " << diskIds[0].second
-                << " should exist");
+            TStringBuilder()
+                << "Only client " << diskIds[0].second << " should exist");
         auto clientIt = env.ClientToVolumeMap.find(diskIds[0].second);
         UNIT_ASSERT_C(
             clientIt != env.ClientToVolumeMap.end(),
             TStringBuilder() << "Client " << diskIds[0].second
-                << " was not registered on MountVolume");
+                             << " was not registered on MountVolume");
         UNIT_ASSERT_C(
             clientIt->second.size() == 1,
-            TStringBuilder() << "Only volume " << diskIds[0].first
-                << " for client " << diskIds[0].second << " should exist");
+            TStringBuilder()
+                << "Only volume " << diskIds[0].first << " for client "
+                << diskIds[0].second << " should exist");
         auto volumeIt = clientIt->second.find(diskIds[0].first);
         UNIT_ASSERT_C(
             volumeIt != clientIt->second.end(),
-            TStringBuilder() << "Volume " << diskIds[0].first
-                << " for client " << diskIds[0].second
-                << " was not registered on MountVolume");
+            TStringBuilder()
+                << "Volume " << diskIds[0].first << " for client "
+                << diskIds[0].second << " was not registered on MountVolume");
 
         env.MountVolume(diskIds[1].first, diskIds[1].second);
         UNIT_ASSERT_C(
             env.ClientToVolumeMap.size() == 1,
-            TStringBuilder() << "Only client " << diskIds[1].second
-                << " should exist");
+            TStringBuilder()
+                << "Only client " << diskIds[1].second << " should exist");
         clientIt = env.ClientToVolumeMap.find(diskIds[1].second);
         UNIT_ASSERT_C(
             clientIt != env.ClientToVolumeMap.end(),
             TStringBuilder() << "Client " << diskIds[1].second
-                << " was not registered on MountVolume");
+                             << " was not registered on MountVolume");
         UNIT_ASSERT_C(
             clientIt->second.size() == 2,
-            TStringBuilder() << "Volumes " << diskIds[0].first << " and "
-                << diskIds[1].first << " for client " << diskIds[0].second
-                << " should exist");
+            TStringBuilder()
+                << "Volumes " << diskIds[0].first << " and " << diskIds[1].first
+                << " for client " << diskIds[0].second << " should exist");
         volumeIt = clientIt->second.find(diskIds[1].first);
         UNIT_ASSERT_C(
             volumeIt != clientIt->second.end(),
-            TStringBuilder() << "Volume " << diskIds[1].first
-                << " for client " << diskIds[1].second
-                << " was not registered on MountVolume");
+            TStringBuilder()
+                << "Volume " << diskIds[1].first << " for client "
+                << diskIds[1].second << " was not registered on MountVolume");
 
         env.MountVolume(diskIds[2].first, diskIds[2].second);
         UNIT_ASSERT_C(
             env.ClientToVolumeMap.size() == 2,
-            TStringBuilder() << "Clients " << diskIds[0].second
-                << " and " << diskIds[2].second << " should exist");
+            TStringBuilder() << "Clients " << diskIds[0].second << " and "
+                             << diskIds[2].second << " should exist");
         clientIt = env.ClientToVolumeMap.find(diskIds[2].second);
         UNIT_ASSERT_C(
             clientIt != env.ClientToVolumeMap.end(),
             TStringBuilder() << "Client " << diskIds[2].second
-                << " was not registered on MountVolume");
+                             << " was not registered on MountVolume");
         UNIT_ASSERT_C(
             clientIt->second.size() == 1,
-            TStringBuilder() << "Only volume " << diskIds[2].first
-                << " for client " << diskIds[2].second << " should exist");
+            TStringBuilder()
+                << "Only volume " << diskIds[2].first << " for client "
+                << diskIds[2].second << " should exist");
         volumeIt = clientIt->second.find(diskIds[2].first);
         UNIT_ASSERT_C(
             volumeIt != clientIt->second.end(),
-            TStringBuilder() << "Volume " << diskIds[2].first
-                << " for client " << diskIds[2].second
-                << " was not registered on MountVolume");
+            TStringBuilder()
+                << "Volume " << diskIds[2].first << " for client "
+                << diskIds[2].second << " was not registered on MountVolume");
 
         env.UnmountVolume(diskIds[1].first, diskIds[1].second);
         UNIT_ASSERT_C(
             env.ClientToVolumeMap.size() == 2,
-            TStringBuilder() << "Clients " << diskIds[0].second
-                << " and " << diskIds[2].second << " should exist");
+            TStringBuilder() << "Clients " << diskIds[0].second << " and "
+                             << diskIds[2].second << " should exist");
         clientIt = env.ClientToVolumeMap.find(diskIds[1].second);
         UNIT_ASSERT_C(
             clientIt != env.ClientToVolumeMap.end(),
-            TStringBuilder() << "Client " << diskIds[1].second
+            TStringBuilder()
+                << "Client " << diskIds[1].second
                 << " should exist with volume " << diskIds[0].first);
         UNIT_ASSERT_C(
             clientIt->second.size() == 1,
-            TStringBuilder() << "Only volume " << diskIds[0].first
-                << " for client " << diskIds[0].second << " should exist");
+            TStringBuilder()
+                << "Only volume " << diskIds[0].first << " for client "
+                << diskIds[0].second << " should exist");
         volumeIt = clientIt->second.find(diskIds[1].first);
         UNIT_ASSERT_C(
             volumeIt == clientIt->second.end(),
-            TStringBuilder() << "Volume " << diskIds[1].first
-                << " for client " << diskIds[1].second
-                << " was not unregistered on UnmountVolume");
+            TStringBuilder() << "Volume " << diskIds[1].first << " for client "
+                             << diskIds[1].second
+                             << " was not unregistered on UnmountVolume");
 
         env.UnmountVolume(diskIds[0].first, diskIds[0].second);
         UNIT_ASSERT_C(
             env.ClientToVolumeMap.size() == 1,
-            TStringBuilder() << "Only client " << diskIds[2].second
-                << " should exist");
+            TStringBuilder()
+                << "Only client " << diskIds[2].second << " should exist");
         clientIt = env.ClientToVolumeMap.find(diskIds[0].second);
         UNIT_ASSERT_C(
             clientIt == env.ClientToVolumeMap.end(),
             TStringBuilder() << "Client " << diskIds[0].second
-                << " should not exist after UnmountVolume");
+                             << " should not exist after UnmountVolume");
         clientIt = env.ClientToVolumeMap.find(diskIds[2].second);
         UNIT_ASSERT_C(
             clientIt != env.ClientToVolumeMap.end(),
-            TStringBuilder() << "Client " << diskIds[2].second
-                << " should exist");
+            TStringBuilder()
+                << "Client " << diskIds[2].second << " should exist");
         UNIT_ASSERT_C(
             clientIt->second.size() == 1,
-            TStringBuilder() << "Only volume " << diskIds[2].first
-                << " for client " << diskIds[2].second << " should exist");
+            TStringBuilder()
+                << "Only volume " << diskIds[2].first << " for client "
+                << diskIds[2].second << " should exist");
         volumeIt = clientIt->second.find(diskIds[2].first);
         UNIT_ASSERT_C(
             volumeIt != clientIt->second.end(),
-            TStringBuilder() << "Volume " << diskIds[2].first
-                << " for client " << diskIds[2].second << " should exist");
+            TStringBuilder() << "Volume " << diskIds[2].first << " for client "
+                             << diskIds[2].second << " should exist");
     }
 
     Y_UNIT_TEST(ShouldCorrectlyTrimMetricsWithScheduler)
@@ -1941,50 +1901,28 @@ Y_UNIT_TEST_SUITE(TThrottlerTest)
 
         env.Scheduler->Schedule(
             env.Timer->Now(),
-            [notifier] () {
-                notifier->Signal();
-            });
+            [notifier]() { notifier->Signal(); });
 
-        UNIT_ASSERT_C(
-            notifier->Wait(),
-            "Locked on scheduler");
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            env.TrimCount);
+        UNIT_ASSERT_C(notifier->Wait(), "Locked on scheduler");
+        UNIT_ASSERT_VALUES_EQUAL(1, env.TrimCount);
 
         env.Scheduler->Schedule(
-            env.Timer->Now() +
-                TRIM_THROTTLER_METRICS_INTERVAL +
-                SHORT_TIMEOUT,
-            [notifier] () {
-                notifier->Signal();
-            });
+            env.Timer->Now() + TRIM_THROTTLER_METRICS_INTERVAL + SHORT_TIMEOUT,
+            [notifier]() { notifier->Signal(); });
 
         env.Timer->AdvanceTime(TRIM_THROTTLER_METRICS_INTERVAL + SHORT_TIMEOUT);
 
-        UNIT_ASSERT_C(
-            notifier->Wait(),
-            "Locked on scheduler");
-        UNIT_ASSERT_VALUES_EQUAL(
-            2,
-            env.TrimCount);
+        UNIT_ASSERT_C(notifier->Wait(), "Locked on scheduler");
+        UNIT_ASSERT_VALUES_EQUAL(2, env.TrimCount);
 
         env.Scheduler->Schedule(
-            env.Timer->Now() +
-                TRIM_THROTTLER_METRICS_INTERVAL +
-                SHORT_TIMEOUT,
-            [notifier] () {
-                notifier->Signal();
-            });
+            env.Timer->Now() + TRIM_THROTTLER_METRICS_INTERVAL + SHORT_TIMEOUT,
+            [notifier]() { notifier->Signal(); });
 
         env.Timer->AdvanceTime(TRIM_THROTTLER_METRICS_INTERVAL + SHORT_TIMEOUT);
 
-        UNIT_ASSERT_C(
-            notifier->Wait(),
-            "Locked on scheduler");
-        UNIT_ASSERT_VALUES_EQUAL(
-            3,
-            env.TrimCount);
+        UNIT_ASSERT_C(notifier->Wait(), "Locked on scheduler");
+        UNIT_ASSERT_VALUES_EQUAL(3, env.TrimCount);
     }
 }
 

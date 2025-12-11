@@ -15,23 +15,25 @@ const double minFreeSpace = 0.10;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define CHECK_SELECTED_CHANNEL(dataKind, expected)                             \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        expected,                                                              \
-        *channels.SelectChannel(                                               \
-            EChannelDataKind::dataKind,                                        \
-            minFreeSpace,                                                      \
-            freeSpaceThreshold));                                              \
-//  CHECK_SELECTED_CHANNEL
+#define CHECK_SELECTED_CHANNEL(dataKind, expected) \
+    UNIT_ASSERT_VALUES_EQUAL(                      \
+        expected,                                  \
+        *channels.SelectChannel(                   \
+            EChannelDataKind::dataKind,            \
+            minFreeSpace,                          \
+            freeSpaceThreshold));                  \
+    //  CHECK_SELECTED_CHANNEL
 
-#define CHECK_SELECTED_CHANNEL_EMPTY(dataKind)                                 \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        false,                                                                 \
-        channels.SelectChannel(                                                \
-            EChannelDataKind::dataKind,                                        \
-            minFreeSpace,                                                      \
-            freeSpaceThreshold).Defined());                                    \
-//  CHECK_SELECTED_CHANNEL_EMPTY
+#define CHECK_SELECTED_CHANNEL_EMPTY(dataKind) \
+    UNIT_ASSERT_VALUES_EQUAL(                  \
+        false,                                 \
+        channels                               \
+            .SelectChannel(                    \
+                EChannelDataKind::dataKind,    \
+                minFreeSpace,                  \
+                freeSpaceThreshold)            \
+            .Defined());                       \
+    //  CHECK_SELECTED_CHANNEL_EMPTY
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -68,10 +70,7 @@ Y_UNIT_TEST_SUITE(TChannelsTest)
         CHECK_SELECTED_CHANNEL(Mixed, 5);
         CHECK_SELECTED_CHANNEL(Mixed, 6);
         CHECK_SELECTED_CHANNEL(Mixed, 3);
-        ASSERT_VECTORS_EQUAL(
-            TVector<ui32>{},
-            channels.GetUnwritableChannels()
-        );
+        ASSERT_VECTORS_EQUAL(TVector<ui32>{}, channels.GetUnwritableChannels());
 
         channels.UpdateChannelStats(1, false, false, 0);
         channels.UpdateChannelStats(3, false, false, 0);
@@ -84,9 +83,8 @@ Y_UNIT_TEST_SUITE(TChannelsTest)
         CHECK_SELECTED_CHANNEL(Mixed, 5);
 
         ASSERT_VECTORS_EQUAL(
-            TVector<ui32>({ 1, 3, 4 }),
-            channels.GetUnwritableChannels()
-        );
+            TVector<ui32>({1, 3, 4}),
+            channels.GetUnwritableChannels());
 
         // check idempotency
         channels.UpdateChannelStats(6, false, false, 0);
@@ -98,9 +96,8 @@ Y_UNIT_TEST_SUITE(TChannelsTest)
         CHECK_SELECTED_CHANNEL(Mixed, 5);
 
         ASSERT_VECTORS_EQUAL(
-            TVector<ui32>({ 1, 3, 4, 6 }),
-            channels.GetUnwritableChannels()
-        );
+            TVector<ui32>({1, 3, 4, 6}),
+            channels.GetUnwritableChannels());
 
         channels.UpdateChannelStats(2, false, false, 0);
         channels.UpdateChannelStats(5, false, false, 0);
@@ -110,9 +107,8 @@ Y_UNIT_TEST_SUITE(TChannelsTest)
         CHECK_SELECTED_CHANNEL_EMPTY(Mixed);
 
         ASSERT_VECTORS_EQUAL(
-            TVector<ui32>({ 1, 2, 3, 4, 5, 6 }),
-            channels.GetUnwritableChannels()
-        );
+            TVector<ui32>({1, 2, 3, 4, 5, 6}),
+            channels.GetUnwritableChannels());
     }
 
     Y_UNIT_TEST(ShouldGetChannelsToMove)
@@ -120,17 +116,13 @@ Y_UNIT_TEST_SUITE(TChannelsTest)
         const ui32 t = 10;
 
         TChannels channels = SetupChannels(100);
-        ASSERT_VECTORS_EQUAL(
-            TVector<ui32>{},
-            channels.GetChannelsToMove(t));
+        ASSERT_VECTORS_EQUAL(TVector<ui32>{}, channels.GetChannelsToMove(t));
 
         for (ui32 c = 10; c < 19; ++c) {
             channels.UpdateChannelStats(c, true, true, 0);
         }
 
-        ASSERT_VECTORS_EQUAL(
-            TVector<ui32>{},
-            channels.GetChannelsToMove(t));
+        ASSERT_VECTORS_EQUAL(TVector<ui32>{}, channels.GetChannelsToMove(t));
 
         channels.UpdateChannelStats(19, true, true, 0);
 
@@ -181,7 +173,8 @@ Y_UNIT_TEST_SUITE(TChannelsTest)
         UNIT_ASSERT_DOUBLES_EQUAL(otherShare, counts[10], halfShare * 0.2);
     }
 
-    Y_UNIT_TEST(ShouldSelectChannelWithLargestFreeSpaceShareIfAllChannelsAreAlmostFull)
+    Y_UNIT_TEST(
+        ShouldSelectChannelWithLargestFreeSpaceShareIfAllChannelsAreAlmostFull)
     {
         const ui32 channelCount = 11;
         TChannels channels = SetupChannels(channelCount);

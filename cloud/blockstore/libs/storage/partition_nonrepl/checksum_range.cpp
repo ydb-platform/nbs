@@ -12,7 +12,7 @@ using namespace NActors;
 ////////////////////////////////////////////////////////////////////////////////
 
 TChecksumRangeActorCompanion::TChecksumRangeActorCompanion(
-        TVector<TReplicaDescriptor> replicas)
+    TVector<TReplicaDescriptor> replicas)
     : Replicas(std::move(replicas))
 {
     Checksums.resize(Replicas.size());
@@ -50,10 +50,9 @@ IProfileLog::TRangeInfo TChecksumRangeActorCompanion::GetRangeInfo() const
     result.ReplicaChecksums.reserve(Checksums.size());
 
     for (size_t i = 0; i < Checksums.size(); ++i) {
-        result.ReplicaChecksums.emplace_back(
-            IProfileLog::TReplicaChecksums{
-                .ReplicaId = static_cast<ui32>(i),
-                .Checksums{static_cast<ui32>(Checksums[i])}});
+        result.ReplicaChecksums.emplace_back(IProfileLog::TReplicaChecksums{
+            .ReplicaId = static_cast<ui32>(i),
+            .Checksums{static_cast<ui32>(Checksums[i])}});
     }
     return result;
 }
@@ -74,7 +73,8 @@ void TChecksumRangeActorCompanion::CalculateReplicaChecksum(
     TBlockRange64 range,
     int idx)
 {
-    auto request = std::make_unique<TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest>();
+    auto request = std::make_unique<
+        TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest>();
     request->Record.SetStartIndex(range.Start);
     request->Record.SetBlocksCount(range.Size());
 
@@ -105,7 +105,9 @@ void TChecksumRangeActorCompanion::HandleChecksumResponse(
     const auto& error = msg->Record.GetError();
     auto replicaIndex = ev->Cookie;
     if (HasError(error)) {
-        LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::PARTITION,
             "[%s] Checksum error %s",
             Replicas[replicaIndex].ReplicaId.c_str(),
             FormatError(error).c_str());

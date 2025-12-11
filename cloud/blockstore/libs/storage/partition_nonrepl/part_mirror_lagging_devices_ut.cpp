@@ -150,15 +150,15 @@ struct TTestEnv
     {}
 
     TTestEnv(
-            TTestBasicRuntime& runtime,
-            TDevices devices,
-            TVector<TDevices> replicas,
-            TMigrations migrations = {},
-            THashSet<TString> freshDeviceIds = {},
-            THashSet<TString> outdatedDeviceIds = {},
-            TVector<TDiskAgentStatePtr> diskAgentStates = {},
-            NProto::TStorageServiceConfig configBase = {},
-            bool useRdma = false)
+        TTestBasicRuntime& runtime,
+        TDevices devices,
+        TVector<TDevices> replicas,
+        TMigrations migrations = {},
+        THashSet<TString> freshDeviceIds = {},
+        THashSet<TString> outdatedDeviceIds = {},
+        TVector<TDiskAgentStatePtr> diskAgentStates = {},
+        NProto::TStorageServiceConfig configBase = {},
+        bool useRdma = false)
         : Runtime(runtime)
         , Devices(std::move(devices))
         , Replicas(std::move(replicas))
@@ -914,7 +914,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
                         const auto* msg =
                             event->Get<TEvNonreplPartitionPrivate::
                                            TEvAgentIsUnavailable>();
-                        unavailableAgents.insert(msg->LaggingAgent.GetAgentId());
+                        unavailableAgents.insert(
+                            msg->LaggingAgent.GetAgentId());
                         ++unavailableAgentsRequestCount;
                         break;
                     }
@@ -1335,7 +1336,9 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
         // Start write request.
         client.SendWriteBlocksRequest(TBlockRange64::MakeOneBlock(100), 'B');
         runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
-        UNIT_ASSERT_VALUES_EQUAL(useRdma ? 0 : 3, writeDeviceBlocksRequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            useRdma ? 0 : 3,
+            writeDeviceBlocksRequestCount);
 
         size_t cancelledRequestCount = 0;
         auto countCanceledResponses =
@@ -1370,7 +1373,9 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionLaggingDevicesTest)
             response->GetStatus(),
             FormatError(response->GetError()));
         UNIT_ASSERT_C(
-            HasProtoFlag(response->GetError().GetFlags(), NProto::EF_INSTANT_RETRIABLE),
+            HasProtoFlag(
+                response->GetError().GetFlags(),
+                NProto::EF_INSTANT_RETRIABLE),
             FormatError(response->GetError()));
 
         // Expect all WriteDeviceBlocksRequest requests to be cancelled.

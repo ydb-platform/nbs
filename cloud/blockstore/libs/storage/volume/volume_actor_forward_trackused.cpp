@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/volume/actors/forward_write_and_mark_used.h>
 #include <cloud/blockstore/libs/storage/volume/actors/read_and_clear_empty_blocks_actor.h>
 #include <cloud/blockstore/libs/storage/volume/actors/read_disk_registry_based_overlay.h>
+
 #include <cloud/storage/core/libs/common/media.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -32,8 +33,7 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking(
         State->IsDiskRegistryMediaKind() && !State->GetBaseDiskId().empty();
 
     if constexpr (IsWriteMethod<TMethod>) {
-        if (State->GetTrackUsedBlocks() || State->HasCheckpointLight())
-        {
+        if (State->GetTrackUsedBlocks() || State->HasCheckpointLight()) {
             auto requestInfo =
                 CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
             // TODO(drbasic)
@@ -177,53 +177,53 @@ bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking<
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define GENERATE_IMPL(name, ns)                                                \
-template bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking<       \
-    ns::T##name##Method>(                                                      \
-        const TActorContext& ctx,                                              \
-        const ns::TEv##name##Request::TPtr& ev,                                \
-        const TActorId& partActorId,                                           \
-        const ui64 volumeRequestId);                                           \
-// GENERATE_IMPL
-
-#define GENERATE_NO_IMPL(name, ns)                                           \
-    template <>                                                              \
-    bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking<          \
+#define GENERATE_IMPL(name, ns)                                              \
+    template bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking< \
         ns::T##name##Method>(                                                \
         const TActorContext& ctx,                                            \
-        const ns::T##name##Method::TRequest::TPtr& ev,                       \
+        const ns::TEv##name##Request::TPtr& ev,                              \
         const TActorId& partActorId,                                         \
-        const ui64 volumeRequestId)                                          \
-    {                                                                        \
-        Y_UNUSED(ctx);                                                       \
-        Y_UNUSED(ev);                                                        \
-        Y_UNUSED(partActorId);                                               \
-        Y_UNUSED(volumeRequestId);                                           \
-        return false;                                                        \
-    }                                                                        \
-// GENERATE_NO_IMPL
+        const ui64 volumeRequestId);                                         \
+    // GENERATE_IMPL
 
-GENERATE_IMPL(ReadBlocks,         TEvService)
-GENERATE_IMPL(WriteBlocks,        TEvService)
-GENERATE_IMPL(ZeroBlocks,         TEvService)
-GENERATE_IMPL(ReadBlocksLocal,    TEvService)
-GENERATE_IMPL(WriteBlocksLocal,   TEvService)
+#define GENERATE_NO_IMPL(name, ns)                                  \
+    template <>                                                     \
+    bool TVolumeActor::SendRequestToPartitionWithUsedBlockTracking< \
+        ns::T##name##Method>(                                       \
+        const TActorContext& ctx,                                   \
+        const ns::T##name##Method::TRequest::TPtr& ev,              \
+        const TActorId& partActorId,                                \
+        const ui64 volumeRequestId)                                 \
+    {                                                               \
+        Y_UNUSED(ctx);                                              \
+        Y_UNUSED(ev);                                               \
+        Y_UNUSED(partActorId);                                      \
+        Y_UNUSED(volumeRequestId);                                  \
+        return false;                                               \
+    }                                                               \
+    // GENERATE_NO_IMPL
 
-GENERATE_NO_IMPL(CreateCheckpoint,    TEvService)
-GENERATE_NO_IMPL(DeleteCheckpoint,    TEvService)
+GENERATE_IMPL(ReadBlocks, TEvService)
+GENERATE_IMPL(WriteBlocks, TEvService)
+GENERATE_IMPL(ZeroBlocks, TEvService)
+GENERATE_IMPL(ReadBlocksLocal, TEvService)
+GENERATE_IMPL(WriteBlocksLocal, TEvService)
+
+GENERATE_NO_IMPL(CreateCheckpoint, TEvService)
+GENERATE_NO_IMPL(DeleteCheckpoint, TEvService)
 GENERATE_NO_IMPL(GetCheckpointStatus, TEvService)
 
-GENERATE_NO_IMPL(DescribeBlocks,           TEvVolume)
-GENERATE_NO_IMPL(GetUsedBlocks,            TEvVolume)
-GENERATE_NO_IMPL(GetPartitionInfo,         TEvVolume)
-GENERATE_NO_IMPL(CompactRange,             TEvVolume)
-GENERATE_NO_IMPL(GetCompactionStatus,      TEvVolume)
-GENERATE_NO_IMPL(DeleteCheckpointData,     TEvVolume)
-GENERATE_NO_IMPL(RebuildMetadata,          TEvVolume)
+GENERATE_NO_IMPL(DescribeBlocks, TEvVolume)
+GENERATE_NO_IMPL(GetUsedBlocks, TEvVolume)
+GENERATE_NO_IMPL(GetPartitionInfo, TEvVolume)
+GENERATE_NO_IMPL(CompactRange, TEvVolume)
+GENERATE_NO_IMPL(GetCompactionStatus, TEvVolume)
+GENERATE_NO_IMPL(DeleteCheckpointData, TEvVolume)
+GENERATE_NO_IMPL(RebuildMetadata, TEvVolume)
 GENERATE_NO_IMPL(GetRebuildMetadataStatus, TEvVolume)
-GENERATE_NO_IMPL(ScanDisk,                 TEvVolume)
-GENERATE_NO_IMPL(GetScanDiskStatus,        TEvVolume)
-GENERATE_NO_IMPL(CheckRange,               TEvVolume)
+GENERATE_NO_IMPL(ScanDisk, TEvVolume)
+GENERATE_NO_IMPL(GetScanDiskStatus, TEvVolume)
+GENERATE_NO_IMPL(CheckRange, TEvVolume)
 
 #undef GENERATE_IMPL
 

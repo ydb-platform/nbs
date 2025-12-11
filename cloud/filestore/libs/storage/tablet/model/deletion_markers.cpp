@@ -58,8 +58,7 @@ using TDisjointRangeMapByNodeId = THashMap<
     TDisjointRangeMap,
     THash<ui64>,
     TEqualTo<ui64>,
-    TStlAllocator
->;
+    TStlAllocator>;
 
 }   // namespace
 
@@ -100,7 +99,10 @@ void TDeletionMarkers::TImpl::Add(TDeletionMarker deletionMarker)
     TDisjointRangeMapByNodeId::insert_ctx ctx;
     auto it = DisjointRangeMapByNodeId.find(deletionMarker.NodeId, ctx);
     if (it == DisjointRangeMapByNodeId.end()) {
-        it = DisjointRangeMapByNodeId.emplace_direct(ctx, deletionMarker.NodeId, Alloc);
+        it = DisjointRangeMapByNodeId.emplace_direct(
+            ctx,
+            deletionMarker.NodeId,
+            Alloc);
     }
 
     auto& map = it->second;
@@ -153,8 +155,7 @@ ui32 TDeletionMarkers::TImpl::Apply(TArrayRef<TBlock> blocks) const
         auto& map = it->second;
 
         auto jt = map.upper_bound(block.BlockIndex);
-        if (jt != map.end() &&
-            jt->Start <= block.BlockIndex &&
+        if (jt != map.end() && jt->Start <= block.BlockIndex &&
             jt->CommitId > block.MinCommitId &&
             jt->CommitId < block.MaxCommitId)
         {

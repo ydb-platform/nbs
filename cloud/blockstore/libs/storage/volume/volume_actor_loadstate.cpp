@@ -61,8 +61,7 @@ bool TVolumeActor::PrepareLoadState(
         results.begin(),
         results.end(),
         true,
-        std::logical_and<>()
-    );
+        std::logical_and<>());
 
     if (ready && args.Meta) {
         args.UsedBlocks.ConstructInPlace(ComputeBlockCount(*args.Meta));
@@ -86,7 +85,7 @@ void TVolumeActor::ExecuteLoadState(
     // with the volume shortly and send AddClientRequest.
     auto now = ctx.Now();
     bool anyChanged = false;
-    for (auto& client : args.Clients) {
+    for (auto& client: args.Clients) {
         if (!client.second.GetVolumeClientInfo().GetDisconnectTimestamp()) {
             client.second.SetDisconnectTimestamp(now);
             anyChanged = true;
@@ -120,10 +119,11 @@ void TVolumeActor::CompleteLoadState(
             args.ThrottlerStateInfo.Defined()
                 ? TDuration::MilliSeconds(args.ThrottlerStateInfo->Budget)
                 : CalculateBoostTime(
-                    args.Meta->GetConfig().GetPerformanceProfile()),
+                      args.Meta->GetConfig().GetPerformanceProfile()),
             Config->GetDiskSpaceScoreThrottlingEnabled());
 
-        bool startPartitionsNeeded = args.StartPartitionsNeeded.GetOrElse(false);
+        bool startPartitionsNeeded =
+            args.StartPartitionsNeeded.GetOrElse(false);
 
         TCachedVolumeMountHistory volumeHistory{
             Config->GetVolumeHistoryCacheSize(),
@@ -172,8 +172,9 @@ void TVolumeActor::CompleteLoadState(
 
         if (State->IsDiskRegistryMediaKind() || PendingRequests.size()) {
             StartPartitionsForUse(ctx);
-        } else if (State->GetShouldStartPartitionsForGc(ctx.Now())
-            && !Config->GetDisableStartPartitionsForGc())
+        } else if (
+            State->GetShouldStartPartitionsForGc(ctx.Now()) &&
+            !Config->GetDisableStartPartitionsForGc())
         {
             StartPartitionsForGc(ctx);
         }

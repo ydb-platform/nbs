@@ -15,9 +15,8 @@ template <typename T>
 void BuildThrottlerInfo(const TCallContextBase& ctx, T& record)
 {
     if constexpr (HasResponseHeaders<T>()) {
-        record.MutableHeaders()
-            ->MutableThrottler()
-            ->SetDelay(ctx.Time(EProcessingStage::Postponed).MicroSeconds());
+        record.MutableHeaders()->MutableThrottler()->SetDelay(
+            ctx.Time(EProcessingStage::Postponed).MicroSeconds());
     }
 }
 

@@ -6,7 +6,6 @@
 #include <util/generic/hash.h>
 #include <util/system/types.h>
 
-
 namespace NCloud::NBlockStore::NStorage::NBlobMetrics {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -16,7 +15,7 @@ struct TBlobLoadMetrics
     struct TValue
     {
         ui64 ByteCount = 0;
-        ui64 Iops      = 0;
+        ui64 Iops = 0;
     };
 
     struct TTabletMetric
@@ -51,15 +50,16 @@ TBlobLoadMetrics TakeDelta(
     const TBlobLoadMetrics& prevMetricsValue,
     const TBlobLoadMetrics& newMetricsValue);
 
-template<typename ProfilesContainer>
+template <typename ProfilesContainer>
 TBlobLoadMetrics MakeBlobLoadMetrics(
     const ProfilesContainer& profiles,
     const NKikimr::NMetrics::TResourceMetrics& data)
 {
-    auto getPoolKind = [&profiles](ui32 channel) {
+    auto getPoolKind = [&profiles](ui32 channel)
+    {
         return profiles.size() > static_cast<int>(channel)
-               ? profiles[channel].GetPoolKind()
-               : "";
+                   ? profiles[channel].GetPoolKind()
+                   : "";
     };
 
     TBlobLoadMetrics result;
@@ -85,7 +85,7 @@ TBlobLoadMetrics MakeBlobLoadMetrics(
         auto& tabletOps = result.PoolKind2TabletOps[getPoolKind(key.first)];
         auto& tabletWriteOps = tabletOps[key].WriteOperations;
 
-        tabletWriteOps.ByteCount  += operation.second.GetRawValue();
+        tabletWriteOps.ByteCount += operation.second.GetRawValue();
     }
 
     for (const auto& operation: data.WriteIops) {
@@ -99,4 +99,4 @@ TBlobLoadMetrics MakeBlobLoadMetrics(
     return result;
 }
 
-} // namespace NCloud::NBlockStore::NStorage::NBlobMetrics
+}   // namespace NCloud::NBlockStore::NStorage::NBlobMetrics

@@ -39,8 +39,7 @@ bool CheckSortedWithGaps(const TVector<TBlock>& blocks)
             continue;
         }
 
-        if (prevBlock.MinCommitId != prevBlock.MaxCommitId
-                && block < prevBlock)
+        if (prevBlock.MinCommitId != prevBlock.MaxCommitId && block < prevBlock)
         {
             return false;
         }
@@ -58,8 +57,7 @@ struct TGarbageNode;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TBlobNode
-    : public TBlob
+struct TBlobNode: public TBlob
 {
     TBlockListNode* BlockList = nullptr;
     TGarbageNode* Garbage = nullptr;
@@ -84,7 +82,7 @@ class TBlobMap
     struct THash
     {
         template <typename T>
-        size_t operator ()(const T& l) const
+        size_t operator()(const T& l) const
         {
             return GetBlobId(l).GetHash();
         }
@@ -93,7 +91,7 @@ class TBlobMap
     struct TEqual
     {
         template <typename T1, typename T2>
-        bool operator ()(const T1& l, const T2& r) const
+        bool operator()(const T1& l, const T2& r) const
         {
             return GetBlobId(l) == GetBlobId(r);
         }
@@ -139,8 +137,7 @@ public:
             blobId,
             std::move(blockRanges),
             blockCount,
-            checkpointBlockCount
-        );
+            checkpointBlockCount);
 
         if (inserted) {
             BlockCount += blockCount;
@@ -169,8 +166,14 @@ public:
     }
 
     using iterator = TData::iterator;
-    iterator begin() { return Data.begin(); }
-    iterator end() { return Data.end(); }
+    iterator begin()
+    {
+        return Data.begin();
+    }
+    iterator end()
+    {
+        return Data.end();
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -333,8 +336,7 @@ struct TGarbageNodeCompare
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TGarbageNode
-    : public TRbTreeItem<TGarbageNode, TGarbageNodeCompare>
+struct TGarbageNode: public TRbTreeItem<TGarbageNode, TGarbageNodeCompare>
 {
     TBlobNode* const Blob;
     ui16 BlockCount;
@@ -434,8 +436,8 @@ public:
         auto chunk = Chunks.begin();
         auto nextChunk = std::next(chunk);
 
-        while (nextChunk != Chunks.end()
-            && nextChunk->StartsWithCommitId <= blobUpdate.CommitId)
+        while (nextChunk != Chunks.end() &&
+               nextChunk->StartsWithCommitId <= blobUpdate.CommitId)
         {
             ++chunk;
             ++nextChunk;
@@ -458,10 +460,7 @@ public:
             Chunks.begin(),
             Chunks.end(),
             commitId,
-            [] (const TChunk& chunk) {
-                return chunk.StartsWithCommitId;
-            }
-        );
+            [](const TChunk& chunk) { return chunk.StartsWithCommitId; });
 
         for (auto chunk = Chunks.begin(); chunk != end; ++chunk) {
             chunk->Ranges.FindMarks(blockRange, commitId, blocks);
@@ -511,7 +510,8 @@ public:
 
                 const auto blockIndex = block->BlockIndex;
 
-                while (block != blocks.end() && block->BlockIndex == blockIndex) {
+                while (block != blocks.end() && block->BlockIndex == blockIndex)
+                {
                     if (deletion->CommitId > block->MinCommitId &&
                         deletion->CommitId < block->MaxCommitId)
                     {
@@ -601,9 +601,7 @@ struct TZone
         }
     }
 
-    void Init(
-        ui32 maxBlocksInBlob,
-        EOptimizationMode mode)
+    void Init(ui32 maxBlocksInBlob, EOptimizationMode mode)
     {
         RangeMap = std::make_unique<TRangeMap>(maxBlocksInBlob);
         Blobs = std::make_unique<TBlobMap>();
@@ -640,7 +638,7 @@ struct TCompareByGarbage
     bool operator()(const TZone* l, const TZone* r) const
     {
         return std::make_pair(l->Garbage->GetBlockCount(), l) >
-            std::make_pair(r->Garbage->GetBlockCount(), r);
+               std::make_pair(r->Garbage->GetBlockCount(), r);
     }
 };
 
@@ -649,7 +647,7 @@ struct TCompareByDeletions
     bool operator()(const TZone* l, const TZone* r) const
     {
         return std::make_pair(l->DeletedRanges->DeletionCount(), l) >
-            std::make_pair(r->DeletedRanges->DeletionCount(), r);
+               std::make_pair(r->DeletedRanges->DeletionCount(), r);
     }
 };
 
@@ -687,12 +685,12 @@ private:
 
 public:
     TImpl(
-            ui32 zoneCount,
-            ui32 zoneBlockCount,
-            ui32 blockListCacheSize,
-            ui32 maxBlocksInBlob,
-            EOptimizationMode optimizationMode)
-        : Zones(zoneCount + 1)  // + 1 global
+        ui32 zoneCount,
+        ui32 zoneBlockCount,
+        ui32 blockListCacheSize,
+        ui32 maxBlocksInBlob,
+        EOptimizationMode optimizationMode)
+        : Zones(zoneCount + 1)   // + 1 global
         , GlobalZone(&Zones.back())
         , ZoneBlockCount(zoneBlockCount)
         , BlockListCacheSize(blockListCacheSize)
@@ -722,8 +720,12 @@ public:
 
     bool RemoveBlob(ui32 zoneHint, const TPartialBlobId& blobId);
 
-    TMutableFoundBlobInfo AccessBlob(ui32 zoneHint, const TPartialBlobId& blobId);
-    TFoundBlobInfo FindBlobInfo(ui32 zoneHint, const TPartialBlobId& blobId) const;
+    TMutableFoundBlobInfo AccessBlob(
+        ui32 zoneHint,
+        const TPartialBlobId& blobId);
+    TFoundBlobInfo FindBlobInfo(
+        ui32 zoneHint,
+        const TPartialBlobId& blobId) const;
 
     TVector<const TBlob*> FindBlobs(const TBlockRange32& blockRange) const;
 
@@ -764,7 +766,8 @@ public:
 
     size_t GetGarbageBlockCount() const;
 
-    bool AddGarbage(ui32 zoneHint, const TPartialBlobId& blobId, ui16 blockCount);
+    bool
+    AddGarbage(ui32 zoneHint, const TPartialBlobId& blobId, ui16 blockCount);
 
     size_t FindGarbage(ui32 zoneHint, const TPartialBlobId& blobId) const;
 
@@ -837,9 +840,7 @@ private:
         const TBlockRange32& blockRange,
         TPartialBlobIdHashSet& blobIds) const;
 
-    TBlobNode* FindBlob(
-        ui32 zoneHint,
-        const TPartialBlobId& blobId);
+    TBlobNode* FindBlob(ui32 zoneHint, const TPartialBlobId& blobId);
 
     const TBlobNode* FindBlob(
         ui32 zoneHint,
@@ -892,17 +893,14 @@ TAddedBlobInfo TBlobIndex::TImpl::AddBlob(
 
     // XXX(@qkrorlqr): do it only in debug mode?
     if (&zone != GlobalZone && GlobalZone->Blobs->Find(blobId)) {
-        return { false, InvalidZoneId };
+        return {false, InvalidZoneId};
     }
 
-    auto* blob = zone.Blobs->Add(
-        blobId,
-        blockRanges,
-        blockCount,
-        checkpointBlockCount);
+    auto* blob =
+        zone.Blobs->Add(blobId, blockRanges, blockCount, checkpointBlockCount);
 
     if (!blob) {
-        return { false, InvalidZoneId };
+        return {false, InvalidZoneId};
     }
 
     if (zone.RangeMap) {
@@ -914,7 +912,7 @@ TAddedBlobInfo TBlobIndex::TImpl::AddBlob(
     TotalBlockCount += blockCount;
     ZoneBlobCount += (&zone != GlobalZone);
 
-    return { true, ToZoneId(&zone) };
+    return {true, ToZoneId(&zone)};
 }
 
 bool TBlobIndex::TImpl::RemoveBlob(ui32 zoneHint, const TPartialBlobId& blobId)
@@ -961,7 +959,7 @@ TFoundBlobInfo TBlobIndex::TImpl::FindBlobInfo(
     const TPartialBlobId& blobId) const
 {
     auto [blob, zone] = FindBlobAndZone(zoneHint, blobId);
-    return { blob, ToZoneId(zone) };
+    return {blob, ToZoneId(zone)};
 }
 
 std::pair<TBlobNode*, TZone*> TBlobIndex::TImpl::FindBlobAndZone(
@@ -969,9 +967,8 @@ std::pair<TBlobNode*, TZone*> TBlobIndex::TImpl::FindBlobAndZone(
     const TPartialBlobId& blobId)
 {
     auto [blob, zone] = std::as_const(*this).FindBlobAndZone(zoneHint, blobId);
-    return { const_cast<TBlobNode*>(blob), const_cast<TZone*>(zone) };
+    return {const_cast<TBlobNode*>(blob), const_cast<TZone*>(zone)};
 }
-
 
 std::pair<const TBlobNode*, const TZone*> TBlobIndex::TImpl::FindBlobAndZone(
     ui32 zoneHint,
@@ -981,24 +978,24 @@ std::pair<const TBlobNode*, const TZone*> TBlobIndex::TImpl::FindBlobAndZone(
         const auto& suggestedZone = Zones[zoneHint];
         if (suggestedZone.IsInitialized()) {
             if (TBlobNode* blob = suggestedZone.Blobs->Find(blobId)) {
-                return { blob, &suggestedZone };
+                return {blob, &suggestedZone};
             }
         }
     }
 
     if (TBlobNode* blob = GlobalZone->Blobs->Find(blobId)) {
-        return { blob, GlobalZone };
+        return {blob, GlobalZone};
     }
 
     for (const auto& zone: Zones) {
         if (zone.IsInitialized()) {
             if (TBlobNode* blob = zone.Blobs->Find(blobId)) {
-                return { blob, &zone };
+                return {blob, &zone};
             }
         }
     }
 
-    return { nullptr, nullptr };
+    return {nullptr, nullptr};
 }
 
 TBlobNode* TBlobIndex::TImpl::FindBlob(
@@ -1020,20 +1017,20 @@ TMutableFoundBlobInfo TBlobIndex::TImpl::AccessBlob(
     const TPartialBlobId& blobId)
 {
     auto info = FindBlobInfo(zoneHint, blobId);
-    return {
-        const_cast<TBlob*>(info.Blob),
-        info.ZoneId
-    };
+    return {const_cast<TBlob*>(info.Blob), info.ZoneId};
 }
 
 TVector<const TBlob*> TBlobIndex::TImpl::FindBlobs(
     const TBlockRange32& blockRange) const
 {
     TVector<const TBlob*> result;
-    GlobalZone->RangeMap->Visit(blockRange, [&] (const TBlob* blob) {
-        result.push_back(blob);
-        return true;
-    });
+    GlobalZone->RangeMap->Visit(
+        blockRange,
+        [&](const TBlob* blob)
+        {
+            result.push_back(blob);
+            return true;
+        });
 
     const auto zoneRange = ToZoneRange(blockRange);
     for (ui32 z = zoneRange.first; z <= zoneRange.second; ++z) {
@@ -1041,10 +1038,13 @@ TVector<const TBlob*> TBlobIndex::TImpl::FindBlobs(
         Y_ABORT_UNLESS(zone.IsInitialized());
 
         if (zone.RangeMap) {
-            zone.RangeMap->Visit(blockRange, [&] (const TBlob* blob) {
-                result.push_back(blob);
-                return true;
-            });
+            zone.RangeMap->Visit(
+                blockRange,
+                [&](const TBlob* blob)
+                {
+                    result.push_back(blob);
+                    return true;
+                });
 
             ++zone.UsageScore;
             ++TotalUsageScore;
@@ -1059,10 +1059,13 @@ void TBlobIndex::TImpl::FindBlobs(
     const TBlockRange32& blockRange,
     TPartialBlobIdHashSet& blobIds) const
 {
-    GlobalZone->RangeMap->Visit(blockRange, [&] (const TBlob* blob) {
-        blobIds.insert(blob->BlobId);
-        return true;
-    });
+    GlobalZone->RangeMap->Visit(
+        blockRange,
+        [&](const TBlob* blob)
+        {
+            blobIds.insert(blob->BlobId);
+            return true;
+        });
 
     const auto zoneRange = ToZoneRange(blockRange);
     for (ui32 z = zoneRange.first; z <= zoneRange.second; ++z) {
@@ -1070,10 +1073,13 @@ void TBlobIndex::TImpl::FindBlobs(
         Y_ABORT_UNLESS(zone.IsInitialized());
 
         if (zone.RangeMap) {
-            zone.RangeMap->Visit(blockRange, [&] (const TBlob* blob) {
-                blobIds.insert(blob->BlobId);
-                return true;
-            });
+            zone.RangeMap->Visit(
+                blockRange,
+                [&](const TBlob* blob)
+                {
+                    blobIds.insert(blob->BlobId);
+                    return true;
+                });
         }
     }
 }
@@ -1284,7 +1290,9 @@ bool TBlobIndex::TImpl::AddGarbage(
     return true;
 }
 
-size_t TBlobIndex::TImpl::FindGarbage(ui32 zoneHint, const TPartialBlobId& blobId) const
+size_t TBlobIndex::TImpl::FindGarbage(
+    ui32 zoneHint,
+    const TPartialBlobId& blobId) const
 {
     const auto* blob = FindBlob(zoneHint, blobId);
     if (blob && blob->Garbage) {
@@ -1300,14 +1308,15 @@ TGarbageInfo TBlobIndex::TImpl::GetTopGarbage(
 {
     const auto* topZone = *ZonesByGarbage.begin();
     auto blobCounters = topZone->Garbage->GetTop(maxBlobs, maxBlocks);
-    return { std::move(blobCounters), ToZoneId(topZone) };
+    return {std::move(blobCounters), ToZoneId(topZone)};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 ui32 TBlobIndex::TImpl::MarkBlocksDeleted(TBlobUpdate blobUpdate)
 {
-    auto addRange = [&](TZone* zone) {
+    auto addRange = [&](TZone* zone)
+    {
         ZonesByDeletions.erase(zone);
         zone->DeletedRanges->AddUpdate(blobUpdate);
         ZonesByDeletions.insert(zone);
@@ -1322,7 +1331,8 @@ ui32 TBlobIndex::TImpl::MarkBlocksDeleted(TBlobUpdate blobUpdate)
             auto& zone = Zones[z];
             Y_ABORT_UNLESS(zone.IsInitialized());
             if (zone.MixedIndex) {
-                auto subRange = blobUpdate.BlockRange.Intersect(ToBlockRange(z));
+                auto subRange =
+                    blobUpdate.BlockRange.Intersect(ToBlockRange(z));
                 for (ui32 j = subRange.Start; j <= subRange.End; ++j) {
                     zone.MixedIndex->ClearBlock(j);
                 }
@@ -1341,9 +1351,8 @@ ui32 TBlobIndex::TImpl::ApplyUpdates(
     const TBlockRange32& blockRange,
     TVector<TBlock>& blocks) const
 {
-    ui32 updateCount = GlobalZone->DeletedRanges->ApplyUpdates(
-        blockRange,
-        blocks);
+    ui32 updateCount =
+        GlobalZone->DeletedRanges->ApplyUpdates(blockRange, blocks);
 
     auto zoneRange = ToZoneRange(blockRange);
     for (ui32 z = zoneRange.first; z <= zoneRange.second; ++z) {
@@ -1364,8 +1373,7 @@ TVector<TDeletedBlock> TBlobIndex::TImpl::FindDeletedBlocks(
     GlobalZone->DeletedRanges->GetDeletedBlocks(
         blockRange,
         maxCommitId,
-        &deletedBlocks
-    );
+        &deletedBlocks);
 
     ui32 globalSize = deletedBlocks.size();
 
@@ -1377,13 +1385,12 @@ TVector<TDeletedBlock> TBlobIndex::TImpl::FindDeletedBlocks(
         zone.DeletedRanges->GetDeletedBlocks(
             blockRange,
             maxCommitId,
-            &deletedBlocks
-        );
+            &deletedBlocks);
     }
 
     // XXX suboptimal
-    if (globalSize < deletedBlocks.size()
-            || zoneRange.first != zoneRange.second)
+    if (globalSize < deletedBlocks.size() ||
+        zoneRange.first != zoneRange.second)
     {
         Sort(deletedBlocks.begin(), deletedBlocks.end());
     }
@@ -1403,14 +1410,13 @@ const TZone* TBlobIndex::TImpl::GetTopZoneByDeletionCount() const
     const auto& chunks = GlobalZone->DeletedRanges->GetChunks();
     auto chunk = chunks.begin();
 
-    while (std::next(chunk) != chunks.end()
-        && chunk->DeletedBlockCount == 0)
-    {
+    while (std::next(chunk) != chunks.end() && chunk->DeletedBlockCount == 0) {
         ++chunk;
     }
 
     chunk->Ranges.Visit(
-        [&] (const TBlockRange32& range) {
+        [&](const TBlockRange32& range)
+        {
             auto zoneRange = ToZoneRange(range);
             for (auto z = zoneRange.first; z <= zoneRange.second; ++z) {
                 if (!Zones[z].IsInitialized()) {
@@ -1418,8 +1424,7 @@ const TZone* TBlobIndex::TImpl::GetTopZoneByDeletionCount() const
                     break;
                 }
             }
-        }
-    );
+        });
 
     return ready ? GlobalZone : nullptr;
 }
@@ -1439,10 +1444,12 @@ TVector<TPartialBlobId> TBlobIndex::TImpl::ExtractDirtyBlobs()
         GetAllocatorByTag(EAllocatorTag::BlobIndexDirtyBlobs));
     // TODO: don't extract blobs whose blocks are newer than the corresponding
     // deletions
-    top.Visit([&] (const TBlockRange32& range) {
-        FindBlobs(range, blobIds);
-        ExtractBlobsMixed(range, blobIds);
-    });
+    top.Visit(
+        [&](const TBlockRange32& range)
+        {
+            FindBlobs(range, blobIds);
+            ExtractBlobsMixed(range, blobIds);
+        });
 
     TVector<TPartialBlobId> blobIdsVec(Reserve(blobIds.size()));
     blobIdsVec.assign(blobIds.begin(), blobIds.end());
@@ -1471,8 +1478,8 @@ void TBlobIndex::TImpl::SeparateChunkForCleanup(ui64 commitId)
     Y_ABORT_UNLESS(ZoneWithPendingDeletionCleanup != nullptr);
     auto& deletions = *ZoneWithPendingDeletionCleanup->DeletedRanges;
 
-    while (deletions.ChunkCount() > 1
-        && deletions.TopChunk().DeletedBlockCount == 0)
+    while (deletions.ChunkCount() > 1 &&
+           deletions.TopChunk().DeletedBlockCount == 0)
     {
         deletions.PopChunk();
     }
@@ -1493,7 +1500,7 @@ TDeletionsInfo TBlobIndex::TImpl::CleanupDirtyRanges()
 
     ZoneWithPendingDeletionCleanup = nullptr;
 
-    return { std::move(blobUpdates), ToZoneId(zone) };
+    return {std::move(blobUpdates), ToZoneId(zone)};
 }
 
 void TBlobIndex::TImpl::OnCheckpoint(ui64 checkpointId)
@@ -1565,7 +1572,6 @@ std::pair<ui32, ui32> TBlobIndex::TImpl::ToZoneRange(
 
 TBlockRange32 TBlobIndex::TImpl::ToBlockRange(const ui32 zone) const
 {
-
     return TBlockRange32::WithLength(zone * ZoneBlockCount, ZoneBlockCount);
 }
 
@@ -1610,18 +1616,22 @@ TVector<const TBlob*> TBlobIndex::TImpl::FindZoneBlobs(ui32 z) const
     Y_ABORT_UNLESS(zone.IsInitialized());
     Y_ABORT_UNLESS(zone.RangeMap);
 
-    zone.RangeMap->Visit([&] (const TBlob* blob) {
-        result.push_back(blob);
-        return true;
-    });
+    zone.RangeMap->Visit(
+        [&](const TBlob* blob)
+        {
+            result.push_back(blob);
+            return true;
+        });
 
     // TODO: filter by zone block range
-    // don't forget to modify ConvertToMixedIndex after this (Y_ABORT_UNLESS for global
-    // blob's blocklists)
-    GlobalZone->RangeMap->Visit([&] (const TBlob* blob) {
-        result.push_back(blob);
-        return true;
-    });
+    // don't forget to modify ConvertToMixedIndex after this (Y_ABORT_UNLESS for
+    // global blob's blocklists)
+    GlobalZone->RangeMap->Visit(
+        [&](const TBlob* blob)
+        {
+            result.push_back(blob);
+            return true;
+        });
 
     SortUnique(result);
     return result;
@@ -1652,7 +1662,9 @@ double TBlobIndex::TImpl::UpdateAndGetTotalUsageScore(TInstant now)
     return TotalUsageScore;
 }
 
-void TBlobIndex::TImpl::ConvertToMixedIndex(ui32 z, const TVector<ui64>& checkpointIds)
+void TBlobIndex::TImpl::ConvertToMixedIndex(
+    ui32 z,
+    const TVector<ui64>& checkpointIds)
 {
     auto& zone = Zones[z];
     Y_ABORT_UNLESS(zone.IsInitialized());
@@ -1666,7 +1678,8 @@ void TBlobIndex::TImpl::ConvertToMixedIndex(ui32 z, const TVector<ui64>& checkpo
 
     auto deletedBlocks = FindDeletedBlocks(range, InvalidCommitId);
 
-    auto onBlob = [&] (const TBlobNode* blob) {
+    auto onBlob = [&](const TBlobNode* blob)
+    {
         Y_ABORT_UNLESS(blob->BlockList);
         auto nodeBlocks = blob->BlockList->GetBlocks();
         ui16 blobOffset = 0;
@@ -1676,26 +1689,19 @@ void TBlobIndex::TImpl::ConvertToMixedIndex(ui32 z, const TVector<ui64>& checkpo
                 auto it = UpperBound(
                     deletedBlocks.begin(),
                     deletedBlocks.end(),
-                    TDeletedBlock(block.BlockIndex, block.MinCommitId)
-                );
+                    TDeletedBlock(block.BlockIndex, block.MinCommitId));
 
-                if (it != deletedBlocks.end()
-                        && it->BlockIndex == block.BlockIndex
-                        && it->CommitId < block.MaxCommitId)
+                if (it != deletedBlocks.end() &&
+                    it->BlockIndex == block.BlockIndex &&
+                    it->CommitId < block.MaxCommitId)
                 {
                     block.MaxCommitId = it->CommitId;
                 }
 
                 if (block.Zeroed) {
-                    builder.AddBlock({
-                        block,
-                        {blob->BlobId, ZeroBlobOffset}
-                    });
+                    builder.AddBlock({block, {blob->BlobId, ZeroBlobOffset}});
                 } else {
-                    builder.AddBlock({
-                        block,
-                        {blob->BlobId, blobOffset}
-                    });
+                    builder.AddBlock({block, {blob->BlobId, blobOffset}});
                 }
             }
 
@@ -1777,18 +1783,17 @@ TZone& TBlobIndex::TImpl::SelectZone(const TBlockRanges& blockRanges)
 // TBlobIndex
 
 TBlobIndex::TBlobIndex(
-        ui32 zoneCount,
-        ui32 zoneBlockCount,
-        ui32 blockListCacheSize,
-        ui32 maxBlocksInBlob,
-        EOptimizationMode optimizationMode)
+    ui32 zoneCount,
+    ui32 zoneBlockCount,
+    ui32 blockListCacheSize,
+    ui32 maxBlocksInBlob,
+    EOptimizationMode optimizationMode)
     : Impl(new TImpl(
-        zoneCount,
-        zoneBlockCount,
-        blockListCacheSize,
-        maxBlocksInBlob,
-        optimizationMode
-    ))
+          zoneCount,
+          zoneBlockCount,
+          blockListCacheSize,
+          maxBlocksInBlob,
+          optimizationMode))
 {}
 
 TBlobIndex::~TBlobIndex()
@@ -1822,7 +1827,8 @@ TAddedBlobInfo TBlobIndex::AddBlob(
     ui16 blockCount,
     ui16 checkpointBlockCount)
 {
-    return GetImpl().AddBlob(blobId, blockRanges, blockCount, checkpointBlockCount);
+    return GetImpl()
+        .AddBlob(blobId, blockRanges, blockCount, checkpointBlockCount);
 }
 
 bool TBlobIndex::RemoveBlob(ui32 zoneHint, const TPartialBlobId& blobId)
@@ -1844,7 +1850,8 @@ TMutableFoundBlobInfo TBlobIndex::AccessBlob(
     return GetImpl().AccessBlob(zoneHint, blobId);
 }
 
-TVector<const TBlob*> TBlobIndex::FindBlobs(const TBlockRange32& blockRange) const
+TVector<const TBlob*> TBlobIndex::FindBlobs(
+    const TBlockRange32& blockRange) const
 {
     return GetImpl().FindBlobs(blockRange);
 }
@@ -1920,14 +1927,14 @@ bool TBlobIndex::AddGarbage(
     return GetImpl().AddGarbage(zoneHint, blobId, blockCount);
 }
 
-size_t TBlobIndex::FindGarbage(ui32 zoneHint, const TPartialBlobId& blobId) const
+size_t TBlobIndex::FindGarbage(
+    ui32 zoneHint,
+    const TPartialBlobId& blobId) const
 {
     return GetImpl().FindGarbage(zoneHint, blobId);
 }
 
-TGarbageInfo TBlobIndex::GetTopGarbage(
-    size_t maxBlobs,
-    size_t maxBlocks) const
+TGarbageInfo TBlobIndex::GetTopGarbage(size_t maxBlobs, size_t maxBlocks) const
 {
     return GetImpl().GetTopGarbage(maxBlobs, maxBlocks);
 }
@@ -2003,7 +2010,8 @@ ui32 TBlobIndex::GetMixedZoneCount() const
     return GetImpl().GetMixedZoneCount();
 }
 
-std::pair<ui32, ui32> TBlobIndex::ToZoneRange(const TBlockRange32& blockRange) const
+std::pair<ui32, ui32> TBlobIndex::ToZoneRange(
+    const TBlockRange32& blockRange) const
 {
     return GetImpl().ToZoneRange(blockRange);
 }
@@ -2070,11 +2078,13 @@ void TBlobIndex::ConvertToRangeMap(ui32 z)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TBlobIndex::TImpl& TBlobIndex::GetImpl() {
+TBlobIndex::TImpl& TBlobIndex::GetImpl()
+{
     return *Impl;
 }
 
-const TBlobIndex::TImpl& TBlobIndex::GetImpl() const {
+const TBlobIndex::TImpl& TBlobIndex::GetImpl() const
+{
     return *Impl;
 }
 
@@ -2106,7 +2116,8 @@ TBlockRanges BuildRanges(const TVector<TBlock>& blocks, ui32 maxRanges)
         const auto blockIndex = blocks[i].BlockIndex;
         const auto nextIndex = blocks[i + 1].BlockIndex;
         if (blockIndex + 1 < nextIndex) {
-            holes.push({i, blocks[i + 1].BlockIndex - blocks[i].BlockIndex - 1});
+            holes.push(
+                {i, blocks[i + 1].BlockIndex - blocks[i].BlockIndex - 1});
             if (holes.size() == maxRanges) {
                 holes.pop();
             }
@@ -2121,9 +2132,10 @@ TBlockRanges BuildRanges(const TVector<TBlock>& blocks, ui32 maxRanges)
         holes.pop();
     }
 
-    Sort(holeRanges.begin(), holeRanges.end(), [] (const auto& l, const auto& r) {
-        return l.Start < r.Start;
-    });
+    Sort(
+        holeRanges.begin(),
+        holeRanges.end(),
+        [](const auto& l, const auto& r) { return l.Start < r.Start; });
 
     TBlockRanges blockRanges;
     ui32 blockIndex = blocks.front().BlockIndex;

@@ -120,11 +120,11 @@ struct TClientRequest: public NRdma::TClientRequest
 
 public:
     TClientRequest(
-            const TActorId& rdmaActorId,
-            NRdma::IClientHandlerPtr handler,
-            std::unique_ptr<NRdma::TNullContext> context,
-            ui32 requestSize,
-            ui32 responseSize)
+        const TActorId& rdmaActorId,
+        NRdma::IClientHandlerPtr handler,
+        std::unique_ptr<NRdma::TNullContext> context,
+        ui32 requestSize,
+        ui32 responseSize)
         : NRdma::TClientRequest(std::move(handler), std::move(context))
         , RdmaActorId(rdmaActorId)
         , RequestStorage(std::make_unique<char[]>(requestSize))
@@ -192,9 +192,9 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 TClientEndpoint::TClientEndpoint(
-        IActorSystemPtr actorSystem,
-        const TActorId& rdmaActorId,
-        TEndpointId endpointId)
+    IActorSystemPtr actorSystem,
+    const TActorId& rdmaActorId,
+    TEndpointId endpointId)
     : EndpointId(endpointId)
     , ActorSystem(std::move(actorSystem))
     , RdmaActorId(rdmaActorId)
@@ -255,7 +255,8 @@ TFuture<void> TClientEndpoint::Stop()
     return future;
 }
 
-void TClientEndpoint::TryForceReconnect() {}
+void TClientEndpoint::TryForceReconnect()
+{}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -272,12 +273,12 @@ private:
 
 public:
     TExecuteRequestActor(
-            TClientRequestId clientRequestId,
-            TEndpointId endpointId,
-            TActorId parent,
-            ui32 nodeId,
-            NRdma::TClientRequestPtr request,
-            TCallContextPtr callContext)
+        TClientRequestId clientRequestId,
+        TEndpointId endpointId,
+        TActorId parent,
+        ui32 nodeId,
+        NRdma::TClientRequestPtr request,
+        TCallContextPtr callContext)
         : ClientRequestId(clientRequestId)
         , EndpointId(endpointId)
         , Parent(parent)
@@ -738,9 +739,9 @@ private:
 
 public:
     TUpdateNodeIdActor(
-            const TActorId& owner,
-            TString agentId,
-            TEndpointId endpointId)
+        const TActorId& owner,
+        TString agentId,
+        TEndpointId endpointId)
         : Owner(owner)
         , AgentId(std::move(agentId))
         , EndpointId(endpointId)
@@ -823,7 +824,6 @@ private:
 
 class TFakeRdmaClientActor: public TActor<TFakeRdmaClientActor>
 {
-
     struct TEndpoint
     {
         ui32 NodeId = 0;
@@ -1082,8 +1082,9 @@ public:
 
     // NRdma::IClient
 
-    auto StartEndpoint(TString host, ui32 port)
-        -> TFuture<NRdma::IClientEndpointPtr> override;
+    auto StartEndpoint(
+        TString host,
+        ui32 port) -> TFuture<NRdma::IClientEndpointPtr> override;
 
     void DumpHtml(IOutputStream& out) const override;
 
@@ -1108,8 +1109,9 @@ void TFakeRdmaClient::Stop()
     ActorSystem->Send(RdmaActorId, std::make_unique<TEvents::TEvPoisonPill>());
 }
 
-auto TFakeRdmaClient::StartEndpoint(TString host, ui32 port)
-    -> TFuture<NRdma::IClientEndpointPtr>
+auto TFakeRdmaClient::StartEndpoint(
+    TString host,
+    ui32 port) -> TFuture<NRdma::IClientEndpointPtr>
 {
     STORAGE_INFO("Start endpoint " << host << ":" << port);
 

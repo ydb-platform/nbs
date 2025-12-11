@@ -68,45 +68,38 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             EHistogramCounterOption::ReportMultipleCounters,
             {});
 
-        auto totalCounters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("request", "WriteBlocks");
+        auto totalCounters =
+            monitoring->GetCounters()->GetSubgroup("request", "WriteBlocks");
         auto totalCount = totalCounters->GetCounter("Count");
 
-        auto ssdCounters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("type", "ssd")
-            ->GetSubgroup("request", "WriteBlocks");
+        auto ssdCounters = monitoring->GetCounters()
+                               ->GetSubgroup("type", "ssd")
+                               ->GetSubgroup("request", "WriteBlocks");
         auto ssdCount = ssdCounters->GetCounter("Count");
 
-        auto hddCounters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("type", "hdd")
-            ->GetSubgroup("request", "WriteBlocks");
+        auto hddCounters = monitoring->GetCounters()
+                               ->GetSubgroup("type", "hdd")
+                               ->GetSubgroup("request", "WriteBlocks");
         auto hddCount = hddCounters->GetCounter("Count");
 
-        auto ssdNonreplCounters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("type", "ssd_nonrepl")
-            ->GetSubgroup("request", "WriteBlocks");
+        auto ssdNonreplCounters = monitoring->GetCounters()
+                                      ->GetSubgroup("type", "ssd_nonrepl")
+                                      ->GetSubgroup("request", "WriteBlocks");
         auto ssdNonreplCount = ssdNonreplCounters->GetCounter("Count");
 
-        auto hddNonreplCounters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("type", "hdd_nonrepl")
-            ->GetSubgroup("request", "WriteBlocks");
+        auto hddNonreplCounters = monitoring->GetCounters()
+                                      ->GetSubgroup("type", "hdd_nonrepl")
+                                      ->GetSubgroup("request", "WriteBlocks");
         auto hddNonreplCount = hddNonreplCounters->GetCounter("Count");
 
-        auto ssdMirror2Counters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("type", "ssd_mirror2")
-            ->GetSubgroup("request", "WriteBlocks");
+        auto ssdMirror2Counters = monitoring->GetCounters()
+                                      ->GetSubgroup("type", "ssd_mirror2")
+                                      ->GetSubgroup("request", "WriteBlocks");
         auto ssdMirror2Count = ssdMirror2Counters->GetCounter("Count");
 
-        auto ssdMirror3Counters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("type", "ssd_mirror3")
-            ->GetSubgroup("request", "WriteBlocks");
+        auto ssdMirror3Counters = monitoring->GetCounters()
+                                      ->GetSubgroup("type", "ssd_mirror3")
+                                      ->GetSubgroup("request", "WriteBlocks");
         auto ssdMirror3Count = ssdMirror3Counters->GetCounter("Count");
 
         UNIT_ASSERT_EQUAL(totalCount->Val(), 0);
@@ -122,9 +115,7 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 *requestStats,
                 NCloud::NProto::STORAGE_MEDIA_SSD,
                 EBlockStoreRequest::WriteBlocks,
-            {
-                { 1_MB, TDuration::MilliSeconds(100), TDuration::Zero() }
-            });
+                {{1_MB, TDuration::MilliSeconds(100), TDuration::Zero()}});
 
             UNIT_ASSERT_EQUAL(totalCount->Val(), 1);
             UNIT_ASSERT_EQUAL(ssdCount->Val(), 1);
@@ -140,9 +131,7 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 *requestStats,
                 NCloud::NProto::STORAGE_MEDIA_HDD,
                 EBlockStoreRequest::WriteBlocks,
-            {
-                { 1_MB, TDuration::MilliSeconds(100), TDuration::Zero() }
-            });
+                {{1_MB, TDuration::MilliSeconds(100), TDuration::Zero()}});
 
             UNIT_ASSERT_EQUAL(totalCount->Val(), 2);
             UNIT_ASSERT_EQUAL(ssdCount->Val(), 1);
@@ -158,9 +147,7 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 *requestStats,
                 NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
                 EBlockStoreRequest::WriteBlocks,
-            {
-                { 1_MB, TDuration::MilliSeconds(100), TDuration::Zero() }
-            });
+                {{1_MB, TDuration::MilliSeconds(100), TDuration::Zero()}});
 
             UNIT_ASSERT_EQUAL(totalCount->Val(), 3);
             UNIT_ASSERT_EQUAL(ssdCount->Val(), 1);
@@ -176,9 +163,7 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 *requestStats,
                 NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
                 EBlockStoreRequest::WriteBlocks,
-            {
-                { 1_MB, TDuration::MilliSeconds(100), TDuration::Zero() }
-            });
+                {{1_MB, TDuration::MilliSeconds(100), TDuration::Zero()}});
 
             UNIT_ASSERT_EQUAL(totalCount->Val(), 4);
             UNIT_ASSERT_EQUAL(ssdCount->Val(), 1);
@@ -194,9 +179,7 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 *requestStats,
                 NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2,
                 EBlockStoreRequest::WriteBlocks,
-            {
-                { 1_MB, TDuration::MilliSeconds(100), TDuration::Zero() }
-            });
+                {{1_MB, TDuration::MilliSeconds(100), TDuration::Zero()}});
 
             UNIT_ASSERT_EQUAL(totalCount->Val(), 5);
             UNIT_ASSERT_EQUAL(ssdCount->Val(), 1);
@@ -212,9 +195,7 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 *requestStats,
                 NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
                 EBlockStoreRequest::WriteBlocks,
-            {
-                { 1_MB, TDuration::MilliSeconds(100), TDuration::Zero() }
-            });
+                {{1_MB, TDuration::MilliSeconds(100), TDuration::Zero()}});
 
             UNIT_ASSERT_EQUAL(totalCount->Val(), 6);
             UNIT_ASSERT_EQUAL(ssdCount->Val(), 1);
@@ -256,8 +237,7 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 ->GetSubgroup("request", "WriteBlocks"),
             monitoring->GetCounters()
                 ->GetSubgroup("type", "ssd_mirror3")
-                ->GetSubgroup("request", "WriteBlocks")
-        };
+                ->GetSubgroup("request", "WriteBlocks")};
 
         // Add statistics for STORAGE_MEDIA_DEFAULT and check that statistics
         // are not taken into account for a specific type of media.
@@ -325,59 +305,54 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             EHistogramCounterOption::ReportMultipleCounters,
             {});
 
-        auto totalCounters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("request", "WriteBlocks");
+        auto totalCounters =
+            monitoring->GetCounters()->GetSubgroup("request", "WriteBlocks");
 
-        auto ssdCounters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("type", "ssd")
-            ->GetSubgroup("request", "WriteBlocks");
+        auto ssdCounters = monitoring->GetCounters()
+                               ->GetSubgroup("type", "ssd")
+                               ->GetSubgroup("request", "WriteBlocks");
 
-        auto hddCounters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("type", "hdd")
-            ->GetSubgroup("request", "WriteBlocks");
+        auto hddCounters = monitoring->GetCounters()
+                               ->GetSubgroup("type", "hdd")
+                               ->GetSubgroup("request", "WriteBlocks");
 
-        auto ssdNonreplCounters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("type", "ssd_nonrepl")
-            ->GetSubgroup("request", "WriteBlocks");
+        auto ssdNonreplCounters = monitoring->GetCounters()
+                                      ->GetSubgroup("type", "ssd_nonrepl")
+                                      ->GetSubgroup("request", "WriteBlocks");
 
-        auto hddNonreplCounters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("type", "hdd_nonrepl")
-            ->GetSubgroup("request", "WriteBlocks");
+        auto hddNonreplCounters = monitoring->GetCounters()
+                                      ->GetSubgroup("type", "hdd_nonrepl")
+                                      ->GetSubgroup("request", "WriteBlocks");
 
         AddRequestStats(
             *requestStats,
             NCloud::NProto::STORAGE_MEDIA_SSD,
             EBlockStoreRequest::WriteBlocks,
-        {
-            { 1_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-            { 1_MB, TDuration::MilliSeconds(200), TDuration::Zero() },
-            { 1_MB, TDuration::MilliSeconds(300), TDuration::Zero() },
-        });
+            {
+                {1_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
+                {1_MB, TDuration::MilliSeconds(200), TDuration::Zero()},
+                {1_MB, TDuration::MilliSeconds(300), TDuration::Zero()},
+            });
 
         AddRequestStats(
             *requestStats,
             NCloud::NProto::STORAGE_MEDIA_HDD,
             EBlockStoreRequest::WriteBlocks,
-        {
-            { 1_MB, TDuration::MilliSeconds(400), TDuration::Zero() },
-            { 1_MB, TDuration::MilliSeconds(500), TDuration::Zero() },
-            { 1_MB, TDuration::MilliSeconds(600), TDuration::Zero() },
-        });
+            {
+                {1_MB, TDuration::MilliSeconds(400), TDuration::Zero()},
+                {1_MB, TDuration::MilliSeconds(500), TDuration::Zero()},
+                {1_MB, TDuration::MilliSeconds(600), TDuration::Zero()},
+            });
 
         AddRequestStats(
             *requestStats,
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             EBlockStoreRequest::WriteBlocks,
-        {
-            { 1_MB, TDuration::MilliSeconds(10), TDuration::Zero() },
-            { 1_MB, TDuration::MilliSeconds(20), TDuration::Zero() },
-            { 1_MB, TDuration::MilliSeconds(30), TDuration::Zero() },
-        });
+            {
+                {1_MB, TDuration::MilliSeconds(10), TDuration::Zero()},
+                {1_MB, TDuration::MilliSeconds(20), TDuration::Zero()},
+                {1_MB, TDuration::MilliSeconds(30), TDuration::Zero()},
+            });
 
         requestStats->UpdateStats(true);
 
@@ -387,7 +362,8 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
         };
 
         {
-            auto percentiles = totalCounters->GetSubgroup("percentiles", "Time");
+            auto percentiles =
+                totalCounters->GetSubgroup("percentiles", "Time");
             auto p100 = percentiles->GetCounter("100");
             auto p50 = percentiles->GetCounter("50");
 
@@ -556,9 +532,9 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
     Y_UNIT_TEST(ShouldFillSizePercentiles)
     {
         // Hdr histogram is no-op under Tsan, so just finish this test
-       if (NSan::TSanIsOn()) {
+        if (NSan::TSanIsOn()) {
             return;
-       }
+        }
 
         auto monitoring = CreateMonitoringServiceStub();
         auto requestStats = CreateServerRequestStats(
@@ -567,59 +543,56 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             EHistogramCounterOption::ReportMultipleCounters,
             {});
 
-        auto totalCounters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("request", "WriteBlocks");
+        auto totalCounters =
+            monitoring->GetCounters()->GetSubgroup("request", "WriteBlocks");
 
-        auto ssdCounters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("type", "ssd")
-            ->GetSubgroup("request", "WriteBlocks");
+        auto ssdCounters = monitoring->GetCounters()
+                               ->GetSubgroup("type", "ssd")
+                               ->GetSubgroup("request", "WriteBlocks");
 
-        auto hddCounters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("type", "hdd")
-            ->GetSubgroup("request", "WriteBlocks");
+        auto hddCounters = monitoring->GetCounters()
+                               ->GetSubgroup("type", "hdd")
+                               ->GetSubgroup("request", "WriteBlocks");
 
-        auto ssdNonreplCounters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("type", "ssd_nonrepl")
-            ->GetSubgroup("request", "WriteBlocks");
+        auto ssdNonreplCounters = monitoring->GetCounters()
+                                      ->GetSubgroup("type", "ssd_nonrepl")
+                                      ->GetSubgroup("request", "WriteBlocks");
 
         AddRequestStats(
             *requestStats,
             NCloud::NProto::STORAGE_MEDIA_SSD,
             EBlockStoreRequest::WriteBlocks,
-        {
-            { 1_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-            { 2_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-            { 3_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-        });
+            {
+                {1_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
+                {2_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
+                {3_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
+            });
 
         AddRequestStats(
             *requestStats,
             NCloud::NProto::STORAGE_MEDIA_HDD,
             EBlockStoreRequest::WriteBlocks,
-        {
-            { 4_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-            { 5_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-            { 6_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-        });
+            {
+                {4_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
+                {5_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
+                {6_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
+            });
 
         AddRequestStats(
             *requestStats,
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             EBlockStoreRequest::WriteBlocks,
-        {
-            { 7_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-            { 8_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-            { 9_MB, TDuration::MilliSeconds(100), TDuration::Zero() },
-        });
+            {
+                {7_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
+                {8_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
+                {9_MB, TDuration::MilliSeconds(100), TDuration::Zero()},
+            });
 
         requestStats->UpdateStats(true);
 
         {
-            auto percentiles = totalCounters->GetSubgroup("percentiles", "Size");
+            auto percentiles =
+                totalCounters->GetSubgroup("percentiles", "Size");
             auto p100 = percentiles->GetCounter("100");
             auto p50 = percentiles->GetCounter("50");
 
@@ -665,31 +638,27 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             EHistogramCounterOption::ReportMultipleCounters,
             {});
 
-        auto totalCounters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("request", "WriteBlocks");
+        auto totalCounters =
+            monitoring->GetCounters()->GetSubgroup("request", "WriteBlocks");
 
-        auto ssdCounters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("type", "ssd")
-            ->GetSubgroup("request", "WriteBlocks");
+        auto ssdCounters = monitoring->GetCounters()
+                               ->GetSubgroup("type", "ssd")
+                               ->GetSubgroup("request", "WriteBlocks");
 
-        auto hddCounters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("type", "hdd")
-            ->GetSubgroup("request", "WriteBlocks");
+        auto hddCounters = monitoring->GetCounters()
+                               ->GetSubgroup("type", "hdd")
+                               ->GetSubgroup("request", "WriteBlocks");
 
-        auto ssdNonreplCounters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("type", "ssd_nonrepl")
-            ->GetSubgroup("request", "WriteBlocks");
+        auto ssdNonreplCounters = monitoring->GetCounters()
+                                      ->GetSubgroup("type", "ssd_nonrepl")
+                                      ->GetSubgroup("request", "WriteBlocks");
 
-        auto hddNonreplCounters = monitoring
-            ->GetCounters()
-            ->GetSubgroup("type", "hdd_nonrepl")
-            ->GetSubgroup("request", "WriteBlocks");
+        auto hddNonreplCounters = monitoring->GetCounters()
+                                      ->GetSubgroup("type", "hdd_nonrepl")
+                                      ->GetSubgroup("request", "WriteBlocks");
 
-        auto shoot = [&] (auto mediaKind) {
+        auto shoot = [&](auto mediaKind)
+        {
             auto requestStarted = requestStats->RequestStarted(
                 mediaKind,
                 EBlockStoreRequest::WriteBlocks,
@@ -698,11 +667,12 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             requestStats->RequestCompleted(
                 mediaKind,
                 EBlockStoreRequest::WriteBlocks,
-                requestStarted - DurationToCyclesSafe(TDuration::MilliSeconds(100)),
+                requestStarted -
+                    DurationToCyclesSafe(TDuration::MilliSeconds(100)),
                 TDuration::Zero(),
                 1_MB,
                 EDiagnosticsErrorKind::ErrorSilent,
-                NCloud::NProto::EF_SILENT, // a stub at the moment
+                NCloud::NProto::EF_SILENT,   // a stub at the moment
                 false,
                 ECalcMaxTime::ENABLE,
                 0);
@@ -736,7 +706,8 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             {});
 
         unsigned int totalShots = 0;
-        auto shoot = [&] (auto mediaKind, unsigned int count) {
+        auto shoot = [&](auto mediaKind, unsigned int count)
+        {
             totalShots += count;
             while (count--) {
                 auto requestStarted = requestStats->RequestStarted(
@@ -747,8 +718,8 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 requestStats->RequestCompleted(
                     mediaKind,
                     EBlockStoreRequest::WriteBlocks,
-                    requestStarted
-                        - DurationToCyclesSafe(TDuration::MilliSeconds(100)),
+                    requestStarted -
+                        DurationToCyclesSafe(TDuration::MilliSeconds(100)),
                     TDuration::Zero(),
                     1_MB,
                     EDiagnosticsErrorKind::ErrorSilent,
@@ -768,9 +739,11 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
         shoot(NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3, 3);
 
         auto totalCounters = monitoring->GetCounters();
-        auto getHwProblems = [&totalCounters] (const TString &type) {
+        auto getHwProblems = [&totalCounters](const TString& type)
+        {
             return totalCounters->GetSubgroup("type", type)
-                ->GetCounter("HwProblems")->Val();
+                ->GetCounter("HwProblems")
+                ->Val();
         };
 
         auto totalHwProblems = totalCounters->GetCounter("HwProblems")->Val();

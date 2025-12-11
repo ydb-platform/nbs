@@ -2,7 +2,6 @@
 
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
-
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -10,9 +9,9 @@
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
-#include <google/protobuf/util/json_util.h>
-
 #include <util/string/printf.h>
+
+#include <google/protobuf/util/json_util.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -26,8 +25,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRebindVolumesActor final
-    : public TActorBootstrapped<TRebindVolumesActor>
+class TRebindVolumesActor final: public TActorBootstrapped<TRebindVolumesActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
@@ -59,9 +57,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TRebindVolumesActor::TRebindVolumesActor(
-        TRequestInfoPtr requestInfo,
-        NPrivateProto::TRebindVolumesRequest rebindRequest,
-        TVector<TString> diskIds)
+    TRequestInfoPtr requestInfo,
+    NPrivateProto::TRebindVolumesRequest rebindRequest,
+    TVector<TString> diskIds)
     : RequestInfo(std::move(requestInfo))
     , RebindRequest(std::move(rebindRequest))
     , DiskIds(std::move(diskIds))
@@ -72,7 +70,9 @@ void TRebindVolumesActor::Bootstrap(const TActorContext& ctx)
     const auto binding =
         static_cast<NProto::EVolumeBinding>(RebindRequest.GetBinding());
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Rebinding %u disks, binding: %u",
         DiskIds.size(),
         binding);
@@ -87,11 +87,11 @@ void TRebindVolumesActor::Bootstrap(const TActorContext& ctx)
             op = TRequest::EChangeBindingOp::RELEASE_TO_HIVE;
         }
 
-        auto request = std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
-            diskId,
-            op,
-            NProto::SOURCE_MANUAL
-        );
+        auto request =
+            std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+                diskId,
+                op,
+                NProto::SOURCE_MANUAL);
 
         NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
     }
@@ -99,11 +99,11 @@ void TRebindVolumesActor::Bootstrap(const TActorContext& ctx)
 
 void TRebindVolumesActor::ReplyAndDie(const TActorContext& ctx)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(Error);
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(Error);
     google::protobuf::util::MessageToJsonString(
         NPrivateProto::TRebindVolumesResponse(),
-        response->Record.MutableOutput()
-    );
+        response->Record.MutableOutput());
 
     LWTRACK(
         ResponseSent_Service,
@@ -129,7 +129,9 @@ void TRebindVolumesActor::HandleChangeVolumeBindingResponse(
 
         const auto formattedError = FormatError(msg->GetError());
 
-        LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "Failed to rebind disk: %s",
             formattedError.Quote().c_str());
 
@@ -145,8 +147,11 @@ void TRebindVolumesActor::HandleChangeVolumeBindingResponse(
     }
 
     if (++Responses == DiskIds.size()) {
-        LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-            "Rebound %u disks", DiskIds.size());
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::SERVICE,
+            "Rebound %u disks",
+            DiskIds.size());
 
         ReplyAndDie(ctx);
     }
@@ -186,7 +191,9 @@ TResultOrError<IActorPtr> TServiceActor::CreateRebindVolumesActionActor(
     }
 
     NPrivateProto::TRebindVolumesRequest rebindRequest;
-    if (!google::protobuf::util::JsonStringToMessage(input, &rebindRequest).ok()) {
+    if (!google::protobuf::util::JsonStringToMessage(input, &rebindRequest)
+             .ok())
+    {
         return MakeError(E_ARGUMENT, "Failed to parse input");
     }
 

@@ -28,7 +28,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime()
         TBlockStoreComponents::END,
         GetComponentName);
 
-    // for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
+    // for (ui32 i = TBlockStoreComponents::START; i <
+    // TBlockStoreComponents::END; ++i) {
     //     runtime->SetLogPriority(i, NLog::PRI_DEBUG);
     // }
     // runtime->SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
@@ -43,7 +44,8 @@ TTabletSetupInfoPtr PrepareTabletSetupInfo(TTestActorRuntime& runtime)
 {
     const auto& appData = runtime.GetAppData();
 
-    auto factory = [=] (const TActorId& owner, TTabletStorageInfo* storage) {
+    auto factory = [=](const TActorId& owner, TTabletStorageInfo* storage)
+    {
         auto actor = CreateTestTablet(owner, storage);
         return actor.release();
     };
@@ -56,34 +58,61 @@ TTabletSetupInfoPtr PrepareTabletSetupInfo(TTestActorRuntime& runtime)
         appData.SystemPoolId);
 }
 
-void StartTablet(TTestActorRuntime& runtime, const TActorId& bootstrapper, const TActorId& sender)
+void StartTablet(
+    TTestActorRuntime& runtime,
+    const TActorId& bootstrapper,
+    const TActorId& sender)
 {
-    Send(runtime, bootstrapper, sender, std::make_unique<TEvBootstrapper::TEvStart>());
+    Send(
+        runtime,
+        bootstrapper,
+        sender,
+        std::make_unique<TEvBootstrapper::TEvStart>());
 
     TAutoPtr<IEventHandle> handle;
-    auto response = runtime.GrabEdgeEventRethrow<TEvBootstrapper::TEvStatus>(handle);
+    auto response =
+        runtime.GrabEdgeEventRethrow<TEvBootstrapper::TEvStatus>(handle);
     UNIT_ASSERT(response);
-    UNIT_ASSERT_C(response->Status == TEvBootstrapper::STARTED, response->Message);
+    UNIT_ASSERT_C(
+        response->Status == TEvBootstrapper::STARTED,
+        response->Message);
 }
 
-void StopTablet(TTestActorRuntime& runtime, const TActorId& bootstrapper, const TActorId& sender)
+void StopTablet(
+    TTestActorRuntime& runtime,
+    const TActorId& bootstrapper,
+    const TActorId& sender)
 {
-    Send(runtime, bootstrapper, sender, std::make_unique<TEvBootstrapper::TEvStop>());
+    Send(
+        runtime,
+        bootstrapper,
+        sender,
+        std::make_unique<TEvBootstrapper::TEvStop>());
 
     TAutoPtr<IEventHandle> handle;
-    auto response = runtime.GrabEdgeEventRethrow<TEvBootstrapper::TEvStatus>(handle);
+    auto response =
+        runtime.GrabEdgeEventRethrow<TEvBootstrapper::TEvStatus>(handle);
     UNIT_ASSERT(response);
-    UNIT_ASSERT_C(response->Status == TEvBootstrapper::STOPPED, response->Message);
+    UNIT_ASSERT_C(
+        response->Status == TEvBootstrapper::STOPPED,
+        response->Message);
 }
 
 void KillTablet(TTestActorRuntime& runtime, ui64 tablet, const TActorId& sender)
 {
-    SendToPipe(runtime, tablet, sender, std::make_unique<TEvents::TEvPoisonPill>());
+    SendToPipe(
+        runtime,
+        tablet,
+        sender,
+        std::make_unique<TEvents::TEvPoisonPill>());
 
     TAutoPtr<IEventHandle> handle;
-    auto response = runtime.GrabEdgeEventRethrow<TEvBootstrapper::TEvStatus>(handle);
+    auto response =
+        runtime.GrabEdgeEventRethrow<TEvBootstrapper::TEvStatus>(handle);
     UNIT_ASSERT(response);
-    UNIT_ASSERT_C(response->Status == TEvBootstrapper::STARTED, response->Message);
+    UNIT_ASSERT_C(
+        response->Status == TEvBootstrapper::STARTED,
+        response->Message);
 }
 
 }   // namespace
@@ -103,11 +132,13 @@ Y_UNIT_TEST_SUITE(TBootstrapperTest)
 
         auto setupInfo = PrepareTabletSetupInfo(*runtime);
 
-        auto bootstrapper = Register(*runtime, CreateBootstrapper(
-            TBootstrapperConfig(),
-            sender,
-            std::move(storageInfo),
-            std::move(setupInfo)));
+        auto bootstrapper = Register(
+            *runtime,
+            CreateBootstrapper(
+                TBootstrapperConfig(),
+                sender,
+                std::move(storageInfo),
+                std::move(setupInfo)));
 
         StartTablet(*runtime, bootstrapper, sender);
         StopTablet(*runtime, bootstrapper, sender);
@@ -128,11 +159,13 @@ Y_UNIT_TEST_SUITE(TBootstrapperTest)
         config.CoolDownTimeout = TDuration::Zero();
         config.RestartAlways = true;
 
-        auto bootstrapper = Register(*runtime, CreateBootstrapper(
-            config,
-            sender,
-            std::move(storageInfo),
-            std::move(setupInfo)));
+        auto bootstrapper = Register(
+            *runtime,
+            CreateBootstrapper(
+                config,
+                sender,
+                std::move(storageInfo),
+                std::move(setupInfo)));
 
         StartTablet(*runtime, bootstrapper, sender);
         KillTablet(*runtime, TestTabletId, sender);

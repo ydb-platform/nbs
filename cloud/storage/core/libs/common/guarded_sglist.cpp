@@ -4,8 +4,7 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TGuardedSgList::TGuardedObject final
-    : public IGuardedObject
+class TGuardedSgList::TGuardedObject final: public IGuardedObject
 {
 private:
     // Refs==1 means that access is open, clients can get access by incrementing
@@ -66,16 +65,14 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TGuardedSgList::TDependentGuardedObject final
-    : public IGuardedObject
+class TGuardedSgList::TDependentGuardedObject final: public IGuardedObject
 {
 private:
     TGuardedObject GuardedObject;
     const TIntrusivePtr<IGuardedObject> Dependee;
 
 public:
-    explicit TDependentGuardedObject(
-            TIntrusivePtr<IGuardedObject> dependee)
+    explicit TDependentGuardedObject(TIntrusivePtr<IGuardedObject> dependee)
         : Dependee(std::move(dependee))
     {}
 
@@ -106,8 +103,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TGuardedSgList::TUnionGuardedObject final
-    : public IGuardedObject
+class TGuardedSgList::TUnionGuardedObject final: public IGuardedObject
 {
 private:
     TGuardedObject GuardedObject;
@@ -165,8 +161,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TGuardedSgList::TGuard::TGuard(
-        TIntrusivePtr<IGuardedObject> guardedObject,
-        const TSgList& sglist)
+    TIntrusivePtr<IGuardedObject> guardedObject,
+    const TSgList& sglist)
     : Sglist(sglist)
 {
     if (guardedObject->Acquire()) {
@@ -233,8 +229,8 @@ TGuardedSgList::TGuardedSgList(TSgList sglist)
 {}
 
 TGuardedSgList::TGuardedSgList(
-        TIntrusivePtr<IGuardedObject> guardedObject,
-        TSgList sglist)
+    TIntrusivePtr<IGuardedObject> guardedObject,
+    TSgList sglist)
     : GuardedObject(std::move(guardedObject))
     , Sglist(std::move(sglist))
 {}

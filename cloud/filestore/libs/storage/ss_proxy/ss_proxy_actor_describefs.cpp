@@ -46,8 +46,7 @@ private:
     void HandleDescribeSchemeResponse(
         const TEvStorageSSProxy::TEvDescribeSchemeResponse::TPtr& ev,
         const TActorContext& ctx);
-    void HandleWakeup(
-        const TActorContext& ctx);
+    void HandleWakeup(const TActorContext& ctx);
 
     void ReplyAndDie(
         const TActorContext& ctx,
@@ -61,10 +60,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDescribeFileStoreActor::TDescribeFileStoreActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
-        TActorId storageSSProxy,
-        TString fileSystemId)
+    TRequestInfoPtr requestInfo,
+    TStorageConfigPtr config,
+    TActorId storageSSProxy,
+    TString fileSystemId)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , StorageSSProxy(std::move(storageSSProxy))
@@ -81,11 +80,10 @@ void TDescribeFileStoreActor::Bootstrap(const TActorContext& ctx)
 
 void TDescribeFileStoreActor::DescribeScheme(const TActorContext& ctx)
 {
-    auto path = GetFileSystemPath(
-        Config->GetSchemeShardDir(),
-        FileSystemId);
+    auto path = GetFileSystemPath(Config->GetSchemeShardDir(), FileSystemId);
 
-    auto request = std::make_unique<TEvStorageSSProxy::TEvDescribeSchemeRequest>(path);
+    auto request =
+        std::make_unique<TEvStorageSSProxy::TEvDescribeSchemeRequest>(path);
     NCloud::Send(ctx, StorageSSProxy, std::move(request));
 }
 
@@ -103,9 +101,7 @@ void TDescribeFileStoreActor::HandleDescribeSchemeResponse(
 
     const auto pathType = msg->PathDescription.GetSelf().GetPathType();
 
-    auto path = GetFileSystemPath(
-        Config->GetSchemeShardDir(),
-        FileSystemId);
+    auto path = GetFileSystemPath(Config->GetSchemeShardDir(), FileSystemId);
 
     if (pathType != NKikimrSchemeOp::EPathTypeFileStore) {
         ReplyAndDie(
@@ -113,8 +109,7 @@ void TDescribeFileStoreActor::HandleDescribeSchemeResponse(
             MakeError(
                 E_INVALID_STATE,
                 TStringBuilder()
-                    << "Described path is not a filestore: "
-                    << path.Quote()));
+                    << "Described path is not a filestore: " << path.Quote()));
         return;
     }
 
@@ -124,9 +119,8 @@ void TDescribeFileStoreActor::HandleDescribeSchemeResponse(
             ctx,
             MakeError(
                 E_REJECTED,
-                TStringBuilder()
-                    << "Filestore volume " << path.Quote()
-                    << " has zero IndexTabletId"));
+                TStringBuilder() << "Filestore volume " << path.Quote()
+                                 << " has zero IndexTabletId"));
         return;
     }
 
@@ -139,7 +133,9 @@ void TDescribeFileStoreActor::HandleDescribeSchemeResponse(
 
 void TDescribeFileStoreActor::HandleWakeup(const TActorContext& ctx)
 {
-    LOG_ERROR(ctx, TFileStoreComponents::SS_PROXY,
+    LOG_ERROR(
+        ctx,
+        TFileStoreComponents::SS_PROXY,
         "Describe request timed out for filesystem %s",
         FileSystemId.c_str());
 
@@ -153,7 +149,8 @@ void TDescribeFileStoreActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvSSProxy::TEvDescribeFileStoreResponse>(error);
+    auto response =
+        std::make_unique<TEvSSProxy::TEvDescribeFileStoreResponse>(error);
     ReplyAndDie(ctx, std::move(response));
 }
 
@@ -168,7 +165,9 @@ void TDescribeFileStoreActor::ReplyAndDie(
 STFUNC(TDescribeFileStoreActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvStorageSSProxy::TEvDescribeSchemeResponse, HandleDescribeSchemeResponse);
+        HFunc(
+            TEvStorageSSProxy::TEvDescribeSchemeResponse,
+            HandleDescribeSchemeResponse);
 
         CFunc(TEvents::TSystem::Wakeup, HandleWakeup)
 
@@ -191,10 +190,8 @@ void TSSProxyActor::HandleDescribeFileStore(
 {
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     auto actor = std::make_unique<TDescribeFileStoreActor>(
         std::move(requestInfo),

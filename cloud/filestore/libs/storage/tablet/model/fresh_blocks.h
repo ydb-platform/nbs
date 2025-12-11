@@ -53,10 +53,8 @@ public:
 
     bool FindBlock(ui64 nodeId, ui32 blockIndex) const;
 
-    TMaybe<TFreshBlock> FindBlock(
-        ui64 nodeId,
-        ui32 blockIndex,
-        ui64 commitId) const;
+    TMaybe<TFreshBlock>
+    FindBlock(ui64 nodeId, ui32 blockIndex, ui64 commitId) const;
 
     void FindBlocks(IFreshBlockVisitor& visitor) const;
     void FindBlocks(IFreshBlockVisitor& visitor, ui64 commitId) const;

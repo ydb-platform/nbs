@@ -49,7 +49,7 @@ int IMessage::SendFds(
     msgh.msg_control = control;
     msgh.msg_controllen = sizeof(control);
 
-    cmsghdr *cmsg;
+    cmsghdr* cmsg;
     cmsg = CMSG_FIRSTHDR(&msgh);
     cmsg->cmsg_len = CMSG_LEN(fd_size);
     cmsg->cmsg_level = SOL_SOCKET;
@@ -85,4 +85,4 @@ int IMessage::Recv(int sock, TVhostUserMsgBase& data)
     return ret;
 }
 
-} // namespace NVHostUser
+}   // namespace NVHostUser

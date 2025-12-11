@@ -14,9 +14,8 @@ using namespace NKikimr;
 
 void TPartitionActor::LoadFreshBlobs(const TActorContext& ctx)
 {
-    auto freshChannels = State->GetChannelsByKind([](auto kind) {
-        return kind == EChannelDataKind::Fresh;
-    });
+    auto freshChannels = State->GetChannelsByKind(
+        [](auto kind) { return kind == EChannelDataKind::Fresh; });
 
     auto actor = NCloud::Register<TLoadFreshBlobsActor>(
         ctx,

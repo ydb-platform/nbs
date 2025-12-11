@@ -1,6 +1,5 @@
 #pragma once
 
-
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
 
@@ -92,30 +91,23 @@ struct TEvStatsServicePrivate
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TBlockStorePrivateEvents::STATS_SERVICE_END,
+    static_assert(
+        EvEnd < (int)TBlockStorePrivateEvents::STATS_SERVICE_END,
         "EvEnd expected to be < TBlockStorePrivateEvents::SERVICE_END");
 
     BLOCKSTORE_STATS_SERVICE_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENTS)
 
-    using TEvUploadDisksStats = TRequestEvent<
-        TUploadDisksStats,
-        EvUploadDisksStats
-    >;
+    using TEvUploadDisksStats =
+        TRequestEvent<TUploadDisksStats, EvUploadDisksStats>;
 
-    using TEvUploadDisksStatsCompleted = TResponseEvent<
-        TUploadDisksStatsCompleted,
-        EvUploadDisksStatsCompleted
-    >;
+    using TEvUploadDisksStatsCompleted =
+        TResponseEvent<TUploadDisksStatsCompleted, EvUploadDisksStatsCompleted>;
 
-    using TEvStatsUploadRetryTimeout = TRequestEvent<
-        TStatsUploadRetryTimeout,
-        EvStatsUploadRetryTimeout
-    >;
+    using TEvStatsUploadRetryTimeout =
+        TRequestEvent<TStatsUploadRetryTimeout, EvStatsUploadRetryTimeout>;
 
-    using TEvCleanupBackgroundSources = TRequestEvent<
-        TCleanupBackgroundSources,
-        EvCleanupBackgroundSources
-    >;
+    using TEvCleanupBackgroundSources =
+        TRequestEvent<TCleanupBackgroundSources, EvCleanupBackgroundSources>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

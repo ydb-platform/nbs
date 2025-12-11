@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
+
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -104,7 +105,8 @@ struct TEnv
 
 Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
 {
-#define TEST_READ_REPLICA(expected, state, startIndex, blockCount) {           \
+#define TEST_READ_REPLICA(expected, state, startIndex, blockCount)             \
+    {                                                                          \
         ui32 actorIndex;                                                       \
         const auto blockRange =                                                \
             TBlockRange64::WithLength(startIndex, blockCount);                 \
@@ -112,8 +114,8 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage()); \
         NActors::TActorId actorId = state.GetReplicaActor(actorIndex);         \
         UNIT_ASSERT_VALUES_EQUAL(expected, actorId);                           \
-}                                                                              \
-// TEST_READ_REPLICA
+    }                                                                          \
+    // TEST_READ_REPLICA
 
     Y_UNIT_TEST(ShouldSelectProperReadReplicas)
     {
@@ -125,11 +127,10 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
             std::make_shared<TStorageConfig>(
                 NProto::TStorageServiceConfig(),
                 nullptr),
-            "xxx",      // rwClientId
+            "xxx",   // rwClientId
             env.Config,
             env.Migrations,
-            {env.ReplicaDevices}
-        );
+            {env.ReplicaDevices});
 
         NActors::TActorId actor1(1, "vasya");
         NActors::TActorId actor2(2, "petya");
@@ -160,18 +161,18 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
 
         TDynamicCountersPtr counters = new TDynamicCounters();
         InitCriticalEventsCounter(counters);
-        auto freshDeviceNotFoundInConfig =
-            counters->GetCounter("AppCriticalEvents/FreshDeviceNotFoundInConfig", true);
+        auto freshDeviceNotFoundInConfig = counters->GetCounter(
+            "AppCriticalEvents/FreshDeviceNotFoundInConfig",
+            true);
 
         TMirrorPartitionState state(
             std::make_shared<TStorageConfig>(
                 NProto::TStorageServiceConfig(),
                 nullptr),
-            "xxx",      // rwClientId
+            "xxx",   // rwClientId
             env.Config,
             env.Migrations,
-            {env.ReplicaDevices}
-        );
+            {env.ReplicaDevices});
 
         UNIT_ASSERT_VALUES_EQUAL(0, freshDeviceNotFoundInConfig->Val());
 
@@ -280,11 +281,10 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
             std::make_shared<TStorageConfig>(
                 NProto::TStorageServiceConfig(),
                 nullptr),
-            "xxx",      // rwClientId
+            "xxx",   // rwClientId
             env.Config,
             env.Migrations,
-            {env.ReplicaDevices}
-        );
+            {env.ReplicaDevices});
 
         state.PrepareMigrationConfig();
 
@@ -375,11 +375,10 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
             std::make_shared<TStorageConfig>(
                 NProto::TStorageServiceConfig(),
                 nullptr),
-            "xxx",      // rwClientId
+            "xxx",   // rwClientId
             env.Config,
             env.Migrations,
-            {env.ReplicaDevices}
-        );
+            {env.ReplicaDevices});
 
         state.PrepareMigrationConfig();
 
@@ -469,18 +468,18 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
 
         TDynamicCountersPtr counters = new TDynamicCounters();
         InitCriticalEventsCounter(counters);
-        auto migrationSourceNotFound =
-            counters->GetCounter("AppCriticalEvents/MigrationSourceNotFound", true);
+        auto migrationSourceNotFound = counters->GetCounter(
+            "AppCriticalEvents/MigrationSourceNotFound",
+            true);
 
         TMirrorPartitionState state(
             std::make_shared<TStorageConfig>(
                 NProto::TStorageServiceConfig(),
                 nullptr),
-            "xxx",      // rwClientId
+            "xxx",   // rwClientId
             env.Config,
             env.Migrations,
-            {env.ReplicaDevices}
-        );
+            {env.ReplicaDevices});
 
         UNIT_ASSERT_VALUES_EQUAL(0, migrationSourceNotFound->Val());
 
@@ -514,18 +513,18 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
 
         TDynamicCountersPtr counters = new TDynamicCounters();
         InitCriticalEventsCounter(counters);
-        auto migrationSourceNotFound =
-            counters->GetCounter("AppCriticalEvents/MigrationSourceNotFound", true);
+        auto migrationSourceNotFound = counters->GetCounter(
+            "AppCriticalEvents/MigrationSourceNotFound",
+            true);
 
         TMirrorPartitionState state(
             std::make_shared<TStorageConfig>(
                 NProto::TStorageServiceConfig(),
                 nullptr),
-            "xxx",      // rwClientId
+            "xxx",   // rwClientId
             env.Config,
             env.Migrations,
-            {env.ReplicaDevices}
-        );
+            {env.ReplicaDevices});
 
         UNIT_ASSERT_VALUES_EQUAL(0, migrationSourceNotFound->Val());
 
@@ -555,11 +554,10 @@ Y_UNIT_TEST_SUITE(TMirrorPartitionStateTest)
             std::make_shared<TStorageConfig>(
                 NProto::TStorageServiceConfig(),
                 nullptr),
-            "xxx",      // rwClientId
+            "xxx",   // rwClientId
             env.Config,
             env.Migrations,
-            {env.ReplicaDevices}
-        );
+            {env.ReplicaDevices});
 
         UNIT_ASSERT_VALUES_EQUAL(1, freshDeviceNotFoundInConfig->Val());
     }

@@ -17,7 +17,7 @@ TString FilePath(TStringBuf fileName)
         fileName);
 }
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -50,8 +50,8 @@ Y_UNIT_TEST_SUITE(TParserTest)
         }
 
         UNIT_ASSERT_VALUES_EQUAL(1 + 1 + 1 + 1 + 5 + 42736, freeSpacePerAg[0]);
-        UNIT_ASSERT_VALUES_EQUAL(1 + 1 + 1 + 1 + 47894,     freeSpacePerAg[1]);
-        UNIT_ASSERT_VALUES_EQUAL(1 + 1 + 1 + 1 + 2183494,   freeSpacePerAg[2]);
-        UNIT_ASSERT_VALUES_EQUAL(1 + 1 + 1 + 1 + 6094838,   freeSpacePerAg[3]);
+        UNIT_ASSERT_VALUES_EQUAL(1 + 1 + 1 + 1 + 47894, freeSpacePerAg[1]);
+        UNIT_ASSERT_VALUES_EQUAL(1 + 1 + 1 + 1 + 2183494, freeSpacePerAg[2]);
+        UNIT_ASSERT_VALUES_EQUAL(1 + 1 + 1 + 1 + 6094838, freeSpacePerAg[3]);
     }
 }

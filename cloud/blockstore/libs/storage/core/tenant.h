@@ -3,13 +3,15 @@
 #include "config.h"
 
 namespace NActors {
-    struct TActorContext;
+struct TActorContext;
 }   // namespace NActors
 
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ui64 GetHiveTabletId(const TStorageConfigPtr& config, const NActors::TActorContext& ctx);
+ui64 GetHiveTabletId(
+    const TStorageConfigPtr& config,
+    const NActors::TActorContext& ctx);
 
 }   // namespace NCloud::NBlockStore::NStorage

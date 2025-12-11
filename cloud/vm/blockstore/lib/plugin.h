@@ -4,6 +4,7 @@
 
 #include <cloud/vm/api/blockstore-plugin.h>
 
+#include <cloud/blockstore/config/plugin.pb.h>
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/diagnostics/incomplete_requests.h>
@@ -11,17 +12,13 @@
 #include <cloud/blockstore/libs/nbd/public.h>
 #include <cloud/blockstore/libs/throttling/public.h>
 
-#include <cloud/blockstore/config/plugin.pb.h>
-
-
 #include <util/generic/string.h>
 
 namespace NCloud::NBlockStore::NPlugin {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IPlugin
-    : public IIncompleteRequestProvider
+struct IPlugin: public IIncompleteRequestProvider
 {
     virtual ~IPlugin() = default;
 

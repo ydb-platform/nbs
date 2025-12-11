@@ -21,9 +21,9 @@ private:
 
 public:
     TDumpBlockCommitIds(
-            const TVector<TBlock>& blocks,
-            TVector<IProfileLog::TBlockCommitId>& blockCommitIds,
-            bool enabled)
+        const TVector<TBlock>& blocks,
+        TVector<IProfileLog::TBlockCommitId>& blockCommitIds,
+        bool enabled)
         : Blocks(blocks)
         , BlockCommitIds(blockCommitIds)
         , Enabled(enabled)
@@ -35,12 +35,12 @@ public:
         BlockCommitIds.reserve(BlockCommitIds.size() + Blocks.size());
 
         for (const auto& block: Blocks) {
-            BlockCommitIds.push_back({
-                block.BlockIndex,
-                block.MinCommitId,
-                block.MaxCommitId,
-                0,  // minCommitIdNew (fill later)
-                0}  // maxCommitIdNew (fill later)
+            BlockCommitIds.push_back(
+                {block.BlockIndex,
+                 block.MinCommitId,
+                 block.MaxCommitId,
+                 0,   // minCommitIdNew (fill later)
+                 0}   // maxCommitIdNew (fill later)
             );
         }
     }
@@ -60,7 +60,6 @@ public:
             it->MinCommitIdNew = jt->MinCommitId;
             it->MaxCommitIdNew = jt->MaxCommitId;
         }
-
     }
 };
 

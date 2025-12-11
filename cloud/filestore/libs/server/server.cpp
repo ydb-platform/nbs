@@ -93,35 +93,35 @@ NProto::TError MakeGrpcError(const grpc::Status& status)
 grpc::Status MakeGrpcStatus(const NProto::TError& error)
 {
     if (HasError(error)) {
-        return { grpc::UNAVAILABLE, error.GetMessage() };
+        return {grpc::UNAVAILABLE, error.GetMessage()};
     }
     return grpc::Status::OK;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_DECLARE_METHOD(name, proto, method, ...)                     \
-    struct T##name##Method                                                     \
-    {                                                                          \
-        static constexpr auto RequestName = TStringBuf(#method);               \
-        static constexpr auto RequestType = EFileStoreRequest::method;         \
-                                                                               \
-        using TRequest = NProto::T##proto##Request;                            \
-        using TResponse = NProto::T##proto##Response;                          \
-                                                                               \
-        template <typename T, typename ...TArgs>                               \
-        static auto Prepare(T& service, TArgs&& ...args)                       \
-        {                                                                      \
-            return service.Request##method(std::forward<TArgs>(args)...);      \
-        }                                                                      \
-                                                                               \
-        template <typename T, typename ...TArgs>                               \
-        static auto Execute(T& service, TArgs&& ...args)                       \
-        {                                                                      \
-            return service.method(std::forward<TArgs>(args)...);               \
-        }                                                                      \
-    };                                                                         \
-// FILESTORE_DECLARE_METHOD
+#define FILESTORE_DECLARE_METHOD(name, proto, method, ...)                \
+    struct T##name##Method                                                \
+    {                                                                     \
+        static constexpr auto RequestName = TStringBuf(#method);          \
+        static constexpr auto RequestType = EFileStoreRequest::method;    \
+                                                                          \
+        using TRequest = NProto::T##proto##Request;                       \
+        using TResponse = NProto::T##proto##Response;                     \
+                                                                          \
+        template <typename T, typename... TArgs>                          \
+        static auto Prepare(T& service, TArgs&&... args)                  \
+        {                                                                 \
+            return service.Request##method(std::forward<TArgs>(args)...); \
+        }                                                                 \
+                                                                          \
+        template <typename T, typename... TArgs>                          \
+        static auto Execute(T& service, TArgs&&... args)                  \
+        {                                                                 \
+            return service.method(std::forward<TArgs>(args)...);          \
+        }                                                                 \
+    };                                                                    \
+    // FILESTORE_DECLARE_METHOD
 
 #define FILESTORE_DECLARE_METHOD_FS(name, ...) \
     FILESTORE_DECLARE_METHOD(name##Fs, name, name, __VA_ARGS__)
@@ -143,11 +143,11 @@ FILESTORE_DECLARE_METHOD_STREAM(GetSessionEvents)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_REQUEST_CHECK(name, ...)                                      \
-    if (std::is_same_v<TRequest, NProto::T##name##Request>) {                   \
-        return true;                                                            \
-    }                                                                           \
-// FILESTORE_REQUEST_CHECK
+#define FILESTORE_REQUEST_CHECK(name, ...)                    \
+    if (std::is_same_v<TRequest, NProto::T##name##Request>) { \
+        return true;                                          \
+    }                                                         \
+    // FILESTORE_REQUEST_CHECK
 
 template <typename TRequest>
 bool IsServiceControlPlaneRequest()
@@ -161,8 +161,8 @@ template <typename TRequest>
 ELogPriority GetRequestLogPriority()
 {
     return IsServiceControlPlaneRequest<TRequest>()
-        ? ELogPriority::TLOG_INFO
-        : ELogPriority::TLOG_RESOURCES;
+               ? ELogPriority::TLOG_INFO
+               : ELogPriority::TLOG_RESOURCES;
 }
 
 #undef FILESTORE_REQUEST_CHECK
@@ -178,14 +178,13 @@ TString ReadFile(const TString& fileName)
 ////////////////////////////////////////////////////////////////////////////////
 
 const NCloud::TRequestSourceKinds RequestSourceKinds = {
-    { "INSECURE_CONTROL_CHANNEL", NProto::SOURCE_INSECURE_CONTROL_CHANNEL },
-    { "SECURE_CONTROL_CHANNEL",   NProto::SOURCE_SECURE_CONTROL_CHANNEL },
+    {"INSECURE_CONTROL_CHANNEL", NProto::SOURCE_INSECURE_CONTROL_CHANNEL},
+    {"SECURE_CONTROL_CHANNEL", NProto::SOURCE_SECURE_CONTROL_CHANNEL},
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TServerRequestHandlerBase
-    : public NStorage::NGrpc::TRequestHandlerBase
+class TServerRequestHandlerBase: public NStorage::NGrpc::TRequestHandlerBase
 {
 protected:
     TCallContextPtr CallContext = MakeIntrusive<TCallContext>();
@@ -243,7 +242,7 @@ struct TFileStoreContext: TAppContext
     TServerStatePtr State;
 };
 
-struct TEndpointManagerContext : TAppContext
+struct TEndpointManagerContext: TAppContext
 {
     NProto::TEndpointManagerService::AsyncService Service;
     IEndpointManagerPtr ServiceImpl;
@@ -277,9 +276,7 @@ public:
         : AppCtx(appCtx)
     {}
 
-    void AddClient(
-        const TSocketHolder& socket,
-        NProto::ERequestSource source)
+    void AddClient(const TSocketHolder& socket, NProto::ERequestSource source)
     {
         if (AtomicGet(AppCtx.ShouldStop)) {
             return;
@@ -296,16 +293,17 @@ public:
             // messages.
             dupSocket = SafeCreateDuplicate(socket);
 
-            TClientInfo client {static_cast<ui32>(socket), source};
+            TClientInfo client{static_cast<ui32>(socket), source};
             auto res = ClientInfos.emplace((ui32)dupSocket, std::move(client));
             Y_ABORT_UNLESS(res.second);
         }
 
         TLog& Log = AppCtx.Log;
         STORAGE_DEBUG(
-            "Accept client. Unix socket fd = " <<
-            static_cast<ui32>(dupSocket));
-        grpc::AddInsecureChannelFromFd(AppCtx.Server.get(), dupSocket.Release());
+            "Accept client. Unix socket fd = " << static_cast<ui32>(dupSocket));
+        grpc::AddInsecureChannelFromFd(
+            AppCtx.Server.get(),
+            dupSocket.Release());
     }
 
     void RemoveClient(const TSocketHolder& socket)
@@ -362,7 +360,8 @@ private:
         }
     }
 
-    THashMap<ui32, TClientInfo>::iterator FindClient(const TSocketHolder& socket)
+    THashMap<ui32, TClientInfo>::iterator FindClient(
+        const TSocketHolder& socket)
     {
         ui32 fd = socket;
         for (auto it = ClientInfos.begin(); it != ClientInfos.end(); ++it) {
@@ -377,14 +376,12 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TClientStorage final
-    : public IClientStorage
+class TClientStorage final: public IClientStorage
 {
     std::shared_ptr<TSessionStorage> Storage;
 
 public:
-    TClientStorage(
-            std::shared_ptr<TSessionStorage> storage)
+    TClientStorage(std::shared_ptr<TSessionStorage> storage)
         : Storage(std::move(storage))
     {}
 
@@ -403,8 +400,7 @@ public:
 
 IClientStoragePtr TSessionStorage::CreateClientStorage()
 {
-    return std::make_shared<TClientStorage>(
-        this->shared_from_this());
+    return std::make_shared<TClientStorage>(this->shared_from_this());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -416,9 +412,7 @@ void TAppContext::ValidateRequest(
     auto authContext = context.auth_context();
     Y_ABORT_UNLESS(authContext);
 
-    auto source = GetRequestSource(
-        *authContext,
-        RequestSourceKinds);
+    auto source = GetRequestSource(*authContext, RequestSourceKinds);
 
     if (!source) {
         ui32 fd = 0;
@@ -465,8 +459,8 @@ using TRequestsInFlight =
 using TExecutorContext = NStorage::NGrpc::
     TExecutorContext<grpc::ServerCompletionQueue, TRequestsInFlight>;
 
-using TExecutor = NStorage::NGrpc::
-    TExecutor<grpc::ServerCompletionQueue, TRequestsInFlight>;
+using TExecutor =
+    NStorage::NGrpc::TExecutor<grpc::ServerCompletionQueue, TRequestsInFlight>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -511,8 +505,7 @@ NProto::TError TryAdjustIovecOffsets(
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TAppContext, typename TMethod>
-class TRequestHandler final
-    : public TServerRequestHandlerBase
+class TRequestHandler final: public TServerRequestHandlerBase
 {
     using TRequest = typename TMethod::TRequest;
     using TResponse = typename TMethod::TResponse;
@@ -521,14 +514,16 @@ private:
     TAppContext& AppCtx;
     TExecutorContext& ExecCtx;
 
-    std::unique_ptr<grpc::ServerContext> Context = std::make_unique<grpc::ServerContext>();
+    std::unique_ptr<grpc::ServerContext> Context =
+        std::make_unique<grpc::ServerContext>();
     grpc::ServerAsyncResponseWriter<TResponse> Writer;
 
     std::shared_ptr<TRequest> Request = std::make_shared<TRequest>();
     ui64 RequestId = 0;
     TFuture<TResponse> Response;
 
-    enum {
+    enum
+    {
         WaitingForRequest = 0,
         ExecutingRequest = 1,
         ExecutionCompleted = 2,
@@ -573,7 +568,11 @@ public:
         for (;;) {
             switch (AtomicGet(RequestState)) {
                 case WaitingForRequest:
-                    if (AtomicCas(&RequestState, ExecutingRequest, WaitingForRequest)) {
+                    if (AtomicCas(
+                            &RequestState,
+                            ExecutingRequest,
+                            WaitingForRequest))
+                    {
                         // fix NBS-2490
                         if (AtomicGet(AppCtx.ShouldStop)) {
                             Cancel();
@@ -589,16 +588,22 @@ public:
                     break;
 
                 case ExecutionCompleted:
-                    if (AtomicCas(&RequestState, SendingResponse, ExecutionCompleted)) {
+                    if (AtomicCas(
+                            &RequestState,
+                            SendingResponse,
+                            ExecutionCompleted))
+                    {
                         try {
                             const auto& response = Response.GetValue();
                             SendResponse(response);
                         } catch (const TServiceError& e) {
                             SendResponse(ErrorResponse<TResponse>(
-                                e.GetCode(), TString(e.GetMessage())));
+                                e.GetCode(),
+                                TString(e.GetMessage())));
                         } catch (...) {
                             SendResponse(ErrorResponse<TResponse>(
-                                E_FAIL, CurrentExceptionMessage()));
+                                E_FAIL,
+                                CurrentExceptionMessage()));
                         }
 
                         // request is in progress now
@@ -607,7 +612,11 @@ public:
                     break;
 
                 case ExecutionCancelled:
-                    if (AtomicCas(&RequestState, SendingResponse, ExecutionCancelled)) {
+                    if (AtomicCas(
+                            &RequestState,
+                            SendingResponse,
+                            ExecutionCancelled))
+                    {
                         // cancel inflight requests due to server shutting down
                         SendResponse(grpc::Status(
                             grpc::StatusCode::UNAVAILABLE,
@@ -619,7 +628,11 @@ public:
                     break;
 
                 case SendingResponse:
-                    if (AtomicCas(&RequestState, RequestCompleted, SendingResponse)) {
+                    if (AtomicCas(
+                            &RequestState,
+                            RequestCompleted,
+                            SendingResponse))
+                    {
                         CompleteRequest();
                     }
                     break;
@@ -641,7 +654,9 @@ public:
     {
         if (AtomicCas(&RequestState, ExecutionCancelled, ExecutingRequest)) {
             // will be processed on executor thread
-            EnqueueCompletion(ExecCtx.CompletionQueue.get(), AcquireCompletionTag());
+            EnqueueCompletion(
+                ExecCtx.CompletionQueue.get(),
+                AcquireCompletionTag());
             return;
         }
 
@@ -669,7 +684,9 @@ private:
 
         auto now = TInstant::Now();
         auto timestamp = TInstant::MicroSeconds(headers.GetTimestamp());
-        if (!timestamp || timestamp > now || now - timestamp > TDuration::Seconds(1)) {
+        if (!timestamp || timestamp > now ||
+            now - timestamp > TDuration::Seconds(1))
+        {
             // fix request timestamp
             timestamp = now;
             headers.SetTimestamp(timestamp.MicroSeconds());
@@ -693,17 +710,17 @@ private:
 
         auto& Log = AppCtx.Log;
 
-        STORAGE_LOG(GetRequestLogPriority<TRequest>(),
-            TMethod::RequestName
-            << " #" << RequestId
-            << " execute request: " << DumpMessage(*Request));
+        STORAGE_LOG(
+            GetRequestLogPriority<TRequest>(),
+            TMethod::RequestName << " #" << RequestId << " execute request: "
+                                 << DumpMessage(*Request));
 
         FILESTORE_TRACK(
             ExecuteRequest,
             CallContext,
             TString(TMethod::RequestName),
             CallContext->FileSystemId,
-            NProto::STORAGE_MEDIA_SSD,  // TODO NBS-2954
+            NProto::STORAGE_MEDIA_SSD,   // TODO NBS-2954
             CallContext->RequestSize);
 
         AppCtx.Stats->RequestStarted(Log, *CallContext);
@@ -741,29 +758,31 @@ private:
                     TMethod::RequestName << " #" << RequestId
                                          << " request error: " << e);
 
-                Response = MakeFuture(
-                    ErrorResponse<TResponse>(
-                        e.GetCode(),
-                        TString(e.GetMessage())));
+                Response = MakeFuture(ErrorResponse<TResponse>(
+                    e.GetCode(),
+                    TString(e.GetMessage())));
             } catch (...) {
                 STORAGE_ERROR(
                     TMethod::RequestName
                     << " #" << RequestId
                     << " unexpected error: " << CurrentExceptionMessage());
 
-                Response = MakeFuture(
-                    ErrorResponse<TResponse>(
-                        E_FAIL,
-                        CurrentExceptionMessage()));
+                Response = MakeFuture(ErrorResponse<TResponse>(
+                    E_FAIL,
+                    CurrentExceptionMessage()));
             }
         }
 
         auto* tag = AcquireCompletionTag();
         Response.Subscribe(
-            [=, this] (const auto& response) {
+            [=, this](const auto& response)
+            {
                 Y_UNUSED(response);
 
-                if (AtomicCas(&RequestState, ExecutionCompleted, ExecutingRequest)) {
+                if (AtomicCas(
+                        &RequestState,
+                        ExecutionCompleted,
+                        ExecutingRequest)) {
                     // will be processed on executor thread
                     EnqueueCompletion(ExecCtx.CompletionQueue.get(), tag);
                     return;
@@ -781,10 +800,10 @@ private:
             Error = response.GetError();
         }
 
-        STORAGE_LOG(GetRequestLogPriority<TRequest>(),
-            TMethod::RequestName
-            << " #" << RequestId
-            << " send response: " << DumpMessage(response));
+        STORAGE_LOG(
+            GetRequestLogPriority<TRequest>(),
+            TMethod::RequestName << " #" << RequestId << " send response: "
+                                 << DumpMessage(response));
 
         FILESTORE_TRACK(
             SendResponse,
@@ -803,9 +822,9 @@ private:
         auto& Log = AppCtx.Log;
 
         Error = MakeGrpcError(status);
-        STORAGE_TRACE(TMethod::RequestName
-            << " #" << RequestId
-            << " send response: " << FormatError(Error));
+        STORAGE_TRACE(
+            TMethod::RequestName << " #" << RequestId
+                                 << " send response: " << FormatError(Error));
 
         FILESTORE_TRACK(
             SendResponse,
@@ -823,9 +842,8 @@ private:
     {
         auto& Log = AppCtx.Log;
 
-        STORAGE_TRACE(TMethod::RequestName
-            << " #" << RequestId
-            << " request completed");
+        STORAGE_TRACE(
+            TMethod::RequestName << " #" << RequestId << " request completed");
 
         if (CallContext) {
             const ui64 now = GetCycleCount();
@@ -849,7 +867,8 @@ private:
             auto request = &ProfileLogRecord.Request;
             request->SetTimestampMcs(startTs.MicroSeconds());
             request->SetDurationMcs(ts.TotalTime.MicroSeconds());
-            request->SetRequestType(static_cast<ui32>(CallContext->RequestType));
+            request->SetRequestType(
+                static_cast<ui32>(CallContext->RequestType));
 
             AppCtx.ProfileLog->Write(std::move(ProfileLogRecord));
         } else {
@@ -861,14 +880,12 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TAppContext, typename TMethod>
-class TStreamRequestHandler final
-    : public TServerRequestHandlerBase
+class TStreamRequestHandler final: public TServerRequestHandlerBase
 {
     using TRequest = typename TMethod::TRequest;
     using TResponse = typename TMethod::TResponse;
 
-    class TResponseHandler final
-        : public IResponseHandler<TResponse>
+    class TResponseHandler final: public IResponseHandler<TResponse>
     {
     private:
         TStreamRequestHandler* Self;
@@ -895,12 +912,14 @@ private:
     TAppContext& AppCtx;
     TExecutorContext& ExecCtx;
 
-    std::unique_ptr<grpc::ServerContext> Context = std::make_unique<grpc::ServerContext>();
+    std::unique_ptr<grpc::ServerContext> Context =
+        std::make_unique<grpc::ServerContext>();
     grpc::ServerAsyncWriter<TResponse> Writer;
 
     std::shared_ptr<TRequest> Request = std::make_shared<TRequest>();
 
-    enum {
+    enum
+    {
         WaitingForRequest = 0,
         ExecutingRequest = 1,
         ExecutionCompleted = 2,
@@ -947,7 +966,11 @@ public:
         for (;;) {
             switch (AtomicGet(RequestState)) {
                 case WaitingForRequest:
-                    if (AtomicCas(&RequestState, ExecutingRequest, WaitingForRequest)) {
+                    if (AtomicCas(
+                            &RequestState,
+                            ExecutingRequest,
+                            WaitingForRequest))
+                    {
                         PrepareRequestContext();
                         ExecuteRequest();
 
@@ -959,7 +982,11 @@ public:
                 case ExecutionCompleted:
                     with_lock (ResponseLock) {
                         if (ResponseQueue) {
-                            if (AtomicCas(&RequestState, SendingResponse, ExecutionCompleted)) {
+                            if (AtomicCas(
+                                    &RequestState,
+                                    SendingResponse,
+                                    ExecutionCompleted))
+                            {
                                 SendResponse(ResponseQueue.front());
                                 ResponseQueue.pop_front();
 
@@ -967,7 +994,11 @@ public:
                                 return;
                             }
                         } else {
-                            if (AtomicCas(&RequestState, SendingCompletion, ExecutionCompleted)) {
+                            if (AtomicCas(
+                                    &RequestState,
+                                    SendingCompletion,
+                                    ExecutionCompleted))
+                            {
                                 Y_ABORT_UNLESS(CompletionStatus);
                                 SendCompletion(*CompletionStatus);
 
@@ -979,7 +1010,11 @@ public:
                     break;
 
                 case ExecutionCancelled:
-                    if (AtomicCas(&RequestState, SendingCompletion, ExecutionCancelled)) {
+                    if (AtomicCas(
+                            &RequestState,
+                            SendingCompletion,
+                            ExecutionCancelled))
+                    {
                         // cancel inflight requests due to server shutting down
                         SendCompletion(grpc::Status(
                             grpc::StatusCode::UNAVAILABLE,
@@ -999,14 +1034,22 @@ public:
                             // request is in progress now
                             return;
                         } else if (CompletionStatus) {
-                            if (AtomicCas(&RequestState, SendingCompletion, SendingResponse)) {
+                            if (AtomicCas(
+                                    &RequestState,
+                                    SendingCompletion,
+                                    SendingResponse))
+                            {
                                 SendCompletion(*CompletionStatus);
 
                                 // request is in progress now
                                 return;
                             }
                         } else {
-                            if (AtomicCas(&RequestState, ExecutingRequest, SendingResponse)) {
+                            if (AtomicCas(
+                                    &RequestState,
+                                    ExecutingRequest,
+                                    SendingResponse))
+                            {
                                 // request is in progress now
                                 return;
                             }
@@ -1015,7 +1058,11 @@ public:
                     break;
 
                 case SendingCompletion:
-                    if (AtomicCas(&RequestState, RequestCompleted, SendingCompletion)) {
+                    if (AtomicCas(
+                            &RequestState,
+                            RequestCompleted,
+                            SendingCompletion))
+                    {
                     }
                     break;
 
@@ -1036,7 +1083,9 @@ public:
     {
         if (AtomicCas(&RequestState, ExecutionCancelled, ExecutingRequest)) {
             // will be processed on executor thread
-            EnqueueCompletion(ExecCtx.CompletionQueue.get(), AcquireCompletionTag());
+            EnqueueCompletion(
+                ExecCtx.CompletionQueue.get(),
+                AcquireCompletionTag());
             return;
         }
 
@@ -1072,9 +1121,7 @@ private:
         // TODO report stats
 
         try {
-            AppCtx.ValidateRequest(
-                *Context,
-                *Request->MutableHeaders());
+            AppCtx.ValidateRequest(*Context, *Request->MutableHeaders());
 
             TMethod::Execute(
                 *AppCtx.ServiceImpl,
@@ -1103,7 +1150,9 @@ private:
 
         if (AtomicCas(&RequestState, ExecutionCompleted, ExecutingRequest)) {
             // will be processed on executor thread
-            EnqueueCompletion(ExecCtx.CompletionQueue.get(), AcquireCompletionTag());
+            EnqueueCompletion(
+                ExecCtx.CompletionQueue.get(),
+                AcquireCompletionTag());
         }
     }
 
@@ -1116,7 +1165,9 @@ private:
 
         if (AtomicCas(&RequestState, ExecutionCompleted, ExecutingRequest)) {
             // will be processed on executor thread
-            EnqueueCompletion(ExecCtx.CompletionQueue.get(), AcquireCompletionTag());
+            EnqueueCompletion(
+                ExecCtx.CompletionQueue.get(),
+                AcquireCompletionTag());
         }
     }
 
@@ -1124,8 +1175,9 @@ private:
     {
         auto& Log = AppCtx.Log;
 
-        STORAGE_TRACE(TMethod::RequestName
-            << " send response: " << DumpMessage(response));
+        STORAGE_TRACE(
+            TMethod::RequestName << " send response: "
+                                 << DumpMessage(response));
 
         Writer.Write(response, AcquireCompletionTag());
     }
@@ -1134,8 +1186,9 @@ private:
     {
         auto& Log = AppCtx.Log;
 
-        STORAGE_TRACE(TMethod::RequestName
-            << " send completion: " << FormatError(MakeGrpcError(status)));
+        STORAGE_TRACE(
+            TMethod::RequestName << " send completion: "
+                                 << FormatError(MakeGrpcError(status)));
 
         Writer.Finish(status, AcquireCompletionTag());
     }
@@ -1435,15 +1488,17 @@ using TFileStoreStreamHandler = TStreamRequestHandler<TFileStoreContext, T>;
 
 void StartRequests(TExecutorContext& execCtx, TFileStoreContext& appCtx)
 {
-#define FILESTORE_START_REQUEST(name, ...)                                     \
-    TFileStoreHandler<T##name##Fs##Method>::Start(execCtx, appCtx);            \
-// FILESTORE_START_REQUEST
+#define FILESTORE_START_REQUEST(name, ...)                          \
+    TFileStoreHandler<T##name##Fs##Method>::Start(execCtx, appCtx); \
+    // FILESTORE_START_REQUEST
 
     FILESTORE_SERVICE(FILESTORE_START_REQUEST)
 
 #undef FILESTORE_START_REQUEST
 
-    TFileStoreStreamHandler<TGetSessionEventsStreamMethod>::Start(execCtx, appCtx);
+    TFileStoreStreamHandler<TGetSessionEventsStreamMethod>::Start(
+        execCtx,
+        appCtx);
 
     // Custom handlers for the shared memory transport
     if (appCtx.State) {
@@ -1460,9 +1515,9 @@ using TEndpointManagerHandler = TRequestHandler<TEndpointManagerContext, T>;
 
 void StartRequests(TExecutorContext& execCtx, TEndpointManagerContext& appCtx)
 {
-#define FILESTORE_START_REQUEST(name, ...)                                     \
-    TEndpointManagerHandler<T##name##Vhost##Method>::Start(execCtx, appCtx);   \
-// FILESTORE_START_REQUEST
+#define FILESTORE_START_REQUEST(name, ...)                                   \
+    TEndpointManagerHandler<T##name##Vhost##Method>::Start(execCtx, appCtx); \
+    // FILESTORE_START_REQUEST
 
     FILESTORE_ENDPOINT_SERVICE(FILESTORE_START_REQUEST)
 
@@ -1491,11 +1546,11 @@ private:
 public:
     template <typename T>
     TServer(
-            TServerConfigPtr config,
-            ILoggingServicePtr logging,
-            IRequestStatsPtr requestStats,
-            IProfileLogPtr profileLog,
-            T service)
+        TServerConfigPtr config,
+        ILoggingServicePtr logging,
+        IRequestStatsPtr requestStats,
+        IProfileLogPtr profileLog,
+        T service)
         : Config(std::move(config))
         , Logging(std::move(logging))
     {
@@ -1508,7 +1563,8 @@ public:
 private:
     void InitializeAppContext(auto& ctx, auto& /*service*/)
     {
-        if constexpr (requires { ctx.State; }) { // Implemented only for TFileStoreContext
+        if constexpr (requires { ctx.State; })
+        {   // Implemented only for TFileStoreContext
             if (Config->GetSharedMemoryTransportEnabled()) {
                 ctx.State = std::make_shared<TServerState>(
                     Config->GetSharedMemoryBasePath());
@@ -1560,15 +1616,14 @@ public:
                     RequestSourceKinds,
                     NProto::SOURCE_INSECURE_CONTROL_CHANNEL));
 
-            builder.AddListeningPort(
-                address,
-                std::move(credentials));
+            builder.AddListeningPort(address, std::move(credentials));
 
             STORAGE_INFO("Start listening on insecure " << address);
         }
 
         if (auto port = Config->GetSecurePort()) {
-            auto host = Config->GetSecureHost() ? Config->GetSecureHost() : Config->GetHost();
+            auto host = Config->GetSecureHost() ? Config->GetSecureHost()
+                                                : Config->GetHost();
             auto address = Join(":", host, port);
             STORAGE_INFO("Listen on (secure control) " << address);
 
@@ -1579,9 +1634,7 @@ public:
                     RequestSourceKinds,
                     NProto::SOURCE_SECURE_CONTROL_CHANNEL));
 
-            builder.AddListeningPort(
-                address,
-                std::move(credentials));
+            builder.AddListeningPort(address, std::move(credentials));
         }
 
         with_lock (ExecutorsLock) {
@@ -1598,8 +1651,7 @@ public:
 
         AppCtx.Server = builder.BuildAndStart();
         if (!AppCtx.Server) {
-            ythrow TServiceError(E_FAIL)
-                << "could not start gRPC server";
+            ythrow TServiceError(E_FAIL) << "could not start gRPC server";
         }
 
         auto unixSocketPath = Config->GetUnixSocketPath();
@@ -1652,7 +1704,8 @@ public:
             }
 
             if (deadline <= TInstant::Now()) {
-                STORAGE_WARN("Some requests are still active on shutdown: "
+                STORAGE_WARN(
+                    "Some requests are still active on shutdown: "
                     << requestsCount);
                 break;
             }
@@ -1674,20 +1727,22 @@ public:
         TGuard g{ExecutorsLock};
         for (auto& executor: Executors) {
             const auto now = GetCycleCount();
-            executor->RequestsInFlight.ForEach([&](const auto* handler) {
-                if (auto request = handler->ToIncompleteRequest(now)) {
-                    collector.Collect(*request);
-                }
-            });
+            executor->RequestsInFlight.ForEach(
+                [&](const auto* handler)
+                {
+                    if (auto request = handler->ToIncompleteRequest(now)) {
+                        collector.Collect(*request);
+                    }
+                });
         }
     }
 
 private:
-
     grpc::SslServerCredentialsOptions CreateSslOptions()
     {
         grpc::SslServerCredentialsOptions sslOptions;
-        sslOptions.client_certificate_request = GRPC_SSL_REQUEST_CLIENT_CERTIFICATE_AND_VERIFY;
+        sslOptions.client_certificate_request =
+            GRPC_SSL_REQUEST_CLIENT_CERTIFICATE_AND_VERIFY;
 
         if (const auto& rootCertsFile = Config->GetRootCertsFile()) {
             sslOptions.pem_root_certs = ReadFile(rootCertsFile);
@@ -1732,7 +1787,8 @@ private:
 
         if (HasError(error)) {
             ReportEndpointStartingError();
-            STORAGE_ERROR("Failed to start (control) endpoint: " << FormatError(error));
+            STORAGE_ERROR(
+                "Failed to start (control) endpoint: " << FormatError(error));
             StopListenUnixSocket();
         }
     }

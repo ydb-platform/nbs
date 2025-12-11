@@ -25,9 +25,9 @@ public:
     TDiskAgentConfig() = default;
 
     TDiskAgentConfig(
-            NProto::TDiskAgentConfig config,
-            TString rack,
-            ui32 networkMbitThroughput)
+        NProto::TDiskAgentConfig config,
+        TString rack,
+        ui32 networkMbitThroughput)
         : Config(std::move(config))
         , Rack(std::move(rack))
         , NetworkMbitThroughput(networkMbitThroughput)

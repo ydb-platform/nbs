@@ -7,9 +7,9 @@ namespace NCloud::NBlockStore {
 ////////////////////////////////////////////////////////////////////////////////
 
 TBlocksInfo::TBlocksInfo(
-        const ui64 from,
-        const ui64 length,
-        const ui32 blockSize)
+    const ui64 from,
+    const ui64 length,
+    const ui32 blockSize)
     : BlockSize(blockSize)
 {
     const ui64 startIndex = from / blockSize;

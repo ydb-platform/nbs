@@ -8,8 +8,7 @@ namespace NCloud::NBlockStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TOptionsLocal final
-    : public TOptionsCommon
+struct TOptionsLocal final: public TOptionsCommon
 {
     void Parse(int argc, char** argv) override;
 };

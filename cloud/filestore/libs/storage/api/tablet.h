@@ -14,37 +14,37 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_TABLET_REQUESTS(xxx, ...)                                    \
-    xxx(WaitReady,                  __VA_ARGS__)                               \
-    xxx(CreateSession,              __VA_ARGS__)                               \
-    xxx(DestroySession,             __VA_ARGS__)                               \
-    xxx(GetStorageStats,            __VA_ARGS__)                               \
-    xxx(GetFileSystemConfig,        __VA_ARGS__)                               \
-    xxx(GetStorageConfigFields,     __VA_ARGS__)                               \
-    xxx(ChangeStorageConfig,        __VA_ARGS__)                               \
-    xxx(DescribeData,               __VA_ARGS__)                               \
-    xxx(DescribeSessions,           __VA_ARGS__)                               \
-    xxx(GenerateBlobIds,            __VA_ARGS__)                               \
-    xxx(AddData,                    __VA_ARGS__)                               \
-    xxx(ForcedOperation,            __VA_ARGS__)                               \
-    xxx(ConfigureShards,            __VA_ARGS__)                               \
-    xxx(ConfigureAsShard,           __VA_ARGS__)                               \
-    xxx(GetStorageConfig,           __VA_ARGS__)                               \
-    xxx(GetNodeAttrBatch,           __VA_ARGS__)                               \
-    xxx(WriteCompactionMap,         __VA_ARGS__)                               \
-    xxx(UnsafeDeleteNode,           __VA_ARGS__)                               \
-    xxx(UnsafeUpdateNode,           __VA_ARGS__)                               \
-    xxx(UnsafeGetNode,              __VA_ARGS__)                               \
-    xxx(ForcedOperationStatus,      __VA_ARGS__)                               \
-    xxx(GetFileSystemTopology,      __VA_ARGS__)                               \
-    xxx(RestartTablet,              __VA_ARGS__)                               \
-    xxx(RenameNodeInDestination,    __VA_ARGS__)                               \
-                                                                               \
-    xxx(ReadNodeRefs,              __VA_ARGS__)                                \
-                                                                               \
-    xxx(SetHasXAttrs,               __VA_ARGS__)                               \
-    xxx(MarkNodeRefsExhaustive,     __VA_ARGS__)                               \
-// FILESTORE_TABLET_REQUESTS
+#define FILESTORE_TABLET_REQUESTS(xxx, ...)   \
+    xxx(WaitReady, __VA_ARGS__)               \
+    xxx(CreateSession, __VA_ARGS__)           \
+    xxx(DestroySession, __VA_ARGS__)          \
+    xxx(GetStorageStats, __VA_ARGS__)         \
+    xxx(GetFileSystemConfig, __VA_ARGS__)     \
+    xxx(GetStorageConfigFields, __VA_ARGS__)  \
+    xxx(ChangeStorageConfig, __VA_ARGS__)     \
+    xxx(DescribeData, __VA_ARGS__)            \
+    xxx(DescribeSessions, __VA_ARGS__)        \
+    xxx(GenerateBlobIds, __VA_ARGS__)         \
+    xxx(AddData, __VA_ARGS__)                 \
+    xxx(ForcedOperation, __VA_ARGS__)         \
+    xxx(ConfigureShards, __VA_ARGS__)         \
+    xxx(ConfigureAsShard, __VA_ARGS__)        \
+    xxx(GetStorageConfig, __VA_ARGS__)        \
+    xxx(GetNodeAttrBatch, __VA_ARGS__)        \
+    xxx(WriteCompactionMap, __VA_ARGS__)      \
+    xxx(UnsafeDeleteNode, __VA_ARGS__)        \
+    xxx(UnsafeUpdateNode, __VA_ARGS__)        \
+    xxx(UnsafeGetNode, __VA_ARGS__)           \
+    xxx(ForcedOperationStatus, __VA_ARGS__)   \
+    xxx(GetFileSystemTopology, __VA_ARGS__)   \
+    xxx(RestartTablet, __VA_ARGS__)           \
+    xxx(RenameNodeInDestination, __VA_ARGS__) \
+                                              \
+    xxx(ReadNodeRefs, __VA_ARGS__)            \
+                                              \
+    xxx(SetHasXAttrs, __VA_ARGS__)            \
+    xxx(MarkNodeRefsExhaustive, __VA_ARGS__)  \
+    // FILESTORE_TABLET_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -142,7 +142,8 @@ struct TEvIndexTablet
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TFileStoreEvents::TABLET_END,
+    static_assert(
+        EvEnd < (int)TFileStoreEvents::TABLET_END,
         "EvEnd expected to be < TFileStoreEvents::TABLET_END");
 
     FILESTORE_TABLET_REQUESTS(FILESTORE_DECLARE_PROTO_EVENTS, NProtoPrivate)

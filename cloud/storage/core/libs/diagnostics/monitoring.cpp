@@ -1,7 +1,6 @@
 #include "monitoring.h"
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
-
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/monlib/dynamic_counters/page.h>
 #include <library/cpp/monlib/service/monservice.h>
@@ -39,7 +38,8 @@ public:
         TBase::Register(new TVersionMonPage());
         TBase::Register(new TTablesorterCssMonPage());
         TBase::Register(new TTablesorterJsMonPage());
-        TBase::Register(new TDynamicCountersPage("counters", "Counters", Counters));
+        TBase::Register(
+            new TDynamicCountersPage("counters", "Counters", Counters));
 
         NLwTraceMonPage::RegisterPages(IndexMonPage.Get());
 
@@ -51,7 +51,9 @@ public:
         TBase::Stop();
     }
 
-    IMonPagePtr RegisterIndexPage(const TString& path, const TString& title) override
+    IMonPagePtr RegisterIndexPage(
+        const TString& path,
+        const TString& title) override
     {
         return TBase::RegisterIndexPage(path, title);
     }
@@ -74,8 +76,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TMonitoringServiceStub final
-    : public IMonitoringService
+class TMonitoringServiceStub final: public IMonitoringService
 {
 private:
     TIntrusivePtr<TIndexMonPage> IndexMonPage = new TIndexMonPage("", "");
@@ -92,7 +93,9 @@ public:
         // nothing to do
     }
 
-    IMonPagePtr RegisterIndexPage(const TString& path, const TString& title) override
+    IMonPagePtr RegisterIndexPage(
+        const TString& path,
+        const TString& title) override
     {
         return IndexMonPage->RegisterIndexPage(path, title);
     }
@@ -117,10 +120,8 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IMonitoringServicePtr CreateMonitoringService(
-    ui16 port,
-    const TString& address,
-    ui32 threads)
+IMonitoringServicePtr
+CreateMonitoringService(ui16 port, const TString& address, ui32 threads)
 {
     return std::make_shared<TMonitoringService>(port, address, threads);
 }

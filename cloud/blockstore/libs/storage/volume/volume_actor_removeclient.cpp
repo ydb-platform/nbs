@@ -71,10 +71,7 @@ void TVolumeActor::ReleaseDisk(
     request->Record.SetDiskId(State->GetDiskId());
     request->Record.MutableHeaders()->SetClientId(clientId);
     request->Record.SetVolumeGeneration(Executor()->Generation());
-    NCloud::Send(
-        ctx,
-        MakeDiskRegistryProxyServiceId(),
-        std::move(request));
+    NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
 }
 
 void TVolumeActor::HandleReleaseDiskResponse(
@@ -135,7 +132,7 @@ void TVolumeActor::HandleDevicesReleasedFinishedImpl(
     {
         AcquireReleaseDiskRequests.pop_front();
         ProcessNextAcquireReleaseDiskRequest(ctx);
-    };
+    }
 
     if (!clientRequest) {
         return;
@@ -187,10 +184,8 @@ void TVolumeActor::HandleRemoveClient(
         pipeServerActorId = ev->Recipient;
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     auto request = std::make_shared<TClientRequest>(
         std::move(requestInfo),
@@ -249,12 +244,11 @@ void TVolumeActor::ExecuteRemoveClient(
         args.IsMonRequest ? TActorId() : args.PipeServerActorId);
 
     TVolumeDatabase db(tx.DB);
-    db.WriteHistory(
-        State->LogRemoveClient(
-            now,
-            args.ClientId,
-            "Removed by request",
-            args.Error));
+    db.WriteHistory(State->LogRemoveClient(
+        now,
+        args.ClientId,
+        "Removed by request",
+        args.Error));
 
     if (FAILED(args.Error.GetCode())) {
         return;
@@ -279,7 +273,7 @@ void TVolumeActor::CompleteRemoveClient(
             PendingClientRequests.pop_front();
             ProcessNextPendingClientRequest(ctx);
         }
-    };
+    }
 
     const auto& clientId = args.ClientId;
     const auto& diskId = args.DiskId;

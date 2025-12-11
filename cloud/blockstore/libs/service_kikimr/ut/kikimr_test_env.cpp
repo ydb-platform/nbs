@@ -73,9 +73,7 @@ TDynamicCountersPtr TTestActorSystem::GetCounters()
     return {};
 }
 
-TActorId TTestActorSystem::Register(
-    IActorPtr actor,
-    TStringBuf executorName)
+TActorId TTestActorSystem::Register(IActorPtr actor, TStringBuf executorName)
 {
     Y_UNUSED(executorName);
 
@@ -83,7 +81,7 @@ TActorId TTestActorSystem::Register(
     Runtime->EnableScheduleForActor(actorId);
 
     return actorId;
-};
+}
 
 bool TTestActorSystem::Send(const TActorId& recipient, IEventBasePtr event)
 {

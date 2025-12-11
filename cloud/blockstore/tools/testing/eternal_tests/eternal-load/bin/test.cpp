@@ -6,6 +6,7 @@
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.h>
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/test_executor.h>
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/unaligned_test_scenario.h>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/size_literals.h>
@@ -19,8 +20,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTest final
-   : public ITest
+class TTest final: public ITest
 {
 private:
     TOptionsPtr Options;
@@ -70,9 +70,15 @@ int TTest::Run()
 
     switch (Options->Command) {
         case ECommand::GenerateConfigCmd:
-            Y_ENSURE(Options->FilePath.Defined(), "You need to specify the file path");
-            Y_ENSURE(Options->FileSize.Defined(), "You need to specify the file size");
-            Y_ENSURE(Options->WriteRate <= 100, "Write rate should be in range [0, 100]");
+            Y_ENSURE(
+                Options->FilePath.Defined(),
+                "You need to specify the file path");
+            Y_ENSURE(
+                Options->FileSize.Defined(),
+                "You need to specify the file size");
+            Y_ENSURE(
+                Options->WriteRate <= 100,
+                "Write rate should be in range [0, 100]");
 
             ConfigHolder = CreateTestConfig(
                 {.FilePath = *Options->FilePath,
@@ -94,11 +100,14 @@ int TTest::Run()
             DumpConfiguration();
             break;
         case ECommand::ReadConfigCmd:
-            Y_ENSURE(Options->RestorePath.Defined(), "You need to specify the restore path");
+            Y_ENSURE(
+                Options->RestorePath.Defined(),
+                "You need to specify the restore path");
             ConfigHolder = LoadTestConfig(*Options->RestorePath);
             break;
         case ECommand::UnknownCmd:
-            STORAGE_ERROR("Unknown command, check avaliable commands in the help");
+            STORAGE_ERROR(
+                "Unknown command, check avaliable commands in the help");
             return 2;
     }
 
@@ -108,7 +117,8 @@ int TTest::Run()
 void TTest::DumpConfiguration()
 {
     ConfigHolder->DumpConfig(Options->DumpPath);
-    STORAGE_INFO("Test configuration and actual state have been stored to file "
+    STORAGE_INFO(
+        "Test configuration and actual state have been stored to file "
         << Options->DumpPath.Quote());
 }
 
@@ -163,8 +173,7 @@ TTestExecutorSettings TTest::ConfigureTest() const
 
     settings.RunInCallbacks = Options->RunInCallbacks;
     STORAGE_INFO(
-        "Using run test logic in callbacks: "
-        << settings.RunInCallbacks);
+        "Using run test logic in callbacks: " << settings.RunInCallbacks);
 
     settings.NoDirect = Options->NoDirect;
     STORAGE_INFO("Using O_DIRECT: " << !settings.NoDirect);

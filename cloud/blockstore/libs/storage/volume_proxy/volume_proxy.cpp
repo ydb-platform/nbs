@@ -44,8 +44,7 @@ std::unique_ptr<NTabletPipe::IClientCache> CreateTabletPipeClientCache(
     clientConfig.RetryPolicy = {
         .RetryLimitCount = config.GetPipeClientRetryCount(),
         .MinRetryTime = config.GetPipeClientMinRetryTime(),
-        .MaxRetryTime = config.GetPipeClientMaxRetryTime()
-    };
+        .MaxRetryTime = config.GetPipeClientMaxRetryTime()};
 
     return std::unique_ptr<NTabletPipe::IClientCache>(
         NTabletPipe::CreateUnboundedClientCache(clientConfig));
@@ -65,8 +64,7 @@ std::unique_ptr<NTabletPipe::IClientCache> CreateTabletPipeClientCache(
 // connection to the base disks occurs even if the describe returned an error,
 // since the tablet id is already known.
 
-class TVolumeProxyActor final
-    : public TActor<TVolumeProxyActor>
+class TVolumeProxyActor final: public TActor<TVolumeProxyActor>
 {
     enum EConnectionState
     {
@@ -161,10 +159,10 @@ class TVolumeProxyActor final
         ui64 SendTime;
 
         TActiveRequest(
-                ui64 connectionId,
-                IEventHandlePtr request,
-                TCallContextPtr callContext,
-                ui64 sendTime)
+            ui64 connectionId,
+            IEventHandlePtr request,
+            TCallContextPtr callContext,
+            ui64 sendTime)
             : ConnectionId(connectionId)
             , Request(std::move(request))
             , CallContext(std::move(callContext))
@@ -298,16 +296,15 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TVolumeProxyActor::TVolumeProxyActor(
-        TStorageConfigPtr config,
-        ITraceSerializerPtr traceSerializer,
-        bool temporaryServer)
+    TStorageConfigPtr config,
+    ITraceSerializerPtr traceSerializer,
+    bool temporaryServer)
     : TActor(&TThis::StateWork)
     , Config(std::move(config))
     , TraceSerializer(std::move(traceSerializer))
     , TemporaryServer(temporaryServer)
     , ClientCache(CreateTabletPipeClientCache(*Config))
-{
-}
+{}
 
 TVolumeProxyActor::TConnection& TVolumeProxyActor::CreateConnection(
     const TString& diskId,
@@ -437,7 +434,7 @@ void TVolumeProxyActor::CancelActiveRequests(
     const TActorContext& ctx,
     TConnection& conn)
 {
-    for (auto it = ActiveRequests.begin(); it != ActiveRequests.end(); ) {
+    for (auto it = ActiveRequests.begin(); it != ActiveRequests.end();) {
         if (it->second.ConnectionId == conn.Id) {
             TAutoPtr<IEventHandle> handle(it->second.Request.release());
             Receive(handle);
@@ -451,9 +448,7 @@ void TVolumeProxyActor::CancelActiveRequests(
     conn.LastActivity = ctx.Now();
 }
 
-void TVolumeProxyActor::PostponeRequest(
-    TConnection& conn,
-    IEventHandlePtr ev)
+void TVolumeProxyActor::PostponeRequest(TConnection& conn, IEventHandlePtr ev)
 {
     conn.Requests.emplace_back(std::move(ev));
 }
@@ -501,7 +496,7 @@ void TVolumeProxyActor::ForwardRequest(
         SelfId(),
         ev->ReleaseBase().Release(),
         0,          // flags
-        requestId  // cookie
+        requestId   // cookie
     );
 
     ActiveRequests.emplace(
@@ -547,8 +542,7 @@ void TVolumeProxyActor::ScheduleConnectionShutdown(
     const TActorContext& ctx,
     TConnection& conn)
 {
-    if (!conn.ActivityCheckScheduled &&
-        conn.Requests.empty() &&
+    if (!conn.ActivityCheckScheduled && conn.Requests.empty() &&
         !conn.RequestsInflight)
     {
         conn.ActivityCheckScheduled = true;
@@ -571,8 +565,7 @@ void TVolumeProxyActor::HandleWakeup(
     conn->ActivityCheckScheduled = false;
     auto now = ctx.Now();
 
-    if (conn->Requests.empty() &&
-        !conn->RequestsInflight &&
+    if (conn->Requests.empty() && !conn->RequestsInflight &&
         conn->LastActivity < now - PipeInactivityTimeout)
     {
         LOG_INFO(
@@ -585,7 +578,8 @@ void TVolumeProxyActor::HandleWakeup(
         EraseConnection(conn);
     } else {
         if (conn->LastActivity >= now - PipeInactivityTimeout) {
-            auto timeEstimate = conn->LastActivity + PipeInactivityTimeout - now;
+            auto timeEstimate =
+                conn->LastActivity + PipeInactivityTimeout - now;
             ctx.Schedule(timeEstimate, new TEvents::TEvWakeup(conn->Id));
             conn->ActivityCheckScheduled = true;
         }
@@ -651,7 +645,9 @@ void TVolumeProxyActor::HandleBaseDiskDescribeResponse(
     const NProto::TError& error,
     const TActorContext& ctx)
 {
-    if (error.GetCode() == MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist)) {
+    if (error.GetCode() ==
+        MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist))
+    {
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME_PROXY,
@@ -758,11 +754,11 @@ void TVolumeProxyActor::HandleRequest(
         msg->Record.GetHeaders().GetExactDiskIdMatch());
     switch (conn.State) {
         case INITIAL:
-        case FAILED:
-        {
+        case FAILED: {
             conn.State = RESOLVING;
             if (auto* baseDisk = BaseDiskIdToTabletId.FindPtr(diskId)) {
-                Y_ABORT_UNLESS(baseDisk->TabletId,
+                Y_ABORT_UNLESS(
+                    baseDisk->TabletId,
                     "%s Base disk %s tablet id is not set",
                     conn.LogTitle.GetWithTime().c_str(),
                     diskId.c_str());
@@ -775,7 +771,7 @@ void TVolumeProxyActor::HandleRequest(
             PostponeRequest(conn, IEventHandlePtr(ev.Release()));
             break;
         }
-        case RESOLVING:{
+        case RESOLVING: {
             PostponeRequest(conn, IEventHandlePtr(ev.Release()));
             break;
         }
@@ -784,8 +780,8 @@ void TVolumeProxyActor::HandleRequest(
             break;
         }
         case STOPPED: {
-            auto response = std::make_unique<typename TMethod::TResponse>(
-                conn.Error);
+            auto response =
+                std::make_unique<typename TMethod::TResponse>(conn.Error);
 
             NCloud::Reply(ctx, *ev, std::move(response));
             break;
@@ -855,8 +851,7 @@ void TVolumeProxyActor::HandleResponse(
 
     conn->LastActivity = ctx.Now();
     --conn->RequestsInflight;
-    if (conn->Requests.empty() &&
-        !conn->RequestsInflight) {
+    if (conn->Requests.empty() && !conn->RequestsInflight) {
         ScheduleConnectionShutdown(ctx, *conn);
     }
 
@@ -907,22 +902,24 @@ void TVolumeProxyActor::HandlePoisonPill(
 bool TVolumeProxyActor::HandleRequests(STFUNC_SIG)
 {
     auto ctx(ActorContext());
-#define BLOCKSTORE_HANDLE_METHOD(name, ns)                                     \
-    case ns::TEv##name##Request::EventType: {                                  \
-        auto* x = reinterpret_cast<ns::TEv##name##Request::TPtr*>(&ev);        \
-        HandleRequest<ns::T##name##Method>(ctx, *x);                           \
-        break;                                                                 \
-    }                                                                          \
-    case ns::TEv##name##Response::EventType: {                                 \
-        auto* x = reinterpret_cast<ns::TEv##name##Response::TPtr*>(&ev);       \
-        HandleResponse<ns::T##name##Method>(ctx, *x);                          \
-        break;                                                                 \
-    }                                                                          \
-// BLOCKSTORE_HANDLE_METHOD
+#define BLOCKSTORE_HANDLE_METHOD(name, ns)                               \
+    case ns::TEv##name##Request::EventType: {                            \
+        auto* x = reinterpret_cast<ns::TEv##name##Request::TPtr*>(&ev);  \
+        HandleRequest<ns::T##name##Method>(ctx, *x);                     \
+        break;                                                           \
+    }                                                                    \
+    case ns::TEv##name##Response::EventType: {                           \
+        auto* x = reinterpret_cast<ns::TEv##name##Response::TPtr*>(&ev); \
+        HandleResponse<ns::T##name##Method>(ctx, *x);                    \
+        break;                                                           \
+    }                                                                    \
+        // BLOCKSTORE_HANDLE_METHOD
 
     switch (ev->GetTypeRewrite()) {
         BLOCKSTORE_VOLUME_REQUESTS(BLOCKSTORE_HANDLE_METHOD, TEvVolume)
-        BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE(BLOCKSTORE_HANDLE_METHOD, TEvService)
+        BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE(
+            BLOCKSTORE_HANDLE_METHOD,
+            TEvService)
 
         default:
             return false;
@@ -935,26 +932,32 @@ bool TVolumeProxyActor::HandleRequests(STFUNC_SIG)
 
 bool TVolumeProxyActor::LogLateMessage(ui32 evType, const TActorContext& ctx)
 {
-#define BLOCKSTORE_LOG_MESSAGE(name, ns)                                       \
-    case ns::TEv##name##Request::EventType: {                                  \
-        LOG_ERROR(ctx, TBlockStoreComponents::VOLUME_PROXY,                    \
-            "Late request : (0x%08X) %s request",                              \
-            evType,                                                            \
-            #name);                                                            \
-        break;                                                                 \
-    }                                                                          \
-    case ns::TEv##name##Response::EventType: {                                 \
-        LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME_PROXY,                    \
-          "Late response : (0x%08X) %s response",                              \
-          evType,                                                              \
-          #name);                                                              \
-        break;                                                                 \
-    }                                                                          \
-// BLOCKSTORE_LOG_MESSAGE
+#define BLOCKSTORE_LOG_MESSAGE(name, ns)            \
+    case ns::TEv##name##Request::EventType: {       \
+        LOG_ERROR(                                  \
+            ctx,                                    \
+            TBlockStoreComponents::VOLUME_PROXY,    \
+            "Late request : (0x%08X) %s request",   \
+            evType,                                 \
+            #name);                                 \
+        break;                                      \
+    }                                               \
+    case ns::TEv##name##Response::EventType: {      \
+        LOG_DEBUG(                                  \
+            ctx,                                    \
+            TBlockStoreComponents::VOLUME_PROXY,    \
+            "Late response : (0x%08X) %s response", \
+            evType,                                 \
+            #name);                                 \
+        break;                                      \
+    }                                               \
+        // BLOCKSTORE_LOG_MESSAGE
 
     switch (evType) {
         BLOCKSTORE_VOLUME_REQUESTS(BLOCKSTORE_LOG_MESSAGE, TEvVolume)
-        BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE(BLOCKSTORE_LOG_MESSAGE, TEvService)
+        BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE(
+            BLOCKSTORE_LOG_MESSAGE,
+            TEvService)
 
         default:
             return false;
@@ -964,7 +967,6 @@ bool TVolumeProxyActor::LogLateMessage(ui32 evType, const TActorContext& ctx)
 
 #undef BLOCKSTORE_LOG_MESSAGE
 }
-
 
 STFUNC(TVolumeProxyActor::StateWork)
 {

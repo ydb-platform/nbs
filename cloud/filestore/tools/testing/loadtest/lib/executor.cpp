@@ -28,10 +28,12 @@ void TExecutor::Run()
             current = DoneCount++;
         }
 
-        RunAction(current).Subscribe([=, this] (auto future) {
-            future.GetValue();  // re-throw exception
-            ReadyEvent.Signal();
-        });
+        RunAction(current).Subscribe(
+            [=, this](auto future)
+            {
+                future.GetValue();   // re-throw exception
+                ReadyEvent.Signal();
+            });
 
         ReadyEvent.WaitI();
         ReadyEvent.Reset();
@@ -44,15 +46,18 @@ TFuture<void> TExecutor::RunAction(ui32 action)
     auto future = promise.GetFuture();
 
     ThreadPool.SafeAddFunc(
-        [action = std::move(Actions[action]), promise = std::move(promise)] () mutable {
+        [action = std::move(Actions[action]),
+         promise = std::move(promise)]() mutable
+        {
             try {
                 action();
                 promise.SetValue();
             } catch (...) {
-                Y_ABORT("should not happen: %s", CurrentExceptionMessage().c_str());
+                Y_ABORT(
+                    "should not happen: %s",
+                    CurrentExceptionMessage().c_str());
             }
-        }
-    );
+        });
 
     return future;
 }

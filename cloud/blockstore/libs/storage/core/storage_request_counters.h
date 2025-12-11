@@ -18,9 +18,9 @@ namespace NCloud::NBlockStore::NStorage {
 enum class ERequestCounterOption
 {
     ReportHistogram = (1 << 0),
-    OnlySimple      = (1 << 1),
-    HasKind         = (1 << 2),
-    HasVoidBytes    = (1 << 3),
+    OnlySimple = (1 << 1),
+    HasKind = (1 << 2),
+    HasVoidBytes = (1 << 3),
 };
 
 Y_DECLARE_FLAGS(ERequestCounterOptions, ERequestCounterOption);
@@ -207,8 +207,10 @@ struct TRequestCounters
         SolomonRequestBytes = counters->GetCounter("RequestBytes", true);
 
         if (options & ERequestCounterOption::HasVoidBytes) {
-            SolomonRequestVoidBytes = counters->GetCounter("RequestVoidBytes", true);
-            SolomonRequestNonVoidBytes = counters->GetCounter("RequestNonVoidBytes", true);
+            SolomonRequestVoidBytes =
+                counters->GetCounter("RequestVoidBytes", true);
+            SolomonRequestNonVoidBytes =
+                counters->GetCounter("RequestNonVoidBytes", true);
         }
 
         if (options & ERequestCounterOption::HasKind) {
@@ -235,7 +237,10 @@ struct TRequestCounters
         }
 
         if (!(options & ERequestCounterOption::OnlySimple)) {
-            Total.Register(counters, groupName, options & ERequestCounterOption::ReportHistogram);
+            Total.Register(
+                counters,
+                groupName,
+                options & ERequestCounterOption::ReportHistogram);
             if ((options & ERequestCounterOption::HasKind) &&
                 (options & ERequestCounterOption::ReportHistogram))
             {

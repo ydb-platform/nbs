@@ -14,10 +14,10 @@ namespace NCloud::NBlockStore::NStorage {
 ///////////////////////////////////////////////////////////////////////////////
 
 TPropagateLinkToFollowerActor::TPropagateLinkToFollowerActor(
-        TString logPrefix,
-        TRequestInfoPtr requestInfo,
-        TLeaderFollowerLink link,
-        EReason reason)
+    TString logPrefix,
+    TRequestInfoPtr requestInfo,
+    TLeaderFollowerLink link,
+    EReason reason)
     : LogPrefix(std::move(logPrefix))
     , RequestInfo(std::move(requestInfo))
     , Link(std::move(link))

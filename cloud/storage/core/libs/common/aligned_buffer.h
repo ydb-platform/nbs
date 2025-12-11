@@ -17,8 +17,8 @@ public:
     TAlignedBuffer(const TAlignedBuffer&) = delete;
     TAlignedBuffer& operator=(const TAlignedBuffer&) = delete;
 
-    TAlignedBuffer(TAlignedBuffer&& other) noexcept ;
-    TAlignedBuffer& operator=(TAlignedBuffer&& other) noexcept ;
+    TAlignedBuffer(TAlignedBuffer&& other) noexcept;
+    TAlignedBuffer& operator=(TAlignedBuffer&& other) noexcept;
 
     TAlignedBuffer(ui32 size, ui32 align);
     TAlignedBuffer(TString&& buffer, ui32 align);
@@ -37,7 +37,8 @@ public:
     size_t Size() const;
     void TrimSize(size_t size);
 
-    // Take ownership of the buffer. Don't use aligned buffer after calling this method.
+    // Take ownership of the buffer. Don't use aligned buffer after calling this
+    // method.
     TString TakeBuffer();
 };
 }   // namespace NCloud

@@ -31,7 +31,7 @@ Y_UNIT_TEST_SUITE(TGuardedSgListTest)
     Y_UNIT_TEST(Acquire)
     {
         auto data = TString(4096, 'a');
-        TSgList sglist = {{ data.data(), 4096 }};
+        TSgList sglist = {{data.data(), 4096}};
         TGuardedSgList guardedSgList(sglist);
 
         {
@@ -45,7 +45,7 @@ Y_UNIT_TEST_SUITE(TGuardedSgListTest)
     Y_UNIT_TEST(AcquireCopy)
     {
         auto data = TString(4096, 'a');
-        TSgList sglist = {{ data.data(), 4096 }};
+        TSgList sglist = {{data.data(), 4096}};
         TGuardedSgList guardedSgList(sglist);
         auto copy = guardedSgList;
 
@@ -87,7 +87,7 @@ Y_UNIT_TEST_SUITE(TGuardedSgListTest)
         TGuardedSgList src;
 
         auto data = TString(4096, 'a');
-        TSgList sglist = {{ data.data(), data.size() }};
+        TSgList sglist = {{data.data(), data.size()}};
         auto guardedSgList = src.Create(sglist);
 
         {
@@ -106,7 +106,7 @@ Y_UNIT_TEST_SUITE(TGuardedSgListTest)
         auto guardedSgList = src;
 
         auto data = TString(4096, 'a');
-        TSgList sglist = {{ data.data(), data.size() }};
+        TSgList sglist = {{data.data(), data.size()}};
         guardedSgList.SetSgList(sglist);
 
         {
@@ -122,7 +122,7 @@ Y_UNIT_TEST_SUITE(TGuardedSgListTest)
     Y_UNIT_TEST(CreateDepender)
     {
         auto data = TString(4096, 'a');
-        TSgList sglist = {{ data.data(), 4096 }};
+        TSgList sglist = {{data.data(), 4096}};
 
         TGuardedSgList src(sglist);
         auto depender1 = src.CreateDepender();
@@ -162,20 +162,32 @@ Y_UNIT_TEST_SUITE(TGuardedSgListTest)
         auto sgList4 = TGuardedSgList(
             ResizeBlocks(blocks[2], 3, TString(DefaultBlockSize, 'c')));
 
-        auto unionSgList = TGuardedSgList::CreateUnion(
-            {sgList1, sgList2, sgList3, sgList4});
+        auto unionSgList =
+            TGuardedSgList::CreateUnion({sgList1, sgList2, sgList3, sgList4});
 
         {
             auto guard = unionSgList.Acquire();
             UNIT_ASSERT(guard);
             const auto& sgList = guard.Get();
             UNIT_ASSERT(sgList.size() == 6);
-            UNIT_ASSERT_EQUAL(sgList[0].AsStringBuf(), TString(DefaultBlockSize, 'a'));
-            UNIT_ASSERT_EQUAL(sgList[1].AsStringBuf(), TString(DefaultBlockSize, 'a'));
-            UNIT_ASSERT_EQUAL(sgList[2].AsStringBuf(), TString(DefaultBlockSize, 'b'));
-            UNIT_ASSERT_EQUAL(sgList[3].AsStringBuf(), TString(DefaultBlockSize, 'c'));
-            UNIT_ASSERT_EQUAL(sgList[4].AsStringBuf(), TString(DefaultBlockSize, 'c'));
-            UNIT_ASSERT_EQUAL(sgList[5].AsStringBuf(), TString(DefaultBlockSize, 'c'));
+            UNIT_ASSERT_EQUAL(
+                sgList[0].AsStringBuf(),
+                TString(DefaultBlockSize, 'a'));
+            UNIT_ASSERT_EQUAL(
+                sgList[1].AsStringBuf(),
+                TString(DefaultBlockSize, 'a'));
+            UNIT_ASSERT_EQUAL(
+                sgList[2].AsStringBuf(),
+                TString(DefaultBlockSize, 'b'));
+            UNIT_ASSERT_EQUAL(
+                sgList[3].AsStringBuf(),
+                TString(DefaultBlockSize, 'c'));
+            UNIT_ASSERT_EQUAL(
+                sgList[4].AsStringBuf(),
+                TString(DefaultBlockSize, 'c'));
+            UNIT_ASSERT_EQUAL(
+                sgList[5].AsStringBuf(),
+                TString(DefaultBlockSize, 'c'));
         }
 
         sgList2.Close();
@@ -211,20 +223,18 @@ Y_UNIT_TEST_SUITE(TGuardedBufferTest)
         TGuardedBuffer<TString> owner;
 
         TString data(4096, 'a');
-        TSgList sglist = {{ data.data(), data.size() }};
+        TSgList sglist = {{data.data(), data.size()}};
 
         owner = TGuardedBuffer(std::move(data));
 
         const TString& ref = owner.Get();
-        TSgList refSglist = {{ ref.data(), ref.size() }};
+        TSgList refSglist = {{ref.data(), ref.size()}};
         UNIT_ASSERT_VALUES_EQUAL(sglist, refSglist);
 
         {
             ui32 offset = 1024;
-            TSgList subSglist = {{
-                sglist[0].Data() + offset,
-                sglist[0].Size() - offset
-            }};
+            TSgList subSglist = {
+                {sglist[0].Data() + offset, sglist[0].Size() - offset}};
 
             auto guardedSgList = owner.CreateGuardedSgList(subSglist);
             auto guard = guardedSgList.Acquire();
@@ -233,7 +243,7 @@ Y_UNIT_TEST_SUITE(TGuardedBufferTest)
         }
 
         TString extracted = owner.Extract();
-        TSgList extractedSglist = {{ extracted.data(), extracted.size() }};
+        TSgList extractedSglist = {{extracted.data(), extracted.size()}};
         UNIT_ASSERT_VALUES_EQUAL(sglist, extractedSglist);
 
         auto guardedSgList = owner.CreateGuardedSgList(sglist);
@@ -243,7 +253,7 @@ Y_UNIT_TEST_SUITE(TGuardedBufferTest)
     Y_UNIT_TEST(ShouldDestroyDataIfGuardedSgListExists)
     {
         TString data(4096, 'a');
-        TSgList sglist = {{ data.data(), data.size() }};
+        TSgList sglist = {{data.data(), data.size()}};
 
         TGuardedBuffer<TString> owner(std::move(data));
         auto guardedSgList = owner.CreateGuardedSgList(sglist);
@@ -257,7 +267,7 @@ Y_UNIT_TEST_SUITE(TGuardedBufferTest)
     Y_UNIT_TEST(ShouldGetGuardedSgListForString)
     {
         TString data(4096, 'a');
-        TSgList sglist = {{ data.data(), data.size() }};
+        TSgList sglist = {{data.data(), data.size()}};
         TGuardedBuffer buffer(std::move(data));
 
         auto guardedSgList = buffer.GetGuardedSgList();
@@ -269,7 +279,7 @@ Y_UNIT_TEST_SUITE(TGuardedBufferTest)
     Y_UNIT_TEST(ShouldGetGuardedSgListForBuffer)
     {
         TBuffer data("aaaa", 4);
-        TSgList sglist = {{ data.Data(), data.Size() }};
+        TSgList sglist = {{data.Data(), data.Size()}};
         TGuardedBuffer buffer(std::move(data));
 
         auto guardedSgList = buffer.GetGuardedSgList();
@@ -303,11 +313,12 @@ Y_UNIT_TEST_SUITE(TGuardedSgListWithThreadsTest)
         void Add(F f)
         {
             Workers.push_back(SystemThreadFactory()->Run(
-                [this, f = std::move(f)]() {
-                    while (AtomicGet(ShouldStart) != 1) {}
+                [this, f = std::move(f)]()
+                {
+                    while (AtomicGet(ShouldStart) != 1) {
+                    }
                     f();
-                }
-            ));
+                }));
         }
 
         void Start()
@@ -321,7 +332,8 @@ Y_UNIT_TEST_SUITE(TGuardedSgListWithThreadsTest)
         TGuardedSgList guardedSgList;
         TScopedTasks tasks;
 
-        const auto task = [&guardedSgList]() {
+        const auto task = [&guardedSgList]()
+        {
             for (int i = 0; i < 5; ++i) {
                 UNIT_ASSERT(guardedSgList.Acquire());
             }
@@ -339,7 +351,8 @@ Y_UNIT_TEST_SUITE(TGuardedSgListWithThreadsTest)
         {
             TScopedTasks tasks;
 
-            const auto acquireTask = [&guardedSgList]() {
+            const auto acquireTask = [&guardedSgList]()
+            {
                 for (int i = 0; i < 5; ++i) {
                     auto guard = guardedSgList.Acquire();
                 }
@@ -348,7 +361,8 @@ Y_UNIT_TEST_SUITE(TGuardedSgListWithThreadsTest)
                 tasks.Add(acquireTask);
             }
 
-            const auto closeTask = [&guardedSgList]() {
+            const auto closeTask = [&guardedSgList]()
+            {
                 guardedSgList.Close();
             };
             for (int i = 0; i < 2; ++i) {
@@ -367,7 +381,8 @@ Y_UNIT_TEST_SUITE(TGuardedSgListWithThreadsTest)
         {
             TScopedTasks tasks;
 
-            const auto dependerTask = [&guardedSgList]() {
+            const auto dependerTask = [&guardedSgList]()
+            {
                 for (int i = 0; i < 5; ++i) {
                     auto sglist = guardedSgList.CreateDepender();
                 }
@@ -376,7 +391,8 @@ Y_UNIT_TEST_SUITE(TGuardedSgListWithThreadsTest)
                 tasks.Add(dependerTask);
             }
 
-            const auto closeTask = [&guardedSgList]() {
+            const auto closeTask = [&guardedSgList]()
+            {
                 guardedSgList.Close();
             };
             for (int i = 0; i < 2; ++i) {
@@ -396,7 +412,8 @@ Y_UNIT_TEST_SUITE(TGuardedSgListWithThreadsTest)
         {
             TScopedTasks tasks;
 
-            const auto dependerTask = [&depender]() {
+            const auto dependerTask = [&depender]()
+            {
                 for (int i = 0; i < 5; ++i) {
                     auto guard = depender.Acquire();
                 }
@@ -405,14 +422,16 @@ Y_UNIT_TEST_SUITE(TGuardedSgListWithThreadsTest)
                 tasks.Add(dependerTask);
             }
 
-            const auto acquireTask = [&guardedSgList]() {
+            const auto acquireTask = [&guardedSgList]()
+            {
                 auto guard = guardedSgList.Acquire();
             };
             for (int i = 0; i < 5; ++i) {
                 tasks.Add(acquireTask);
             }
 
-            const auto closeTask = [&guardedSgList]() {
+            const auto closeTask = [&guardedSgList]()
+            {
                 guardedSgList.Close();
             };
             for (int i = 0; i < 2; ++i) {

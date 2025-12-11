@@ -6,19 +6,16 @@ using namespace NKikimr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_COUNTER_NAME(name, category, ...)    #category "/" #name,
+#define BLOCKSTORE_COUNTER_NAME(name, category, ...) #category "/" #name,
 
 const char* const TDiskAgentCounters::SimpleCounterNames[] = {
-    BLOCKSTORE_DISK_AGENT_SIMPLE_COUNTERS(BLOCKSTORE_COUNTER_NAME)
-};
+    BLOCKSTORE_DISK_AGENT_SIMPLE_COUNTERS(BLOCKSTORE_COUNTER_NAME)};
 
 const char* const TDiskAgentCounters::CumulativeCounterNames[] = {
-    BLOCKSTORE_DISK_AGENT_CUMULATIVE_COUNTERS(BLOCKSTORE_COUNTER_NAME)
-};
+    BLOCKSTORE_DISK_AGENT_CUMULATIVE_COUNTERS(BLOCKSTORE_COUNTER_NAME)};
 
 const char* const TDiskAgentCounters::PercentileCounterNames[] = {
-    BLOCKSTORE_DISK_AGENT_PERCENTILE_COUNTERS(BLOCKSTORE_COUNTER_NAME)
-};
+    BLOCKSTORE_DISK_AGENT_PERCENTILE_COUNTERS(BLOCKSTORE_COUNTER_NAME)};
 
 #undef BLOCKSTORE_COUNTER_NAME
 

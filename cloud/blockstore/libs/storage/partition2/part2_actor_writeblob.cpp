@@ -4,7 +4,6 @@
 #include <cloud/blockstore/libs/storage/partition/model/fresh_blob.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 
@@ -22,8 +21,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TWriteBlobActor final
-    : public TActorBootstrapped<TWriteBlobActor>
+class TWriteBlobActor final: public TActorBootstrapped<TWriteBlobActor>
 {
     using TRequest = TEvPartitionPrivate::TEvWriteBlobRequest;
     using TResponse = TEvPartitionPrivate::TEvWriteBlobResponse;
@@ -80,11 +78,11 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TWriteBlobActor::TWriteBlobActor(
-        const TActorId& tabletActorId,
-        TRequestInfoPtr requestInfo,
-        ui64 tabletId,
-        std::unique_ptr<TRequest> request,
-        ui32 groupId)
+    const TActorId& tabletActorId,
+    TRequestInfoPtr requestInfo,
+    ui64 tabletId,
+    std::unique_ptr<TRequest> request,
+    ui32 groupId)
     : TabletActorId(tabletActorId)
     , RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
@@ -112,11 +110,12 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
 {
     TString blobContent;
 
-    if (const auto* guardedSgList = std::get_if<TGuardedSgList>(&Request->Data)) {
+    if (const auto* guardedSgList = std::get_if<TGuardedSgList>(&Request->Data))
+    {
         if (auto guard = guardedSgList->Acquire()) {
             const auto& sgList = guard.Get();
             blobContent.ReserveAndResize(SgListGetSize(sgList));
-            SgListCopy(sgList, { blobContent.data(), blobContent.size() });
+            SgListCopy(sgList, {blobContent.data(), blobContent.size()});
         } else {
             auto error = MakeError(
                 E_CANCELLED,
@@ -134,26 +133,22 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
         MakeBlobId(TabletId, Request->BlobId),
         std::move(blobContent),
         Request->Deadline,
-        Request->Async
-            ? NKikimrBlobStorage::AsyncBlob
-            : NKikimrBlobStorage::UserData);
+        Request->Async ? NKikimrBlobStorage::AsyncBlob
+                       : NKikimrBlobStorage::UserData);
 
     request->Orbit = std::move(RequestInfo->CallContext->LWOrbit);
 
     RequestSent = ctx.Now();
 
-    SendToBSProxy(
-        ctx,
-        Request->Proxy,
-        request.release());
+    SendToBSProxy(ctx, Request->Proxy, request.release());
 }
 
 void TWriteBlobActor::NotifyCompleted(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobCompleted>(
-        error);
+    auto request =
+        std::make_unique<TEvPartitionPrivate::TEvWriteBlobCompleted>(error);
     request->BlobId = Request->BlobId;
     request->StorageStatusFlags = StorageStatusFlags;
     request->ApproximateFreeSpaceShare = ApproximateFreeSpaceShare;
@@ -185,13 +180,16 @@ void TWriteBlobActor::ReplyError(
     const TEvBlobStorage::TEvPutResult& response,
     const TString& description)
 {
-    LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%lu] TEvBlobStorage::TEvPut failed: %s\n%s",
         TabletId,
         description.data(),
         response.Print(false).data());
 
-    auto error = MakeError(E_REJECTED, "TEvBlobStorage::TEvPut failed: " + description);
+    auto error =
+        MakeError(E_REJECTED, "TEvBlobStorage::TEvPut failed: " + description);
     ReplyAndDie(ctx, std::make_unique<TResponse>(error));
 }
 
@@ -257,13 +255,14 @@ STFUNC(TWriteBlobActor::StateWork)
     }
 }
 
-
-EChannelPermissions StorageStatusFlags2ChannelPermissions(TStorageStatusFlags ssf)
+EChannelPermissions StorageStatusFlags2ChannelPermissions(
+    TStorageStatusFlags ssf)
 {
     const auto outOfSpaceMask = static_cast<NKikimrBlobStorage::EStatusFlags>(
-        NKikimrBlobStorage::StatusDiskSpaceRed
-        | NKikimrBlobStorage::StatusDiskSpaceOrange
-        // no need to check StatusDiskSpaceBlack since BS won't accept any write requests in black state anyway
+        NKikimrBlobStorage::StatusDiskSpaceRed |
+        NKikimrBlobStorage::StatusDiskSpaceOrange
+        // no need to check StatusDiskSpaceBlack since BS won't accept any write
+        // requests in black state anyway
     );
     if (ssf.Check(outOfSpaceMask)) {
         return {};
@@ -273,7 +272,8 @@ EChannelPermissions StorageStatusFlags2ChannelPermissions(TStorageStatusFlags ss
         return EChannelPermission::SystemWritesAllowed;
     }
 
-    return EChannelPermission::SystemWritesAllowed | EChannelPermission::UserWritesAllowed;
+    return EChannelPermission::SystemWritesAllowed |
+           EChannelPermission::UserWritesAllowed;
 }
 
 }   // namespace
@@ -303,13 +303,15 @@ void TPartitionActor::HandleWriteBlob(
     msg->Proxy = Info()->BSProxyIDForChannel(channel, msg->BlobId.Generation());
     ui32 groupId = Info()->GroupFor(channel, msg->BlobId.Generation());
 
-    State->EnqueueIORequest(channel, std::make_unique<TWriteBlobActor>(
-        SelfId(),
-        requestInfo,
-        TabletID(),
-        std::unique_ptr<TEvPartitionPrivate::TEvWriteBlobRequest>(
-            msg.Release()),
-        groupId));
+    State->EnqueueIORequest(
+        channel,
+        std::make_unique<TWriteBlobActor>(
+            SelfId(),
+            requestInfo,
+            TabletID(),
+            std::unique_ptr<TEvPartitionPrivate::TEvWriteBlobRequest>(
+                msg.Release()),
+            groupId));
 
     ProcessIOQueue(ctx, channel);
 }
@@ -332,15 +334,17 @@ void TPartitionActor::HandleWriteBlobCompleted(
         NKikimrBlobStorage::EStatusFlags::StatusDiskSpaceYellowStop;
 
     if (msg->StorageStatusFlags.Check(isValidFlag)) {
-        const auto permissions = StorageStatusFlags2ChannelPermissions(
-            msg->StorageStatusFlags);
+        const auto permissions =
+            StorageStatusFlags2ChannelPermissions(msg->StorageStatusFlags);
         UpdateChannelPermissions(ctx, channel, permissions);
         State->UpdateChannelFreeSpaceShare(
             channel,
             msg->ApproximateFreeSpaceShare);
 
         if (msg->StorageStatusFlags.Check(yellowStopFlag)) {
-            LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::PARTITION,
                 "[%lu] Yellow stop flag received for channel %u and group %u",
                 TabletID(),
                 channel,
@@ -349,7 +353,9 @@ void TPartitionActor::HandleWriteBlobCompleted(
             ScheduleYellowStateUpdate(ctx);
             ReassignChannelsIfNeeded(ctx);
         } else if (msg->StorageStatusFlags.Check(yellowMoveFlag)) {
-            LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::PARTITION,
                 "[%lu] Yellow move flag received for channel %u and group %u",
                 TabletID(),
                 channel,
@@ -371,13 +377,17 @@ void TPartitionActor::HandleWriteBlobCompleted(
     }
 
     if (group == Max<ui32>()) {
-        Y_DEBUG_ABORT_UNLESS(0, "HandleWriteBlobCompleted: invalid blob id received");
+        Y_DEBUG_ABORT_UNLESS(
+            0,
+            "HandleWriteBlobCompleted: invalid blob id received");
     } else {
         UpdateWriteThroughput(ctx, channel, group, msg->BlobId.BlobSize());
     }
     UpdateNetworkStats(ctx, msg->BlobId.BlobSize());
 
-    PartCounters->RequestCounters.WriteBlob.AddRequest(msg->RequestTime.MicroSeconds(), msg->BlobId.BlobSize());
+    PartCounters->RequestCounters.WriteBlob.AddRequest(
+        msg->RequestTime.MicroSeconds(),
+        msg->BlobId.BlobSize());
 
     State->CompleteIORequest(channel);
 

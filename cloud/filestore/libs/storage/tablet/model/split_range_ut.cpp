@@ -12,16 +12,16 @@ namespace {
 
 using TBlockRange = std::pair<ui32, ui32>;
 
-TVector<TBlockRange> GetSplittedRanges(
-    ui32 blockIndex,
-    ui32 blocksCount,
-    ui32 maxBlocksCount = 1024)
+TVector<TBlockRange>
+GetSplittedRanges(ui32 blockIndex, ui32 blocksCount, ui32 maxBlocksCount = 1024)
 {
     TVector<TBlockRange> ranges;
-    SplitRange(blockIndex, blocksCount, maxBlocksCount,
-        [&] (ui32 blockOffset, ui32 blocksCount) {
-            ranges.emplace_back(blockOffset + blockIndex, blocksCount);
-        });
+    SplitRange(
+        blockIndex,
+        blocksCount,
+        maxBlocksCount,
+        [&](ui32 blockOffset, ui32 blocksCount)
+        { ranges.emplace_back(blockOffset + blockIndex, blocksCount); });
 
     return ranges;
 }

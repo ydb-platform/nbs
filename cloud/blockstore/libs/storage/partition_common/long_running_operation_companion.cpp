@@ -68,11 +68,11 @@ TRunningActors::TTimeoutsStat TRunningActors::ExtractLongRunningStat()
 ////////////////////////////////////////////////////////////////////////////////
 
 TLongRunningOperationCompanion::TLongRunningOperationCompanion(
-        NActors::TActorId partitionActor,
-        NActors::TActorId volumeActor,
-        TDuration longRunningThreshold,
-        TLongRunningOperationCompanion::EOperation operation,
-        ui32 groupId)
+    NActors::TActorId partitionActor,
+    NActors::TActorId volumeActor,
+    TDuration longRunningThreshold,
+    TLongRunningOperationCompanion::EOperation operation,
+    ui32 groupId)
     : PartitionActor(partitionActor)
     , VolumeActor(volumeActor)
     , Operation(operation)

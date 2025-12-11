@@ -493,16 +493,16 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
         {
             auto stats = compactionMap.GetStats(2);
             UNIT_ASSERT_VALUES_EQUAL(stats.TopRangesByCleanupScore.size(), 0);
-            UNIT_ASSERT_VALUES_EQUAL(stats.TopRangesByCompactionScore.size(), 0);
+            UNIT_ASSERT_VALUES_EQUAL(
+                stats.TopRangesByCompactionScore.size(),
+                0);
         }
 
         compactionMap.Update(1, 10, 20, 30, false);
 
         {
             auto stats = compactionMap.GetStats(2);
-            UNIT_ASSERT_VALUES_EQUAL(
-                1,
-                stats.TopRangesByCleanupScore.size());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.TopRangesByCleanupScore.size());
             UNIT_ASSERT_VALUES_EQUAL(
                 1,
                 stats.TopRangesByCleanupScore[0].RangeId);

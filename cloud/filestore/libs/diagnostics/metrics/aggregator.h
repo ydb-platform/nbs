@@ -12,8 +12,7 @@ namespace NCloud::NFileStore::NMetrics::NImpl {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAggregator
-    : private TMetricNextFreeKey
+class TAggregator: private TMetricNextFreeKey
 {
     using TMetricsMap = THashMap<TMetricKey, IMetricPtr>;
 

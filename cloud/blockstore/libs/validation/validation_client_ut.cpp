@@ -33,8 +33,7 @@ bool HasError(const TFuture<T>& future)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TValidationCallback final
-    : public IValidationCallback
+struct TValidationCallback final: public IValidationCallback
 {
     size_t ErrorsCount = 0;
 
@@ -126,10 +125,7 @@ std::shared_ptr<NProto::TWriteBlocksLocalRequest> CreateWriteBlocksLocalRequest(
     auto blocksHolder = std::make_shared<TVector<TString>>();
     blocksHolderList.push_back(blocksHolder);
 
-    auto sglist = ResizeBlocks(
-        *blocksHolder,
-        blocksCount,
-        data);
+    auto sglist = ResizeBlocks(*blocksHolder, blocksCount, data);
     request->Sglist = TGuardedSgList(std::move(sglist));
     return request;
 }
@@ -144,10 +140,7 @@ std::shared_ptr<NProto::TReadBlocksLocalRequest> CreateReadBlocksLocalRequest(
     auto blocksHolder = std::make_shared<TVector<TString>>();
     blocksHolderList.push_back(blocksHolder);
 
-    auto sglist = ResizeBlocks(
-        *blocksHolder,
-        blocksCount,
-        data);
+    auto sglist = ResizeBlocks(*blocksHolder, blocksCount, data);
 
     auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
     request->SetDiskId(diskId);
@@ -184,9 +177,10 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         auto mountResponse = NewPromise<NProto::TMountVolumeResponse>();
 
         client->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest>) {
-                return mountResponse;
-            };
+            [&](std::shared_ptr<NProto::TMountVolumeRequest>)
+        {
+            return mountResponse;
+        };
 
         auto mountResult = validator->MountVolume(
             MakeIntrusive<TCallContext>(),
@@ -201,9 +195,10 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         auto writeResponse1 = NewPromise<NProto::TWriteBlocksResponse>();
 
         client->WriteBlocksHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksRequest>) {
-                return writeResponse1;
-            };
+            [&](std::shared_ptr<NProto::TWriteBlocksRequest>)
+        {
+            return writeResponse1;
+        };
 
         auto writeResult1 = validator->WriteBlocks(
             MakeIntrusive<TCallContext>(),
@@ -214,9 +209,10 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         auto writeResponse2 = NewPromise<NProto::TWriteBlocksResponse>();
 
         client->WriteBlocksHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksRequest>) {
-                return writeResponse2;
-            };
+            [&](std::shared_ptr<NProto::TWriteBlocksRequest>)
+        {
+            return writeResponse2;
+        };
 
         auto writeResult2 = validator->WriteBlocks(
             MakeIntrusive<TCallContext>(),
@@ -250,9 +246,10 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         auto mountResponse = NewPromise<NProto::TMountVolumeResponse>();
 
         client->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest>) {
-                return mountResponse;
-            };
+            [&](std::shared_ptr<NProto::TMountVolumeRequest>)
+        {
+            return mountResponse;
+        };
 
         auto mountResult = validator->MountVolume(
             MakeIntrusive<TCallContext>(),
@@ -267,9 +264,10 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         auto writeResponse1 = NewPromise<NProto::TWriteBlocksResponse>();
 
         client->WriteBlocksHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksRequest>) {
-                return writeResponse1;
-            };
+            [&](std::shared_ptr<NProto::TWriteBlocksRequest>)
+        {
+            return writeResponse1;
+        };
 
         auto writeResult1 = validator->WriteBlocks(
             MakeIntrusive<TCallContext>(),
@@ -280,9 +278,10 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         auto writeResponse2 = NewPromise<NProto::TWriteBlocksResponse>();
 
         client->WriteBlocksHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksRequest>) {
-                return writeResponse2;
-            };
+            [&](std::shared_ptr<NProto::TWriteBlocksRequest>)
+        {
+            return writeResponse2;
+        };
 
         auto writeResult2 = validator->WriteBlocks(
             MakeIntrusive<TCallContext>(),
@@ -316,9 +315,10 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         auto mountResponse = NewPromise<NProto::TMountVolumeResponse>();
 
         client->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest>) {
-                return mountResponse;
-            };
+            [&](std::shared_ptr<NProto::TMountVolumeRequest>)
+        {
+            return mountResponse;
+        };
 
         auto mountResult = validator->MountVolume(
             MakeIntrusive<TCallContext>(),
@@ -333,9 +333,10 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         auto writeResponse = NewPromise<NProto::TWriteBlocksResponse>();
 
         client->WriteBlocksHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksRequest>) {
-                return writeResponse;
-            };
+            [&](std::shared_ptr<NProto::TWriteBlocksRequest>)
+        {
+            return writeResponse;
+        };
 
         auto writeResult = validator->WriteBlocks(
             MakeIntrusive<TCallContext>(),
@@ -346,9 +347,10 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         auto readResponse = NewPromise<NProto::TReadBlocksResponse>();
 
         client->ReadBlocksHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksRequest>) {
-                return readResponse;
-            };
+            [&](std::shared_ptr<NProto::TReadBlocksRequest>)
+        {
+            return readResponse;
+        };
 
         auto readResult = validator->ReadBlocks(
             MakeIntrusive<TCallContext>(),
@@ -366,9 +368,10 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         auto readResponse2 = NewPromise<NProto::TReadBlocksResponse>();
 
         client->ReadBlocksHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksRequest>) {
-                return readResponse2;
-            };
+            [&](std::shared_ptr<NProto::TReadBlocksRequest>)
+        {
+            return readResponse2;
+        };
 
         auto readResult2 = validator->ReadBlocks(
             MakeIntrusive<TCallContext>(),
@@ -399,9 +402,10 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         auto mountResponse = NewPromise<NProto::TMountVolumeResponse>();
 
         client->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest>) {
-                return mountResponse;
-            };
+            [&](std::shared_ptr<NProto::TMountVolumeRequest>)
+        {
+            return mountResponse;
+        };
 
         auto mountResult = validator->MountVolume(
             MakeIntrusive<TCallContext>(),
@@ -416,9 +420,10 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         auto writeResponse = NewPromise<NProto::TWriteBlocksResponse>();
 
         client->WriteBlocksHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksRequest>) {
-                return writeResponse;
-            };
+            [&](std::shared_ptr<NProto::TWriteBlocksRequest>)
+        {
+            return writeResponse;
+        };
 
         auto writeResult = validator->WriteBlocks(
             MakeIntrusive<TCallContext>(),
@@ -433,9 +438,10 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         auto readResponse = NewPromise<NProto::TReadBlocksResponse>();
 
         client->ReadBlocksHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksRequest>) {
-                return readResponse;
-            };
+            [&](std::shared_ptr<NProto::TReadBlocksRequest>)
+        {
+            return readResponse;
+        };
 
         auto readResult = validator->ReadBlocks(
             MakeIntrusive<TCallContext>(),
@@ -466,9 +472,10 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         auto mountResponse = NewPromise<NProto::TMountVolumeResponse>();
 
         client->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest>) {
-                return mountResponse;
-            };
+            [&](std::shared_ptr<NProto::TMountVolumeRequest>)
+        {
+            return mountResponse;
+        };
 
         auto mountResult = validator->MountVolume(
             MakeIntrusive<TCallContext>(),
@@ -483,9 +490,10 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         auto readResponse1 = NewPromise<NProto::TReadBlocksResponse>();
 
         client->ReadBlocksHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksRequest>) {
-                return readResponse1;
-            };
+            [&](std::shared_ptr<NProto::TReadBlocksRequest>)
+        {
+            return readResponse1;
+        };
 
         auto readResult1 = validator->ReadBlocks(
             MakeIntrusive<TCallContext>(),
@@ -496,9 +504,10 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         auto readResponse2 = NewPromise<NProto::TReadBlocksResponse>();
 
         client->ReadBlocksHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksRequest>) {
-                return readResponse2;
-            };
+            [&](std::shared_ptr<NProto::TReadBlocksRequest>)
+        {
+            return readResponse2;
+        };
 
         auto readResult2 = validator->ReadBlocks(
             MakeIntrusive<TCallContext>(),
@@ -512,7 +521,7 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         UNIT_ASSERT(callback->ErrorsCount == 0);
     }
 
-    //Local requests
+    // Local requests
 
     Y_UNIT_TEST(ShouldNotWarnOnNonOverlappingLocalRequests)
     {
@@ -535,9 +544,10 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         auto mountResponse = NewPromise<NProto::TMountVolumeResponse>();
 
         client->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest>) {
-                return mountResponse;
-            };
+            [&](std::shared_ptr<NProto::TMountVolumeRequest>)
+        {
+            return mountResponse;
+        };
 
         auto mountResult = validator->MountVolume(
             MakeIntrusive<TCallContext>(),
@@ -548,26 +558,30 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         UNIT_ASSERT(callback->ErrorsCount == 0);
 
         // WriteBlocks
-        auto writeRequest1 = CreateWriteBlocksLocalRequest(blocksHolderList, "test", 0, 1);
+        auto writeRequest1 =
+            CreateWriteBlocksLocalRequest(blocksHolderList, "test", 0, 1);
         auto writeResponse1 = NewPromise<NProto::TWriteBlocksLocalResponse>();
 
         client->WriteBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksLocalRequest>) {
-                return writeResponse1;
-            };
+            [&](std::shared_ptr<NProto::TWriteBlocksLocalRequest>)
+        {
+            return writeResponse1;
+        };
 
         auto writeResult1 = validator->WriteBlocksLocal(
             MakeIntrusive<TCallContext>(),
             std::move(writeRequest1));
 
         // WriteBlocks
-        auto writeRequest2 = CreateWriteBlocksLocalRequest(blocksHolderList, "test", 1, 1);
+        auto writeRequest2 =
+            CreateWriteBlocksLocalRequest(blocksHolderList, "test", 1, 1);
         auto writeResponse2 = NewPromise<NProto::TWriteBlocksLocalResponse>();
 
         client->WriteBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksLocalRequest>) {
-                return writeResponse2;
-            };
+            [&](std::shared_ptr<NProto::TWriteBlocksLocalRequest>)
+        {
+            return writeResponse2;
+        };
 
         auto writeResult2 = validator->WriteBlocksLocal(
             MakeIntrusive<TCallContext>(),
@@ -602,9 +616,10 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         auto mountResponse = NewPromise<NProto::TMountVolumeResponse>();
 
         client->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest>) {
-                return mountResponse;
-            };
+            [&](std::shared_ptr<NProto::TMountVolumeRequest>)
+        {
+            return mountResponse;
+        };
 
         auto mountResult = validator->MountVolume(
             MakeIntrusive<TCallContext>(),
@@ -615,26 +630,30 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         UNIT_ASSERT(callback->ErrorsCount == 0);
 
         // WriteBlocks
-        auto writeRequest1 = CreateWriteBlocksLocalRequest(blocksHolderList, "test", 0, 1);
+        auto writeRequest1 =
+            CreateWriteBlocksLocalRequest(blocksHolderList, "test", 0, 1);
         auto writeResponse1 = NewPromise<NProto::TWriteBlocksLocalResponse>();
 
         client->WriteBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksLocalRequest>) {
-                return writeResponse1;
-            };
+            [&](std::shared_ptr<NProto::TWriteBlocksLocalRequest>)
+        {
+            return writeResponse1;
+        };
 
         auto writeResult1 = validator->WriteBlocksLocal(
             MakeIntrusive<TCallContext>(),
             std::move(writeRequest1));
 
         // WriteBlocks
-        auto writeRequest2 = CreateWriteBlocksLocalRequest(blocksHolderList, "test", 0, 1);
+        auto writeRequest2 =
+            CreateWriteBlocksLocalRequest(blocksHolderList, "test", 0, 1);
         auto writeResponse2 = NewPromise<NProto::TWriteBlocksLocalResponse>();
 
         client->WriteBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksLocalRequest>) {
-                return writeResponse2;
-            };
+            [&](std::shared_ptr<NProto::TWriteBlocksLocalRequest>)
+        {
+            return writeResponse2;
+        };
 
         auto writeResult2 = validator->WriteBlocksLocal(
             MakeIntrusive<TCallContext>(),
@@ -669,9 +688,10 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         auto mountResponse = NewPromise<NProto::TMountVolumeResponse>();
 
         client->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest>) {
-                return mountResponse;
-            };
+            [&](std::shared_ptr<NProto::TMountVolumeRequest>)
+        {
+            return mountResponse;
+        };
 
         auto mountResult = validator->MountVolume(
             MakeIntrusive<TCallContext>(),
@@ -682,26 +702,30 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         UNIT_ASSERT(callback->ErrorsCount == 0);
 
         // WriteBlocks
-        auto writeRequest = CreateWriteBlocksLocalRequest(blocksHolderList, "test", 0, 1);
+        auto writeRequest =
+            CreateWriteBlocksLocalRequest(blocksHolderList, "test", 0, 1);
         auto writeResponse = NewPromise<NProto::TWriteBlocksLocalResponse>();
 
         client->WriteBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksLocalRequest>) {
-                return writeResponse;
-            };
+            [&](std::shared_ptr<NProto::TWriteBlocksLocalRequest>)
+        {
+            return writeResponse;
+        };
 
         auto writeResult = validator->WriteBlocksLocal(
             MakeIntrusive<TCallContext>(),
             std::move(writeRequest));
 
         // ReadBlocks
-        auto readRequest = CreateReadBlocksLocalRequest(blocksHolderList, "test", 0, 1);
+        auto readRequest =
+            CreateReadBlocksLocalRequest(blocksHolderList, "test", 0, 1);
         auto readResponse = NewPromise<NProto::TReadBlocksLocalResponse>();
 
         client->ReadBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksLocalRequest>) {
-                return readResponse;
-            };
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest>)
+        {
+            return readResponse;
+        };
 
         auto readResult = validator->ReadBlocksLocal(
             MakeIntrusive<TCallContext>(),
@@ -715,13 +739,15 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         UNIT_ASSERT(callback->ErrorsCount == 1);
 
         // ReadBlocks
-        auto readRequest2 = CreateReadBlocksLocalRequest(blocksHolderList, "test", 0, 1);
+        auto readRequest2 =
+            CreateReadBlocksLocalRequest(blocksHolderList, "test", 0, 1);
         auto readResponse2 = NewPromise<NProto::TReadBlocksLocalResponse>();
 
         client->ReadBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksLocalRequest>) {
-                return readResponse2;
-            };
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest>)
+        {
+            return readResponse2;
+        };
 
         auto readResult2 = validator->ReadBlocksLocal(
             MakeIntrusive<TCallContext>(),
@@ -753,9 +779,10 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         auto mountResponse = NewPromise<NProto::TMountVolumeResponse>();
 
         client->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest>) {
-                return mountResponse;
-            };
+            [&](std::shared_ptr<NProto::TMountVolumeRequest>)
+        {
+            return mountResponse;
+        };
 
         auto mountResult = validator->MountVolume(
             MakeIntrusive<TCallContext>(),
@@ -766,13 +793,15 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         UNIT_ASSERT(callback->ErrorsCount == 0);
 
         // WriteBlocks
-        auto writeRequest = CreateWriteBlocksLocalRequest(blocksHolderList, "test", 0, 1, "t");
+        auto writeRequest =
+            CreateWriteBlocksLocalRequest(blocksHolderList, "test", 0, 1, "t");
         auto writeResponse = NewPromise<NProto::TWriteBlocksLocalResponse>();
 
         client->WriteBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksLocalRequest>) {
-                return writeResponse;
-            };
+            [&](std::shared_ptr<NProto::TWriteBlocksLocalRequest>)
+        {
+            return writeResponse;
+        };
 
         auto writeResult = validator->WriteBlocksLocal(
             MakeIntrusive<TCallContext>(),
@@ -783,13 +812,15 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         UNIT_ASSERT(callback->ErrorsCount == 0);
 
         // ReadBlocks
-        auto readRequest = CreateReadBlocksLocalRequest(blocksHolderList, "test", 0, 1);
+        auto readRequest =
+            CreateReadBlocksLocalRequest(blocksHolderList, "test", 0, 1);
         auto readResponse = NewPromise<NProto::TReadBlocksLocalResponse>();
 
         client->ReadBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksLocalRequest>) {
-                return readResponse;
-            };
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest>)
+        {
+            return readResponse;
+        };
 
         auto readResult = validator->ReadBlocksLocal(
             MakeIntrusive<TCallContext>(),
@@ -821,9 +852,10 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         auto mountResponse = NewPromise<NProto::TMountVolumeResponse>();
 
         client->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest>) {
-                return mountResponse;
-            };
+            [&](std::shared_ptr<NProto::TMountVolumeRequest>)
+        {
+            return mountResponse;
+        };
 
         auto mountResult = validator->MountVolume(
             MakeIntrusive<TCallContext>(),
@@ -834,26 +866,30 @@ Y_UNIT_TEST_SUITE(TValidationClientTest)
         UNIT_ASSERT(callback->ErrorsCount == 0);
 
         // ReadBlocks
-        auto readRequest1 = CreateReadBlocksLocalRequest(blocksHolderList, "test", 0, 1);
+        auto readRequest1 =
+            CreateReadBlocksLocalRequest(blocksHolderList, "test", 0, 1);
         auto readResponse1 = NewPromise<NProto::TReadBlocksLocalResponse>();
 
         client->ReadBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksLocalRequest>) {
-                return readResponse1;
-            };
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest>)
+        {
+            return readResponse1;
+        };
 
         auto readResult1 = validator->ReadBlocksLocal(
             MakeIntrusive<TCallContext>(),
             std::move(readRequest1));
 
         // ReadBlocks
-        auto readRequest2 = CreateReadBlocksLocalRequest(blocksHolderList, "test", 0, 1);
+        auto readRequest2 =
+            CreateReadBlocksLocalRequest(blocksHolderList, "test", 0, 1);
         auto readResponse2 = NewPromise<NProto::TReadBlocksLocalResponse>();
 
         client->ReadBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksLocalRequest>) {
-                return readResponse2;
-            };
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest>)
+        {
+            return readResponse2;
+        };
 
         auto readResult2 = validator->ReadBlocksLocal(
             MakeIntrusive<TCallContext>(),

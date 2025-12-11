@@ -78,15 +78,14 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
                 "baseDisk",
                 2_GB / DefaultBlockSize,
                 DefaultBlockSize,
-                "", // folderId
-                "", // cloudId
+                "",   // folderId
+                "",   // cloudId
                 NCloud::NProto::STORAGE_MEDIA_SSD,
                 NProto::TVolumePerformanceProfile(),
-                TString(),  // placementGroupId
-                0,          // placementPartitionIndex
-                0,  // partitionsCount
-                NProto::TEncryptionSpec()
-            );
+                TString(),   // placementGroupId
+                0,           // placementPartitionIndex
+                0,           // partitionsCount
+                NProto::TEncryptionSpec());
 
             auto response = service.DescribeVolume("baseDisk");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
@@ -95,18 +94,18 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
                 "vol0",
                 2_GB / DefaultBlockSize,
                 DefaultBlockSize,
-                TString(),  // folderId
-                TString(),  // cloudId
+                TString(),   // folderId
+                TString(),   // cloudId
                 NCloud::NProto::STORAGE_MEDIA_SSD,
                 NProto::TVolumePerformanceProfile(),
-                TString(),  // placementGroupId
-                0,          // placementPartitionIndex
-                0,  // partitionsCount
+                TString(),   // placementGroupId
+                0,           // placementPartitionIndex
+                0,           // partitionsCount
                 NProto::TEncryptionSpec(),
-                true,  // isSystem
+                true,   // isSystem
                 "baseDisk",
                 "baseDiskCheckpointId",
-                0  // fillGeneration
+                0   // fillGeneration
             );
 
             response = service.DescribeVolume("vol0");
@@ -121,7 +120,9 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
             service.SendDescribeVolumeRequest("baseDisk");
             {
                 auto response = service.RecvDescribeVolumeResponse();
-                UNIT_ASSERT(FACILITY_FROM_CODE(response->GetStatus()) == FACILITY_SCHEMESHARD);
+                UNIT_ASSERT(
+                    FACILITY_FROM_CODE(response->GetStatus()) ==
+                    FACILITY_SCHEMESHARD);
             }
 
             service.SendDestroyVolumeRequest("vol0");
@@ -168,7 +169,8 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
     {
         TTestEnv env;
         NProto::TStorageServiceConfig config;
-        auto* prefixes = config.MutableDestructionAllowedOnlyForDisksWithIdPrefixes();
+        auto* prefixes =
+            config.MutableDestructionAllowedOnlyForDisksWithIdPrefixes();
         prefixes->Add("with_prefix");
         prefixes->Add("with_another_prefix");
         ui32 nodeIdx = SetupTestEnv(env, std::move(config));
@@ -223,10 +225,9 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
             DefaultDiskId,
             1_GB / DefaultBlockSize,
             DefaultBlockSize,
-            "", // folderId
-            "", // cloudId
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED
-        );
+            "",   // folderId
+            "",   // cloudId
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
 
         TVector<NProto::TDeallocateDiskRequest> requests;
 
@@ -335,10 +336,9 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
             DefaultDiskId,
             1_GB / DefaultBlockSize,
             DefaultBlockSize,
-            "", // folderId
-            "", // cloudId
-            NProto::STORAGE_MEDIA_SSD_NONREPLICATED
-        );
+            "",   // folderId
+            "",   // cloudId
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
 
         {
             auto response = service.StatVolume(DefaultDiskId);
@@ -395,7 +395,7 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
             service.SendDestroyVolumeRequest(
                 DefaultDiskId,
                 false,   // destroyIfBroken
-                false     // sync
+                false    // sync
             );
 
             auto response = service.RecvDestroyVolumeResponse();

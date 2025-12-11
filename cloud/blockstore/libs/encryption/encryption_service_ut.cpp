@@ -23,8 +23,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestCountService
-    : public TTestService
+struct TTestCountService: public TTestService
 {
     ui32 IOCounter = 0;
 
@@ -71,8 +70,7 @@ struct TTestCountService
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEncryptionClientFactory
-    : public IEncryptionClientFactory
+struct TEncryptionClientFactory: public IEncryptionClientFactory
 {
     const IBlockStorePtr Service;
 
@@ -138,11 +136,11 @@ void MountVolume(
     }
 
     clientFactory->ExpectedSpec = request->GetEncryptionSpec();
-    clientFactory->ExpectedDiskId = request->GetDiskId();;
+    clientFactory->ExpectedDiskId = request->GetDiskId();
+    ;
 
-    auto future = service->MountVolume(
-        MakeIntrusive<TCallContext>(),
-        std::move(request));
+    auto future =
+        service->MountVolume(MakeIntrusive<TCallContext>(), std::move(request));
 
     const auto& response = future.GetValue(TDuration::Seconds(5));
     UNIT_ASSERT_C(!HasError(response), response.GetError());
@@ -168,9 +166,8 @@ void ReadBlocks(IBlockStorePtr service, const TString& clientId)
     request->MutableHeaders()->SetClientId(clientId);
     request->SetDiskId(clientId + "_disk");
 
-    auto future = service->ReadBlocks(
-        MakeIntrusive<TCallContext>(),
-        std::move(request));
+    auto future =
+        service->ReadBlocks(MakeIntrusive<TCallContext>(), std::move(request));
 
     const auto& response = future.GetValue(TDuration::Seconds(5));
     UNIT_ASSERT_C(!HasError(response), response.GetError());
@@ -182,9 +179,8 @@ void WriteBlocks(IBlockStorePtr service, const TString& clientId)
     request->MutableHeaders()->SetClientId(clientId);
     request->SetDiskId(clientId + "_disk");
 
-    auto future = service->WriteBlocks(
-        MakeIntrusive<TCallContext>(),
-        std::move(request));
+    auto future =
+        service->WriteBlocks(MakeIntrusive<TCallContext>(), std::move(request));
 
     const auto& response = future.GetValue(TDuration::Seconds(5));
     UNIT_ASSERT_C(!HasError(response), response.GetError());
@@ -199,8 +195,8 @@ Y_UNIT_TEST_SUITE(TMultipleEncryptionServiceTest)
     Y_UNIT_TEST(ShouldSupportMultipleSessions)
     {
         auto service = std::make_shared<TTestCountService>();
-        auto clientFactory = std::make_shared<TEncryptionClientFactory>(
-            service);
+        auto clientFactory =
+            std::make_shared<TEncryptionClientFactory>(service);
 
         auto clientId1 = "testClientId1";
         auto clientId2 = "testClientId2";
@@ -274,19 +270,20 @@ Y_UNIT_TEST_SUITE(TMultipleEncryptionServiceTest)
 
         auto service = std::make_shared<TTestService>();
         service->CreateVolumeHandler =
-            [&] (std::shared_ptr<NProto::TCreateVolumeRequest> request) {
-                auto encryptionSpec = request->GetEncryptionSpec();
-                UNIT_ASSERT(NProto::ENCRYPTION_AES_XTS == encryptionSpec.GetMode());
-                UNIT_ASSERT_VALUES_EQUAL("", encryptionSpec.GetKeyHash());
-                UNIT_ASSERT_C(!encryptionSpec.HasKeyPath(), encryptionSpec.GetKeyPath());
+            [&](std::shared_ptr<NProto::TCreateVolumeRequest> request)
+        {
+            auto encryptionSpec = request->GetEncryptionSpec();
+            UNIT_ASSERT(NProto::ENCRYPTION_AES_XTS == encryptionSpec.GetMode());
+            UNIT_ASSERT_VALUES_EQUAL("", encryptionSpec.GetKeyHash());
+            UNIT_ASSERT_C(
+                !encryptionSpec.HasKeyPath(),
+                encryptionSpec.GetKeyPath());
 
-                return MakeFuture(NProto::TCreateVolumeResponse());
-            };
+            return MakeFuture(NProto::TCreateVolumeResponse());
+        };
 
-        auto multipleService = CreateMultipleEncryptionService(
-            service,
-            logging,
-            clientFactory);
+        auto multipleService =
+            CreateMultipleEncryptionService(service, logging, clientFactory);
 
         auto request = std::make_shared<NProto::TCreateVolumeRequest>();
         auto& encryptionSpec = *request->MutableEncryptionSpec();
@@ -385,10 +382,8 @@ Y_UNIT_TEST_SUITE(TMultipleEncryptionServiceTest)
             return MakeFuture(response);
         };
 
-        auto multipleService = CreateMultipleEncryptionService(
-            service,
-            logging,
-            clientFactory);
+        auto multipleService =
+            CreateMultipleEncryptionService(service, logging, clientFactory);
 
         {
             auto future = multipleService->CreateVolume(

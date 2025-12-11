@@ -81,12 +81,12 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 THttpCheckpointActor::THttpCheckpointActor(
-        TRequestInfoPtr requestInfo,
-        const TActorId& volumeActorId,
-        ui64 tabletId,
-        TString checkpointName,
-        EAction action,
-        TChildLogTitle logTitle)
+    TRequestInfoPtr requestInfo,
+    const TActorId& volumeActorId,
+    ui64 tabletId,
+    TString checkpointName,
+    EAction action,
+    TChildLogTitle logTitle)
     : RequestInfo(std::move(requestInfo))
     , VolumeActorId(volumeActorId)
     , TabletId(tabletId)
@@ -99,17 +99,25 @@ void THttpCheckpointActor::Bootstrap(const TActorContext& ctx)
 {
     switch (Action) {
         case CreateCheckpoint: {
-            auto request = std::make_unique<TEvService::TEvCreateCheckpointRequest>();
+            auto request =
+                std::make_unique<TEvService::TEvCreateCheckpointRequest>();
             request->Record.SetCheckpointId(CheckpointName);
 
-            NCloud::SendWithUndeliveryTracking(ctx, VolumeActorId, std::move(request));
+            NCloud::SendWithUndeliveryTracking(
+                ctx,
+                VolumeActorId,
+                std::move(request));
             break;
         }
         case DeleteCheckpoint: {
-            auto request = std::make_unique<TEvService::TEvDeleteCheckpointRequest>();
+            auto request =
+                std::make_unique<TEvService::TEvDeleteCheckpointRequest>();
             request->Record.SetCheckpointId(CheckpointName);
 
-            NCloud::SendWithUndeliveryTracking(ctx, VolumeActorId, std::move(request));
+            NCloud::SendWithUndeliveryTracking(
+                ctx,
+                VolumeActorId,
+                std::move(request));
             break;
         }
         default:
@@ -129,7 +137,8 @@ void THttpCheckpointActor::ReplyAndDie(
     TStringStream msg;
     if (FAILED(error.GetCode())) {
         msg << "[" << TabletId << "] ";
-        msg << "Cannot " << action << " checkpoint " << CheckpointName.Quote() << Endl;
+        msg << "Cannot " << action << " checkpoint " << CheckpointName.Quote()
+            << Endl;
         msg << "Operation completed with error : " << FormatError(error);
         LOG_ERROR(
             ctx,
@@ -183,7 +192,10 @@ void THttpCheckpointActor::HandleCreateCheckpointRequest(
 {
     Y_UNUSED(ev);
 
-    ReplyAndDie(ctx, "create", MakeError(E_REJECTED, "tablet is shutting down"));
+    ReplyAndDie(
+        ctx,
+        "create",
+        MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
 void THttpCheckpointActor::HandleDeleteCheckpointRequest(
@@ -192,7 +204,10 @@ void THttpCheckpointActor::HandleDeleteCheckpointRequest(
 {
     Y_UNUSED(ev);
 
-    ReplyAndDie(ctx, "delete", MakeError(E_REJECTED, "tablet is shutting down"));
+    ReplyAndDie(
+        ctx,
+        "delete",
+        MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
 void THttpCheckpointActor::HandlePoisonPill(
@@ -201,17 +216,28 @@ void THttpCheckpointActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    ReplyAndDie(ctx, Action == CreateCheckpoint ? "create" : "delete", MakeError(E_REJECTED, "tablet is shutting down"));
+    ReplyAndDie(
+        ctx,
+        Action == CreateCheckpoint ? "create" : "delete",
+        MakeError(E_REJECTED, "tablet is shutting down"));
 }
 
 STFUNC(THttpCheckpointActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvService::TEvCreateCheckpointResponse, HandleCreateCheckpointResponse);
-        HFunc(TEvService::TEvDeleteCheckpointResponse, HandleDeleteCheckpointResponse);
+        HFunc(
+            TEvService::TEvCreateCheckpointResponse,
+            HandleCreateCheckpointResponse);
+        HFunc(
+            TEvService::TEvDeleteCheckpointResponse,
+            HandleDeleteCheckpointResponse);
 
-        HFunc(TEvService::TEvCreateCheckpointRequest, HandleCreateCheckpointRequest);
-        HFunc(TEvService::TEvDeleteCheckpointRequest, HandleDeleteCheckpointRequest);
+        HFunc(
+            TEvService::TEvCreateCheckpointRequest,
+            HandleCreateCheckpointRequest);
+        HFunc(
+            TEvService::TEvDeleteCheckpointRequest,
+            HandleDeleteCheckpointRequest);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
@@ -236,10 +262,7 @@ void TVolumeActor::HandleHttpInfo_CreateCheckpoint(
     const auto& checkpointId = params.Get("checkpointid");
 
     if (!checkpointId) {
-        RejectHttpRequest(
-            ctx,
-            *requestInfo,
-            "No checkpoint id is given");
+        RejectHttpRequest(ctx, *requestInfo, "No checkpoint id is given");
         return;
     }
 
@@ -261,10 +284,7 @@ void TVolumeActor::HandleHttpInfo_DeleteCheckpoint(
     const auto& checkpointId = params.Get("checkpointid");
 
     if (!checkpointId) {
-        RejectHttpRequest(
-            ctx,
-            *requestInfo,
-            "No checkpoint id is given");
+        RejectHttpRequest(ctx, *requestInfo, "No checkpoint id is given");
         return;
     }
 

@@ -12,8 +12,7 @@ namespace NPrivate {
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-struct TLFUItemGroup
-    : TIntrusiveListItem<TLFUItemGroup<T>>
+struct TLFUItemGroup: TIntrusiveListItem<TLFUItemGroup<T>>
 {
     TVector<T*> Data;
     size_t UseCount = 1;
@@ -47,8 +46,7 @@ private:
 public:
     TLFUList(IAllocator* allocator)
         : Allocator(allocator)
-    {
-    }
+    {}
 
     ~TLFUList()
     {

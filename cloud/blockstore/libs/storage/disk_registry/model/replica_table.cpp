@@ -242,7 +242,8 @@ TMirroredDiskDevicesStat TReplicaTable::CalculateDiskStats(
             }
         }
         ui32 replacementAndErrorCount = cellReplacementCount + cellErrorCount;
-        Y_DEBUG_ABORT_UNLESS(replacementAndErrorCount < result.CellsByState.size());
+        Y_DEBUG_ABORT_UNLESS(
+            replacementAndErrorCount < result.CellsByState.size());
         if (replacementAndErrorCount >= result.CellsByState.size()) {
             replacementAndErrorCount = result.CellsByState.size() - 1;
         }

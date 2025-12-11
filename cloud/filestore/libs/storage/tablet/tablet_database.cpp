@@ -40,9 +40,7 @@ bool TIndexTabletDatabase::ReadFileSystem(NProto::TFileSystem& fileSystem)
 {
     using TTable = TIndexTabletSchema::FileSystem;
 
-    auto it = Table<TTable>()
-        .Key(FileSystemMetaId)
-        .Select();
+    auto it = Table<TTable>().Key(FileSystemMetaId).Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -59,20 +57,18 @@ bool TIndexTabletDatabase::ReadFileSystemStats(NProto::TFileSystemStats& stats)
 {
     using TTable = TIndexTabletSchema::FileSystem;
 
-    auto it = Table<TTable>()
-        .Key(FileSystemMetaId)
-        .Select();
+    auto it = Table<TTable>().Key(FileSystemMetaId).Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
     }
 
     if (it.IsValid()) {
-#define FILESTORE_IMPLEMENT_STATS(name, ...)                                   \
-        stats.Set##name(it.GetValue<TTable::name>());                          \
-// FILESTORE_IMPLEMENT_STATS
+#define FILESTORE_IMPLEMENT_STATS(name, ...)      \
+    stats.Set##name(it.GetValue<TTable::name>()); \
+    // FILESTORE_IMPLEMENT_STATS
 
-FILESTORE_FILESYSTEM_STATS(FILESTORE_IMPLEMENT_STATS)
+        FILESTORE_FILESYSTEM_STATS(FILESTORE_IMPLEMENT_STATS)
 
 #undef FILESTORE_IMPLEMENT_STATS
     }
@@ -80,20 +76,19 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_IMPLEMENT_STATS)
     return true;
 }
 
-#define FILESTORE_IMPLEMENT_STATS(name, ...)                                   \
-    void TIndexTabletDatabase::Write##name(ui64 value)                         \
-    {                                                                          \
-        using TTable = TIndexTabletSchema::FileSystem;                         \
-        Table<TTable>()                                                        \
-            .Key(FileSystemMetaId)                                             \
-            .Update(NIceDb::TUpdate<TTable::name>(value));                     \
-    }                                                                          \
-// FILESTORE_IMPLEMENT_STATS
+#define FILESTORE_IMPLEMENT_STATS(name, ...)               \
+    void TIndexTabletDatabase::Write##name(ui64 value)     \
+    {                                                      \
+        using TTable = TIndexTabletSchema::FileSystem;     \
+        Table<TTable>()                                    \
+            .Key(FileSystemMetaId)                         \
+            .Update(NIceDb::TUpdate<TTable::name>(value)); \
+    }                                                      \
+    // FILESTORE_IMPLEMENT_STATS
 
 FILESTORE_FILESYSTEM_STATS(FILESTORE_IMPLEMENT_STATS)
 
 #undef FILESTORE_IMPLEMENT_STATS
-
 
 void TIndexTabletDatabase::WriteStorageConfig(
     const NProto::TStorageConfig& storageConfig)
@@ -110,9 +105,7 @@ bool TIndexTabletDatabase::ReadStorageConfig(
 {
     using TTable = TIndexTabletSchema::FileSystem;
 
-    auto it = Table<TTable>()
-        .Key(FileSystemMetaId)
-        .Select<TTable::TColumns>();
+    auto it = Table<TTable>().Key(FileSystemMetaId).Select<TTable::TColumns>();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -135,21 +128,16 @@ void TIndexTabletDatabase::WriteNode(
 {
     using TTable = TIndexTabletSchema::Nodes;
 
-    Table<TTable>()
-        .Key(nodeId)
-        .Update(
-            NIceDb::TUpdate<TTable::CommitId>(commitId),
-            NIceDb::TUpdate<TTable::Proto>(attrs)
-        );
+    Table<TTable>().Key(nodeId).Update(
+        NIceDb::TUpdate<TTable::CommitId>(commitId),
+        NIceDb::TUpdate<TTable::Proto>(attrs));
 }
 
 void TIndexTabletDatabase::DeleteNode(ui64 nodeId)
 {
     using TTable = TIndexTabletSchema::Nodes;
 
-    Table<TTable>()
-        .Key(nodeId)
-        .Delete();
+    Table<TTable>().Key(nodeId).Delete();
 }
 
 bool TIndexTabletDatabase::ReadNode(
@@ -159,9 +147,7 @@ bool TIndexTabletDatabase::ReadNode(
 {
     using TTable = TIndexTabletSchema::Nodes;
 
-    auto it = Table<TTable>()
-        .Key(nodeId)
-        .Select();
+    auto it = Table<TTable>().Key(nodeId).Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -172,12 +158,11 @@ bool TIndexTabletDatabase::ReadNode(
         ui64 maxCommitId = InvalidCommitId;
 
         if (VisibleCommitId(commitId, minCommitId, maxCommitId)) {
-            node = TNode {
+            node = TNode{
                 nodeId,
                 it.GetValue<TTable::Proto>(),
                 minCommitId,
-                maxCommitId
-            };
+                maxCommitId};
         }
     }
 
@@ -234,17 +219,14 @@ void TIndexTabletDatabase::WriteNodeVer(
         .Key(nodeId, ReverseCommitId(minCommitId))
         .Update(
             NIceDb::TUpdate<TTable::MaxCommitId>(maxCommitId),
-            NIceDb::TUpdate<TTable::Proto>(attrs)
-        );
+            NIceDb::TUpdate<TTable::Proto>(attrs));
 }
 
 void TIndexTabletDatabase::DeleteNodeVer(ui64 nodeId, ui64 commitId)
 {
     using TTable = TIndexTabletSchema::Nodes_Ver;
 
-    Table<TTable>()
-        .Key(nodeId, ReverseCommitId(commitId))
-        .Delete();
+    Table<TTable>().Key(nodeId, ReverseCommitId(commitId)).Delete();
 }
 
 bool TIndexTabletDatabase::ReadNodeVer(
@@ -255,8 +237,8 @@ bool TIndexTabletDatabase::ReadNodeVer(
     using TTable = TIndexTabletSchema::Nodes_Ver;
 
     auto it = Table<TTable>()
-        .GreaterOrEqual(nodeId, ReverseCommitId(commitId))
-        .Select();
+                  .GreaterOrEqual(nodeId, ReverseCommitId(commitId))
+                  .Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -269,15 +251,15 @@ bool TIndexTabletDatabase::ReadNodeVer(
         }
 
         ui64 minCommitId = ReverseCommitId(it.GetValue<TTable::MinCommitId>());
-        ui64 maxCommitId = it.GetValueOrDefault<TTable::MaxCommitId>(InvalidCommitId);
+        ui64 maxCommitId =
+            it.GetValueOrDefault<TTable::MaxCommitId>(InvalidCommitId);
 
         if (VisibleCommitId(commitId, minCommitId, maxCommitId)) {
-            node = TNode {
+            node = TNode{
                 nodeId,
                 it.GetValue<TTable::Proto>(),
                 minCommitId,
-                maxCommitId
-            };
+                maxCommitId};
             break;
         }
 
@@ -306,17 +288,14 @@ void TIndexTabletDatabase::WriteNodeAttr(
         .Update(
             NIceDb::TUpdate<TTable::CommitId>(commitId),
             NIceDb::TUpdate<TTable::Value>(value),
-            NIceDb::TUpdate<TTable::Version>(version)
-        );
+            NIceDb::TUpdate<TTable::Version>(version));
 }
 
 void TIndexTabletDatabase::DeleteNodeAttr(ui64 nodeId, const TString& name)
 {
     using TTable = TIndexTabletSchema::NodeAttrs;
 
-    Table<TTable>()
-        .Key(nodeId, name)
-        .Delete();
+    Table<TTable>().Key(nodeId, name).Delete();
 }
 
 bool TIndexTabletDatabase::ReadNodeAttr(
@@ -327,9 +306,7 @@ bool TIndexTabletDatabase::ReadNodeAttr(
 {
     using TTable = TIndexTabletSchema::NodeAttrs;
 
-    auto it = Table<TTable>()
-        .Key(nodeId, name)
-        .Select();
+    auto it = Table<TTable>().Key(nodeId, name).Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -340,14 +317,13 @@ bool TIndexTabletDatabase::ReadNodeAttr(
         ui64 maxCommitId = InvalidCommitId;
 
         if (VisibleCommitId(commitId, minCommitId, maxCommitId)) {
-            attr = TNodeAttr {
+            attr = TNodeAttr{
                 nodeId,
                 name,
                 it.GetValue<TTable::Value>(),
                 minCommitId,
                 maxCommitId,
-                it.GetValueOrDefault<TTable::Version>(0)
-            };
+                it.GetValueOrDefault<TTable::Version>(0)};
         }
     }
 
@@ -361,9 +337,7 @@ bool TIndexTabletDatabase::ReadNodeAttrs(
 {
     using TTable = TIndexTabletSchema::NodeAttrs;
 
-    auto it = Table<TTable>()
-        .Prefix(nodeId)
-        .Select();
+    auto it = Table<TTable>().Prefix(nodeId).Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -374,14 +348,13 @@ bool TIndexTabletDatabase::ReadNodeAttrs(
         ui64 maxCommitId = InvalidCommitId;
 
         if (VisibleCommitId(commitId, minCommitId, maxCommitId)) {
-            attrs.emplace_back(TNodeAttr {
+            attrs.emplace_back(TNodeAttr{
                 nodeId,
                 it.GetValue<TTable::Name>(),
                 it.GetValue<TTable::Value>(),
                 minCommitId,
                 maxCommitId,
-                it.GetValueOrDefault<TTable::Version>(0)
-            });
+                it.GetValueOrDefault<TTable::Version>(0)});
         }
 
         if (!it.Next()) {
@@ -420,9 +393,7 @@ void TIndexTabletDatabase::DeleteNodeAttrVer(
 {
     using TTable = TIndexTabletSchema::NodeAttrs_Ver;
 
-    Table<TTable>()
-        .Key(nodeId, name, ReverseCommitId(commitId))
-        .Delete();
+    Table<TTable>().Key(nodeId, name, ReverseCommitId(commitId)).Delete();
 }
 
 bool TIndexTabletDatabase::ReadNodeAttrVer(
@@ -434,8 +405,8 @@ bool TIndexTabletDatabase::ReadNodeAttrVer(
     using TTable = TIndexTabletSchema::NodeAttrs_Ver;
 
     auto it = Table<TTable>()
-        .GreaterOrEqual(nodeId, name, ReverseCommitId(commitId))
-        .Select();
+                  .GreaterOrEqual(nodeId, name, ReverseCommitId(commitId))
+                  .Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -450,17 +421,17 @@ bool TIndexTabletDatabase::ReadNodeAttrVer(
         }
 
         ui64 minCommitId = ReverseCommitId(it.GetValue<TTable::MinCommitId>());
-        ui64 maxCommitId = it.GetValueOrDefault<TTable::MaxCommitId>(InvalidCommitId);
+        ui64 maxCommitId =
+            it.GetValueOrDefault<TTable::MaxCommitId>(InvalidCommitId);
 
         if (VisibleCommitId(commitId, minCommitId, maxCommitId)) {
-            attr = TNodeAttr {
+            attr = TNodeAttr{
                 nodeId,
                 name,
                 it.GetValue<TTable::Value>(),
                 minCommitId,
                 maxCommitId,
-                it.GetValueOrDefault<TTable::Version>(0)
-            };
+                it.GetValueOrDefault<TTable::Version>(0)};
             break;
         }
 
@@ -479,9 +450,7 @@ bool TIndexTabletDatabase::ReadNodeAttrVers(
 {
     using TTable = TIndexTabletSchema::NodeAttrs_Ver;
 
-    auto it = Table<TTable>()
-        .Prefix(nodeId)
-        .Select();
+    auto it = Table<TTable>().Prefix(nodeId).Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -489,17 +458,17 @@ bool TIndexTabletDatabase::ReadNodeAttrVers(
 
     while (it.IsValid()) {
         ui64 minCommitId = ReverseCommitId(it.GetValue<TTable::MinCommitId>());
-        ui64 maxCommitId = it.GetValueOrDefault<TTable::MaxCommitId>(InvalidCommitId);
+        ui64 maxCommitId =
+            it.GetValueOrDefault<TTable::MaxCommitId>(InvalidCommitId);
 
         if (VisibleCommitId(commitId, minCommitId, maxCommitId)) {
-            attrs.emplace_back(TNodeAttr {
+            attrs.emplace_back(TNodeAttr{
                 nodeId,
                 it.GetValue<TTable::Name>(),
                 it.GetValue<TTable::Value>(),
                 minCommitId,
                 maxCommitId,
-                it.GetValueOrDefault<TTable::Version>(0)
-            });
+                it.GetValueOrDefault<TTable::Version>(0)});
         }
 
         if (!it.Next()) {
@@ -529,17 +498,14 @@ void TIndexTabletDatabase::WriteNodeRef(
             NIceDb::TUpdate<TTable::CommitId>(commitId),
             NIceDb::TUpdate<TTable::ChildId>(childNodeId),
             NIceDb::TUpdate<TTable::ShardId>(shardId),
-            NIceDb::TUpdate<TTable::ShardNodeName>(shardNodeName)
-        );
+            NIceDb::TUpdate<TTable::ShardNodeName>(shardNodeName));
 }
 
 void TIndexTabletDatabase::DeleteNodeRef(ui64 nodeId, const TString& name)
 {
     using TTable = TIndexTabletSchema::NodeRefs;
 
-    Table<TTable>()
-        .Key(nodeId, name)
-        .Delete();
+    Table<TTable>().Key(nodeId, name).Delete();
 }
 
 bool TIndexTabletDatabase::ReadNodeRef(
@@ -550,9 +516,7 @@ bool TIndexTabletDatabase::ReadNodeRef(
 {
     using TTable = TIndexTabletSchema::NodeRefs;
 
-    auto it = Table<TTable>()
-        .Key(nodeId, name)
-        .Select();
+    auto it = Table<TTable>().Key(nodeId, name).Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -563,15 +527,14 @@ bool TIndexTabletDatabase::ReadNodeRef(
         ui64 maxCommitId = InvalidCommitId;
 
         if (VisibleCommitId(commitId, minCommitId, maxCommitId)) {
-            ref = TNodeRef {
+            ref = TNodeRef{
                 nodeId,
                 name,
                 it.GetValue<TTable::ChildId>(),
                 it.GetValue<TTable::ShardId>(),
                 it.GetValue<TTable::ShardNodeName>(),
                 minCommitId,
-                maxCommitId
-            };
+                maxCommitId};
         }
     }
 
@@ -590,9 +553,9 @@ bool TIndexTabletDatabase::ReadNodeRefs(
     using TTable = TIndexTabletSchema::NodeRefs;
 
     auto it = Table<TTable>()
-        .GreaterOrEqual(nodeId, cookie)
-        .LessOrEqual(nodeId)
-        .Select();
+                  .GreaterOrEqual(nodeId, cookie)
+                  .LessOrEqual(nodeId)
+                  .Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -605,15 +568,14 @@ bool TIndexTabletDatabase::ReadNodeRefs(
         ui64 maxCommitId = InvalidCommitId;
 
         if (VisibleCommitId(commitId, minCommitId, maxCommitId)) {
-            refs.emplace_back(TNodeRef {
+            refs.emplace_back(TNodeRef{
                 nodeId,
                 it.GetValue<TTable::Name>(),
                 it.GetValue<TTable::ChildId>(),
                 it.GetValue<TTable::ShardId>(),
                 it.GetValue<TTable::ShardNodeName>(),
                 minCommitId,
-                maxCommitId
-            });
+                maxCommitId});
 
             // FIXME
             bytes += refs.back().Name.size();
@@ -720,8 +682,7 @@ void TIndexTabletDatabase::WriteNodeRefVer(
             NIceDb::TUpdate<TTable::MaxCommitId>(maxCommitId),
             NIceDb::TUpdate<TTable::ChildId>(childNodeId),
             NIceDb::TUpdate<TTable::ShardId>(shardId),
-            NIceDb::TUpdate<TTable::ShardNodeName>(shardNodeName)
-        );
+            NIceDb::TUpdate<TTable::ShardNodeName>(shardNodeName));
 }
 
 void TIndexTabletDatabase::DeleteNodeRefVer(
@@ -731,9 +692,7 @@ void TIndexTabletDatabase::DeleteNodeRefVer(
 {
     using TTable = TIndexTabletSchema::NodeRefs_Ver;
 
-    Table<TTable>()
-        .Key(nodeId, name, ReverseCommitId(commitId))
-        .Delete();
+    Table<TTable>().Key(nodeId, name, ReverseCommitId(commitId)).Delete();
 }
 
 bool TIndexTabletDatabase::ReadNodeRefVer(
@@ -745,8 +704,8 @@ bool TIndexTabletDatabase::ReadNodeRefVer(
     using TTable = TIndexTabletSchema::NodeRefs_Ver;
 
     auto it = Table<TTable>()
-        .GreaterOrEqual(nodeId, name, ReverseCommitId(commitId))
-        .Select();
+                  .GreaterOrEqual(nodeId, name, ReverseCommitId(commitId))
+                  .Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -761,18 +720,18 @@ bool TIndexTabletDatabase::ReadNodeRefVer(
         }
 
         ui64 minCommitId = ReverseCommitId(it.GetValue<TTable::MinCommitId>());
-        ui64 maxCommitId = it.GetValueOrDefault<TTable::MaxCommitId>(InvalidCommitId);
+        ui64 maxCommitId =
+            it.GetValueOrDefault<TTable::MaxCommitId>(InvalidCommitId);
 
         if (VisibleCommitId(commitId, minCommitId, maxCommitId)) {
-            ref = TNodeRef {
+            ref = TNodeRef{
                 nodeId,
                 name,
                 it.GetValue<TTable::ChildId>(),
                 it.GetValue<TTable::ShardId>(),
                 it.GetValue<TTable::ShardNodeName>(),
                 minCommitId,
-                maxCommitId
-            };
+                maxCommitId};
             break;
         }
 
@@ -791,9 +750,7 @@ bool TIndexTabletDatabase::ReadNodeRefVers(
 {
     using TTable = TIndexTabletSchema::NodeRefs_Ver;
 
-    auto it = Table<TTable>()
-        .Prefix(nodeId)
-        .Select();
+    auto it = Table<TTable>().Prefix(nodeId).Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -801,18 +758,18 @@ bool TIndexTabletDatabase::ReadNodeRefVers(
 
     while (it.IsValid()) {
         ui64 minCommitId = ReverseCommitId(it.GetValue<TTable::MinCommitId>());
-        ui64 maxCommitId = it.GetValueOrDefault<TTable::MaxCommitId>(InvalidCommitId);
+        ui64 maxCommitId =
+            it.GetValueOrDefault<TTable::MaxCommitId>(InvalidCommitId);
 
         if (VisibleCommitId(commitId, minCommitId, maxCommitId)) {
-            refs.emplace_back(TNodeRef {
+            refs.emplace_back(TNodeRef{
                 nodeId,
                 it.GetValue<TTable::Name>(),
                 it.GetValue<TTable::ChildId>(),
                 it.GetValue<TTable::ShardId>(),
                 it.GetValue<TTable::ShardNodeName>(),
                 minCommitId,
-                maxCommitId
-            });
+                maxCommitId});
         }
 
         if (!it.Next()) {
@@ -823,7 +780,9 @@ bool TIndexTabletDatabase::ReadNodeRefVers(
     return true;
 }
 
-void TIndexTabletDatabase::WriteTruncateQueueEntry(ui64 nodeId, TByteRange range)
+void TIndexTabletDatabase::WriteTruncateQueueEntry(
+    ui64 nodeId,
+    TByteRange range)
 {
     using TTable = TIndexTabletSchema::TruncateQueue;
 
@@ -832,26 +791,22 @@ void TIndexTabletDatabase::WriteTruncateQueueEntry(ui64 nodeId, TByteRange range
     entry.SetOffset(range.Offset);
     entry.SetLength(range.Length);
 
-    Table<TTable>()
-        .Key(nodeId)
-        .Update(NIceDb::TUpdate<TTable::Proto>(entry));
+    Table<TTable>().Key(nodeId).Update(NIceDb::TUpdate<TTable::Proto>(entry));
 }
 
 void TIndexTabletDatabase::DeleteTruncateQueueEntry(ui64 nodeId)
 {
     using TTable = TIndexTabletSchema::TruncateQueue;
 
-    Table<TTable>()
-        .Key(nodeId)
-        .Delete();
+    Table<TTable>().Key(nodeId).Delete();
 }
 
-bool TIndexTabletDatabase::ReadTruncateQueue(TVector<NProto::TTruncateEntry>& entries)
+bool TIndexTabletDatabase::ReadTruncateQueue(
+    TVector<NProto::TTruncateEntry>& entries)
 {
     using TTable = TIndexTabletSchema::TruncateQueue;
 
-    auto it = Table<TTable>()
-        .Select();
+    auto it = Table<TTable>().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -861,7 +816,7 @@ bool TIndexTabletDatabase::ReadTruncateQueue(TVector<NProto::TTruncateEntry>& en
         entries.emplace_back(it.GetValue<TTable::Proto>());
 
         if (!it.Next()) {
-            return false; // not ready
+            return false;   // not ready
         }
     }
 
@@ -884,17 +839,14 @@ void TIndexTabletDatabase::DeleteSession(const TString& sessionId)
 {
     using TTable = TIndexTabletSchema::Sessions;
 
-    Table<TTable>()
-        .Key(sessionId)
-        .Delete();
+    Table<TTable>().Key(sessionId).Delete();
 }
 
 bool TIndexTabletDatabase::ReadSessions(TVector<NProto::TSession>& sessions)
 {
     using TTable = TIndexTabletSchema::Sessions;
 
-    auto it = Table<TTable>()
-        .Select();
+    auto it = Table<TTable>().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -930,13 +882,13 @@ void TIndexTabletDatabase::DeleteSessionHandle(
 {
     using TTable = TIndexTabletSchema::SessionHandles;
 
-    Table<TTable>()
-        .Key(sessionId, handle)
-        .Delete();
+    Table<TTable>().Key(sessionId, handle).Delete();
 }
 
 template <typename T>
-static bool DoReadSessionHandles(T& it, TVector<NProto::TSessionHandle>& handles)
+static bool DoReadSessionHandles(
+    T& it,
+    TVector<NProto::TSessionHandle>& handles)
 {
     using TTable = TIndexTabletSchema::SessionHandles;
 
@@ -960,8 +912,7 @@ bool TIndexTabletDatabase::ReadSessionHandles(
 {
     using TTable = TIndexTabletSchema::SessionHandles;
 
-    auto it = Table<TTable>()
-        .Select();
+    auto it = Table<TTable>().Select();
 
     return DoReadSessionHandles(it, handles);
 }
@@ -972,9 +923,7 @@ bool TIndexTabletDatabase::ReadSessionHandles(
 {
     using TTable = TIndexTabletSchema::SessionHandles;
 
-    auto it = Table<TTable>()
-        .Prefix(sessionId)
-        .Select();
+    auto it = Table<TTable>().Prefix(sessionId).Select();
 
     return DoReadSessionHandles(it, handles);
 }
@@ -997,9 +946,7 @@ void TIndexTabletDatabase::DeleteSessionLock(
 {
     using TTable = TIndexTabletSchema::SessionLocks;
 
-    Table<TTable>()
-        .Key(sessionId, lockId)
-        .Delete();
+    Table<TTable>().Key(sessionId, lockId).Delete();
 }
 
 template <typename T>
@@ -1027,8 +974,7 @@ bool TIndexTabletDatabase::ReadSessionLocks(
 {
     using TTable = TIndexTabletSchema::SessionLocks;
 
-    auto it = Table<TTable>()
-        .Select();
+    auto it = Table<TTable>().Select();
 
     return DoReadSessionLocks(it, locks);
 }
@@ -1039,9 +985,7 @@ bool TIndexTabletDatabase::ReadSessionLocks(
 {
     using TTable = TIndexTabletSchema::SessionLocks;
 
-    auto it = Table<TTable>()
-        .Prefix(sessionId)
-        .Select();
+    auto it = Table<TTable>().Prefix(sessionId).Select();
 
     return DoReadSessionLocks(it, locks);
 }
@@ -1060,13 +1004,12 @@ void TIndexTabletDatabase::WriteSessionDupCacheEntry(
 }
 
 void TIndexTabletDatabase::DeleteSessionDupCacheEntry(
-    const TString& sessionId, ui64 entryId)
+    const TString& sessionId,
+    ui64 entryId)
 {
     using TTable = TIndexTabletSchema::SessionDupCache;
 
-    Table<TTable>()
-        .Key(sessionId, entryId)
-        .Delete();
+    Table<TTable>().Key(sessionId, entryId).Delete();
 }
 
 bool TIndexTabletDatabase::ReadSessionDupCacheEntries(
@@ -1074,8 +1017,7 @@ bool TIndexTabletDatabase::ReadSessionDupCacheEntries(
 {
     using TTable = TIndexTabletSchema::SessionDupCache;
 
-    auto it = Table<TTable>()
-        .Select();
+    auto it = Table<TTable>().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -1132,17 +1074,14 @@ void TIndexTabletDatabase::DeleteFreshBytes(
 {
     using TTable = TIndexTabletSchema::FreshBytes;
 
-    Table<TTable>()
-        .Key(commitId, nodeId, offset)
-        .Delete();
+    Table<TTable>().Key(commitId, nodeId, offset).Delete();
 }
 
 bool TIndexTabletDatabase::ReadFreshBytes(TVector<TFreshBytesEntry>& bytes)
 {
     using TTable = TIndexTabletSchema::FreshBytes;
 
-    auto it = Table<TTable>()
-        .Select();
+    auto it = Table<TTable>().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -1159,13 +1098,12 @@ bool TIndexTabletDatabase::ReadFreshBytes(TVector<TFreshBytesEntry>& bytes)
             len = data.size();
         }
 
-        bytes.emplace_back(TFreshBytesEntry {
+        bytes.emplace_back(TFreshBytesEntry{
             nodeId,
             minCommitId,
             offset,
             std::move(data),
-            len
-        });
+            len});
 
         if (!it.Next()) {
             return false;   // not ready
@@ -1211,17 +1149,14 @@ void TIndexTabletDatabase::DeleteFreshBlock(
 {
     using TTable = TIndexTabletSchema::FreshBlocks;
 
-    Table<TTable>()
-        .Key(nodeId, blockIndex, ReverseCommitId(commitId))
-        .Delete();
+    Table<TTable>().Key(nodeId, blockIndex, ReverseCommitId(commitId)).Delete();
 }
 
 bool TIndexTabletDatabase::ReadFreshBlocks(TVector<TFreshBlock>& blocks)
 {
     using TTable = TIndexTabletSchema::FreshBlocks;
 
-    auto it = Table<TTable>()
-        .Select();
+    auto it = Table<TTable>().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -1232,15 +1167,15 @@ bool TIndexTabletDatabase::ReadFreshBlocks(TVector<TFreshBlock>& blocks)
         ui32 blockIndex = it.GetValue<TTable::BlockIndex>();
 
         ui64 minCommitId = ReverseCommitId(it.GetValue<TTable::MinCommitId>());
-        ui64 maxCommitId = it.GetValueOrDefault<TTable::MaxCommitId>(InvalidCommitId);
+        ui64 maxCommitId =
+            it.GetValueOrDefault<TTable::MaxCommitId>(InvalidCommitId);
 
-        blocks.emplace_back(TFreshBlock {
+        blocks.emplace_back(TFreshBlock{
             nodeId,
             blockIndex,
             minCommitId,
             maxCommitId,
-            it.GetValue<TTable::BlockData>()
-        });
+            it.GetValue<TTable::BlockData>()});
 
         if (!it.Next()) {
             return false;   // not ready
@@ -1276,8 +1211,7 @@ void TIndexTabletDatabase::WriteMixedBlocks(
             NIceDb::TUpdate<TTable::Blocks>(encodedBlocks),
             NIceDb::TUpdate<TTable::DeletionMarkers>(encodedDeletionMarkers),
             NIceDb::TUpdate<TTable::GarbageBlocksCount>(garbageBlocks),
-            NIceDb::TUpdate<TTable::CheckpointBlocksCount>(checkpointBlocks)
-        );
+            NIceDb::TUpdate<TTable::CheckpointBlocksCount>(checkpointBlocks));
 }
 
 void TIndexTabletDatabase::DeleteMixedBlocks(
@@ -1286,9 +1220,7 @@ void TIndexTabletDatabase::DeleteMixedBlocks(
 {
     using TTable = TIndexTabletSchema::MixedBlocks;
 
-    Table<TTable>()
-        .Key(rangeId, blobId.CommitId(), blobId.UniqueId())
-        .Delete();
+    Table<TTable>().Key(rangeId, blobId.CommitId(), blobId.UniqueId()).Delete();
 }
 
 bool TIndexTabletDatabase::ReadMixedBlocks(
@@ -1300,27 +1232,24 @@ bool TIndexTabletDatabase::ReadMixedBlocks(
     using TTable = TIndexTabletSchema::MixedBlocks;
 
     auto it = Table<TTable>()
-        .Key(rangeId, blobId.CommitId(), blobId.UniqueId())
-        .Select();
+                  .Key(rangeId, blobId.CommitId(), blobId.UniqueId())
+                  .Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
     }
 
     if (it.IsValid()) {
-        TPartialBlobId blobId {
+        TPartialBlobId blobId{
             it.GetValue<TTable::BlobCommitId>(),
-            it.GetValue<TTable::BlobUniqueId>()
-        };
+            it.GetValue<TTable::BlobUniqueId>()};
 
-        TByteVector blocks = FromStringBuf(
-            it.GetValue<TTable::Blocks>(),
-            alloc);
-        TByteVector deletionMarkers = FromStringBuf(
-            it.GetValue<TTable::DeletionMarkers>(),
-            alloc);
+        TByteVector blocks =
+            FromStringBuf(it.GetValue<TTable::Blocks>(), alloc);
+        TByteVector deletionMarkers =
+            FromStringBuf(it.GetValue<TTable::DeletionMarkers>(), alloc);
 
-        TBlockList blockList { std::move(blocks), std::move(deletionMarkers) };
+        TBlockList blockList{std::move(blocks), std::move(deletionMarkers)};
 
         blob = TMixedBlob{
             blobId,
@@ -1339,35 +1268,29 @@ bool TIndexTabletDatabase::ReadMixedBlocks(
 {
     using TTable = TIndexTabletSchema::MixedBlocks;
 
-    auto it = Table<TTable>()
-        .Prefix(rangeId)
-        .Select();
+    auto it = Table<TTable>().Prefix(rangeId).Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
     }
 
     while (it.IsValid()) {
-        TPartialBlobId blobId {
+        TPartialBlobId blobId{
             it.GetValue<TTable::BlobCommitId>(),
-            it.GetValue<TTable::BlobUniqueId>()
-        };
+            it.GetValue<TTable::BlobUniqueId>()};
 
-        TByteVector blocks = FromStringBuf(
-            it.GetValue<TTable::Blocks>(),
-            alloc);
-        TByteVector deletionMarkers = FromStringBuf(
-            it.GetValue<TTable::DeletionMarkers>(),
-            alloc);
+        TByteVector blocks =
+            FromStringBuf(it.GetValue<TTable::Blocks>(), alloc);
+        TByteVector deletionMarkers =
+            FromStringBuf(it.GetValue<TTable::DeletionMarkers>(), alloc);
 
-        TBlockList blockList { std::move(blocks), std::move(deletionMarkers) };
+        TBlockList blockList{std::move(blocks), std::move(deletionMarkers)};
 
-        blobs.emplace_back(
-            TMixedBlob{
-                blobId,
-                std::move(blockList),
-                it.GetValue<TTable::GarbageBlocksCount>(),
-                it.GetValue<TTable::CheckpointBlocksCount>()});
+        blobs.emplace_back(TMixedBlob{
+            blobId,
+            std::move(blockList),
+            it.GetValue<TTable::GarbageBlocksCount>(),
+            it.GetValue<TTable::CheckpointBlocksCount>()});
 
         if (!it.Next()) {
             return false;   // not ready
@@ -1402,9 +1325,7 @@ void TIndexTabletDatabase::DeleteDeletionMarker(
 {
     using TTable = TIndexTabletSchema::DeletionMarkers;
 
-    Table<TTable>()
-        .Key(rangeId, nodeId, commitId, blockIndex)
-        .Delete();
+    Table<TTable>().Key(rangeId, nodeId, commitId, blockIndex).Delete();
 }
 
 bool TIndexTabletDatabase::ReadDeletionMarkers(
@@ -1413,9 +1334,7 @@ bool TIndexTabletDatabase::ReadDeletionMarkers(
 {
     using TTable = TIndexTabletSchema::DeletionMarkers;
 
-    auto it = Table<TTable>()
-        .Prefix(rangeId)
-        .Select();
+    auto it = Table<TTable>().Prefix(rangeId).Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -1459,9 +1378,7 @@ void TIndexTabletDatabase::DeleteLargeDeletionMarker(
 {
     using TTable = TIndexTabletSchema::LargeDeletionMarkers;
 
-    Table<TTable>()
-        .Key(nodeId, commitId, blockIndex)
-        .Delete();
+    Table<TTable>().Key(nodeId, commitId, blockIndex).Delete();
 }
 
 bool TIndexTabletDatabase::ReadLargeDeletionMarkers(
@@ -1469,8 +1386,7 @@ bool TIndexTabletDatabase::ReadLargeDeletionMarkers(
 {
     using TTable = TIndexTabletSchema::LargeDeletionMarkers;
 
-    auto it = Table<TTable>()
-        .Select();
+    auto it = Table<TTable>().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -1498,26 +1414,21 @@ void TIndexTabletDatabase::WriteOrphanNode(ui64 nodeId)
 {
     using TTable = TIndexTabletSchema::OrphanNodes;
 
-    Table<TTable>()
-        .Key(nodeId)
-        .Update();
+    Table<TTable>().Key(nodeId).Update();
 }
 
 void TIndexTabletDatabase::DeleteOrphanNode(ui64 nodeId)
 {
     using TTable = TIndexTabletSchema::OrphanNodes;
 
-    Table<TTable>()
-        .Key(nodeId)
-        .Delete();
+    Table<TTable>().Key(nodeId).Delete();
 }
 
 bool TIndexTabletDatabase::ReadOrphanNodes(TVector<ui64>& nodeIds)
 {
     using TTable = TIndexTabletSchema::OrphanNodes;
 
-    auto it = Table<TTable>()
-        .Select();
+    auto it = Table<TTable>().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -1541,26 +1452,21 @@ void TIndexTabletDatabase::WriteNewBlob(const TPartialBlobId& blobId)
 {
     using TTable = TIndexTabletSchema::NewBlobs;
 
-    Table<TTable>()
-        .Key(blobId.CommitId(), blobId.UniqueId())
-        .Update();
+    Table<TTable>().Key(blobId.CommitId(), blobId.UniqueId()).Update();
 }
 
 void TIndexTabletDatabase::DeleteNewBlob(const TPartialBlobId& blobId)
 {
     using TTable = TIndexTabletSchema::NewBlobs;
 
-    Table<TTable>()
-        .Key(blobId.CommitId(), blobId.UniqueId())
-        .Delete();
+    Table<TTable>().Key(blobId.CommitId(), blobId.UniqueId()).Delete();
 }
 
 bool TIndexTabletDatabase::ReadNewBlobs(TVector<TPartialBlobId>& blobIds)
 {
     using TTable = TIndexTabletSchema::NewBlobs;
 
-    auto it = Table<TTable>()
-        .Select();
+    auto it = Table<TTable>().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -1586,26 +1492,21 @@ void TIndexTabletDatabase::WriteGarbageBlob(const TPartialBlobId& blobId)
 {
     using TTable = TIndexTabletSchema::GarbageBlobs;
 
-    Table<TTable>()
-        .Key(blobId.CommitId(), blobId.UniqueId())
-        .Update();
+    Table<TTable>().Key(blobId.CommitId(), blobId.UniqueId()).Update();
 }
 
 void TIndexTabletDatabase::DeleteGarbageBlob(const TPartialBlobId& blobId)
 {
     using TTable = TIndexTabletSchema::GarbageBlobs;
 
-    Table<TTable>()
-        .Key(blobId.CommitId(), blobId.UniqueId())
-        .Delete();
+    Table<TTable>().Key(blobId.CommitId(), blobId.UniqueId()).Delete();
 }
 
 bool TIndexTabletDatabase::ReadGarbageBlobs(TVector<TPartialBlobId>& blobIds)
 {
     using TTable = TIndexTabletSchema::GarbageBlobs;
 
-    auto it = Table<TTable>()
-        .Select();
+    auto it = Table<TTable>().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -1641,9 +1542,7 @@ void TIndexTabletDatabase::DeleteCheckpoint(const TString& checkpointId)
 {
     using TTable = TIndexTabletSchema::Checkpoints;
 
-    Table<TTable>()
-        .Key(checkpointId)
-        .Delete();
+    Table<TTable>().Key(checkpointId).Delete();
 }
 
 bool TIndexTabletDatabase::ReadCheckpoints(
@@ -1651,8 +1550,7 @@ bool TIndexTabletDatabase::ReadCheckpoints(
 {
     using TTable = TIndexTabletSchema::Checkpoints;
 
-    auto it = Table<TTable>()
-        .Select();
+    auto it = Table<TTable>().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -1676,18 +1574,14 @@ void TIndexTabletDatabase::WriteCheckpointNode(ui64 checkpointId, ui64 nodeId)
 {
     using TTable = TIndexTabletSchema::CheckpointNodes;
 
-    Table<TTable>()
-        .Key(checkpointId, nodeId)
-        .Update();
+    Table<TTable>().Key(checkpointId, nodeId).Update();
 }
 
 void TIndexTabletDatabase::DeleteCheckpointNode(ui64 checkpointId, ui64 nodeId)
 {
     using TTable = TIndexTabletSchema::CheckpointNodes;
 
-    Table<TTable>()
-        .Key(checkpointId, nodeId)
-        .Delete();
+    Table<TTable>().Key(checkpointId, nodeId).Delete();
 }
 
 bool TIndexTabletDatabase::ReadCheckpointNodes(
@@ -1697,9 +1591,7 @@ bool TIndexTabletDatabase::ReadCheckpointNodes(
 {
     using TTable = TIndexTabletSchema::CheckpointNodes;
 
-    auto it = Table<TTable>()
-        .Prefix(checkpointId)
-        .Select();
+    auto it = Table<TTable>().Prefix(checkpointId).Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -1751,24 +1643,19 @@ bool TIndexTabletDatabase::ReadCheckpointBlobs(
 {
     using TTable = TIndexTabletSchema::CheckpointBlobs;
 
-    auto it = Table<TTable>()
-        .Prefix(checkpointId)
-        .Select();
+    auto it = Table<TTable>().Prefix(checkpointId).Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
     }
 
     while (it.IsValid() && maxCount) {
-        TPartialBlobId blobId {
+        TPartialBlobId blobId{
             it.GetValue<TTable::BlobCommitId>(),
-            it.GetValue<TTable::BlobUniqueId>()
-        };
+            it.GetValue<TTable::BlobUniqueId>()};
 
-        blobs.emplace_back(TCheckpointBlob {
-            it.GetValue<TTable::RangeId>(),
-            blobId
-        });
+        blobs.emplace_back(
+            TCheckpointBlob{it.GetValue<TTable::RangeId>(), blobId});
 
         --maxCount;
 
@@ -1795,7 +1682,8 @@ void TIndexTabletDatabase::ForceWriteCompactionMap(
         .Key(rangeId)
         .Update(NIceDb::TUpdate<TTable::BlobsCount>(blobsCount))
         .Update(NIceDb::TUpdate<TTable::DeletionsCount>(deletionsCount))
-        .Update(NIceDb::TUpdate<TTable::GarbageBlocksCount>(garbageBlocksCount));
+        .Update(
+            NIceDb::TUpdate<TTable::GarbageBlocksCount>(garbageBlocksCount));
 }
 
 void TIndexTabletDatabase::WriteCompactionMap(
@@ -1835,23 +1723,20 @@ bool TIndexTabletDatabase::ReadCompactionMap(
         Table<TTable>().Precharge();
     }
 
-    auto it = Table<TTable>()
-        .GreaterOrEqual(firstRangeId)
-        .Select();
+    auto it = Table<TTable>().GreaterOrEqual(firstRangeId).Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
     }
 
     while (it.IsValid()) {
-        compactionMap.push_back({
-            it.GetValue<TTable::RangeId>(),
-            {
-                it.GetValue<TTable::BlobsCount>(),
-                it.GetValue<TTable::DeletionsCount>(),
-                it.GetValue<TTable::GarbageBlocksCount>(),
-            }
-        });
+        compactionMap.push_back(
+            {it.GetValue<TTable::RangeId>(),
+             {
+                 it.GetValue<TTable::BlobsCount>(),
+                 it.GetValue<TTable::DeletionsCount>(),
+                 it.GetValue<TTable::GarbageBlocksCount>(),
+             }});
 
         if (compactionMap.size() == rangeCount) {
             break;
@@ -1873,9 +1758,7 @@ bool TIndexTabletDatabase::ReadTabletStorageInfo(
 {
     using TTable = TIndexTabletSchema::TabletStorageInfo;
 
-    auto it = Table<TTable>()
-        .Key(FileSystemMetaId)
-        .Select();
+    auto it = Table<TTable>().Key(FileSystemMetaId).Select();
 
     if (!it.IsReady()) {
         return false;
@@ -1911,22 +1794,19 @@ void TIndexTabletDatabase::WriteSessionHistoryEntry(
         .Update(NIceDb::TUpdate<TTable::Proto>(entry));
 }
 
-void TIndexTabletDatabase::DeleteSessionHistoryEntry(ui64 entryId) {
+void TIndexTabletDatabase::DeleteSessionHistoryEntry(ui64 entryId)
+{
     using TTable = TIndexTabletSchema::SessionHistory;
 
-    Table<TTable>()
-        .Key(entryId)
-        .Delete();
+    Table<TTable>().Key(entryId).Delete();
 }
-
 
 bool TIndexTabletDatabase::ReadSessionHistoryEntries(
     TVector<NProto::TSessionHistoryEntry>& entries)
 {
     using TTable = TIndexTabletSchema::SessionHistory;
 
-    auto it = Table<TTable>()
-        .Select();
+    auto it = Table<TTable>().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -1955,21 +1835,18 @@ void TIndexTabletDatabase::WriteOpLogEntry(const NProto::TOpLogEntry& entry)
         .Update(NIceDb::TUpdate<TTable::Proto>(entry));
 }
 
-void TIndexTabletDatabase::DeleteOpLogEntry(ui64 entryId) {
+void TIndexTabletDatabase::DeleteOpLogEntry(ui64 entryId)
+{
     using TTable = TIndexTabletSchema::OpLog;
 
-    Table<TTable>()
-        .Key(entryId)
-        .Delete();
+    Table<TTable>().Key(entryId).Delete();
 }
-
 
 bool TIndexTabletDatabase::ReadOpLog(TVector<NProto::TOpLogEntry>& opLog)
 {
     using TTable = TIndexTabletSchema::OpLog;
 
-    auto it = Table<TTable>()
-        .Select();
+    auto it = Table<TTable>().Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
@@ -1989,8 +1866,8 @@ bool TIndexTabletDatabase::ReadOpLog(TVector<NProto::TOpLogEntry>& opLog)
 ////////////////////////////////////////////////////////////////////////////////
 
 TIndexTabletDatabaseProxy::TIndexTabletDatabaseProxy(
-        NKikimr::NTable::TDatabase& database,
-        TVector<TInMemoryIndexState::TIndexStateRequest>& nodeUpdates)
+    NKikimr::NTable::TDatabase& database,
+    TVector<TInMemoryIndexState::TIndexStateRequest>& nodeUpdates)
     : TIndexTabletDatabase(database)
     , NodeUpdates(nodeUpdates)
 {}

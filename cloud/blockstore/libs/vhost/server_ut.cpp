@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/diagnostics/volume_stats_test.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
 #include <cloud/blockstore/libs/service/storage_test.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -113,59 +114,69 @@ private:
     {
         TestStorage = std::make_shared<TTestStorage>();
         TestStorage->WriteBlocksLocalHandler =
-            [&] (TCallContextPtr ctx, std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) {
-                Y_UNUSED(ctx);
+            [&](TCallContextPtr ctx,
+                std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+        {
+            Y_UNUSED(ctx);
 
-                auto guard = request->Sglist.Acquire();
-                UNIT_ASSERT(guard);
-                auto sglist = guard.Get();
-                UNIT_ASSERT(request->BlocksCount * BlockSize == SgListGetSize(sglist));
+            auto guard = request->Sglist.Acquire();
+            UNIT_ASSERT(guard);
+            auto sglist = guard.Get();
+            UNIT_ASSERT(
+                request->BlocksCount * BlockSize == SgListGetSize(sglist));
 
-                RequestQueue.Enqueue({
-                    EBlockStoreRequest::WriteBlocks,
-                    request->GetStartIndex(),
-                    request->BlocksCount,
-                    std::move(sglist)});
+            RequestQueue.Enqueue(
+                {EBlockStoreRequest::WriteBlocks,
+                 request->GetStartIndex(),
+                 request->BlocksCount,
+                 std::move(sglist)});
 
-                if (ServiceFrozen.test()) {
-                    auto promise = NewPromise<void>();
-                    auto future = promise.GetFuture();
-                    FrozenPromises.Enqueue(std::move(promise));
-                    return future.Apply([=] (const auto& future) {
+            if (ServiceFrozen.test()) {
+                auto promise = NewPromise<void>();
+                auto future = promise.GetFuture();
+                FrozenPromises.Enqueue(std::move(promise));
+                return future.Apply(
+                    [=](const auto& future)
+                    {
                         Y_UNUSED(future);
                         return NProto::TWriteBlocksLocalResponse();
                     });
-                }
+            }
 
-                return MakeFuture(NProto::TWriteBlocksLocalResponse());
-            };
+            return MakeFuture(NProto::TWriteBlocksLocalResponse());
+        };
         TestStorage->ReadBlocksLocalHandler =
-            [&] (TCallContextPtr ctx, std::shared_ptr<NProto::TReadBlocksLocalRequest> request) {
-                Y_UNUSED(ctx);
+            [&](TCallContextPtr ctx,
+                std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            Y_UNUSED(ctx);
 
-                auto guard = request->Sglist.Acquire();
-                UNIT_ASSERT(guard);
-                auto sglist = guard.Get();
-                UNIT_ASSERT(request->GetBlocksCount() * BlockSize == SgListGetSize(sglist));
+            auto guard = request->Sglist.Acquire();
+            UNIT_ASSERT(guard);
+            auto sglist = guard.Get();
+            UNIT_ASSERT(
+                request->GetBlocksCount() * BlockSize == SgListGetSize(sglist));
 
-                RequestQueue.Enqueue({
-                    EBlockStoreRequest::ReadBlocks,
-                    request->GetStartIndex(),
-                    request->GetBlocksCount(),
-                    std::move(sglist)});
+            RequestQueue.Enqueue(
+                {EBlockStoreRequest::ReadBlocks,
+                 request->GetStartIndex(),
+                 request->GetBlocksCount(),
+                 std::move(sglist)});
 
-                if (ServiceFrozen.test()) {
-                    auto promise = NewPromise<void>();
-                    auto future = promise.GetFuture();
-                    FrozenPromises.Enqueue(std::move(promise));
-                    return future.Apply([=] (const auto& future) {
+            if (ServiceFrozen.test()) {
+                auto promise = NewPromise<void>();
+                auto future = promise.GetFuture();
+                FrozenPromises.Enqueue(std::move(promise));
+                return future.Apply(
+                    [=](const auto& future)
+                    {
                         Y_UNUSED(future);
                         return NProto::TReadBlocksLocalResponse();
                     });
-                }
+            }
 
-                return MakeFuture(NProto::TReadBlocksLocalResponse());
-            };
+            return MakeFuture(NProto::TReadBlocksLocalResponse());
+        };
 
         TestStorage->ZeroBlocksHandler =
             [&](TCallContextPtr ctx,
@@ -377,8 +388,10 @@ Y_UNIT_TEST_SUITE(TServerTest)
             bool res = environment.DequeueRequest(request);
             UNIT_ASSERT(res);
             UNIT_ASSERT(request.Type == EBlockStoreRequest::WriteBlocks);
-            UNIT_ASSERT(request.StartIndex * blockSize == firstSector * sectorSize);
-            UNIT_ASSERT(request.BlocksCount * blockSize == totalSectors * sectorSize);
+            UNIT_ASSERT(
+                request.StartIndex * blockSize == firstSector * sectorSize);
+            UNIT_ASSERT(
+                request.BlocksCount * blockSize == totalSectors * sectorSize);
             UNIT_ASSERT_VALUES_EQUAL(request.SgList, sgList);
             UNIT_ASSERT(!environment.DequeueRequest(request));
         }
@@ -396,8 +409,10 @@ Y_UNIT_TEST_SUITE(TServerTest)
             bool res = environment.DequeueRequest(request);
             UNIT_ASSERT(res);
             UNIT_ASSERT(request.Type == EBlockStoreRequest::ReadBlocks);
-            UNIT_ASSERT(request.StartIndex * blockSize == firstSector * sectorSize);
-            UNIT_ASSERT(request.BlocksCount * blockSize == totalSectors * sectorSize);
+            UNIT_ASSERT(
+                request.StartIndex * blockSize == firstSector * sectorSize);
+            UNIT_ASSERT(
+                request.BlocksCount * blockSize == totalSectors * sectorSize);
             UNIT_ASSERT_VALUES_EQUAL(request.SgList, sgList);
             UNIT_ASSERT(!environment.DequeueRequest(request));
         }
@@ -405,10 +420,12 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
     Y_UNIT_TEST(ShouldThrowCriticalEventIfFailedRequestQueueRunning)
     {
-        NMonitoring::TDynamicCountersPtr counters = new NMonitoring::TDynamicCounters();
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
         InitCriticalEventsCounter(counters);
-        auto configCounter =
-            counters->GetCounter("AppCriticalEvents/VhostQueueRunningError", true);
+        auto configCounter = counters->GetCounter(
+            "AppCriticalEvents/VhostQueueRunningError",
+            true);
 
         auto environment = TTestEnvironment(DefaultBlockSize);
 
@@ -482,9 +499,10 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         const TFsPath socket(CreateGuidAsString() + ".sock");
         socket.Touch();
-        Y_DEFER {
+        Y_DEFER
+        {
             socket.DeleteIfExists();
-        };
+        }
 
         {
             TStorageOptions options;
@@ -599,23 +617,31 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto testStorage = std::make_shared<TTestStorage>();
         testStorage->WriteBlocksLocalHandler =
-            [&] (TCallContextPtr ctx, std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) {
-                Y_UNUSED(ctx);
-                Y_UNUSED(request);
-                return promise.GetFuture().Apply([] (const auto& f) {
+            [&](TCallContextPtr ctx,
+                std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+        {
+            Y_UNUSED(ctx);
+            Y_UNUSED(request);
+            return promise.GetFuture().Apply(
+                [](const auto& f)
+                {
                     Y_UNUSED(f);
                     return NProto::TWriteBlocksLocalResponse();
                 });
-            };
+        };
         testStorage->ReadBlocksLocalHandler =
-            [&] (TCallContextPtr ctx, std::shared_ptr<NProto::TReadBlocksLocalRequest> request) {
-                Y_UNUSED(ctx);
-                Y_UNUSED(request);
-                return promise.GetFuture().Apply([] (const auto& f) {
+            [&](TCallContextPtr ctx,
+                std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            Y_UNUSED(ctx);
+            Y_UNUSED(request);
+            return promise.GetFuture().Apply(
+                [](const auto& f)
+                {
                     Y_UNUSED(f);
                     return NProto::TReadBlocksLocalResponse();
                 });
-            };
+        };
 
         auto queueFactory = std::make_shared<TTestVhostQueueFactory>();
 
@@ -624,17 +650,17 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         size_t fatalErrorCount = 0;
         auto serverStats = std::make_shared<TTestServerStats>();
-        serverStats->RequestCompletedHandler = [&] (
-            TLog& log,
-            TMetricRequest& metricRequest,
-            TCallContext& callContext,
-            const NProto::TError& error)
+        serverStats->RequestCompletedHandler =
+            [&](TLog& log,
+                TMetricRequest& metricRequest,
+                TCallContext& callContext,
+                const NProto::TError& error)
         {
             Y_UNUSED(log);
             Y_UNUSED(metricRequest);
             Y_UNUSED(callContext);
-            if (GetDiagnosticsErrorKind(error)
-                    == EDiagnosticsErrorKind::ErrorFatal)
+            if (GetDiagnosticsErrorKind(error) ==
+                EDiagnosticsErrorKind::ErrorFatal)
             {
                 ++fatalErrorCount;
             }
@@ -662,10 +688,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
         options.UnalignedRequestsDisabled = false;
 
         {
-            auto future = server->StartEndpoint(
-                unixSocketPath,
-                testStorage,
-                options);
+            auto future =
+                server->StartEndpoint(unixSocketPath, testStorage, options);
             const auto& error = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_C(!HasError(error), error);
         }
@@ -673,10 +697,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
         auto device = firstQueue->GetDevices().at(0);
 
         TVector<TString> blocks;
-        auto sgList = ResizeBlocks(
-            blocks,
-            blocksCount,
-            TString(blockSize, 'f'));
+        auto sgList =
+            ResizeBlocks(blocks, blocksCount, TString(blockSize, 'f'));
 
         auto writeFuture = device->SendTestRequest(
             EBlockStoreRequest::WriteBlocks,
@@ -700,9 +722,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
             auto future = server->StopEndpoint(unixSocketPath);
 
             for (size_t i = 0; i < 5; ++i) {
-                auto type = (i % 2 == 0)
-                    ? EBlockStoreRequest::WriteBlocks
-                    : EBlockStoreRequest::ReadBlocks;
+                auto type = (i % 2 == 0) ? EBlockStoreRequest::WriteBlocks
+                                         : EBlockStoreRequest::ReadBlocks;
                 auto reqFuture = device->SendTestRequest(
                     type,
                     startIndex * blockSize,
@@ -725,10 +746,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
         UNIT_ASSERT_VALUES_EQUAL(0, fatalErrorCount);
 
         {
-            auto future = server->StartEndpoint(
-                unixSocketPath,
-                testStorage,
-                options);
+            auto future =
+                server->StartEndpoint(unixSocketPath, testStorage, options);
             const auto& error = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_C(!HasError(error), error);
         }
@@ -757,17 +776,18 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         TManualEvent startEvent;
         TManualEvent stopEvent;
-        SystemThreadFactory()->Run([&]() {
-            startEvent.Signal();
-            server->Stop();
-            stopEvent.Signal();
-        });
+        SystemThreadFactory()->Run(
+            [&]()
+            {
+                startEvent.Signal();
+                server->Stop();
+                stopEvent.Signal();
+            });
         startEvent.Wait();
 
         for (size_t i = 0; i < 5; ++i) {
-            auto type = (i % 2 == 0)
-                ? EBlockStoreRequest::WriteBlocks
-                : EBlockStoreRequest::ReadBlocks;
+            auto type = (i % 2 == 0) ? EBlockStoreRequest::WriteBlocks
+                                     : EBlockStoreRequest::ReadBlocks;
             auto reqFuture = device->SendTestRequest(
                 type,
                 startIndex * blockSize,
@@ -806,13 +826,13 @@ Y_UNIT_TEST_SUITE(TServerTest)
         ui32 requestCounter = 0;
         ui32 expectedRequestCounter = 0;
 
-        serverStats->PrepareMetricRequestHandler = [&] (
-            TMetricRequest& metricRequest,
-            TString clientId,
-            TString diskId,
-            ui64 startIndex,
-            ui32 requestBytes,
-            bool unaligned)
+        serverStats->PrepareMetricRequestHandler =
+            [&](TMetricRequest& metricRequest,
+                TString clientId,
+                TString diskId,
+                ui64 startIndex,
+                ui32 requestBytes,
+                bool unaligned)
         {
             Y_UNUSED(clientId);
 
@@ -821,13 +841,14 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
             UNIT_ASSERT_VALUES_EQUAL(expectedUnaligned, unaligned);
 
-            switch (metricRequest.RequestType)
-            {
+            switch (metricRequest.RequestType) {
                 case EBlockStoreRequest::ReadBlocks:
                 case EBlockStoreRequest::WriteBlocks:
                 case EBlockStoreRequest::ZeroBlocks:
                     UNIT_ASSERT_VALUES_EQUAL(expectedStartIndex, startIndex);
-                    UNIT_ASSERT_VALUES_EQUAL(expectedBlockCount * blockSize, requestBytes);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        expectedBlockCount * blockSize,
+                        requestBytes);
                     break;
                 case EBlockStoreRequest::MountVolume:
                 case EBlockStoreRequest::UnmountVolume:
@@ -842,17 +863,21 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto testStorage = std::make_shared<TTestStorage>();
         testStorage->WriteBlocksLocalHandler =
-            [&] (TCallContextPtr ctx, std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) {
-                Y_UNUSED(ctx);
-                Y_UNUSED(request);
-                return MakeFuture(NProto::TWriteBlocksLocalResponse());
-            };
+            [&](TCallContextPtr ctx,
+                std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+        {
+            Y_UNUSED(ctx);
+            Y_UNUSED(request);
+            return MakeFuture(NProto::TWriteBlocksLocalResponse());
+        };
         testStorage->ReadBlocksLocalHandler =
-            [&] (TCallContextPtr ctx, std::shared_ptr<NProto::TReadBlocksLocalRequest> request) {
-                Y_UNUSED(ctx);
-                Y_UNUSED(request);
-                return MakeFuture(NProto::TReadBlocksLocalResponse());
-            };
+            [&](TCallContextPtr ctx,
+                std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            Y_UNUSED(ctx);
+            Y_UNUSED(request);
+            return MakeFuture(NProto::TReadBlocksLocalResponse());
+        };
 
         auto queueFactory = std::make_shared<TTestVhostQueueFactory>();
 
@@ -891,12 +916,11 @@ Y_UNIT_TEST_SUITE(TServerTest)
         UNIT_ASSERT(firstQueue->GetDevices().size() == 1);
         auto device = firstQueue->GetDevices().at(0);
 
-        auto testIoRequets = [&] () {
+        auto testIoRequets = [&]()
+        {
             TVector<TString> blocks;
-            auto sgList = ResizeBlocks(
-                blocks,
-                totalSectors,
-                TString(sectorSize, 'f'));
+            auto sgList =
+                ResizeBlocks(blocks, totalSectors, TString(sectorSize, 'f'));
 
             {
                 auto future = device->SendTestRequest(
@@ -906,7 +930,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
                     sgList);
                 const auto& response = future.GetValue(TDuration::Seconds(5));
                 UNIT_ASSERT(response == TVhostRequest::SUCCESS);
-                UNIT_ASSERT_VALUES_EQUAL(++expectedRequestCounter, requestCounter);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    ++expectedRequestCounter,
+                    requestCounter);
             }
 
             {
@@ -917,7 +943,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
                     sgList);
                 const auto& response = future.GetValue(TDuration::Seconds(5));
                 UNIT_ASSERT(response == TVhostRequest::SUCCESS);
-                UNIT_ASSERT_VALUES_EQUAL(++expectedRequestCounter, requestCounter);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    ++expectedRequestCounter,
+                    requestCounter);
             }
         };
 
@@ -964,13 +992,15 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto testStorage = std::make_shared<TTestStorage>();
         testStorage->WriteBlocksLocalHandler =
-            [&] (TCallContextPtr ctx, std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) {
-                Y_UNUSED(ctx);
-                Y_UNUSED(request);
-                handleRequestEvent.Signal();
-                stopEndpointEvent.Wait();
-                return promise.GetFuture();
-            };
+            [&](TCallContextPtr ctx,
+                std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+        {
+            Y_UNUSED(ctx);
+            Y_UNUSED(request);
+            handleRequestEvent.Signal();
+            stopEndpointEvent.Wait();
+            return promise.GetFuture();
+        };
 
         auto queueFactory = std::make_shared<TTestVhostQueueFactory>();
 
@@ -999,10 +1029,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
         options.UnalignedRequestsDisabled = false;
 
         {
-            auto future = server->StartEndpoint(
-                unixSocketPath,
-                testStorage,
-                options);
+            auto future =
+                server->StartEndpoint(unixSocketPath, testStorage, options);
             const auto& error = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_C(!HasError(error), error);
         }
@@ -1013,10 +1041,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
         UNIT_ASSERT_VALUES_EQUAL(0, server->CollectRequests(collector));
 
         TVector<TString> blocks;
-        auto sgList = ResizeBlocks(
-            blocks,
-            blocksCount,
-            TString(blockSize, 'f'));
+        auto sgList =
+            ResizeBlocks(blocks, blocksCount, TString(blockSize, 'f'));
 
         auto future1 = device->SendTestRequest(
             EBlockStoreRequest::WriteBlocks,

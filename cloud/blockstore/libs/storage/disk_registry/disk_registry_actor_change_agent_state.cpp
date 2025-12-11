@@ -61,13 +61,13 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TChangeAgentStateActor::TChangeAgentStateActor(
-        const TActorId& owner,
-        ui64 tabletID,
-        TRequestInfoPtr requestInfo,
-        TString agentId,
-        NProto::EAgentState newState,
-        NProto::EAgentState oldState,
-        TString message)
+    const TActorId& owner,
+    ui64 tabletID,
+    TRequestInfoPtr requestInfo,
+    TString agentId,
+    NProto::EAgentState newState,
+    NProto::EAgentState oldState,
+    TString message)
     : Owner(owner)
     , TabletID(tabletID)
     , RequestInfo(std::move(requestInfo))

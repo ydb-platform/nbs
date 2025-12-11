@@ -13,8 +13,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFixture
-    : public NUnitTest::TBaseFixture
+struct TFixture: public NUnitTest::TBaseFixture
 {
     const TTempDir TempDir;
 
@@ -139,9 +138,8 @@ Y_UNIT_TEST_SUITE(TCompareConfigsTest)
         }
 
         {
-            const auto error = CompareConfigs(
-                {File0, File1, File2},
-                {File0, File2, File3});
+            const auto error =
+                CompareConfigs({File0, File1, File2}, {File0, File2, File3});
             UNIT_ASSERT_VALUES_EQUAL_C(E_ARGUMENT, error.GetCode(), error);
         }
 
@@ -168,16 +166,16 @@ Y_UNIT_TEST_SUITE(TCompareConfigsTest)
 
     Y_UNIT_TEST_F(ShouldAllowNewDevices, TFixture)
     {
-        const auto error = CompareConfigs(
-            {File2, File3},
-            {File0, File1, File2, File3});
+        const auto error =
+            CompareConfigs({File2, File3}, {File0, File1, File2, File3});
 
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error);
     }
 
     Y_UNIT_TEST_F(ShouldDetectConfigChanges, TFixture)
     {
-        auto compare = [&] (auto file1) {
+        auto compare = [&](auto file1)
+        {
             return CompareConfigs(
                 {File0, File1, File2, File3},
                 {File0, file1, File2, File3});

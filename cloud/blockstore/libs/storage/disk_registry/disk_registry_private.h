@@ -62,9 +62,7 @@ struct TDiskStateUpdate
 
     TDiskStateUpdate() = default;
 
-    TDiskStateUpdate(
-            NProto::TDiskState state,
-            ui64 seqNo)
+    TDiskStateUpdate(NProto::TDiskState state, ui64 seqNo)
         : State(std::move(state))
         , SeqNo(seqNo)
     {}
@@ -158,7 +156,8 @@ struct TDiskRegistryStateSnapshot
     TVector<TString> OutdatedVolumeConfigs;
     TVector<NProto::TSuspendedDevice> SuspendedDevices;
     TDeque<TAutomaticallyReplacedDeviceInfo> AutomaticallyReplacedDevices;
-    THashMap<TString, NProto::TDiskRegistryAgentParams> DiskRegistryAgentListParams;
+    THashMap<TString, NProto::TDiskRegistryAgentParams>
+        DiskRegistryAgentListParams;
 
     void Clear()
     {
@@ -188,30 +187,30 @@ using TVolumeConfig = NKikimrBlockStore::TVolumeConfig;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DISK_REGISTRY_REQUESTS_PRIVATE(xxx, ...)                    \
-    xxx(CleanupDisks,                               __VA_ARGS__)               \
-    xxx(SecureErase,                                __VA_ARGS__)               \
-    xxx(CleanupDevices,                             __VA_ARGS__)               \
-    xxx(FinishAcquireDisk,                          __VA_ARGS__)               \
-    xxx(RemoveDiskSession,                          __VA_ARGS__)               \
-    xxx(DestroyBrokenDisks,                         __VA_ARGS__)               \
-    xxx(ListBrokenDisks,                            __VA_ARGS__)               \
-    xxx(NotifyDisks,                                __VA_ARGS__)               \
-    xxx(ListDisksToNotify,                          __VA_ARGS__)               \
-    xxx(InitiateDiskReallocation,                   __VA_ARGS__)               \
-    xxx(ReplaceDiskDevice,                          __VA_ARGS__)               \
-    xxx(UpdateCmsHostDeviceState,                   __VA_ARGS__)               \
-    xxx(UpdateCmsHostState,                         __VA_ARGS__)               \
-    xxx(PublishDiskStates,                          __VA_ARGS__)               \
-    xxx(StartMigration,                             __VA_ARGS__)               \
-    xxx(NotifyUsers,                                __VA_ARGS__)               \
-    xxx(NotifyUserEvent,                            __VA_ARGS__)               \
-    xxx(UpdateVolumeConfig,                         __VA_ARGS__)               \
-    xxx(FinishVolumeConfigUpdate,                   __VA_ARGS__)               \
-    xxx(RestoreDiskRegistryPart,                    __VA_ARGS__)               \
-    xxx(SwitchAgentDisksToReadOnly,                 __VA_ARGS__)               \
-    xxx(PurgeHostCms,                               __VA_ARGS__)               \
-// BLOCKSTORE_DISK_REGISTRY_REQUESTS_PRIVATE
+#define BLOCKSTORE_DISK_REGISTRY_REQUESTS_PRIVATE(xxx, ...) \
+    xxx(CleanupDisks, __VA_ARGS__)                          \
+    xxx(SecureErase, __VA_ARGS__)                           \
+    xxx(CleanupDevices, __VA_ARGS__)                        \
+    xxx(FinishAcquireDisk, __VA_ARGS__)                     \
+    xxx(RemoveDiskSession, __VA_ARGS__)                     \
+    xxx(DestroyBrokenDisks, __VA_ARGS__)                    \
+    xxx(ListBrokenDisks, __VA_ARGS__)                       \
+    xxx(NotifyDisks, __VA_ARGS__)                           \
+    xxx(ListDisksToNotify, __VA_ARGS__)                     \
+    xxx(InitiateDiskReallocation, __VA_ARGS__)              \
+    xxx(ReplaceDiskDevice, __VA_ARGS__)                     \
+    xxx(UpdateCmsHostDeviceState, __VA_ARGS__)              \
+    xxx(UpdateCmsHostState, __VA_ARGS__)                    \
+    xxx(PublishDiskStates, __VA_ARGS__)                     \
+    xxx(StartMigration, __VA_ARGS__)                        \
+    xxx(NotifyUsers, __VA_ARGS__)                           \
+    xxx(NotifyUserEvent, __VA_ARGS__)                       \
+    xxx(UpdateVolumeConfig, __VA_ARGS__)                    \
+    xxx(FinishVolumeConfigUpdate, __VA_ARGS__)              \
+    xxx(RestoreDiskRegistryPart, __VA_ARGS__)               \
+    xxx(SwitchAgentDisksToReadOnly, __VA_ARGS__)            \
+    xxx(PurgeHostCms, __VA_ARGS__)                          \
+    // BLOCKSTORE_DISK_REGISTRY_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -228,9 +227,9 @@ struct TEvDiskRegistryPrivate
         TVector<TAgentAcquireDevicesCachedRequest> SentRequests;
 
         TFinishAcquireDiskRequest(
-                TString diskId,
-                TString clientId,
-                TVector<TAgentAcquireDevicesCachedRequest> sentRequests)
+            TString diskId,
+            TString clientId,
+            TVector<TAgentAcquireDevicesCachedRequest> sentRequests)
             : DiskId(std::move(diskId))
             , ClientId(std::move(clientId))
             , SentRequests(std::move(sentRequests))
@@ -238,7 +237,8 @@ struct TEvDiskRegistryPrivate
     };
 
     struct TFinishAcquireDiskResponse
-    {};
+    {
+    };
 
     //
     // RemoveDiskSession
@@ -251,9 +251,9 @@ struct TEvDiskRegistryPrivate
         TVector<TAgentReleaseDevicesCachedRequest> SentRequests;
 
         TRemoveDiskSessionRequest(
-                TString diskId,
-                TString clientId,
-                TVector<TAgentReleaseDevicesCachedRequest> sentRequests)
+            TString diskId,
+            TString clientId,
+            TVector<TAgentReleaseDevicesCachedRequest> sentRequests)
             : DiskId(std::move(diskId))
             , ClientId(std::move(clientId))
             , SentRequests(std::move(sentRequests))
@@ -261,14 +261,16 @@ struct TEvDiskRegistryPrivate
     };
 
     struct TRemoveDiskSessionResponse
-    {};
+    {
+    };
 
     //
     // CleanupDisks
     //
 
     struct TCleanupDisksRequest
-    {};
+    {
+    };
 
     struct TCleanupDisksResponse
     {
@@ -286,9 +288,9 @@ struct TEvDiskRegistryPrivate
         TDuration RequestTimeout;
 
         TSecureEraseRequest(
-                TString poolName,
-                TVector<NProto::TDeviceConfig> dirtyDevices,
-                TDuration requestTimeout)
+            TString poolName,
+            TVector<NProto::TDeviceConfig> dirtyDevices,
+            TDuration requestTimeout)
             : PoolName(std::move(poolName))
             , DirtyDevices(std::move(dirtyDevices))
             , RequestTimeout(requestTimeout)
@@ -302,9 +304,7 @@ struct TEvDiskRegistryPrivate
 
         TSecureEraseResponse() = default;
 
-        TSecureEraseResponse(
-                TString poolName,
-                size_t cleanDevices)
+        TSecureEraseResponse(TString poolName, size_t cleanDevices)
             : PoolName(std::move(poolName))
             , CleanDevices(cleanDevices)
         {}
@@ -324,7 +324,8 @@ struct TEvDiskRegistryPrivate
     };
 
     struct TCleanupDevicesResponse
-    {};
+    {
+    };
 
     //
     // DestroyBrokenDisks
@@ -342,12 +343,11 @@ struct TEvDiskRegistryPrivate
         TDestroyBrokenDisksResponse() = default;
 
         TDestroyBrokenDisksResponse(
-                TCallContextPtr callContext,
-                TVector<TString> disks)
+            TCallContextPtr callContext,
+            TVector<TString> disks)
             : CallContext(std::move(callContext))
             , Disks(std::move(disks))
-        {
-        }
+        {}
     };
 
     //
@@ -366,8 +366,7 @@ struct TEvDiskRegistryPrivate
 
         TListBrokenDisksResponse(TVector<TString> diskIds)
             : DiskIds(std::move(diskIds))
-        {
-        }
+        {}
     };
 
     //
@@ -386,8 +385,8 @@ struct TEvDiskRegistryPrivate
         TNotifyDisksResponse() = default;
 
         TNotifyDisksResponse(
-                TCallContextPtr callContext,
-                TVector<TDiskNotificationResult> notifiedDisks)
+            TCallContextPtr callContext,
+            TVector<TDiskNotificationResult> notifiedDisks)
             : CallContext(std::move(callContext))
             , NotifiedDisks(std::move(notifiedDisks))
         {}
@@ -408,13 +407,10 @@ struct TEvDiskRegistryPrivate
 
         TPublishDiskStatesResponse() = default;
 
-        TPublishDiskStatesResponse(
-                TCallContextPtr callContext,
-                ui64 maxSeqNo)
+        TPublishDiskStatesResponse(TCallContextPtr callContext, ui64 maxSeqNo)
             : CallContext(std::move(callContext))
             , MaxSeqNo(maxSeqNo)
-        {
-        }
+        {}
     };
 
     //
@@ -425,8 +421,7 @@ struct TEvDiskRegistryPrivate
     {
         TString DiskId;
 
-        explicit TInitiateDiskReallocationRequest(
-                TString diskId)
+        explicit TInitiateDiskReallocationRequest(TString diskId)
             : DiskId(std::move(diskId))
         {}
     };
@@ -437,11 +432,9 @@ struct TEvDiskRegistryPrivate
 
         TInitiateDiskReallocationResponse() = default;
 
-        TInitiateDiskReallocationResponse(
-                TCallContextPtr callContext)
+        TInitiateDiskReallocationResponse(TCallContextPtr callContext)
             : CallContext(std::move(callContext))
-        {
-        }
+        {}
     };
 
     //
@@ -460,8 +453,7 @@ struct TEvDiskRegistryPrivate
 
         TListDisksToNotifyResponse(TVector<TString> diskIds)
             : DiskIds(std::move(diskIds))
-        {
-        }
+        {}
     };
 
     //
@@ -476,10 +468,10 @@ struct TEvDiskRegistryPrivate
         TInstant Timestamp;
 
         TReplaceDiskDeviceRequest(
-                TString diskId,
-                TString deviceId,
-                TString deviceReplacementId,
-                TInstant timestamp)
+            TString diskId,
+            TString deviceId,
+            TString deviceReplacementId,
+            TInstant timestamp)
             : DiskId(std::move(diskId))
             , DeviceId(std::move(deviceId))
             , DeviceReplacementId(std::move(deviceReplacementId))
@@ -494,7 +486,7 @@ struct TEvDiskRegistryPrivate
         TReplaceDiskDeviceResponse() = default;
 
         explicit TReplaceDiskDeviceResponse(
-                TMaybe<TDiskStateUpdate> diskStateUpdate)
+            TMaybe<TDiskStateUpdate> diskStateUpdate)
             : DiskStateUpdate(std::move(diskStateUpdate))
         {}
     };
@@ -510,9 +502,7 @@ struct TEvDiskRegistryPrivate
 
         TAgentConnectionLost() = default;
 
-        TAgentConnectionLost(
-                TString agentId,
-                ui64 seqNo)
+        TAgentConnectionLost(TString agentId, ui64 seqNo)
             : AgentId(std::move(agentId))
             , SeqNo(seqNo)
         {}
@@ -531,11 +521,11 @@ struct TEvDiskRegistryPrivate
         bool DryRun;
 
         TUpdateCmsHostDeviceStateRequest(
-                TString host,
-                TString path,
-                NProto::EDeviceState state,
-                bool shouldResumeDevice,
-                bool dryRun)
+            TString host,
+            TString path,
+            NProto::EDeviceState state,
+            bool shouldResumeDevice,
+            bool dryRun)
             : Host(std::move(host))
             , Path(std::move(path))
             , State(state)
@@ -555,9 +545,9 @@ struct TEvDiskRegistryPrivate
         bool DryRun;
 
         TUpdateCmsHostStateRequest(
-                TString host,
-                NProto::EAgentState state,
-                bool dryRun)
+            TString host,
+            NProto::EAgentState state,
+            bool dryRun)
             : Host(std::move(host))
             , State(state)
             , DryRun(dryRun)
@@ -589,9 +579,7 @@ struct TEvDiskRegistryPrivate
         TString Host;
         bool DryRun;
 
-        TPurgeHostCmsRequest(
-                TString host,
-                bool dryRun)
+        TPurgeHostCmsRequest(TString host, bool dryRun)
             : Host(std::move(host))
             , DryRun(dryRun)
         {}
@@ -636,11 +624,9 @@ struct TEvDiskRegistryPrivate
 
         TNotifyUsersResponse() = default;
 
-        TNotifyUsersResponse(
-                TCallContextPtr callContext)
+        TNotifyUsersResponse(TCallContextPtr callContext)
             : CallContext(std::move(callContext))
-        {
-        }
+        {}
     };
 
     //
@@ -662,8 +648,7 @@ struct TEvDiskRegistryPrivate
 
         TNotifyUserEventResponse() = default;
 
-        TNotifyUserEventResponse(
-                TCallContextPtr callContext)
+        TNotifyUserEventResponse(TCallContextPtr callContext)
             : CallContext(std::move(callContext))
         {}
     };
@@ -678,8 +663,7 @@ struct TEvDiskRegistryPrivate
 
         TUpdateVolumeConfigRequest(TString diskId)
             : DiskId(std::move(diskId))
-        {
-        }
+        {}
     };
 
     struct TUpdateVolumeConfigResponse
@@ -692,8 +676,7 @@ struct TEvDiskRegistryPrivate
         TUpdateVolumeConfigResponse(TVolumeConfig config, ui64 seqNo)
             : Config(std::move(config))
             , SeqNo(seqNo)
-        {
-        }
+        {}
     };
 
     //
@@ -706,8 +689,7 @@ struct TEvDiskRegistryPrivate
 
         TFinishVolumeConfigUpdateRequest(TString diskId)
             : DiskId(std::move(diskId))
-        {
-        }
+        {}
     };
 
     struct TFinishVolumeConfigUpdateResponse
@@ -724,8 +706,8 @@ struct TEvDiskRegistryPrivate
 
         TRestoreDiskRegistryPartRequest() = default;
         TRestoreDiskRegistryPartRequest(
-                TRequestInfoPtr requestInfo,
-                TQueue<TFunction> operations)
+            TRequestInfoPtr requestInfo,
+            TQueue<TFunction> operations)
             : RequestInfo(std::move(requestInfo))
             , Operations(std::move(operations))
         {}
@@ -738,12 +720,12 @@ struct TEvDiskRegistryPrivate
 
         TRestoreDiskRegistryPartResponse() = default;
         TRestoreDiskRegistryPartResponse(
-                TRequestInfoPtr baseRequestInfo,
-                TRequestInfoPtr partRequestInfo,
-                TQueue<TFunction> operations)
+            TRequestInfoPtr baseRequestInfo,
+            TRequestInfoPtr partRequestInfo,
+            TQueue<TFunction> operations)
             : TRestoreDiskRegistryPartRequest(
-                std::move(baseRequestInfo),
-                std::move(operations))
+                  std::move(baseRequestInfo),
+                  std::move(operations))
             , PartRequestInfo(std::move(partRequestInfo))
         {}
     };
@@ -756,15 +738,16 @@ struct TEvDiskRegistryPrivate
 
         TRestoreDiskRegistryValidationResponse() = default;
         explicit TRestoreDiskRegistryValidationResponse(
-                TRequestInfoPtr requestInfo,
-                TDiskRegistryStateSnapshot loadDBState = {})
+            TRequestInfoPtr requestInfo,
+            TDiskRegistryStateSnapshot loadDBState = {})
             : RequestInfo(std::move(requestInfo))
             , LoadDBState(std::move(loadDBState))
         {}
     };
 
     struct TDiskRegistryAgentListExpiredParamsCleanup
-    {};
+    {
+    };
 
     //
     // Switch to ReadOnly all disks associated with the agent
@@ -804,15 +787,14 @@ struct TEvDiskRegistryPrivate
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TBlockStorePrivateEvents::DISK_REGISTRY_END,
+    static_assert(
+        EvEnd < (int)TBlockStorePrivateEvents::DISK_REGISTRY_END,
         "EvEnd expected to be < TBlockStorePrivateEvents::DISK_REGISTRY_END");
 
     BLOCKSTORE_DISK_REGISTRY_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENTS)
 
-    using TEvAgentConnectionLost = TRequestEvent<
-        TAgentConnectionLost,
-        EvAgentConnectionLost
-    >;
+    using TEvAgentConnectionLost =
+        TRequestEvent<TAgentConnectionLost, EvAgentConnectionLost>;
 
     using TEvOperationCompleted = TResponseEvent<TEmpty, EvOperationCompleted>;
 

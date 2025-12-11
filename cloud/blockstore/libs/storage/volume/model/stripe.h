@@ -15,8 +15,7 @@ struct TStripeInfo
     TStripeInfo(TBlockRange64 blockRange, ui32 partitionId)
         : BlockRange(blockRange)
         , PartitionId(partitionId)
-    {
-    }
+    {}
 };
 
 TStripeInfo ConvertToRelativeBlockRange(

@@ -22,7 +22,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleWriteOrZeroCompleted(
     const TEvNonreplPartitionPrivate::TEvWriteOrZeroCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto * msg = ev->Get();
+    auto* msg = ev->Get();
     const auto counter = msg->RequestId;
     if (!WriteAndZeroRequestsInProgress.RemoveRequest(counter)) {
         Y_DEBUG_ABORT_UNLESS(0);
@@ -45,15 +45,12 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
 {
     if (!DstActorId) {
         // TODO(drbasic) use WriteAndZeroRequestsInProgress
-        ForwardRequestWithNondeliveryTracking(
-            ctx,
-            SrcActorId,
-            *ev);
+        ForwardRequestWithNondeliveryTracking(ctx, SrcActorId, *ev);
 
         return;
     }
 
-    auto replyError = [&ctx, &ev] (ui32 errorCode, TString errorMessage)
+    auto replyError = [&ctx, &ev](ui32 errorCode, TString errorMessage)
     {
         auto response = std::make_unique<typename TMethod::TResponse>(
             MakeError(errorCode, std::move(errorMessage)));
@@ -88,7 +85,8 @@ void TNonreplicatedPartitionMigrationCommonActor::MirrorRequest(
         }
     }
 
-    // While at least one migration is in progress, we are not slowing down user requests.
+    // While at least one migration is in progress, we are not slowing down user
+    // requests.
     if (MigrationsInProgress.Empty()) {
         // Check overlapping with the range that will be migrated next.
         // We need to ensure priority for the migration process, otherwise if

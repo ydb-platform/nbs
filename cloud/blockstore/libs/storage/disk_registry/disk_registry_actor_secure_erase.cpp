@@ -15,8 +15,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSecureEraseActor final
-    : public TActorBootstrapped<TSecureEraseActor>
+class TSecureEraseActor final: public TActorBootstrapped<TSecureEraseActor>
 {
 private:
     const TChildLogTitle LogTitle;
@@ -73,12 +72,12 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TSecureEraseActor::TSecureEraseActor(
-        TChildLogTitle logTitle,
-        const TActorId& owner,
-        TRequestInfoPtr request,
-        TDuration requestTimeout,
-        TString poolName,
-        TVector<NProto::TDeviceConfig> devicesToClean)
+    TChildLogTitle logTitle,
+    const TActorId& owner,
+    TRequestInfoPtr request,
+    TDuration requestTimeout,
+    TString poolName,
+    TVector<NProto::TDeviceConfig> devicesToClean)
     : LogTitle(std::move(logTitle))
     , Owner(owner)
     , Request(std::move(request))
@@ -94,7 +93,8 @@ void TSecureEraseActor::Bootstrap(const TActorContext& ctx)
     for (ui64 i = 0; i != Devices.size(); ++i) {
         auto& device = Devices[i];
 
-        auto request = std::make_unique<TEvDiskAgent::TEvSecureEraseDeviceRequest>();
+        auto request =
+            std::make_unique<TEvDiskAgent::TEvSecureEraseDeviceRequest>();
         request->Record.SetDeviceUUID(device.GetDeviceUUID());
 
         auto event = std::make_unique<IEventHandle>(
@@ -116,12 +116,15 @@ void TSecureEraseActor::Bootstrap(const TActorContext& ctx)
     }
 }
 
-void TSecureEraseActor::ReplyAndDie(const TActorContext& ctx, NProto::TError error)
+void TSecureEraseActor::ReplyAndDie(
+    const TActorContext& ctx,
+    NProto::TError error)
 {
-    auto response = std::make_unique<TEvDiskRegistryPrivate::TEvSecureEraseResponse>(
-        std::move(error),
-        PoolName,
-        CleanDevices.size());
+    auto response =
+        std::make_unique<TEvDiskRegistryPrivate::TEvSecureEraseResponse>(
+            std::move(error),
+            PoolName,
+            CleanDevices.size());
     NCloud::Reply(ctx, *Request, std::move(response));
 
     NCloud::Send(
@@ -136,8 +139,9 @@ void TSecureEraseActor::CleanupDevices(const TActorContext& ctx)
 {
     Become(&TThis::StateCleanup);
 
-    auto request = std::make_unique<TEvDiskRegistryPrivate::TEvCleanupDevicesRequest>(
-        CleanDevices);
+    auto request =
+        std::make_unique<TEvDiskRegistryPrivate::TEvCleanupDevicesRequest>(
+            CleanDevices);
 
     NCloud::Send(ctx, Owner, std::move(request));
 }
@@ -245,8 +249,12 @@ STFUNC(TSecureEraseActor::StateErase)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvents::TEvWakeup, HandleTimeout);
 
-        HFunc(TEvDiskAgent::TEvSecureEraseDeviceRequest, HandleSecureEraseDeviceUndelivery);
-        HFunc(TEvDiskAgent::TEvSecureEraseDeviceResponse, HandleSecureEraseDeviceResponse);
+        HFunc(
+            TEvDiskAgent::TEvSecureEraseDeviceRequest,
+            HandleSecureEraseDeviceUndelivery);
+        HFunc(
+            TEvDiskAgent::TEvSecureEraseDeviceResponse,
+            HandleSecureEraseDeviceResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -266,7 +274,9 @@ STFUNC(TSecureEraseActor::StateCleanup)
         IgnoreFunc(TEvDiskAgent::TEvSecureEraseDeviceRequest);
         IgnoreFunc(TEvDiskAgent::TEvSecureEraseDeviceResponse);
 
-        HFunc(TEvDiskRegistryPrivate::TEvCleanupDevicesResponse, HandleCleanupDevicesResponse);
+        HFunc(
+            TEvDiskRegistryPrivate::TEvCleanupDevicesResponse,
+            HandleCleanupDevicesResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -307,7 +317,8 @@ void TDiskRegistryActor::CompleteCleanupDevices(
     const TActorContext& ctx,
     TTxDiskRegistry::TCleanupDevices& args)
 {
-    auto response = std::make_unique<TEvDiskRegistryPrivate::TEvCleanupDevicesResponse>();
+    auto response =
+        std::make_unique<TEvDiskRegistryPrivate::TEvCleanupDevicesResponse>();
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     for (const auto& diskId: args.SyncDeallocatedDisks) {
@@ -389,7 +400,10 @@ void TDiskRegistryActor::SecureErase(const TActorContext& ctx)
 
             ctx.Schedule(
                 deadline,
-                std::make_unique<IEventHandle>(ctx.SelfID, ctx.SelfID, request.release()));
+                std::make_unique<IEventHandle>(
+                    ctx.SelfID,
+                    ctx.SelfID,
+                    request.release()));
         } else {
             LOG_INFO(
                 ctx,
@@ -464,11 +478,7 @@ void TDiskRegistryActor::HandleCleanupDevices(
 
     ExecuteTx<TCleanupDevices>(
         ctx,
-        CreateRequestInfo(
-            ev->Sender,
-            ev->Cookie,
-            msg->CallContext
-        ),
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
         msg->Devices);
 }
 

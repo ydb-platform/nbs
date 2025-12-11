@@ -79,17 +79,13 @@ private:
     }
 
 public:
-    TTaskStatsFetcher(
-            TString componentName,
-            int pid)
+    TTaskStatsFetcher(TString componentName, int pid)
         : ComponentName(std::move(componentName))
         , Pid(pid)
-    {
-    }
+    {}
 
     ~TTaskStatsFetcher() override
-    {
-    }
+    {}
 
     TResultOrError<TDuration> GetCpuWait() override
     {
@@ -115,13 +111,9 @@ public:
 
 }   // namespace
 
-IStatsFetcherPtr CreateTaskStatsFetcher(
-    TString componentName,
-    int pid)
+IStatsFetcherPtr CreateTaskStatsFetcher(TString componentName, int pid)
 {
-    return std::make_shared<TTaskStatsFetcher>(
-        std::move(componentName),
-        pid);
+    return std::make_shared<TTaskStatsFetcher>(std::move(componentName), pid);
 }
 
 }   // namespace NCloud::NStorage

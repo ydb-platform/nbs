@@ -12,11 +12,9 @@ using namespace NKikimr::NTabletFlatExecutor;
 void TDiskRegistryActor::ProcessAutomaticallyReplacedDevices(
     const TActorContext& ctx)
 {
-    const auto delay =
-        Config->GetAutomaticallyReplacedDevicesFreezePeriod();
-    if (!delay
-            || AutomaticallyReplacedDevicesDeletionInProgress
-            || State->GetAutomaticallyReplacedDevices().empty())
+    const auto delay = Config->GetAutomaticallyReplacedDevicesFreezePeriod();
+    if (!delay || AutomaticallyReplacedDevicesDeletionInProgress ||
+        State->GetAutomaticallyReplacedDevices().empty())
     {
         return;
     }
@@ -24,14 +22,13 @@ void TDiskRegistryActor::ProcessAutomaticallyReplacedDevices(
     const auto until = ctx.Now() - delay;
     AutomaticallyReplacedDevicesDeletionInProgress = true;
 
-    LOG_DEBUG_S(ctx, TBlockStoreComponents::DISK_REGISTRY,
-        "Processing AutomaticallyReplacedDevices, count: "
-        << State->GetAutomaticallyReplacedDevices().size());
-
-    ExecuteTx<TProcessAutomaticallyReplacedDevices>(
+    LOG_DEBUG_S(
         ctx,
-        nullptr,
-        until);
+        TBlockStoreComponents::DISK_REGISTRY,
+        "Processing AutomaticallyReplacedDevices, count: "
+            << State->GetAutomaticallyReplacedDevices().size());
+
+    ExecuteTx<TProcessAutomaticallyReplacedDevices>(ctx, nullptr, until);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -14,8 +14,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCgroupStatsFetcher final
-    : public IStatsFetcher
+struct TCgroupStatsFetcher final: public IStatsFetcher
 {
 private:
     const TString ComponentName;
@@ -24,14 +23,11 @@ private:
     TDuration Last;
 
 public:
-    TCgroupStatsFetcher(
-            TString componentName,
-            TString statsFile)
+    TCgroupStatsFetcher(TString componentName, TString statsFile)
         : ComponentName(std::move(componentName))
         , StatsFile(std::move(statsFile))
         , Last(TDuration::Zero())
-    {
-    }
+    {}
 
     TResultOrError<TDuration> GetCpuWait() override
     {

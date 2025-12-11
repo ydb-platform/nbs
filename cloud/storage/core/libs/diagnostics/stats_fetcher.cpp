@@ -11,8 +11,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TStatsFetcherStub final
-    : public IStatsFetcher
+struct TStatsFetcherStub final: public IStatsFetcher
 {
     TResultOrError<TDuration> GetCpuWait() override
     {
@@ -54,14 +53,10 @@ IStatsFetcherPtr BuildStatsFetcher(
                 return CreateStatsFetcherStub();
             }
 
-            return CreateCgroupStatsFetcher(
-                "STORAGE_STATS",
-                cpuWaitFilename);
+            return CreateCgroupStatsFetcher("STORAGE_STATS", cpuWaitFilename);
         }
         case NCloud::NProto::TASKSTATS:
-            return CreateTaskStatsFetcher(
-                "STORAGE_STATS",
-                getpid());
+            return CreateTaskStatsFetcher("STORAGE_STATS", getpid());
     }
 }
 

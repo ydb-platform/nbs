@@ -3,13 +3,13 @@
 #include "public.h"
 
 #include <cloud/blockstore/config/client.pb.h>
-#include <cloud/blockstore/public/api/protos/endpoints.pb.h>
-
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/diagnostics/incomplete_requests.h>
 #include <cloud/blockstore/libs/nbd/public.h>
 #include <cloud/blockstore/libs/service/public.h>
+#include <cloud/blockstore/public/api/protos/endpoints.pb.h>
+
 #include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/coroutine/public.h>
 #include <cloud/storage/core/libs/endpoints/iface/public.h>
@@ -26,11 +26,11 @@ struct IEndpointManager
 {
     virtual ~IEndpointManager() = default;
 
-#define ENDPOINT_DECLARE_METHOD(name, ...)                                     \
-    virtual NThreading::TFuture<NProto::T##name##Response> name(               \
-        TCallContextPtr ctx,                                                   \
-        std::shared_ptr<NProto::T##name##Request> req) = 0;                    \
-// ENDPOINT_DECLARE_METHOD
+#define ENDPOINT_DECLARE_METHOD(name, ...)                       \
+    virtual NThreading::TFuture<NProto::T##name##Response> name( \
+        TCallContextPtr ctx,                                     \
+        std::shared_ptr<NProto::T##name##Request> req) = 0;      \
+    // ENDPOINT_DECLARE_METHOD
 
     BLOCKSTORE_ENDPOINT_SERVICE(ENDPOINT_DECLARE_METHOD)
 

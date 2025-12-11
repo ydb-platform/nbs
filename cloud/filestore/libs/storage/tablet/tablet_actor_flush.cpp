@@ -19,8 +19,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFlushActor final
-    : public TActorBootstrapped<TFlushActor>
+class TFlushActor final: public TActorBootstrapped<TFlushActor>
 {
 private:
     const TActorId Tablet;
@@ -72,14 +71,14 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TFlushActor::TFlushActor(
-        const TActorId& tablet,
-        TString fileSystemId,
-        TRequestInfoPtr requestInfo,
-        ui64 commitId,
-        ui32 blockSize,
-        IProfileLogPtr profileLog,
-        TVector<TMixedBlob> blobs,
-        NProto::TProfileLogRequestInfo profileLogRequest)
+    const TActorId& tablet,
+    TString fileSystemId,
+    TRequestInfoPtr requestInfo,
+    ui64 commitId,
+    ui32 blockSize,
+    IProfileLogPtr profileLog,
+    TVector<TMixedBlob> blobs,
+    NProto::TProfileLogRequestInfo profileLogRequest)
     : Tablet(tablet)
     , FileSystemId(std::move(fileSystemId))
     , RequestInfo(std::move(requestInfo))
@@ -110,8 +109,7 @@ void TFlushActor::Bootstrap(const TActorContext& ctx)
 void TFlushActor::WriteBlob(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvIndexTabletPrivate::TEvWriteBlobRequest>(
-        RequestInfo->CallContext
-    );
+        RequestInfo->CallContext);
 
     for (auto& blob: Blobs) {
         request->Blobs.emplace_back(blob.BlobId, std::move(blob.BlobContent));
@@ -138,8 +136,7 @@ void TFlushActor::HandleWriteBlobResponse(
 void TFlushActor::AddBlob(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvIndexTabletPrivate::TEvAddBlobRequest>(
-        RequestInfo->CallContext
-    );
+        RequestInfo->CallContext);
     request->Mode = EAddBlobMode::Flush;
 
     for (auto& blob: Blobs) {
@@ -259,11 +256,10 @@ void TIndexTabletActor::HandleFlush(
         msg->CallContext->FileSystemId,
         GetFileSystem().GetStorageMediaKind());
 
-    auto replyError = [&] (
-        const TActorContext& ctx,
-        auto& ev,
-        NProto::TProfileLogRequestInfo profileLogRequest,
-        const NProto::TError& error)
+    auto replyError = [&](const TActorContext& ctx,
+                          auto& ev,
+                          NProto::TProfileLogRequestInfo profileLogRequest,
+                          const NProto::TError& error)
     {
         // log request
         FinalizeProfileLogRequestInfo(
@@ -273,14 +269,13 @@ void TIndexTabletActor::HandleFlush(
             error,
             ProfileLog);
 
-        FILESTORE_TRACK(
-            ResponseSent_Tablet,
-            ev.Get()->CallContext,
-            "Flush");
+        FILESTORE_TRACK(ResponseSent_Tablet, ev.Get()->CallContext, "Flush");
 
         if (ev.Sender != ctx.SelfID) {
             // reply to caller
-            auto response = std::make_unique<TEvIndexTabletPrivate::TEvFlushResponse>(error);
+            auto response =
+                std::make_unique<TEvIndexTabletPrivate::TEvFlushResponse>(
+                    error);
             NCloud::Reply(ctx, ev, std::move(response));
         }
     };
@@ -294,8 +289,7 @@ void TIndexTabletActor::HandleFlush(
             ctx,
             *ev,
             std::move(profileLogRequest),
-            MakeError(E_TRY_AGAIN, "compaction state not loaded yet")
-        );
+            MakeError(E_TRY_AGAIN, "compaction state not loaded yet"));
 
         return;
     }
@@ -328,7 +322,9 @@ void TIndexTabletActor::HandleFlush(
         return;
     }
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s Flush started (%u blocks in %u blobs)",
         LogTag.c_str(),
         builder.GetBlocksCount(),
@@ -362,10 +358,8 @@ void TIndexTabletActor::HandleFlush(
         }
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     AcquireCollectBarrier(commitId);
@@ -390,7 +384,9 @@ void TIndexTabletActor::HandleFlushCompleted(
 {
     const auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s Flush completed (%s)",
         LogTag.c_str(),
         FormatError(msg->GetError()).c_str());

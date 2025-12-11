@@ -47,8 +47,7 @@ struct TAppContext
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TExecutor final
-    : public ISimpleThread
+class TExecutor final: public ISimpleThread
 {
 private:
     static constexpr TDuration Timeout = TDuration::Seconds(1);
@@ -146,8 +145,8 @@ private:
 
         auto now = TInstant::Now();
 
-        while (!ExecutedRequests.empty()
-            && now - ExecutedRequests.front() > TDuration::Seconds(1))
+        while (!ExecutedRequests.empty() &&
+               now - ExecutedRequests.front() > TDuration::Seconds(1))
         {
             ExecutedRequests.pop_front();
         }
@@ -159,8 +158,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TRequest, typename TResponse>
-class TRequestHandler final
-    : public IRequestHandler
+class TRequestHandler final: public IRequestHandler
 {
 private:
     TAppContext& AppCtx;
@@ -170,10 +168,10 @@ private:
 
 public:
     TRequestHandler(
-            TAppContext& appCtx,
-            TCallContextPtr callContext,
-            std::shared_ptr<TRequest> request,
-            TPromise<TResponse> promise)
+        TAppContext& appCtx,
+        TCallContextPtr callContext,
+        std::shared_ptr<TRequest> request,
+        TPromise<TResponse> promise)
         : AppCtx(appCtx)
         , CallContext(std::move(callContext))
         , Request(std::move(request))
@@ -200,7 +198,7 @@ private:
 
     ui64 GetBlocksCount() const
     {
-        static constexpr ui64 DefaultBlocksCount = 1024*1024;
+        static constexpr ui64 DefaultBlocksCount = 1024 * 1024;
 
         const auto blocksCount = AppCtx.Config.GetDiskBlocksCount();
         return blocksCount ? blocksCount : DefaultBlocksCount;
@@ -313,7 +311,9 @@ private:
                 volume.SetBlockSize(blockSize);
                 volume.SetBlocksCount(blocksCount);
 
-                it = AppCtx.MountedDisks.emplace(diskId, std::move(mountResponse)).first;
+                it = AppCtx.MountedDisks
+                         .emplace(diskId, std::move(mountResponse))
+                         .first;
             }
 
             response.CopyFrom(it->second);
@@ -395,8 +395,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IBlockStorePtr CreateNullService(
-    const NProto::TNullServiceConfig& config)
+IBlockStorePtr CreateNullService(const NProto::TNullServiceConfig& config)
 {
     return std::make_shared<TNullService>(config);
 }

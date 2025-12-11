@@ -53,18 +53,22 @@ void THiveProxyActor::HandleLockTabletExecutionResult(
     auto* state = states ? states->LockStates.FindPtr(tabletId) : nullptr;
     if (!state || state->Phase == PHASE_UNLOCKING) {
         // Unexpected lock reply, send an unlock request
-        LOG_WARN_S(ctx, LogComponent,
-            "Unexpected lock reply from hive " << hive
-                << " for tablet " << tabletId);
+        LOG_WARN_S(
+            ctx,
+            LogComponent,
+            "Unexpected lock reply from hive " << hive << " for tablet "
+                                               << tabletId);
         SendUnlockRequest(ctx, hive, tabletId);
         return;
     }
 
     if (state->Phase == PHASE_LOCKED) {
         // Already locked, ignore duplicate results
-        LOG_WARN_S(ctx, LogComponent,
-            "Ignored duplicate lock reply from hive " << hive
-                << " for tablet " << tabletId);
+        LOG_WARN_S(
+            ctx,
+            LogComponent,
+            "Ignored duplicate lock reply from hive " << hive << " for tablet "
+                                                      << tabletId);
         return;
     }
 

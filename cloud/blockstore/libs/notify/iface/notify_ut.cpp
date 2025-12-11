@@ -32,11 +32,13 @@ Y_UNIT_TEST_SUITE(TNotifyTest)
         auto service = CreateNullService(logging);
         service->Start();
 
-        auto r = service->Notify({
-            .CloudId = "yc-nbs",
-            .FolderId = "yc-nbs.folder",
-            .Event = TDiskError{ .DiskId = "nrd0" },
-        }).GetValue(WaitTimeout);
+        auto r = service
+                     ->Notify({
+                         .CloudId = "yc-nbs",
+                         .FolderId = "yc-nbs.folder",
+                         .Event = TDiskError{.DiskId = "nrd0"},
+                     })
+                     .GetValue(WaitTimeout);
 
         UNIT_ASSERT_C(!HasError(r), r);
 
@@ -48,11 +50,13 @@ Y_UNIT_TEST_SUITE(TNotifyTest)
         auto service = CreateServiceStub();
         service->Start();
 
-        auto r = service->Notify({
-            .CloudId = "yc-nbs",
-            .FolderId = "yc-nbs.folder",
-            .Event = TDiskError{ .DiskId = "nrd0" },
-        }).GetValue(WaitTimeout);
+        auto r = service
+                     ->Notify({
+                         .CloudId = "yc-nbs",
+                         .FolderId = "yc-nbs.folder",
+                         .Event = TDiskError{.DiskId = "nrd0"},
+                     })
+                     .GetValue(WaitTimeout);
 
         UNIT_ASSERT_C(!HasError(r), r);
 

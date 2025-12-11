@@ -14,8 +14,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRegisterActor final
-    : public TActorBootstrapped<TRegisterActor>
+class TRegisterActor final: public TActorBootstrapped<TRegisterActor>
 {
 private:
     const TActorId Owner;
@@ -41,9 +40,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TRegisterActor::TRegisterActor(
-        const TActorId& owner,
-        TRequestInfoPtr requestInfo,
-        NProto::TAgentConfig config)
+    const TActorId& owner,
+    TRequestInfoPtr requestInfo,
+    NProto::TAgentConfig config)
     : Owner(owner)
     , RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
@@ -53,27 +52,27 @@ void TRegisterActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT_WORKER,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_AGENT_WORKER,
         "Send RegisterAgent request: NodeId=%u, AgentId=%s"
         ", SeqNo=%lu, Devices=[%s]",
         Config.GetNodeId(),
         Config.GetAgentId().c_str(),
         Config.GetSeqNumber(),
-        [this] {
+        [this]
+        {
             TStringStream out;
             for (const auto& config: Config.GetDevices()) {
-                out << config.GetDeviceUUID()
-                    << " ("
-                    << config.GetDeviceName() << ", PhysicalOffset="
-                    << config.GetPhysicalOffset() << ", Size="
-                    << config.GetBlocksCount() << " x "
-                    << config.GetBlockSize() << ", Rack="
-                    << config.GetRack() << ", SN="
-                    << config.GetSerialNumber()
-                    << "); ";
+                out << config.GetDeviceUUID() << " (" << config.GetDeviceName()
+                    << ", PhysicalOffset=" << config.GetPhysicalOffset()
+                    << ", Size=" << config.GetBlocksCount() << " x "
+                    << config.GetBlockSize() << ", Rack=" << config.GetRack()
+                    << ", SN=" << config.GetSerialNumber() << "); ";
             }
             return out.Str();
-        }().c_str());
+        }()
+            .c_str());
 
     auto request = std::make_unique<TEvDiskRegistry::TEvRegisterAgentRequest>();
     *request->Record.MutableAgentConfig() = std::move(Config);
@@ -87,8 +86,9 @@ void TRegisterActor::HandleRegisterAgentResponse(
 {
     const auto* msg = ev->Get();
 
-    auto response = std::make_unique<TEvDiskAgentPrivate::TEvRegisterAgentResponse>(
-        msg->GetError());
+    auto response =
+        std::make_unique<TEvDiskAgentPrivate::TEvRegisterAgentResponse>(
+            msg->GetError());
     response->DevicesToDisableIO.assign(
         msg->Record.GetDevicesToDisableIO().cbegin(),
         msg->Record.GetDevicesToDisableIO().cend());
@@ -98,7 +98,9 @@ void TRegisterActor::HandleRegisterAgentResponse(
 STFUNC(TRegisterActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvDiskRegistry::TEvRegisterAgentResponse, HandleRegisterAgentResponse);
+        HFunc(
+            TEvDiskRegistry::TEvRegisterAgentResponse,
+            HandleRegisterAgentResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -120,8 +122,8 @@ private:
 
 public:
     TUpdateDevicesWithSuspendedIOActor(
-            TString cachePath,
-            TVector<TString> devicesToSuspendIO)
+        TString cachePath,
+        TVector<TString> devicesToSuspendIO)
         : CachePath{std::move(cachePath)}
         , DevicesToDisableIO{std::move(devicesToSuspendIO)}
     {}
@@ -172,10 +174,8 @@ void TDiskAgentActor::HandleRegisterAgent(
 
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     NCloud::Register<TRegisterActor>(
         ctx,
@@ -240,14 +240,21 @@ void TDiskAgentActor::HandleRegisterAgentResponse(
         ProcessDevicesToDisableIO(ctx, std::move(msg->DevicesToDisableIO));
         RestartDeviceHealthChecking(ctx);
     } else {
-        LOG_WARN(ctx, TBlockStoreComponents::DISK_AGENT,
-            "Register failed: %s. Try later", FormatError(msg->GetError()).c_str());
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::DISK_AGENT,
+            "Register failed: %s. Try later",
+            FormatError(msg->GetError()).c_str());
 
-        auto request = std::make_unique<TEvDiskAgentPrivate::TEvRegisterAgentRequest>();
+        auto request =
+            std::make_unique<TEvDiskAgentPrivate::TEvRegisterAgentRequest>();
 
         ctx.Schedule(
             AgentConfig->GetRegisterRetryTimeout(),
-            std::make_unique<IEventHandle>(ctx.SelfID, ctx.SelfID, request.get()));
+            std::make_unique<IEventHandle>(
+                ctx.SelfID,
+                ctx.SelfID,
+                request.get()));
 
         request.release();
     }

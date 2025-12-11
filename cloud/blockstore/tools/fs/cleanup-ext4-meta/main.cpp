@@ -51,30 +51,22 @@ struct TOptions
             .RequiredArgument("FILE")
             .StoreResult(&DumpBlockDataDir);
 
-        opts.AddLongOption("dry-run")
-            .NoArgument()
-            .StoreTrue(&DryRun);
+        opts.AddLongOption("dry-run").NoArgument().StoreTrue(&DryRun);
 
-        opts.AddLongOption('v', "verbose")
-            .NoArgument()
-            .StoreTrue(&Verbose);
+        opts.AddLongOption('v', "verbose").NoArgument().StoreTrue(&Verbose);
 
         opts.AddLongOption("clean-bitmaps")
             .NoArgument()
             .StoreTrue(&CleanBitmaps);
 
-        opts.AddLongOption("clean-gdt")
-            .NoArgument()
-            .StoreTrue(&CleanGDT);
+        opts.AddLongOption("clean-gdt").NoArgument().StoreTrue(&CleanGDT);
 
         opts.AddLongOption("clean-superblock")
             .NoArgument()
             .StoreTrue(&CleanSuperblock);
 
         bool cleanAll = false;
-        opts.AddLongOption("clean-all")
-            .NoArgument()
-            .StoreTrue(&cleanAll);
+        opts.AddLongOption("clean-all").NoArgument().StoreTrue(&cleanAll);
 
         TOptsParseResultException res(&opts, argc, argv);
 
@@ -92,10 +84,11 @@ struct IDev
 {
     virtual ~IDev() = default;
     virtual void Pload(void* buffer, ui32 byteCount, i64 offset) const = 0;
-    virtual void Pwrite(const void* buffer, ui32 byteCount, i64 offset) const = 0;
+    virtual void
+    Pwrite(const void* buffer, ui32 byteCount, i64 offset) const = 0;
 };
 
-struct TDummyDev : IDev
+struct TDummyDev: IDev
 {
     void Pload(void* buffer, ui32 byteCount, i64 offset) const override
     {
@@ -113,7 +106,7 @@ struct TDummyDev : IDev
     }
 };
 
-struct TVerboseDev : IDev
+struct TVerboseDev: IDev
 {
     std::unique_ptr<IDev> Impl;
 
@@ -134,7 +127,7 @@ struct TVerboseDev : IDev
     }
 };
 
-struct TDev : IDev
+struct TDev: IDev
 {
     TFile File;
 
@@ -196,12 +189,10 @@ public:
         SuperBlock = MetaReader->ReadSuperBlock(Dumpe2fs);
 
         if (Options.Verbose) {
-            Cout << "SuperBlock: "
-                << SuperBlock.BlockSize << " "
-                << SuperBlock.BlocksPerGroup << " "
-                << SuperBlock.InodesPerGroup << " "
-                << SuperBlock.MetadataCsumFeature
-                << Endl;
+            Cout << "SuperBlock: " << SuperBlock.BlockSize << " "
+                 << SuperBlock.BlocksPerGroup << " "
+                 << SuperBlock.InodesPerGroup << " "
+                 << SuperBlock.MetadataCsumFeature << Endl;
         }
 
         Y_ABORT_UNLESS(SuperBlock.BlockSize == 4_KB);
@@ -212,8 +203,8 @@ public:
 
         if (Options.Verbose) {
             Cout << "Trimmed blocks: " << TrimmedBlocks << Endl;
-            Cout << "Trimmed bytes: " << TrimmedBytes
-                << " (" << NCloud::FormatByteSize(TrimmedBytes) << ")" << Endl;
+            Cout << "Trimmed bytes: " << TrimmedBytes << " ("
+                 << NCloud::FormatByteSize(TrimmedBytes) << ")" << Endl;
         }
 
         return 0;
@@ -223,9 +214,9 @@ private:
     void ProcessGroup(const TGroupDescr& groupDescr)
     {
         if (Options.Verbose) {
-            Cout << "Process group " << groupDescr.GroupNum
-                << " (blocks " << groupDescr.Blocks.FirstBlock << "-"
-                << groupDescr.Blocks.LastBlock << ") ..." << Endl;
+            Cout << "Process group " << groupDescr.GroupNum << " (blocks "
+                 << groupDescr.Blocks.FirstBlock << "-"
+                 << groupDescr.Blocks.LastBlock << ") ..." << Endl;
         }
 
         ui64 totalBlocks = groupDescr.Blocks.Length();
@@ -280,17 +271,19 @@ private:
 
         if (groupDescr.BlockBitmap == 0) {
             Cerr << "WARN [CleanupBlockBitmap] empty BlockBitmap in Group #"
-                << groupDescr.GroupNum << Endl;
+                 << groupDescr.GroupNum << Endl;
             return;
         }
 
         if (groupDescr.FreeBlocks != totalBlocks) {
-            Cerr << "WARN [CleanupBlockBitmap] " << groupDescr.FreeBlocks << " != "
-                << totalBlocks << " for Group #" << groupDescr.GroupNum << Endl;
+            Cerr << "WARN [CleanupBlockBitmap] " << groupDescr.FreeBlocks
+                 << " != " << totalBlocks << " for Group #"
+                 << groupDescr.GroupNum << Endl;
             return;
         }
 
-        const i64 offset = static_cast<i64>(groupDescr.BlockBitmap * SuperBlock.BlockSize);
+        const i64 offset =
+            static_cast<i64>(groupDescr.BlockBitmap * SuperBlock.BlockSize);
 
         if (Options.DumpBlockDataDir) {
             Dev.Pload(Buffer, SuperBlock.BlockSize, offset);
@@ -311,17 +304,19 @@ private:
 
         if (groupDescr.InodeBitmap == 0) {
             Cerr << "WARN [CleanupInodeBitmap] empty InodeBitmap in Group #"
-                << groupDescr.GroupNum << Endl;
+                 << groupDescr.GroupNum << Endl;
             return;
         }
 
         if (groupDescr.UnusedInodes != groupDescr.FreeInodes) {
-            Cerr << "WARN [CleanupInodeBitmap] " << groupDescr.UnusedInodes << " != "
-                << groupDescr.FreeInodes << " for Group #" << groupDescr.GroupNum << Endl;
+            Cerr << "WARN [CleanupInodeBitmap] " << groupDescr.UnusedInodes
+                 << " != " << groupDescr.FreeInodes << " for Group #"
+                 << groupDescr.GroupNum << Endl;
             return;
         }
 
-        const i64 offset = static_cast<i64>(groupDescr.InodeBitmap * SuperBlock.BlockSize);
+        const i64 offset =
+            static_cast<i64>(groupDescr.InodeBitmap * SuperBlock.BlockSize);
 
         if (Options.DumpBlockDataDir) {
             Dev.Pload(Buffer, SuperBlock.BlockSize, offset);
@@ -336,9 +331,12 @@ private:
 
     void DumpBlock(ui64 blockIndex, const char* data)
     {
-        auto filename = JoinFsPaths(Options.DumpBlockDataDir, ToString(blockIndex));
+        auto filename =
+            JoinFsPaths(Options.DumpBlockDataDir, ToString(blockIndex));
 
-        TFile file(filename, EOpenModeFlag::CreateAlways | EOpenModeFlag::WrOnly);
+        TFile file(
+            filename,
+            EOpenModeFlag::CreateAlways | EOpenModeFlag::WrOnly);
         file.Write(data, SuperBlock.BlockSize);
     }
 
@@ -384,8 +382,10 @@ private:
         const ui64 blocksInBuffer = BufferSize / SuperBlock.BlockSize;
 
         while (startIndex < endIndex) {
-            const i64 offset = static_cast<i64>(startIndex * SuperBlock.BlockSize);
-            const ui64 blocksToRead = std::min(blocksInBuffer, endIndex - startIndex + 1);
+            const i64 offset =
+                static_cast<i64>(startIndex * SuperBlock.BlockSize);
+            const ui64 blocksToRead =
+                std::min(blocksInBuffer, endIndex - startIndex + 1);
             const ui32 bytesToRead = blocksToRead * SuperBlock.BlockSize;
 
             Dev.Pload(Buffer, bytesToRead, offset);
@@ -395,7 +395,9 @@ private:
                     Options.DumpBlockDataDir,
                     TStringBuilder() << startIndex << "-" << blocksToRead);
 
-                TFile file(filename, EOpenModeFlag::CreateAlways | EOpenModeFlag::WrOnly);
+                TFile file(
+                    filename,
+                    EOpenModeFlag::CreateAlways | EOpenModeFlag::WrOnly);
                 file.Write(Buffer, bytesToRead);
             }
 
@@ -409,7 +411,7 @@ private:
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

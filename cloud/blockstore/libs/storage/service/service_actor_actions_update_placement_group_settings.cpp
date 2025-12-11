@@ -48,15 +48,16 @@ private:
     STFUNC(StateWork);
 
     void HandleUpdatePlacementGroupSettingsResponse(
-        const TEvDiskRegistry::TEvUpdatePlacementGroupSettingsResponse::TPtr& ev,
+        const TEvDiskRegistry::TEvUpdatePlacementGroupSettingsResponse::TPtr&
+            ev,
         const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TUpdatePlacementGroupSettingsActor::TUpdatePlacementGroupSettingsActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -66,7 +67,9 @@ void TUpdatePlacementGroupSettingsActor::Bootstrap(const TActorContext& ctx)
     using TRequest = TEvDiskRegistry::TEvUpdatePlacementGroupSettingsRequest;
     auto request = std::make_unique<TRequest>();
 
-    if (!google::protobuf::util::JsonStringToMessage(Input, &request->Record).ok()) {
+    if (!google::protobuf::util::JsonStringToMessage(Input, &request->Record)
+             .ok())
+    {
         Error = MakeError(E_ARGUMENT, "Failed to parse input");
         ReplyAndDie(ctx, {});
         return;
@@ -81,7 +84,8 @@ void TUpdatePlacementGroupSettingsActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TUpdatePlacementGroupSettingsResponse& proto)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(Error);
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(Error);
     google::protobuf::util::MessageToJsonString(
         proto,
         response->Record.MutableOutput());
@@ -98,9 +102,11 @@ void TUpdatePlacementGroupSettingsActor::ReplyAndDie(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TUpdatePlacementGroupSettingsActor::HandleUpdatePlacementGroupSettingsResponse(
-    const TEvDiskRegistry::TEvUpdatePlacementGroupSettingsResponse::TPtr& ev,
-    const TActorContext& ctx)
+void TUpdatePlacementGroupSettingsActor::
+    HandleUpdatePlacementGroupSettingsResponse(
+        const TEvDiskRegistry::TEvUpdatePlacementGroupSettingsResponse::TPtr&
+            ev,
+        const TActorContext& ctx)
 {
     auto* msg = ev->Get();
 
@@ -133,7 +139,8 @@ STFUNC(TUpdatePlacementGroupSettingsActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<IActorPtr> TServiceActor::CreateUpdatePlacementGroupSettingsActor(
+TResultOrError<IActorPtr>
+TServiceActor::CreateUpdatePlacementGroupSettingsActor(
     TRequestInfoPtr requestInfo,
     TString input)
 {

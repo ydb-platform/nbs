@@ -53,11 +53,12 @@ struct TEvBootstrapper
         const ETabletStatus Status;
         const TString Message;
 
-        TStatus(ui64 tabletId,
-                const NActors::TActorId& tabletSys,
-                const NActors::TActorId& tabletUser,
-                ETabletStatus status,
-                TString message)
+        TStatus(
+            ui64 tabletId,
+            const NActors::TActorId& tabletSys,
+            const NActors::TActorId& tabletUser,
+            ETabletStatus status,
+            TString message)
             : TabletId(tabletId)
             , TabletSys(tabletSys)
             , TabletUser(tabletUser)
@@ -81,7 +82,8 @@ struct TEvBootstrapper
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TBlockStoreEvents::BOOTSTRAPPER_END,
+    static_assert(
+        EvEnd < (int)TBlockStoreEvents::BOOTSTRAPPER_END,
         "EvEnd expected to be < TBlockStoreEvents::BOOTSTRAPPER_END");
 
     using TEvStart = TRequestEvent<TStart, EvStart>;

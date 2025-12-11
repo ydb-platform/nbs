@@ -10,12 +10,8 @@ struct IThrottlerMetrics
 {
     virtual ~IThrottlerMetrics() = default;
 
-    virtual void Register(
-        const TString& diskId,
-        const TString& clientId) = 0;
-    virtual void Unregister(
-        const TString& diskId,
-        const TString& clientId) = 0;
+    virtual void Register(const TString& diskId, const TString& clientId) = 0;
+    virtual void Unregister(const TString& diskId, const TString& clientId) = 0;
     virtual void Trim(TInstant now) = 0;
 
     virtual void UpdateUsedQuota(ui64 quota) = 0;

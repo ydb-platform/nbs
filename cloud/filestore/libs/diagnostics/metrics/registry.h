@@ -44,8 +44,7 @@ struct IMetricsRegistry
     virtual void Unregister(const TMetricKey& key) = 0;
 };
 
-struct IMainMetricsRegistry
-     : public IMetricsRegistry
+struct IMainMetricsRegistry: public IMetricsRegistry
 {
     virtual ~IMainMetricsRegistry() = default;
 

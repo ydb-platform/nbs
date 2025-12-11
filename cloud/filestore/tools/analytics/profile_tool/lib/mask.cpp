@@ -87,9 +87,9 @@ TMaskSensitiveData::TMaskSensitiveData(
     const EMode mode,
     const TString& seed,
     ui16 maxExtensionLength)
-        : Mode{mode}
-        , Seed{seed ? seed : CreateGuidAsString()}
-        , MaxExtensionLength{maxExtensionLength}
+    : Mode{mode}
+    , Seed{seed ? seed : CreateGuidAsString()}
+    , MaxExtensionLength{maxExtensionLength}
 {}
 
 bool TMaskSensitiveData::Advance()

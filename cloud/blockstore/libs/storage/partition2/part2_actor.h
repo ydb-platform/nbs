@@ -73,8 +73,8 @@ class TPartitionActor final
         TString OperationId;
 
         TForcedCompactionInfo(
-                TVector<ui32> rangesToCompact,
-                TString operationId)
+            TVector<ui32> rangesToCompact,
+            TString operationId)
             : RangesToCompact(std::move(rangesToCompact))
             , OperationId(std::move(operationId))
         {}
@@ -85,9 +85,7 @@ class TPartitionActor final
         ui32 NumRanges = 0;
         TInstant CompleteTs = {};
 
-        TForcedCompactionResult(
-                ui32 numRanges,
-                TInstant completeTs)
+        TForcedCompactionResult(ui32 numRanges, TInstant completeTs)
             : NumRanges(numRanges)
             , CompleteTs(completeTs)
         {}
@@ -141,7 +139,8 @@ private:
 
     // Pending forced compaction requests
     TDeque<TForcedCompactionInfo> PendingForcedCompactionRequests;
-    THashMap<TString, TForcedCompactionResult> CompletedForcedCompactionRequests;
+    THashMap<TString, TForcedCompactionResult>
+        CompletedForcedCompactionRequests;
 
     NBlobMetrics::TBlobLoadMetrics PrevMetrics;
     NBlobMetrics::TBlobLoadMetrics OverlayMetrics;
@@ -203,9 +202,8 @@ private:
     template <typename TMethod>
     void AddTransaction(TRequestInfo& transaction)
     {
-        auto cancelRoutine = [] (
-            const NActors::TActorContext& ctx,
-            TRequestInfo& requestInfo)
+        auto cancelRoutine =
+            [](const NActors::TActorContext& ctx, TRequestInfo& requestInfo)
         {
             auto response = std::make_unique<typename TMethod::TResponse>(
                 MakeError(E_REJECTED, "tablet is shutting down"));
@@ -226,7 +224,8 @@ private:
     void EnqueueFlushIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueCompactionIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueCollectGarbageIfNeeded(const NActors::TActorContext& ctx);
-    void EnqueueUpdateIndexStructuresIfNeeded(const NActors::TActorContext& ctx);
+    void EnqueueUpdateIndexStructuresIfNeeded(
+        const NActors::TActorContext& ctx);
     void EnqueueProcessWriteQueueIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueTrimFreshLogIfNeeded(const NActors::TActorContext& ctx);
 
@@ -292,9 +291,7 @@ private:
 
     void UpdateNetworkStats(const NActors::TActorContext& ctx, ui64 value);
     void UpdateStorageStats(const NActors::TActorContext& ctx, i64 value);
-    void UpdateCPUUsageStat(
-        const NActors::TActorContext& ctx,
-        ui64 execCycles);
+    void UpdateCPUUsageStat(const NActors::TActorContext& ctx, ui64 execCycles);
 
     void UpdateWriteThroughput(
         const NActors::TActorContext& ctx,
@@ -415,9 +412,7 @@ private:
         TInstant now,
         ui32& ranges);
 
-    bool IsCompactRangePending(
-        const TString& operationId,
-        ui32& ranges) const;
+    bool IsCompactRangePending(const TString& operationId, ui32& ranges) const;
 
     [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeout() const;
 
@@ -436,7 +431,8 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleReassignTabletResponse(
-        const NCloud::NStorage::TEvHiveProxy::TEvReassignTabletResponse::TPtr& ev,
+        const NCloud::NStorage::TEvHiveProxy::TEvReassignTabletResponse::TPtr&
+            ev,
         const NActors::TActorContext& ctx);
 
     void HandleHttpInfo(
@@ -596,11 +592,21 @@ private:
         const NActors::TActorContext& ctx);
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartition)
-    BLOCKSTORE_PARTITION2_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartitionPrivate)
-    BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvPartitionCommonPrivate)
-    BLOCKSTORE_PARTITION_REQUESTS_FWD_SERVICE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvService)
-    BLOCKSTORE_PARTITION_REQUESTS_FWD_VOLUME(BLOCKSTORE_IMPLEMENT_REQUEST, TEvVolume)
-    BLOCKSTORE_PARTITION2_TRANSACTIONS(BLOCKSTORE_IMPLEMENT_TRANSACTION, TTxPartition)
+    BLOCKSTORE_PARTITION2_REQUESTS_PRIVATE(
+        BLOCKSTORE_IMPLEMENT_REQUEST,
+        TEvPartitionPrivate)
+    BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE(
+        BLOCKSTORE_IMPLEMENT_REQUEST,
+        TEvPartitionCommonPrivate)
+    BLOCKSTORE_PARTITION_REQUESTS_FWD_SERVICE(
+        BLOCKSTORE_IMPLEMENT_REQUEST,
+        TEvService)
+    BLOCKSTORE_PARTITION_REQUESTS_FWD_VOLUME(
+        BLOCKSTORE_IMPLEMENT_REQUEST,
+        TEvVolume)
+    BLOCKSTORE_PARTITION2_TRANSACTIONS(
+        BLOCKSTORE_IMPLEMENT_TRANSACTION,
+        TTxPartition)
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

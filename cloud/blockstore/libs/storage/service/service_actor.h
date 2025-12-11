@@ -35,8 +35,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TServiceActor final
-    : public NActors::TActorBootstrapped<TServiceActor>
+class TServiceActor final: public NActors::TActorBootstrapped<TServiceActor>
 {
 private:
     const TStorageConfigPtr Config;
@@ -203,7 +202,8 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleSyncManuallyPreemptedVolumesComplete(
-        const TEvServicePrivate::TEvSyncManuallyPreemptedVolumesComplete::TPtr& ev,
+        const TEvServicePrivate::TEvSyncManuallyPreemptedVolumesComplete::TPtr&
+            ev,
         const NActors::TActorContext& ctx);
 
     void HandleRunVolumesLivenessCheckResponse(
@@ -219,7 +219,7 @@ private:
     BLOCKSTORE_STORAGE_SERVICE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvService)
     BLOCKSTORE_SERVICE_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvService)
 
-////////////////////////////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////////////
 
     TResultOrError<NActors::IActorPtr> CreateDescribeVolumeActionActor(
         TRequestInfoPtr requestInfo,
@@ -369,7 +369,8 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
-    TResultOrError<NActors::IActorPtr> CreateUpdateDiskRegistryAgentListParamsActor(
+    TResultOrError<NActors::IActorPtr>
+    CreateUpdateDiskRegistryAgentListParamsActor(
         TRequestInfoPtr requestInfo,
         TString input);
 
@@ -409,7 +410,8 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
-    TResultOrError<NActors::IActorPtr> CreateWaitDependentDisksToSwitchNodeActor(
+    TResultOrError<NActors::IActorPtr>
+    CreateWaitDependentDisksToSwitchNodeActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

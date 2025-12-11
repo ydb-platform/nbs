@@ -2,11 +2,11 @@
 
 #include <cloud/filestore/public/api/protos/fs.pb.h>
 
-#include <google/protobuf/util/message_differencer.h>
+#include <contrib/ydb/core/protos/filestore_config.pb.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <contrib/ydb/core/protos/filestore_config.pb.h>
+#include <google/protobuf/util/message_differencer.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -14,8 +14,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TConfigs
-    : public NUnitTest::TBaseFixture
+struct TConfigs: public NUnitTest::TBaseFixture
 {
     NProto::TFileStorePerformanceProfile TargetProfile;
     NKikimrFileStore::TConfig TargetConfig;
@@ -66,8 +65,7 @@ struct TConfigs
             SrcProfile.GetMaxWriteIops());
         TargetConfig.SetPerformanceProfileMaxWriteBandwidth(
             SrcProfile.GetMaxWriteBandwidth());
-        TargetConfig.SetPerformanceProfileBoostTime(
-            SrcProfile.GetBoostTime());
+        TargetConfig.SetPerformanceProfileBoostTime(SrcProfile.GetBoostTime());
         TargetConfig.SetPerformanceProfileBoostRefillTime(
             SrcProfile.GetBoostRefillTime());
         TargetConfig.SetPerformanceProfileBoostPercentage(
@@ -111,8 +109,7 @@ struct TConfigs
             SrcConfig.GetPerformanceProfileMaxWriteIops());
         TargetProfile.SetMaxWriteBandwidth(
             SrcConfig.GetPerformanceProfileMaxWriteBandwidth());
-        TargetProfile.SetBoostTime(
-            SrcConfig.GetPerformanceProfileBoostTime());
+        TargetProfile.SetBoostTime(SrcConfig.GetPerformanceProfileBoostTime());
         TargetProfile.SetBoostRefillTime(
             SrcConfig.GetPerformanceProfileBoostRefillTime());
         TargetProfile.SetBoostPercentage(

@@ -61,8 +61,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDeleteCheckpointDataActionActor::TDeleteCheckpointDataActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -80,30 +80,32 @@ void TDeleteCheckpointDataActionActor::Bootstrap(const TActorContext& ctx)
     }
 
     if (!Request.GetCheckpointId()) {
-        HandleError(ctx, MakeError(E_ARGUMENT, "CheckpointId should be supplied"));
+        HandleError(
+            ctx,
+            MakeError(E_ARGUMENT, "CheckpointId should be supplied"));
         return;
     }
 
     DeleteCheckpointData(ctx);
 }
 
-void TDeleteCheckpointDataActionActor::DeleteCheckpointData(const TActorContext& ctx)
+void TDeleteCheckpointDataActionActor::DeleteCheckpointData(
+    const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Sending delete checkpoint data request for volume %s",
         Request.GetDiskId().Quote().c_str());
 
-    auto request = std::make_unique<TEvVolume::TEvDeleteCheckpointDataRequest>();
+    auto request =
+        std::make_unique<TEvVolume::TEvDeleteCheckpointDataRequest>();
     request->Record.SetDiskId(Request.GetDiskId());
     request->Record.SetCheckpointId(Request.GetCheckpointId());
 
-    NCloud::Send(
-        ctx,
-        MakeVolumeProxyServiceId(),
-        std::move(request)
-    );
+    NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
 }
 
 void TDeleteCheckpointDataActionActor::ReplyAndDie(
@@ -133,7 +135,8 @@ void TDeleteCheckpointDataActionActor::HandleError(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(error);
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(error);
     ReplyAndDie(ctx, std::move(response));
 }
 
@@ -165,7 +168,9 @@ void TDeleteCheckpointDataActionActor::HandleDeleteCheckpointDataResponse(
 STFUNC(TDeleteCheckpointDataActionActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvVolume::TEvDeleteCheckpointDataResponse, HandleDeleteCheckpointDataResponse);
+        HFunc(
+            TEvVolume::TEvDeleteCheckpointDataResponse,
+            HandleDeleteCheckpointDataResponse);
 
         default:
             HandleUnexpectedEvent(

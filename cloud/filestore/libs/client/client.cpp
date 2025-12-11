@@ -3,24 +3,21 @@
 #include "config.h"
 #include "probes.h"
 
-#include <cloud/filestore/public/api/grpc/service.grpc.pb.h>
-
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/endpoint.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/service/request.h>
+#include <cloud/filestore/public/api/grpc/service.grpc.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
-#include <cloud/storage/core/libs/grpc/completion.h>
-#include <cloud/storage/core/libs/grpc/executor.h>
 #include <cloud/storage/core/libs/grpc/channel_arguments.h>
+#include <cloud/storage/core/libs/grpc/completion.h>
 #include <cloud/storage/core/libs/grpc/credentials.h>
+#include <cloud/storage/core/libs/grpc/executor.h>
 #include <cloud/storage/core/libs/grpc/time_point_specialization.h>
 #include <cloud/storage/core/libs/uds/uds_socket_client.h>
-
-#include <contrib/ydb/library/actors/prof/tag.h>
 
 #include <contrib/libs/grpc/include/grpcpp/channel.h>
 #include <contrib/libs/grpc/include/grpcpp/client_context.h>
@@ -29,6 +26,7 @@
 #include <contrib/libs/grpc/include/grpcpp/create_channel_posix.h>
 #include <contrib/libs/grpc/include/grpcpp/security/credentials.h>
 #include <contrib/libs/grpc/include/grpcpp/support/status.h>
+#include <contrib/ydb/library/actors/prof/tag.h>
 
 #include <util/generic/hash_set.h>
 #include <util/random/random.h>
@@ -66,21 +64,21 @@ NProto::TError MakeGrpcError(const grpc::Status& status)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_DECLARE_METHOD(name, proto, method, ...)                     \
-    struct T##name##Method                                                     \
-    {                                                                          \
-        static constexpr auto RequestName = TStringBuf(#method);              \
-                                                                               \
-        using TRequest = NProto::T##proto##Request;                            \
-        using TResponse = NProto::T##proto##Response;                          \
-                                                                               \
-        template <typename T, typename ...TArgs>                               \
-        static auto Execute(T& service, TArgs&& ...args)                       \
-        {                                                                      \
-            return service.Async##method(std::forward<TArgs>(args)...);        \
-        }                                                                      \
-    };                                                                         \
-// FILESTORE_DECLARE_METHOD
+#define FILESTORE_DECLARE_METHOD(name, proto, method, ...)              \
+    struct T##name##Method                                              \
+    {                                                                   \
+        static constexpr auto RequestName = TStringBuf(#method);        \
+                                                                        \
+        using TRequest = NProto::T##proto##Request;                     \
+        using TResponse = NProto::T##proto##Response;                   \
+                                                                        \
+        template <typename T, typename... TArgs>                        \
+        static auto Execute(T& service, TArgs&&... args)                \
+        {                                                               \
+            return service.Async##method(std::forward<TArgs>(args)...); \
+        }                                                               \
+    };                                                                  \
+    // FILESTORE_DECLARE_METHOD
 
 #define FILESTORE_DECLARE_METHOD_FS(name, ...) \
     FILESTORE_DECLARE_METHOD(name##Fs, name, name, __VA_ARGS__)
@@ -114,7 +112,7 @@ struct TAppContext
     {}
 };
 
-struct TFileStoreContext : TAppContext
+struct TFileStoreContext: TAppContext
 {
     std::shared_ptr<NProto::TFileStoreService::Stub> Service;
 
@@ -123,7 +121,7 @@ struct TFileStoreContext : TAppContext
     {}
 };
 
-struct TEndpointManagerContext : TAppContext
+struct TEndpointManagerContext: TAppContext
 {
     std::shared_ptr<NProto::TEndpointManagerService::Stub> Service;
 
@@ -134,17 +132,16 @@ struct TEndpointManagerContext : TAppContext
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TClientRequestsInFlight = NStorage::NGrpc::TRequestsInFlight<
-    NStorage::NGrpc::TRequestHandlerBase>;
+using TClientRequestsInFlight =
+    NStorage::NGrpc::TRequestsInFlight<NStorage::NGrpc::TRequestHandlerBase>;
 
 using TExecutorContext = NStorage::NGrpc::
     TExecutorContext<grpc::CompletionQueue, TClientRequestsInFlight>;
-using TExecutor = NStorage::NGrpc::
-    TExecutor<grpc::CompletionQueue, TClientRequestsInFlight>;
+using TExecutor =
+    NStorage::NGrpc::TExecutor<grpc::CompletionQueue, TClientRequestsInFlight>;
 
 template <typename TAppContext, typename TMethod>
-class TRequestHandler final
-    : public NStorage::NGrpc::TRequestHandlerBase
+class TRequestHandler final: public NStorage::NGrpc::TRequestHandlerBase
 {
     using TRequest = typename TMethod::TRequest;
     using TResponse = typename TMethod::TResponse;
@@ -164,7 +161,8 @@ private:
     TResponse Response;
     grpc::Status Status;
 
-    enum {
+    enum
+    {
         WaitingForRequest = 0,
         SendingRequest = 1,
         RequestCompleted = 2,
@@ -173,11 +171,11 @@ private:
 
 public:
     TRequestHandler(
-            TAppContext& appCtx,
-            TExecutorContext& executorCtx,
-            TCallContextPtr callContext,
-            std::shared_ptr<TRequest> request,
-            const TPromise<TResponse>& promise)
+        TAppContext& appCtx,
+        TExecutorContext& executorCtx,
+        TCallContextPtr callContext,
+        std::shared_ptr<TRequest> request,
+        const TPromise<TResponse>& promise)
         : AppCtx(appCtx)
         , ExecutorCtx(executorCtx)
         , CallContext(std::move(callContext))
@@ -223,7 +221,11 @@ public:
         for (;;) {
             switch (AtomicGet(RequestState)) {
                 case WaitingForRequest:
-                    if (AtomicCas(&RequestState, SendingRequest, WaitingForRequest)) {
+                    if (AtomicCas(
+                            &RequestState,
+                            SendingRequest,
+                            WaitingForRequest))
+                    {
                         PrepareRequestContext();
                         SendRequest();
 
@@ -233,7 +235,11 @@ public:
                     break;
 
                 case SendingRequest:
-                    if (AtomicCas(&RequestState, RequestCompleted, SendingRequest)) {
+                    if (AtomicCas(
+                            &RequestState,
+                            RequestCompleted,
+                            SendingRequest))
+                    {
                     }
                     break;
 
@@ -260,13 +266,16 @@ private:
 
         auto now = TInstant::Now();
         auto timestamp = TInstant::MicroSeconds(headers.GetTimestamp());
-        if (!timestamp || timestamp > now || now - timestamp > TDuration::Seconds(1)) {
+        if (!timestamp || timestamp > now ||
+            now - timestamp > TDuration::Seconds(1))
+        {
             // fix request timestamp
             timestamp = now;
             headers.SetTimestamp(timestamp.MicroSeconds());
         }
 
-        auto requestTimeout = TDuration::MilliSeconds(headers.GetRequestTimeout());
+        auto requestTimeout =
+            TDuration::MilliSeconds(headers.GetRequestTimeout());
         if (!requestTimeout) {
             requestTimeout = AppCtx.Config->GetRequestTimeout();
             headers.SetRequestTimeout(requestTimeout.MilliSeconds());
@@ -291,9 +300,9 @@ private:
     {
         auto& Log = AppCtx.Log;
 
-        STORAGE_TRACE(TMethod::RequestName
-            << " #" << RequestId
-            << " send request: " << DumpMessage(*Request));
+        STORAGE_TRACE(
+            TMethod::RequestName << " #" << RequestId
+                                 << " send request: " << DumpMessage(*Request));
 
         FILESTORE_TRACK(
             SendRequest,
@@ -320,9 +329,9 @@ private:
             *Response.MutableError() = MakeGrpcError(Status);
         }
 
-        STORAGE_TRACE(TMethod::RequestName
-            << " #" << RequestId
-            << " response received: " << DumpMessage(Response));
+        STORAGE_TRACE(
+            TMethod::RequestName << " #" << RequestId << " response received: "
+                                 << DumpMessage(Response));
 
         FILESTORE_TRACK(
             ResponseReceived,
@@ -332,10 +341,10 @@ private:
         try {
             Promise.SetValue(std::move(Response));
         } catch (...) {
-            STORAGE_ERROR(TMethod::RequestName
+            STORAGE_ERROR(
+                TMethod::RequestName
                 << " #" << RequestId
-                << " exception in callback: "
-                << CurrentExceptionMessage());
+                << " exception in callback: " << CurrentExceptionMessage());
         }
     }
 
@@ -346,9 +355,8 @@ private:
 
         auto& Log = AppCtx.Log;
 
-        STORAGE_TRACE(TMethod::RequestName
-            << " #" << RequestId
-            << " request completed");
+        STORAGE_TRACE(
+            TMethod::RequestName << " #" << RequestId << " request completed");
 
         FILESTORE_TRACK(
             RequestCompleted,
@@ -362,8 +370,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TAppContext, typename TMethod>
-class TStreamRequestHandler final
-    : public NStorage::NGrpc::TRequestHandlerBase
+class TStreamRequestHandler final: public NStorage::NGrpc::TRequestHandlerBase
 {
     using TRequest = typename TMethod::TRequest;
     using TResponse = typename TMethod::TResponse;
@@ -382,7 +389,8 @@ private:
     TResponse Response;
     grpc::Status Status;
 
-    enum {
+    enum
+    {
         WaitingForRequest = 0,
         SendingRequest = 1,
         WaitingForResponse = 2,
@@ -393,11 +401,11 @@ private:
 
 public:
     TStreamRequestHandler(
-            TAppContext& appCtx,
-            TExecutorContext& executorCtx,
-            TCallContextPtr callContext,
-            std::shared_ptr<TRequest> request,
-            IResponseHandlerPtr<TResponse> responseHandler)
+        TAppContext& appCtx,
+        TExecutorContext& executorCtx,
+        TCallContextPtr callContext,
+        std::shared_ptr<TRequest> request,
+        IResponseHandlerPtr<TResponse> responseHandler)
         : AppCtx(appCtx)
         , ExecutorCtx(executorCtx)
         , CallContext(std::move(callContext))
@@ -412,12 +420,13 @@ public:
         std::shared_ptr<TRequest> request,
         IResponseHandlerPtr<TResponse> responseHandler)
     {
-        auto handler = std::make_unique<TStreamRequestHandler<TAppContext, TMethod>>(
-            appCtx,
-            executorCtx,
-            std::move(callContext),
-            std::move(request),
-            std::move(responseHandler));
+        auto handler =
+            std::make_unique<TStreamRequestHandler<TAppContext, TMethod>>(
+                appCtx,
+                executorCtx,
+                std::move(callContext),
+                std::move(request),
+                std::move(responseHandler));
 
         handler = executorCtx.EnqueueRequestHandler(std::move(handler));
 
@@ -439,7 +448,11 @@ public:
         for (;;) {
             switch (AtomicGet(RequestState)) {
                 case WaitingForRequest:
-                    if (AtomicCas(&RequestState, SendingRequest, WaitingForRequest)) {
+                    if (AtomicCas(
+                            &RequestState,
+                            SendingRequest,
+                            WaitingForRequest))
+                    {
                         SendRequest();
 
                         // request is in progress now
@@ -448,7 +461,11 @@ public:
                     break;
 
                 case SendingRequest:
-                    if (AtomicCas(&RequestState, WaitingForResponse, SendingRequest)) {
+                    if (AtomicCas(
+                            &RequestState,
+                            WaitingForResponse,
+                            SendingRequest))
+                    {
                         ReadResponse();
 
                         // request is in progress now
@@ -464,7 +481,11 @@ public:
                         // request is in progress now
                         return;
                     }
-                    if (AtomicCas(&RequestState, WaitingForCompletion, WaitingForResponse)) {
+                    if (AtomicCas(
+                            &RequestState,
+                            WaitingForCompletion,
+                            WaitingForResponse))
+                    {
                         ReadCompletion();
 
                         // request is in progress now
@@ -473,7 +494,11 @@ public:
                     break;
 
                 case WaitingForCompletion:
-                    if (AtomicCas(&RequestState, RequestCompleted, WaitingForCompletion)) {
+                    if (AtomicCas(
+                            &RequestState,
+                            RequestCompleted,
+                            WaitingForCompletion))
+                    {
                     }
                     break;
 
@@ -497,8 +522,8 @@ private:
     {
         auto& Log = AppCtx.Log;
 
-        STORAGE_TRACE(TMethod::RequestName
-            << " send request: " << DumpMessage(*Request));
+        STORAGE_TRACE(
+            TMethod::RequestName << " send request: " << DumpMessage(*Request));
 
         Reader = TMethod::Execute(
             *AppCtx.Service,
@@ -533,14 +558,16 @@ private:
     {
         auto& Log = AppCtx.Log;
 
-        STORAGE_TRACE(TMethod::RequestName
-            << " response received: " << DumpMessage(Response));
+        STORAGE_TRACE(
+            TMethod::RequestName << " response received: "
+                                 << DumpMessage(Response));
 
         try {
             ResponseHandler->HandleResponse(Response);
         } catch (...) {
-            STORAGE_ERROR(TMethod::RequestName
-                << " exception in callback: " << CurrentExceptionMessage());
+            STORAGE_ERROR(
+                TMethod::RequestName << " exception in callback: "
+                                     << CurrentExceptionMessage());
         }
     }
 
@@ -549,14 +576,16 @@ private:
         auto& Log = AppCtx.Log;
 
         auto error = MakeGrpcError(Status);
-        STORAGE_TRACE(TMethod::RequestName
-            << " completion received: " << FormatError(error));
+        STORAGE_TRACE(
+            TMethod::RequestName << " completion received: "
+                                 << FormatError(error));
 
         try {
             ResponseHandler->HandleCompletion(error);
         } catch (...) {
-            STORAGE_ERROR(TMethod::RequestName
-                << " exception in callback: " << CurrentExceptionMessage());
+            STORAGE_ERROR(
+                TMethod::RequestName << " exception in callback: "
+                                     << CurrentExceptionMessage());
         }
     }
 };
@@ -564,8 +593,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TClient>
-class TUdsClient
-    : public TUdsSocketClient<TClient, TCallContextPtr>
+class TUdsClient: public TUdsSocketClient<TClient, TCallContextPtr>
 {
 public:
     using TBase = TUdsSocketClient<TClient, TCallContextPtr>;
@@ -595,8 +623,7 @@ protected:
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TAppContext, typename TClient>
-class TClientBase
-    : public TClient
+class TClientBase: public TClient
 {
 protected:
     const ILoggingServicePtr Logging;
@@ -700,13 +727,12 @@ protected:
     {
         auto& config = AppCtx.Config;
 
-        bool res = config->GetUnixSocketPath() ?
-            StartWithUds(config->GetUnixSocketPath()) :
-            StartWithTcpSocket();
+        bool res = config->GetUnixSocketPath()
+                       ? StartWithUds(config->GetUnixSocketPath())
+                       : StartWithTcpSocket();
 
         if (!res) {
-            ythrow TServiceError(E_FAIL)
-                << "could not start gRPC client";
+            ythrow TServiceError(E_FAIL) << "could not start gRPC client";
         }
 
         ui32 threadsCount = AppCtx.Config->GetThreadsCount();
@@ -742,17 +768,17 @@ protected:
         auto& config = AppCtx.Config;
 
         if (config->GetSecurePort() == 0 && config->GetPort() == 0) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "gRPC client ports are not set";
+            ythrow TServiceError(E_ARGUMENT) << "gRPC client ports are not set";
         }
 
         bool secureEndpoint = config->GetSecurePort() != 0;
-        auto address = Join(":", config->GetHost(),
+        auto address = Join(
+            ":",
+            config->GetHost(),
             secureEndpoint ? config->GetSecurePort() : config->GetPort());
 
-        auto credentials = CreateTcpClientChannelCredentials(
-            secureEndpoint,
-            *config);
+        auto credentials =
+            CreateTcpClientChannelCredentials(secureEndpoint, *config);
 
         STORAGE_INFO("Connect to " << address);
 
@@ -788,34 +814,33 @@ protected:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TUdsFileStoreClientBase = TUdsClient<
-    TClientBase<TFileStoreContext, IFileStoreService>
-    >;
+using TUdsFileStoreClientBase =
+    TUdsClient<TClientBase<TFileStoreContext, IFileStoreService>>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TBase>
-class TFileStoreClient final
-    : public TBase
+class TFileStoreClient final: public TBase
 {
 public:
     using TBase::TBase;
 
     void InitService(std::shared_ptr<::grpc::Channel> channel) override
     {
-        TBase::AppCtx.Service = NProto::TFileStoreService::NewStub(std::move(channel));
+        TBase::AppCtx.Service =
+            NProto::TFileStoreService::NewStub(std::move(channel));
     }
 
-#define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        return TBase::template ExecuteRequest<T##name##Fs##Method>(           \
-            std::move(callContext),                                            \
-            std::move(request));                                               \
-    }                                                                          \
-// FILESTORE_IMPLEMENT_METHOD
+#define FILESTORE_IMPLEMENT_METHOD(name, ...)                       \
+    TFuture<NProto::T##name##Response> name(                        \
+        TCallContextPtr callContext,                                \
+        std::shared_ptr<NProto::T##name##Request> request) override \
+    {                                                               \
+        return TBase::template ExecuteRequest<T##name##Fs##Method>( \
+            std::move(callContext),                                 \
+            std::move(request));                                    \
+    }                                                               \
+    // FILESTORE_IMPLEMENT_METHOD
 
     FILESTORE_SERVICE(FILESTORE_IMPLEMENT_METHOD)
 
@@ -824,7 +849,8 @@ public:
     void GetSessionEventsStream(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TGetSessionEventsRequest> request,
-        IResponseHandlerPtr<NProto::TGetSessionEventsResponse> responseHandler) override
+        IResponseHandlerPtr<NProto::TGetSessionEventsResponse> responseHandler)
+        override
     {
         TBase::template ExecuteStreamRequest<TGetSessionEventsStreamMethod>(
             std::move(callContext),
@@ -837,11 +863,14 @@ public:
         std::shared_ptr<NProto::TReadDataLocalRequest> request) override
     {
         return TBase::template ExecuteRequest<TReadDataFsMethod>(
-            std::move(callContext),
-            std::move(request)).Apply([](TFuture<NProto::TReadDataResponse> f) {
-                NProto::TReadDataLocalResponse response(f.ExtractValue());
-                return response;
-            });
+                   std::move(callContext),
+                   std::move(request))
+            .Apply(
+                [](TFuture<NProto::TReadDataResponse> f)
+                {
+                    NProto::TReadDataLocalResponse response(f.ExtractValue());
+                    return response;
+                });
     }
 
     TFuture<NProto::TWriteDataLocalResponse> WriteDataLocal(
@@ -855,19 +884,18 @@ public:
 };
 
 using TUdsFileStoreClient = TFileStoreClient<TUdsFileStoreClientBase>;
-using TTcpFileStoreClient = TFileStoreClient<TClientBase<TFileStoreContext, IFileStoreService>>;
+using TTcpFileStoreClient =
+    TFileStoreClient<TClientBase<TFileStoreContext, IFileStoreService>>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TUdsEndpointManagerClientBase = TUdsClient<
-    TClientBase<TEndpointManagerContext, IEndpointManager>
-    >;
+using TUdsEndpointManagerClientBase =
+    TUdsClient<TClientBase<TEndpointManagerContext, IEndpointManager>>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TBase>
-class TEndpointManagerClient final
-    : public TBase
+class TEndpointManagerClient final: public TBase
 {
 public:
     using TBase::TBase;
@@ -882,27 +910,30 @@ public:
 
     void InitService(std::shared_ptr<::grpc::Channel> channel) override
     {
-        TBase::AppCtx.Service = NProto::TEndpointManagerService::NewStub(std::move(channel));
+        TBase::AppCtx.Service =
+            NProto::TEndpointManagerService::NewStub(std::move(channel));
     }
 
-#define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        return TBase::template ExecuteRequest<T##name##Vhost##Method>(         \
-            std::move(callContext),                                            \
-            std::move(request));                                               \
-    }                                                                          \
-// FILESTORE_IMPLEMENT_METHOD
+#define FILESTORE_IMPLEMENT_METHOD(name, ...)                          \
+    TFuture<NProto::T##name##Response> name(                           \
+        TCallContextPtr callContext,                                   \
+        std::shared_ptr<NProto::T##name##Request> request) override    \
+    {                                                                  \
+        return TBase::template ExecuteRequest<T##name##Vhost##Method>( \
+            std::move(callContext),                                    \
+            std::move(request));                                       \
+    }                                                                  \
+    // FILESTORE_IMPLEMENT_METHOD
 
     FILESTORE_ENDPOINT_SERVICE(FILESTORE_IMPLEMENT_METHOD)
 
 #undef FILESTORE_IMPLEMENT_METHOD
 };
 
-using TUdsEndpointManagerClient= TEndpointManagerClient<TUdsEndpointManagerClientBase>;
-using TTcpEndpointManagerClient = TEndpointManagerClient<TClientBase<TEndpointManagerContext, IEndpointManager>>;
+using TUdsEndpointManagerClient =
+    TEndpointManagerClient<TUdsEndpointManagerClientBase>;
+using TTcpEndpointManagerClient = TEndpointManagerClient<
+    TClientBase<TEndpointManagerContext, IEndpointManager>>;
 
 }   // namespace
 

@@ -35,9 +35,9 @@ private:
 
 public:
     TService(
-            TNotifyConfigPtr config,
-            NCloud::NIamClient::IIamTokenClientPtr iamClient,
-            IJsonGeneratorPtr jsonGenerator)
+        TNotifyConfigPtr config,
+        NCloud::NIamClient::IIamTokenClientPtr iamClient,
+        IJsonGeneratorPtr jsonGenerator)
         : Config(std::move(config))
         , IamClient(std::move(iamClient))
         , JsonGenerator(std::move(jsonGenerator))
@@ -63,7 +63,8 @@ public:
                     << "IAM client is missing");
             } else {
                 return IamClient->GetTokenAsync().Apply(
-                    [weakPtr = weak_from_this()](const auto& future) -> TResultOrError<TString>
+                    [weakPtr = weak_from_this()](
+                        const auto& future) -> TResultOrError<TString>
                     {
                         const auto& response = future.GetValue();
 
@@ -112,7 +113,8 @@ public:
                 if (!self) {
                     p.SetValue(MakeError(
                         E_REJECTED,
-                        "Object of the Notify class was destroyed before request sending"));
+                        "Object of the Notify class was destroyed before "
+                        "request sending"));
                     return;
                 }
 
@@ -126,12 +128,15 @@ public:
                         const bool isSuccess = code >= 200 && code < 300;
 
                         if (isSuccess) {
-                            p.SetValue(MakeError(S_OK, TStringBuilder()
-                                << "HTTP code: " << code));
+                            p.SetValue(MakeError(
+                                S_OK,
+                                TStringBuilder() << "HTTP code: " << code));
                             return;
                         }
 
-                        p.SetValue(MakeError(E_REJECTED, TStringBuilder()
+                        p.SetValue(MakeError(
+                            E_REJECTED,
+                            TStringBuilder()
                                 << "Couldn't send notification " << event
                                 << ". HTTP error: " << code << " " << message));
                     });

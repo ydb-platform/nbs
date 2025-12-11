@@ -16,8 +16,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDescribeActor final
-    : public TActorBootstrapped<TDescribeActor>
+class TDescribeActor final: public TActorBootstrapped<TDescribeActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
@@ -27,9 +26,7 @@ private:
     size_t RequestsScheduled = 0;
 
 public:
-    TDescribeActor(
-        TRequestInfoPtr requestInfo,
-        TString path);
+    TDescribeActor(TRequestInfoPtr requestInfo, TString path);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -50,9 +47,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TDescribeActor::TDescribeActor(
-        TRequestInfoPtr requestInfo,
-        TString path)
+TDescribeActor::TDescribeActor(TRequestInfoPtr requestInfo, TString path)
     : RequestInfo(std::move(requestInfo))
     , Path(std::move(path))
 {}
@@ -65,7 +60,9 @@ void TDescribeActor::Bootstrap(const TActorContext& ctx)
 
 void TDescribeActor::DescribePath(const TActorContext& ctx, const TString& path)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Sending describe request for path %s",
         path.Quote().data());
 
@@ -113,7 +110,9 @@ void TDescribeActor::HandleDescribeResponse(
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "Path %s: describe failed: %s",
             Path.Quote().data(),
             FormatError(error).data());
@@ -146,7 +145,7 @@ void TDescribeActor::HandleDescribeResponse(
 
     auto response = std::make_unique<TEvService::TEvListVolumesResponse>();
 
-    for (const auto& volume : Volumes) {
+    for (const auto& volume: Volumes) {
         *response->Record.MutableVolumes()->Add() = volume;
     }
 
@@ -164,15 +163,15 @@ void TServiceActor::HandleListVolumes(
     const auto* msg = ev->Get();
     const auto& request = msg->Record;
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     // TODO: filter?
     Y_UNUSED(request);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Listing volumes: %s",
         Config->GetSchemeShardDir().Quote().data());
 

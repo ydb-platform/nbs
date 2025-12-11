@@ -20,11 +20,8 @@ void TIndexTabletState::UpdateChannelStats(
     bool toMove,
     double freeSpaceShare)
 {
-    Impl->Channels.UpdateChannelStats(
-        channel,
-        writable,
-        toMove,
-        freeSpaceShare);
+    Impl->Channels
+        .UpdateChannelStats(channel, writable, toMove, freeSpaceShare);
 }
 
 TVector<ui32> TIndexTabletState::GetChannels(EChannelDataKind kind) const
@@ -37,7 +34,8 @@ TVector<ui32> TIndexTabletState::GetUnwritableChannels() const
     return Impl->Channels.GetUnwritableChannels();
 }
 
-TVector<ui32> TIndexTabletState::GetChannelsToMove(ui32 percentageThreshold) const
+TVector<ui32> TIndexTabletState::GetChannelsToMove(
+    ui32 percentageThreshold) const
 {
     return Impl->Channels.GetChannelsToMove(percentageThreshold);
 }
@@ -62,9 +60,8 @@ void TIndexTabletState::LoadChannels()
     // increase on tablet restart and updateConfig request correspondingly.
     // However we have to take minimum of these values due to
     // possibility of their mismatch.
-    const ui32 channelCount = Min(
-        GetTabletChannelCount(),
-        GetConfigChannelCount());
+    const ui32 channelCount =
+        Min(GetTabletChannelCount(), GetConfigChannelCount());
 
     for (ui32 channel = 0; channel < channelCount; ++channel) {
         const auto& profile = FileSystem.GetExplicitChannelProfiles(channel);
@@ -79,9 +76,8 @@ void TIndexTabletState::LoadChannels()
 void TIndexTabletState::UpdateChannels()
 {
     const ui32 oldChannelCount = Impl->Channels.Size();
-    const ui32 newChannelCount = Min(
-        GetTabletChannelCount(),
-        GetConfigChannelCount());
+    const ui32 newChannelCount =
+        Min(GetTabletChannelCount(), GetConfigChannelCount());
 
     Y_ABORT_UNLESS(oldChannelCount <= newChannelCount);
 

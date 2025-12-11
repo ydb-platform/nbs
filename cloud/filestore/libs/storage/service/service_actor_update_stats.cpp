@@ -23,22 +23,21 @@ void TStorageServiceActor::HandleUpdateStats(
         i64 hddTablets = 0;
         i64 ssdTablets = 0;
         for (const auto& item: State->GetLocalFileStores()) {
-            constexpr auto MediaSsd = NProto::EStorageMediaKind::STORAGE_MEDIA_SSD;
+            constexpr auto MediaSsd =
+                NProto::EStorageMediaKind::STORAGE_MEDIA_SSD;
             if (!item.second.IsShard) {
                 auto& counter =
-                    item.second.Config.GetStorageMediaKind() == MediaSsd ?
-                        ssdFileSystems:
-                        hddFileSystems;
+                    item.second.Config.GetStorageMediaKind() == MediaSsd
+                        ? ssdFileSystems
+                        : hddFileSystems;
                 ++counter;
                 ++totalFileSystems;
             }
-            auto& counter =
-                item.second.Config.GetStorageMediaKind() == MediaSsd ?
-                    ssdTablets:
-                    hddTablets;
+            auto& counter = item.second.Config.GetStorageMediaKind() == MediaSsd
+                                ? ssdTablets
+                                : hddTablets;
             ++counter;
             ++totalTablets;
-
         }
         TotalFileSystemCount->Set(totalFileSystems);
         TotalTabletCount->Set(totalTablets);
@@ -49,7 +48,7 @@ void TStorageServiceActor::HandleUpdateStats(
     }
 
     auto nowCycle = GetCycleCount();
-    for (auto it = InFlightRequests.begin(); it != InFlightRequests.end(); ) {
+    for (auto it = InFlightRequests.begin(); it != InFlightRequests.end();) {
         const auto& request = it->second;
         if (!request.IsCompleted()) {
             StatsRegistry->AddIncompleteRequest(
@@ -63,8 +62,8 @@ void TStorageServiceActor::HandleUpdateStats(
     if (StatsFetcher) {
         auto [cpuWait, error] = StatsFetcher->GetCpuWait();
         if (HasError(error)) {
-        auto errorMessage =
-            ReportCpuWaitCounterReadError(error.GetMessage());
+            auto errorMessage =
+                ReportCpuWaitCounterReadError(error.GetMessage());
             LOG_WARN_S(
                 ctx,
                 TFileStoreComponents::SERVICE,
@@ -93,4 +92,4 @@ void TStorageServiceActor::HandleUpdateStats(
     ScheduleUpdateStats(ctx);
 }
 
-} // namespace NCloud::NFileStore::NStorage
+}   // namespace NCloud::NFileStore::NStorage

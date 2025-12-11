@@ -6,17 +6,16 @@
 #include <cloud/blockstore/libs/kikimr/events.h>
 
 #include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
-
 #include <contrib/ydb/library/actors/core/actorid.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_SS_PROXY_REQUESTS_PRIVATE(xxx, ...)                         \
-    xxx(ReadPathDescriptionBackup,   __VA_ARGS__)                              \
-    xxx(UpdatePathDescriptionBackup, __VA_ARGS__)                              \
-// BLOCKSTORE_SS_PROXY_REQUESTS_PRIVATE
+#define BLOCKSTORE_SS_PROXY_REQUESTS_PRIVATE(xxx, ...) \
+    xxx(ReadPathDescriptionBackup, __VA_ARGS__)        \
+    xxx(UpdatePathDescriptionBackup, __VA_ARGS__)      \
+    // BLOCKSTORE_SS_PROXY_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -43,8 +42,8 @@ struct TEvSSProxyPrivate
         TReadPathDescriptionBackupResponse() = default;
 
         TReadPathDescriptionBackupResponse(
-                TString path,
-                NKikimrSchemeOp::TPathDescription pathDescription)
+            TString path,
+            NKikimrSchemeOp::TPathDescription pathDescription)
             : Path(std::move(path))
             , PathDescription(std::move(pathDescription))
         {}
@@ -60,8 +59,8 @@ struct TEvSSProxyPrivate
         const NKikimrSchemeOp::TPathDescription PathDescription;
 
         TUpdatePathDescriptionBackupRequest(
-                TString path,
-                NKikimrSchemeOp::TPathDescription pathDescription)
+            TString path,
+            NKikimrSchemeOp::TPathDescription pathDescription)
             : Path(std::move(path))
             , PathDescription(std::move(pathDescription))
         {}

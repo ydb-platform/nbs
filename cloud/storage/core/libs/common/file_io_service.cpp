@@ -16,8 +16,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFileIOServiceStub final
-    : public IFileIOService
+class TFileIOServiceStub final: public IFileIOService
 {
     // IStartable
 
@@ -40,7 +39,7 @@ class TFileIOServiceStub final
         std::invoke(
             completion->Func,
             completion,
-            NProto::TError {},
+            NProto::TError{},
             buffer.size());
     }
 
@@ -57,11 +56,7 @@ class TFileIOServiceStub final
             size += buffer.size();
         }
 
-        std::invoke(
-            completion->Func,
-            completion,
-            NProto::TError {},
-            size);
+        std::invoke(completion->Func, completion, NProto::TError{}, size);
     }
 
     void AsyncWrite(
@@ -75,7 +70,7 @@ class TFileIOServiceStub final
         std::invoke(
             completion->Func,
             completion,
-            NProto::TError {},
+            NProto::TError{},
             buffer.size());
     }
 
@@ -92,18 +87,13 @@ class TFileIOServiceStub final
             size += buffer.size();
         }
 
-        std::invoke(
-            completion->Func,
-            completion,
-            NProto::TError {},
-            size);
+        std::invoke(completion->Func, completion, NProto::TError{}, size);
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRoundRobinFileIOService final
-    : public IFileIOService
+class TRoundRobinFileIOService final: public IFileIOService
 {
 private:
     TVector<IFileIOServicePtr> FileIOs;
@@ -177,8 +167,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TConcurrentFileIOService final
-    : public IFileIOService
+class TConcurrentFileIOService final: public IFileIOService
 {
 private:
     IFileIOServicePtr FileIO;
@@ -186,8 +175,8 @@ private:
 
 public:
     TConcurrentFileIOService(
-            IFileIOServicePtr fileIO,
-            ITaskQueuePtr submissionQueue)
+        IFileIOServicePtr fileIO,
+        ITaskQueuePtr submissionQueue)
         : FileIO(std::move(fileIO))
         , SQ(std::move(submissionQueue))
     {}
@@ -281,16 +270,17 @@ public:
     }
 
 private:
-    template <auto Func, typename ... TArgs>
+    template <auto Func, typename... TArgs>
     void Enqueue(TFileHandle& file, TArgs... args)
     {
         const int fd = file;
         SQ->ExecuteSimple(
             [this, fileRef = TFileHandle{fd}, args...]() mutable
             {
-                Y_DEFER {
+                Y_DEFER
+                {
                     fileRef.Release();
-                };
+                }
                 std::invoke(Func, FileIO, fileRef, args...);
             });
     }
@@ -311,15 +301,15 @@ TFuture<ui32> IFileIOService::AsyncWrite(
         file,
         offset,
         buffer,
-        [=] (const auto& error, ui32 bytes) mutable {
+        [=](const auto& error, ui32 bytes) mutable
+        {
             if (HasError(error)) {
                 auto ex = std::make_exception_ptr(TServiceError{error});
                 p.SetException(std::move(ex));
             } else {
                 p.SetValue(bytes);
             }
-        }
-    );
+        });
 
     return p.GetFuture();
 }
@@ -335,23 +325,21 @@ TFuture<ui32> IFileIOService::AsyncWriteV(
         file,
         offset,
         buffers,
-        [=] (const auto& error, ui32 bytes) mutable {
+        [=](const auto& error, ui32 bytes) mutable
+        {
             if (HasError(error)) {
                 auto ex = std::make_exception_ptr(TServiceError{error});
                 p.SetException(std::move(ex));
             } else {
                 p.SetValue(bytes);
             }
-        }
-    );
+        });
 
     return p.GetFuture();
 }
 
-TFuture<ui32> IFileIOService::AsyncRead(
-    TFileHandle& file,
-    i64 offset,
-    TArrayRef<char> buffer)
+TFuture<ui32>
+IFileIOService::AsyncRead(TFileHandle& file, i64 offset, TArrayRef<char> buffer)
 {
     auto p = NewPromise<ui32>();
 
@@ -359,15 +347,15 @@ TFuture<ui32> IFileIOService::AsyncRead(
         file,
         offset,
         buffer,
-        [=] (const auto& error, ui32 bytes) mutable {
+        [=](const auto& error, ui32 bytes) mutable
+        {
             if (HasError(error)) {
                 auto ex = std::make_exception_ptr(TServiceError{error});
                 p.SetException(std::move(ex));
             } else {
                 p.SetValue(bytes);
             }
-        }
-    );
+        });
 
     return p.GetFuture();
 }
@@ -383,15 +371,15 @@ TFuture<ui32> IFileIOService::AsyncReadV(
         file,
         offset,
         buffers,
-        [=] (const auto& error, ui32 bytes) mutable {
+        [=](const auto& error, ui32 bytes) mutable
+        {
             if (HasError(error)) {
                 auto ex = std::make_exception_ptr(TServiceError{error});
                 p.SetException(std::move(ex));
             } else {
                 p.SetValue(bytes);
             }
-        }
-    );
+        });
 
     return p.GetFuture();
 }

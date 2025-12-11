@@ -8,8 +8,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCrcDigestCalculator final
-    : IBlockDigestCalculator
+struct TCrcDigestCalculator final: IBlockDigestCalculator
 {
     ui64 Calculate(ui64 blockIndex, const TStringBuf block) const override
     {
@@ -56,10 +55,8 @@ TVector<ui64> CalculateBlocksDigest(
         size -= blockSize;
 
         if (data) {
-            result.push_back(digestCalculator.Calculate(
-                blockIndex + i,
-                {data, blockSize}
-            ));
+            result.push_back(
+                digestCalculator.Calculate(blockIndex + i, {data, blockSize}));
             data += blockSize;
         } else {
             result.push_back(zeroBlockDigest);

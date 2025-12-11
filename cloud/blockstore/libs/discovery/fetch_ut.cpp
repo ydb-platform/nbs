@@ -62,7 +62,7 @@ struct TEnv
                     break;
                 } catch (...) {
                     Cdbg << "failed to start conductor mock on port " << port
-                        << ", error: " << CurrentExceptionMessage() << Endl;
+                         << ", error: " << CurrentExceptionMessage() << Endl;
 
                     if (--attempts == 0) {
                         throw;
@@ -92,7 +92,7 @@ Y_UNIT_TEST_SUITE(FetchTest)
     using TGetInstancePort = std::function<int(int)>;
 
     void DoTestFetch(
-        IInstanceFetcher& fetcher,
+        IInstanceFetcher & fetcher,
         const TInitInstanceSource& initInstanceSource,
         bool withPorts)
     {
@@ -111,7 +111,8 @@ Y_UNIT_TEST_SUITE(FetchTest)
             {"host6", 6},
         };
 
-        auto port = [=] (ui32 i) {
+        auto port = [=](ui32 i)
+        {
             return withPorts ? i : 1;
         };
 
@@ -128,10 +129,7 @@ Y_UNIT_TEST_SUITE(FetchTest)
         SortBy(
             instances.Instances.begin(),
             instances.Instances.end(),
-            [] (const TInstanceInfo& ii) {
-                return ii.Host;
-            }
-        );
+            [](const TInstanceInfo& ii) { return ii.Host; });
 
         // checking hosts:ports
         UNIT_ASSERT_VALUES_EQUAL(4, instances.Instances.size());
@@ -149,7 +147,7 @@ Y_UNIT_TEST_SUITE(FetchTest)
         UNIT_ASSERT_VALUES_EQUAL(port(4), instances.Instances[3].Port);
 
         // all new instances should be marked as unreachable
-        for (const auto& ii : instances.Instances) {
+        for (const auto& ii: instances.Instances) {
             UNIT_ASSERT(ii.Status == TInstanceInfo::EStatus::Unreachable);
         }
 
@@ -179,10 +177,7 @@ Y_UNIT_TEST_SUITE(FetchTest)
         SortBy(
             instances.Instances.begin(),
             instances.Instances.end(),
-            [] (const TInstanceInfo& ii) {
-                return ii.Host;
-            }
-        );
+            [](const TInstanceInfo& ii) { return ii.Host; });
 
         UNIT_ASSERT_VALUES_EQUAL(5, instances.Instances.size());
 
@@ -190,39 +185,42 @@ Y_UNIT_TEST_SUITE(FetchTest)
         UNIT_ASSERT_VALUES_EQUAL("host1", instances.Instances[0].Host);
         UNIT_ASSERT_VALUES_EQUAL(port(1), instances.Instances[0].Port);
         UNIT_ASSERT_VALUES_EQUAL(0.2, instances.Instances[0].BalancingScore);
-        UNIT_ASSERT(instances.Instances[0].Status
-            == TInstanceInfo::EStatus::Reachable);
+        UNIT_ASSERT(
+            instances.Instances[0].Status == TInstanceInfo::EStatus::Reachable);
 
         UNIT_ASSERT_VALUES_EQUAL("host3", instances.Instances[1].Host);
         UNIT_ASSERT_VALUES_EQUAL(port(3), instances.Instances[1].Port);
         UNIT_ASSERT_VALUES_EQUAL(0.1, instances.Instances[1].BalancingScore);
-        UNIT_ASSERT(instances.Instances[1].Status
-            == TInstanceInfo::EStatus::Reachable);
+        UNIT_ASSERT(
+            instances.Instances[1].Status == TInstanceInfo::EStatus::Reachable);
 
         UNIT_ASSERT_VALUES_EQUAL("host4", instances.Instances[2].Host);
         UNIT_ASSERT_VALUES_EQUAL(port(4), instances.Instances[2].Port);
         UNIT_ASSERT_VALUES_EQUAL(0, instances.Instances[2].BalancingScore);
-        UNIT_ASSERT(instances.Instances[2].Status
-            == TInstanceInfo::EStatus::Unreachable);
+        UNIT_ASSERT(
+            instances.Instances[2].Status ==
+            TInstanceInfo::EStatus::Unreachable);
 
         // newly added instances should be marked as unreachable
         UNIT_ASSERT_VALUES_EQUAL("host5", instances.Instances[3].Host);
         UNIT_ASSERT_VALUES_EQUAL(port(5), instances.Instances[3].Port);
         UNIT_ASSERT_VALUES_EQUAL(0, instances.Instances[3].BalancingScore);
-        UNIT_ASSERT(instances.Instances[3].Status
-            == TInstanceInfo::EStatus::Unreachable);
+        UNIT_ASSERT(
+            instances.Instances[3].Status ==
+            TInstanceInfo::EStatus::Unreachable);
 
         UNIT_ASSERT_VALUES_EQUAL("host6", instances.Instances[4].Host);
         UNIT_ASSERT_VALUES_EQUAL(port(6), instances.Instances[4].Port);
         UNIT_ASSERT_VALUES_EQUAL(0, instances.Instances[4].BalancingScore);
-        UNIT_ASSERT(instances.Instances[4].Status
-            == TInstanceInfo::EStatus::Unreachable);
+        UNIT_ASSERT(
+            instances.Instances[4].Status ==
+            TInstanceInfo::EStatus::Unreachable);
 
         fetcher.Stop();
     }
 
     void DoTestFetchSecure(
-        IInstanceFetcher& fetcher,
+        IInstanceFetcher & fetcher,
         const TInitInstanceSource& initInstanceSource,
         const TGetInstancePort& port)
     {
@@ -241,17 +239,20 @@ Y_UNIT_TEST_SUITE(FetchTest)
             {"host6", 6},
         };
 
-        using TInstSpec = std::tuple<TStringBuf, int, double, TInstanceInfo::EStatus>;
+        using TInstSpec =
+            std::tuple<TStringBuf, int, double, TInstanceInfo::EStatus>;
 
-        auto checkInstances = [&] (auto& instances, std::initializer_list<TInstSpec> expected) {
+        auto checkInstances =
+            [&](auto& instances, std::initializer_list<TInstSpec> expected)
+        {
             UNIT_ASSERT_VALUES_EQUAL(instances.size(), expected.size());
 
-            SortBy(instances, [] (const auto& ii) {
-                return std::tie(ii.Host, ii.Port);
-            });
+            SortBy(
+                instances,
+                [](const auto& ii) { return std::tie(ii.Host, ii.Port); });
 
             auto it = expected.begin();
-            for (const auto& ii : instances) {
+            for (const auto& ii: instances) {
                 UNIT_ASSERT_VALUES_EQUAL(std::get<0>(*it), ii.Host);
                 UNIT_ASSERT_VALUES_EQUAL(std::get<1>(*it), ii.Port);
 
@@ -271,16 +272,18 @@ Y_UNIT_TEST_SUITE(FetchTest)
         TInstanceList instances;
         fetcher.FetchInstances(instances).Wait();
 
-        checkInstances(instances.Instances, {
-            {"host1", port(1) , 0.0, TInstanceInfo::EStatus::Unreachable},
-            {"host1", port(10), 0.0, TInstanceInfo::EStatus::Unreachable},
-            {"host2", port(2) , 0.0, TInstanceInfo::EStatus::Unreachable},
-            {"host2", port(20), 0.0, TInstanceInfo::EStatus::Unreachable},
-            {"host3", port(3) , 0.0, TInstanceInfo::EStatus::Unreachable},
-            {"host3", port(30), 0.0, TInstanceInfo::EStatus::Unreachable},
-            {"host4", port(4) , 0.0, TInstanceInfo::EStatus::Unreachable},
-            {"host4", port(40), 0.0, TInstanceInfo::EStatus::Unreachable},
-        });
+        checkInstances(
+            instances.Instances,
+            {
+                {"host1", port(1), 0.0, TInstanceInfo::EStatus::Unreachable},
+                {"host1", port(10), 0.0, TInstanceInfo::EStatus::Unreachable},
+                {"host2", port(2), 0.0, TInstanceInfo::EStatus::Unreachable},
+                {"host2", port(20), 0.0, TInstanceInfo::EStatus::Unreachable},
+                {"host3", port(3), 0.0, TInstanceInfo::EStatus::Unreachable},
+                {"host3", port(30), 0.0, TInstanceInfo::EStatus::Unreachable},
+                {"host4", port(4), 0.0, TInstanceInfo::EStatus::Unreachable},
+                {"host4", port(40), 0.0, TInstanceInfo::EStatus::Unreachable},
+            });
 
         instances.Instances[0].Status = TInstanceInfo::EStatus::Reachable;
         instances.Instances[0].BalancingScore = 0.4;
@@ -320,19 +323,19 @@ Y_UNIT_TEST_SUITE(FetchTest)
         UNIT_ASSERT_VALUES_EQUAL(port(40), instances.Instances[5].Port);
         UNIT_ASSERT(instances.Instances[5].IsSecurePort);
 
-        checkInstances(instances.Instances, {
-            {"host1", port(1) , 0.4, TInstanceInfo::EStatus::Reachable},
-            {"host1", port(10), 0.3, TInstanceInfo::EStatus::Reachable},
-            {"host3", port(3) , 0.2, TInstanceInfo::EStatus::Reachable},
-            {"host3", port(30), 0.1, TInstanceInfo::EStatus::Reachable},
+        checkInstances(
+            instances.Instances,
+            {{"host1", port(1), 0.4, TInstanceInfo::EStatus::Reachable},
+             {"host1", port(10), 0.3, TInstanceInfo::EStatus::Reachable},
+             {"host3", port(3), 0.2, TInstanceInfo::EStatus::Reachable},
+             {"host3", port(30), 0.1, TInstanceInfo::EStatus::Reachable},
 
-            {"host4", port(4) , 0.0, TInstanceInfo::EStatus::Unreachable},
-            {"host4", port(40), 0.0, TInstanceInfo::EStatus::Unreachable},
-            {"host5", port(5) , 0.0, TInstanceInfo::EStatus::Unreachable},
-            {"host5", port(50), 0.0, TInstanceInfo::EStatus::Unreachable},
-            {"host6", port(6) , 0.0, TInstanceInfo::EStatus::Unreachable},
-            {"host6", port(60), 0.0, TInstanceInfo::EStatus::Unreachable}
-        });
+             {"host4", port(4), 0.0, TInstanceInfo::EStatus::Unreachable},
+             {"host4", port(40), 0.0, TInstanceInfo::EStatus::Unreachable},
+             {"host5", port(5), 0.0, TInstanceInfo::EStatus::Unreachable},
+             {"host5", port(50), 0.0, TInstanceInfo::EStatus::Unreachable},
+             {"host6", port(6), 0.0, TInstanceInfo::EStatus::Unreachable},
+             {"host6", port(60), 0.0, TInstanceInfo::EStatus::Unreachable}});
 
         fetcher.Stop();
     }
@@ -344,19 +347,18 @@ Y_UNIT_TEST_SUITE(FetchTest)
         auto fetcher = CreateStaticInstanceFetcher(
             env.Config,
             CreateLoggingService("console"),
-            CreateMonitoringServiceStub()
-        );
+            CreateMonitoringServiceStub());
 
         DoTestFetch(
             *fetcher,
-            [&] (const TVector<TInstanceSpec>& instanceSpecs) {
+            [&](const TVector<TInstanceSpec>& instanceSpecs)
+            {
                 TOFStream of(env.Config->GetInstanceListFile());
-                for (const auto& x : instanceSpecs) {
+                for (const auto& x: instanceSpecs) {
                     of << x.Host << "\t" << x.Port << Endl;
                 }
             },
-            true
-        );
+            true);
     }
 
     Y_UNIT_TEST(ShouldFetchFromFileSecure)
@@ -366,21 +368,19 @@ Y_UNIT_TEST_SUITE(FetchTest)
         auto fetcher = CreateStaticInstanceFetcher(
             env.Config,
             CreateLoggingService("console"),
-            CreateMonitoringServiceStub()
-        );
+            CreateMonitoringServiceStub());
 
         DoTestFetchSecure(
             *fetcher,
-            [&] (const TVector<TInstanceSpec>& instanceSpecs) {
+            [&](const TVector<TInstanceSpec>& instanceSpecs)
+            {
                 TOFStream of(env.Config->GetInstanceListFile());
-                for (const auto& x : instanceSpecs) {
-                    of << x.Host << "\t" << x.Port << "\t" << 10*x.Port << Endl;
+                for (const auto& x: instanceSpecs) {
+                    of << x.Host << "\t" << x.Port << "\t" << 10 * x.Port
+                       << Endl;
                 }
             },
-            [](int p) {
-                return p;
-            }
-        );
+            [](int p) { return p; });
     }
 
     Y_UNIT_TEST(ShouldFetchFromConductor)
@@ -392,27 +392,28 @@ Y_UNIT_TEST_SUITE(FetchTest)
             CreateLoggingService("console"),
             CreateMonitoringServiceStub(),
             env.Timer,
-            env.Scheduler
-        );
+            env.Scheduler);
 
-        auto group = [] (const TString& host) {
+        auto group = [](const TString& host)
+        {
             return host <= "host2" ? "group1" : "group2";
         };
 
         DoTestFetch(
             *fetcher,
-            [&] (const TVector<TInstanceSpec>& instanceSpecs) {
+            [&](const TVector<TInstanceSpec>& instanceSpecs)
+            {
                 TVector<THostInfo> hostInfo;
-                for (const auto& x : instanceSpecs) {
+                for (const auto& x: instanceSpecs) {
                     hostInfo.push_back({group(x.Host), x.Host});
                 }
                 env.Conductor->SetHostInfo(std::move(hostInfo));
             },
-            false
-        );
+            false);
     }
 
-    Y_UNIT_TEST(ShouldFetchFromConductorSecure) {
+    Y_UNIT_TEST(ShouldFetchFromConductorSecure)
+    {
         TEnv env(true, true);
 
         auto fetcher = CreateConductorInstanceFetcher(
@@ -420,30 +421,31 @@ Y_UNIT_TEST_SUITE(FetchTest)
             CreateLoggingService("console"),
             CreateMonitoringServiceStub(),
             env.Timer,
-            env.Scheduler
-        );
+            env.Scheduler);
 
-        auto group = [] (const TString& host) {
+        auto group = [](const TString& host)
+        {
             return host <= "host2" ? "group1" : "group2";
         };
 
         DoTestFetchSecure(
             *fetcher,
-            [&] (const TVector<TInstanceSpec>& instanceSpecs) {
+            [&](const TVector<TInstanceSpec>& instanceSpecs)
+            {
                 TVector<THostInfo> hostInfo;
-                for (const auto& x : instanceSpecs) {
+                for (const auto& x: instanceSpecs) {
                     hostInfo.push_back({group(x.Host), x.Host});
                 }
                 env.Conductor->SetHostInfo(std::move(hostInfo));
             },
-            [](int p) {
+            [](int p)
+            {
                 if (p >= 10) {
                     return 10;
                 }
 
                 return 1;
-            }
-        );
+            });
     }
 
     Y_UNIT_TEST(ShouldProperlyProcessConductorTimeouts)
@@ -455,8 +457,7 @@ Y_UNIT_TEST_SUITE(FetchTest)
             CreateLoggingService("console"),
             CreateMonitoringServiceStub(),
             env.Timer,
-            env.Scheduler
-        );
+            env.Scheduler);
 
         fetcher->Start();
 
@@ -472,10 +473,7 @@ Y_UNIT_TEST_SUITE(FetchTest)
         SortBy(
             instances.Instances.begin(),
             instances.Instances.end(),
-            [] (const TInstanceInfo& ii) {
-                return ii.Host;
-            }
-        );
+            [](const TInstanceInfo& ii) { return ii.Host; });
 
         UNIT_ASSERT_VALUES_EQUAL(2, instances.Instances.size());
         UNIT_ASSERT_VALUES_EQUAL("host1", instances.Instances[0].Host);
@@ -493,10 +491,7 @@ Y_UNIT_TEST_SUITE(FetchTest)
         SortBy(
             instances.Instances.begin(),
             instances.Instances.end(),
-            [] (const TInstanceInfo& ii) {
-                return ii.Host;
-            }
-        );
+            [](const TInstanceInfo& ii) { return ii.Host; });
 
         UNIT_ASSERT_VALUES_EQUAL(2, instances.Instances.size());
         UNIT_ASSERT_VALUES_EQUAL("host1", instances.Instances[0].Host);
@@ -510,10 +505,7 @@ Y_UNIT_TEST_SUITE(FetchTest)
         SortBy(
             instances.Instances.begin(),
             instances.Instances.end(),
-            [] (const TInstanceInfo& ii) {
-                return ii.Host;
-            }
-        );
+            [](const TInstanceInfo& ii) { return ii.Host; });
 
         UNIT_ASSERT_VALUES_EQUAL(2, instances.Instances.size());
         UNIT_ASSERT_VALUES_EQUAL("host1", instances.Instances[0].Host);

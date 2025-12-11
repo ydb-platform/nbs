@@ -5,8 +5,8 @@
 #include <util/generic/string.h>
 
 namespace NLastGetopt {
-    class TOpts;
-    class TOptsParseResultException;
+class TOpts;
+class TOptsParseResultException;
 }   // namespace NLastGetopt
 
 namespace NCloud::NBlockStore::NClient {

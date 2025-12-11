@@ -21,8 +21,7 @@ class TKmsKey;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IRootKmsClient
-    : public IStartable
+struct IRootKmsClient: public IStartable
 {
     virtual auto Decrypt(const TString& keyId, const TString& ciphertext)
         -> NThreading::TFuture<TResultOrError<TEncryptionKey>> = 0;

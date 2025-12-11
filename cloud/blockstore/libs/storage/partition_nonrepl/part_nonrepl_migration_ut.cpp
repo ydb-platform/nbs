@@ -1,4 +1,5 @@
 #include "part_nonrepl_migration.h"
+
 #include "part_nonrepl_migration_actor.h"
 #include "ut_env.h"
 
@@ -13,6 +14,7 @@
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/diagnostics.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_agent_mock.h>
+
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>
@@ -126,13 +128,13 @@ struct TTestEnv
     }
 
     explicit TTestEnv(
-            TTestActorRuntime& runtime,
-            TDevices devices,
-            TMigrations migrations,
-            NProto::EVolumeIOMode ioMode,
-            bool useRdma,
-            TMigrationStatePtr migrationState,
-            const NProto::TStorageServiceConfig& storageConfigPatch)
+        TTestActorRuntime& runtime,
+        TDevices devices,
+        TMigrations migrations,
+        NProto::EVolumeIOMode ioMode,
+        bool useRdma,
+        TMigrationStatePtr migrationState,
+        const NProto::TStorageServiceConfig& storageConfigPatch)
         : Runtime(runtime)
         , ActorId(0, "YYY")
         , VolumeActorId(0, "VVV")
@@ -173,8 +175,7 @@ struct TTestEnv
         auto config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
             std::make_shared<NFeatures::TFeaturesConfig>(
-                NCloud::NProto::TFeaturesConfig())
-        );
+                NCloud::NProto::TFeaturesConfig()));
 
         auto nodeId = Runtime.GetNodeId(0);
 
@@ -188,20 +189,18 @@ struct TTestEnv
         }
 
         Runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
+            [](auto& runtime, const auto& parentId, const auto& actorId)
+            {
+                Y_UNUSED(parentId);
+                runtime.EnableScheduleForActor(actorId);
+            });
 
         Runtime.AddLocalService(
             MakeDiskAgentServiceId(nodeId),
             TActorSetupCmd(
                 new TDiskAgentMock(agentDevices, DiskAgentState),
                 TMailboxType::Simple,
-                0
-            )
-        );
+                0));
 
         TNonreplicatedPartitionConfig::TNonreplicatedPartitionConfigInitParams
             params{
@@ -225,34 +224,30 @@ struct TTestEnv
             CreateProfileLogStub(),
             CreateBlockDigestGeneratorStub(),
             0,
-            "", // rwClientId
+            "",   // rwClientId
             std::move(partConfig),
             std::move(migrations),
             RdmaClient,
             VolumeActorId,
-            VolumeActorId // statActorId
+            VolumeActorId   // statActorId
         );
 
         Runtime.AddLocalService(
             ActorId,
-            TActorSetupCmd(part.release(), TMailboxType::Simple, 0)
-        );
+            TActorSetupCmd(part.release(), TMailboxType::Simple, 0));
 
         auto dummy = std::make_unique<TDummyActor>(std::move(migrationState));
 
         Runtime.AddLocalService(
             VolumeActorId,
-            TActorSetupCmd(dummy.release(), TMailboxType::Simple, 0)
-        );
+            TActorSetupCmd(dummy.release(), TMailboxType::Simple, 0));
 
         Runtime.AddLocalService(
             MakeStorageStatsServiceId(),
             TActorSetupCmd(
                 new TStorageStatsServiceMock(StorageStatsServiceState),
                 TMailboxType::Simple,
-                0
-            )
-        );
+                0));
 
         SetupTabletServices(Runtime);
     }
@@ -264,7 +259,10 @@ struct TTestEnv
             TBlockStoreComponents::END,
             GetComponentName);
 
-        for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
+        for (ui32 i = TBlockStoreComponents::START;
+             i < TBlockStoreComponents::END;
+             ++i)
+        {
             Runtime.SetLogPriority(i, NLog::PRI_INFO);
         }
     }
@@ -340,7 +338,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
 
         auto& counters = env.StorageStatsServiceState->Counters.RequestCounters;
         const size_t migrationCopyBlocks = useDirectCopy ? 3 : 0;
-        UNIT_ASSERT_VALUES_EQUAL(migrationCopyBlocks, counters.CopyBlocks.Count);
+        UNIT_ASSERT_VALUES_EQUAL(
+            migrationCopyBlocks,
+            counters.CopyBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
             migrationCopyBlocks * MigrationRangeSize,
             counters.CopyBlocks.RequestBytes);
@@ -847,7 +847,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         };
         runtime.SetEventFilter(failFollowerRequests);
 
-        auto replyToLeaderWrite = [&] () {
+        auto replyToLeaderWrite = [&]()
+        {
             runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
             UNIT_ASSERT(leaderWriteRequest);
 
@@ -862,7 +863,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             leaderWriteRequest.Reset();
         };
 
-        auto replyToFollowerWrite = [&] () {
+        auto replyToFollowerWrite = [&]()
+        {
             runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
             UNIT_ASSERT(followerWriteRequest);
 
@@ -877,7 +879,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             followerWriteRequest.Reset();
         };
 
-        auto replyToFollowerZero = [&] () {
+        auto replyToFollowerZero = [&]()
+        {
             runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
             UNIT_ASSERT(followerZeroRequest);
 
@@ -1004,7 +1007,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
         };
         runtime.SetEventFilter(failFollowerRequests);
 
-        auto replyToWrite = [&] () {
+        auto replyToWrite = [&]()
+        {
             runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
             UNIT_ASSERT(writeRequest);
 
@@ -1019,7 +1023,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionMigrationTest)
             writeRequest.Reset();
         };
 
-        auto replyToZero = [&] () {
+        auto replyToZero = [&]()
+        {
             runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
             UNIT_ASSERT(zeroRequest);
 

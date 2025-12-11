@@ -32,6 +32,7 @@ class TVolumeProxyTimedDeliveryActor final
     : public TActorBootstrapped<TVolumeProxyTimedDeliveryActor<TMethod>>
 {
     using TThis = TVolumeProxyTimedDeliveryActor<TMethod>;
+
 private:
     std::unique_ptr<typename TMethod::TRequest> Request;
     const TRequestInfoPtr RequestInfo;
@@ -45,11 +46,11 @@ private:
 
 public:
     TVolumeProxyTimedDeliveryActor(
-            std::unique_ptr<typename TMethod::TRequest> request,
-            TRequestInfoPtr requestInfo,
-            TDuration timeout,
-            TDuration backoffIncrement,
-            TActorId volumeProxy)
+        std::unique_ptr<typename TMethod::TRequest> request,
+        TRequestInfoPtr requestInfo,
+        TDuration timeout,
+        TDuration backoffIncrement,
+        TActorId volumeProxy)
         : Request(std::move(request))
         , RequestInfo(std::move(requestInfo))
         , Timeout(timeout)
@@ -80,7 +81,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
-void TVolumeProxyTimedDeliveryActor<TMethod>::Bootstrap(const TActorContext& ctx)
+void TVolumeProxyTimedDeliveryActor<TMethod>::Bootstrap(
+    const TActorContext& ctx)
 {
     TThis::Become(&TThis::StateWork);
     SendRequest(ctx);
@@ -88,22 +90,21 @@ void TVolumeProxyTimedDeliveryActor<TMethod>::Bootstrap(const TActorContext& ctx
 }
 
 template <typename TMethod>
-void TVolumeProxyTimedDeliveryActor<TMethod>::SendRequest(const TActorContext& ctx)
+void TVolumeProxyTimedDeliveryActor<TMethod>::SendRequest(
+    const TActorContext& ctx)
 {
     auto request = std::make_unique<typename TMethod::TRequest>();
     request->Record = Request->Record;
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Sending %s %s to volume %s",
         TMethod::Name,
         Request->Record.GetHeaders().GetClientId().Quote().c_str(),
         Request->Record.GetDiskId().Quote().c_str());
 
-    ctx.Send(
-        VolumeProxy,
-        request.release(),
-        0,
-        RequestInfo->Cookie);
+    ctx.Send(VolumeProxy, request.release(), 0, RequestInfo->Cookie);
 }
 
 template <typename TMethod>
@@ -114,7 +115,9 @@ void TVolumeProxyTimedDeliveryActor<TMethod>::HandleResponse(
     auto* msg = ev->Get();
 
     if (msg->Record.GetError().GetCode() == E_REJECTED) {
-        LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "%s %s request sent to volume %s is rejected",
             TMethod::Name,
             Request->Record.GetHeaders().GetClientId().Quote().c_str(),
@@ -137,7 +140,9 @@ void TVolumeProxyTimedDeliveryActor<TMethod>::HandleWakeup(
     const auto* msg = ev->Get();
 
     if (msg->Tag) {
-        LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "Resend %s %s request to volume %s. Last error %s",
             TMethod::Name,
             Request->Record.GetHeaders().GetClientId().Quote().c_str(),
@@ -148,7 +153,9 @@ void TVolumeProxyTimedDeliveryActor<TMethod>::HandleWakeup(
         return;
     }
 
-    LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "%s %s request sent to volume %s timed out. Last error %s",
         TMethod::Name,
         Request->Record.GetHeaders().GetClientId().Quote().c_str(),
@@ -159,10 +166,8 @@ void TVolumeProxyTimedDeliveryActor<TMethod>::HandleWakeup(
         ctx,
         MakeError(
             E_REJECTED,
-            TStringBuilder() <<
-                "Failed to deliver " <<
-                TMethod::Name <<
-                " request to volume"));
+            TStringBuilder() << "Failed to deliver " << TMethod::Name
+                             << " request to volume"));
 }
 
 template <typename TMethod>
@@ -182,7 +187,6 @@ template <typename TMethod>
 STFUNC(TVolumeProxyTimedDeliveryActor<TMethod>::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-
         HFunc(TMethod::TResponse, HandleResponse);
         HFunc(TEvents::TEvWakeup, HandleWakeup);
 
@@ -195,7 +199,7 @@ STFUNC(TVolumeProxyTimedDeliveryActor<TMethod>::StateWork)
     }
 }
 
-}    // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -206,7 +210,8 @@ IActorPtr CreateAddClientActor(
     TDuration backoffTimeoutIncrement,
     TActorId volumeProxy)
 {
-    using TActorType = TVolumeProxyTimedDeliveryActor<TEvVolume::TAddClientMethod>;
+    using TActorType =
+        TVolumeProxyTimedDeliveryActor<TEvVolume::TAddClientMethod>;
     return std::make_unique<TActorType>(
         std::move(request),
         std::move(requestInfo),
@@ -222,7 +227,8 @@ IActorPtr CreateWaitReadyActor(
     TDuration backoffTimeoutIncrement,
     TActorId volumeProxy)
 {
-    using TActorType = TVolumeProxyTimedDeliveryActor<TEvVolume::TWaitReadyMethod>;
+    using TActorType =
+        TVolumeProxyTimedDeliveryActor<TEvVolume::TWaitReadyMethod>;
     return std::make_unique<TActorType>(
         std::move(request),
         std::move(requestInfo),
@@ -230,6 +236,5 @@ IActorPtr CreateWaitReadyActor(
         backoffTimeoutIncrement,
         volumeProxy);
 }
-
 
 }   // namespace NCloud::NBlockStore::NStorage

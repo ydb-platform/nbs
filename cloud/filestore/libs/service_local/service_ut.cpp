@@ -20,8 +20,9 @@
 #include <util/folder/path.h>
 #include <util/random/random.h>
 
-#include <algorithm>
 #include <sys/statfs.h>
+
+#include <algorithm>
 
 namespace NCloud::NFileStore {
 
@@ -129,7 +130,8 @@ struct TCreateNodeArgs
         }
     }
 
-    static TCreateNodeArgs Directory(ui64 parent, const TString& name, ui32 mode = 0)
+    static TCreateNodeArgs
+    Directory(ui64 parent, const TString& name, ui32 mode = 0)
     {
         TCreateNodeArgs args(ENodeType::Directory, parent, name);
         args.Mode = mode;
@@ -143,14 +145,16 @@ struct TCreateNodeArgs
         return args;
     }
 
-    static TCreateNodeArgs Link(ui64 parent, const TString& name, ui64 targetNode)
+    static TCreateNodeArgs
+    Link(ui64 parent, const TString& name, ui64 targetNode)
     {
         TCreateNodeArgs args(ENodeType::Link, parent, name);
         args.TargetNode = targetNode;
         return args;
     }
 
-    static TCreateNodeArgs SymLink(ui64 parent, const TString& name, const TString& targetPath)
+    static TCreateNodeArgs
+    SymLink(ui64 parent, const TString& name, const TString& targetPath)
     {
         TCreateNodeArgs args(ENodeType::SymLink, parent, name);
         args.TargetPath = targetPath;
@@ -244,26 +248,25 @@ struct TSetNodeAttrArgs
 
 struct TCreateHandleArgs
 {
-    static constexpr ui32 RDNLY
-        = ProtoFlag(NProto::TCreateHandleRequest::E_READ);
+    static constexpr ui32 RDNLY =
+        ProtoFlag(NProto::TCreateHandleRequest::E_READ);
 
-    static constexpr ui32 RDWR
-        = ProtoFlag(NProto::TCreateHandleRequest::E_READ)
-        | ProtoFlag(NProto::TCreateHandleRequest::E_WRITE);
+    static constexpr ui32 RDWR =
+        ProtoFlag(NProto::TCreateHandleRequest::E_READ) |
+        ProtoFlag(NProto::TCreateHandleRequest::E_WRITE);
 
-    static constexpr ui32 CREATE
-        = ProtoFlag(NProto::TCreateHandleRequest::E_CREATE)
-        | ProtoFlag(NProto::TCreateHandleRequest::E_READ)
-        | ProtoFlag(NProto::TCreateHandleRequest::E_WRITE);
+    static constexpr ui32 CREATE =
+        ProtoFlag(NProto::TCreateHandleRequest::E_CREATE) |
+        ProtoFlag(NProto::TCreateHandleRequest::E_READ) |
+        ProtoFlag(NProto::TCreateHandleRequest::E_WRITE);
 
-    static constexpr ui32 DIRECT
-        = ProtoFlag(NProto::TCreateHandleRequest::E_DIRECT);
+    static constexpr ui32 DIRECT =
+        ProtoFlag(NProto::TCreateHandleRequest::E_DIRECT);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTempDirectory
-    : public TFsPath
+struct TTempDirectory: public TFsPath
 {
     TTempDirectory()
         : TFsPath(MakeName())
@@ -296,13 +299,16 @@ using TTempDirectoryPtr = std::shared_ptr<TTempDirectory>;
 
 template <typename T>
 concept HasSetLockType = requires(T t) {
-    { t.SetLockType(std::declval<NProto::ELockType>()) } -> std::same_as<void>;
+    {
+        t.SetLockType(std::declval<NProto::ELockType>())
+    } -> std::same_as<void>;
 };
 
 struct TTestBootstrap
 {
     TIntrusivePtr<TCallContext> Ctx = MakeIntrusive<TCallContext>();
-    ILoggingServicePtr Logging = CreateLoggingService("console", {TLOG_RESOURCES});
+    ILoggingServicePtr Logging =
+        CreateLoggingService("console", {TLOG_RESOURCES});
     ITimerPtr Timer = CreateWallClockTimer();
     ISchedulerPtr Scheduler = CreateScheduler();
     ITaskQueuePtr TaskQueue = CreateTaskQueueStub();
@@ -317,11 +323,11 @@ struct TTestBootstrap
     static constexpr pid_t DefaultPid = 123;
 
     TTestBootstrap(
-            const TTempDirectoryPtr& cwd = std::make_shared<TTempDirectory>(),
-            ui32 maxNodeCount = 1000,
-            ui32 maxHandlePerSessionCount = 100,
-            bool directIoEnabled = false,
-            ui32 directIoAlign = 4096)
+        const TTempDirectoryPtr& cwd = std::make_shared<TTempDirectory>(),
+        ui32 maxNodeCount = 1000,
+        ui32 maxHandlePerSessionCount = 100,
+        bool directIoEnabled = false,
+        ui32 directIoAlign = 4096)
         : Cwd(cwd)
     {
         AIOService->Start();
@@ -343,13 +349,13 @@ struct TTestBootstrap
     }
 
     TTestBootstrap(
-            const TString& id,
-            const TString& client = "client",
-            const TString& session = {},
-            ui32 maxNodeCount = 1000,
-            ui32 maxHandlePerSessionCount = 100,
-            bool directIoEnabled = false,
-            ui32 directIoAlign = 4096)
+        const TString& id,
+        const TString& client = "client",
+        const TString& session = {},
+        ui32 maxNodeCount = 1000,
+        ui32 maxHandlePerSessionCount = 100,
+        bool directIoEnabled = false,
+        ui32 directIoAlign = 4096)
         : Cwd(std::make_shared<TTempDirectory>())
     {
         AIOService->Start();
@@ -371,7 +377,8 @@ struct TTestBootstrap
 
         CreateFileStore(id, "cloud", "folder", 100500, 500100);
         if (client) {
-            Headers.SessionId = CreateSession(id, client, session).GetSession().GetSessionId();
+            Headers.SessionId =
+                CreateSession(id, client, session).GetSession().GetSessionId();
         }
     }
 
@@ -443,7 +450,7 @@ struct TTestBootstrap
         return std::make_shared<TLocalFileStoreConfig>(config);
     }
 
-    template<typename T>
+    template <typename T>
     std::shared_ptr<T> CreateRequest()
     {
         auto request = std::make_shared<T>();
@@ -512,7 +519,10 @@ struct TTestBootstrap
         ui64 seqNo = 0,
         bool restore = false)
     {
-        Headers = {.FileSystemId = id, .ClientId = clientId, .SessionId = sessionId};
+        Headers = {
+            .FileSystemId = id,
+            .ClientId = clientId,
+            .SessionId = sessionId};
         auto request = CreateRequest<NProto::TCreateSessionRequest>();
         request->SetRestoreClientSession(restore);
         request->SetMountSeqNumber(seqNo);
@@ -547,7 +557,10 @@ struct TTestBootstrap
         return request;
     }
 
-    auto CreateUnlinkNodeRequest(ui64 parent, const TString& name, bool unlinkDirectory)
+    auto CreateUnlinkNodeRequest(
+        ui64 parent,
+        const TString& name,
+        bool unlinkDirectory)
     {
         auto request = CreateRequest<NProto::TUnlinkNodeRequest>();
         request->SetNodeId(parent);
@@ -631,7 +644,10 @@ struct TTestBootstrap
         return request;
     }
 
-    auto CreateSetNodeXAttrRequest(ui64 node, const TString& name, const TString& value)
+    auto CreateSetNodeXAttrRequest(
+        ui64 node,
+        const TString& name,
+        const TString& value)
     {
         auto request = CreateRequest<NProto::TSetNodeXAttrRequest>();
         request->SetNodeId(node);
@@ -682,7 +698,7 @@ struct TTestBootstrap
         return request;
     }
 
-    template<typename TRequestType>
+    template <typename TRequestType>
     std::shared_ptr<TRequestType> CreateLockRequest(
         ui64 handle,
         ui64 offset,
@@ -743,7 +759,8 @@ struct TTestBootstrap
         return std::make_shared<NProto::TPingRequest>();
     }
 
-    auto CreateAllocateDataRequest(ui64 handle, ui64 offset, ui64 length, ui32 flags)
+    auto
+    CreateAllocateDataRequest(ui64 handle, ui64 offset, ui64 length, ui32 flags)
     {
         auto request = CreateRequest<NProto::TAllocateDataRequest>();
         request->SetHandle(handle);
@@ -762,7 +779,6 @@ struct TTestBootstrap
         return request;
     }
 
-
     auto CreateFsyncDirRequest(ui64 node, bool dataSync)
     {
         auto request = CreateRequest<NProto::TFsyncDirRequest>();
@@ -777,42 +793,42 @@ struct TTestBootstrap
         return request;
     }
 
-#define FILESTORE_DECLARE_METHOD(name, ns)                                         \
-    template <typename... Args>                                                    \
-    NProto::T##name##Response name(Args&&... args)                                 \
-    {                                                                              \
-        auto request = Create##name##Request(std::forward<Args>(args)...);         \
-        auto dbg = request->ShortDebugString();                                    \
-        auto response = Store->name(Ctx, std::move(request)).GetValueSync();       \
-                                                                                   \
-        UNIT_ASSERT_C(                                                             \
-            SUCCEEDED(response.GetError().GetCode()),                              \
-            response.GetError().GetMessage() + "@" + dbg);                         \
-        return response;                                                           \
-    }                                                                              \
-                                                                                   \
-    template <typename... Args>                                                    \
-    NProto::T##name##Response NoAssert##name(Args&&... args)                       \
-    {                                                                              \
-        auto request = Create##name##Request(std::forward<Args>(args)...);         \
-        auto dbg = request->ShortDebugString();                                    \
-        auto response = Store->name(Ctx, std::move(request)).GetValueSync();       \
-        return response;                                                           \
-    }                                                                              \
-                                                                                   \
-    template <typename... Args>                                                    \
-    NProto::T##name##Response Assert##name##Failed(Args&&... args)                 \
-    {                                                                              \
-        auto request = Create##name##Request(std::forward<Args>(args)...);         \
-        auto dbg = request->ShortDebugString();                                    \
-                                                                                   \
-        auto response = Store->name(Ctx, std::move(request)).GetValueSync();       \
-        UNIT_ASSERT_C(                                                             \
-            FAILED(response.GetError().GetCode()),                                 \
-            #name " has not failed as expected " + dbg);                           \
-        return response;                                                           \
-    }                                                                              \
-// FILESTORE_DECLARE_METHOD
+#define FILESTORE_DECLARE_METHOD(name, ns)                                   \
+    template <typename... Args>                                              \
+    NProto::T##name##Response name(Args&&... args)                           \
+    {                                                                        \
+        auto request = Create##name##Request(std::forward<Args>(args)...);   \
+        auto dbg = request->ShortDebugString();                              \
+        auto response = Store->name(Ctx, std::move(request)).GetValueSync(); \
+                                                                             \
+        UNIT_ASSERT_C(                                                       \
+            SUCCEEDED(response.GetError().GetCode()),                        \
+            response.GetError().GetMessage() + "@" + dbg);                   \
+        return response;                                                     \
+    }                                                                        \
+                                                                             \
+    template <typename... Args>                                              \
+    NProto::T##name##Response NoAssert##name(Args&&... args)                 \
+    {                                                                        \
+        auto request = Create##name##Request(std::forward<Args>(args)...);   \
+        auto dbg = request->ShortDebugString();                              \
+        auto response = Store->name(Ctx, std::move(request)).GetValueSync(); \
+        return response;                                                     \
+    }                                                                        \
+                                                                             \
+    template <typename... Args>                                              \
+    NProto::T##name##Response Assert##name##Failed(Args&&... args)           \
+    {                                                                        \
+        auto request = Create##name##Request(std::forward<Args>(args)...);   \
+        auto dbg = request->ShortDebugString();                              \
+                                                                             \
+        auto response = Store->name(Ctx, std::move(request)).GetValueSync(); \
+        UNIT_ASSERT_C(                                                       \
+            FAILED(response.GetError().GetCode()),                           \
+            #name " has not failed as expected " + dbg);                     \
+        return response;                                                     \
+    }                                                                        \
+    // FILESTORE_DECLARE_METHOD
 
     FILESTORE_SERVICE(FILESTORE_DECLARE_METHOD)
 
@@ -876,14 +892,26 @@ struct TTestBootstrap
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ui64 CreateFile(TTestBootstrap& bootstrap, ui64 parent, const TString& name, int mode = 0)
+ui64 CreateFile(
+    TTestBootstrap& bootstrap,
+    ui64 parent,
+    const TString& name,
+    int mode = 0)
 {
-    return bootstrap.CreateNode(TCreateNodeArgs::File(parent, name, mode)).GetNode().GetId();
+    return bootstrap.CreateNode(TCreateNodeArgs::File(parent, name, mode))
+        .GetNode()
+        .GetId();
 }
 
-ui64 CreateDirectory(TTestBootstrap& bootstrap, ui64 parent, const TString& name, int mode = 0)
+ui64 CreateDirectory(
+    TTestBootstrap& bootstrap,
+    ui64 parent,
+    const TString& name,
+    int mode = 0)
 {
-    return bootstrap.CreateNode(TCreateNodeArgs::Directory(parent, name, mode)).GetNode().GetId();
+    return bootstrap.CreateNode(TCreateNodeArgs::Directory(parent, name, mode))
+        .GetNode()
+        .GetId();
 }
 
 TVector<ui64> CreateDirectories(
@@ -899,11 +927,13 @@ TVector<ui64> CreateDirectories(
         auto request = bootstrap.CreateRequest<NProto::TGetNodeAttrRequest>();
         auto rsp = bootstrap.NoAssertGetNodeAttr(parent, TString(pathPart));
         if (STATUS_FROM_CODE(rsp.GetError().GetCode()) == NProto::E_FS_NOENT) {
-            auto nodeId =
-                bootstrap.CreateNode(TCreateNodeArgs::Directory(
-                        parent,
-                        TString(pathPart),
-                        mode)).GetNode().GetId();
+            auto nodeId = bootstrap
+                              .CreateNode(TCreateNodeArgs::Directory(
+                                  parent,
+                                  TString(pathPart),
+                                  mode))
+                              .GetNode()
+                              .GetId();
             parent = nodeId;
             nodes.push_back(parent);
             continue;
@@ -930,29 +960,55 @@ void CheckDirectoryPath(
     for (auto& pathPart: fsPath.PathSplit()) {
         UNIT_ASSERT(expectedNodeIndex < expectedNodes.size());
         auto stat = bootstrap.GetNodeAttr(parent, TString(pathPart)).GetNode();
-        UNIT_ASSERT_VALUES_EQUAL(stat.GetId(), expectedNodes[expectedNodeIndex++]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            stat.GetId(),
+            expectedNodes[expectedNodeIndex++]);
         parent = stat.GetId();
     }
 }
 
-ui64 CreateHardLink(TTestBootstrap& bootstrap, ui64 parent, const TString& name, ui64 target)
+ui64 CreateHardLink(
+    TTestBootstrap& bootstrap,
+    ui64 parent,
+    const TString& name,
+    ui64 target)
 {
-    return bootstrap.CreateNode(TCreateNodeArgs::Link(parent, name, target)).GetNode().GetId();
+    return bootstrap.CreateNode(TCreateNodeArgs::Link(parent, name, target))
+        .GetNode()
+        .GetId();
 }
 
-ui64 CreateSymLink(TTestBootstrap& bootstrap, ui64 parent, const TString& name, const TString& target)
+ui64 CreateSymLink(
+    TTestBootstrap& bootstrap,
+    ui64 parent,
+    const TString& name,
+    const TString& target)
 {
-    return bootstrap.CreateNode(TCreateNodeArgs::SymLink(parent, name, target)).GetNode().GetId();
+    return bootstrap.CreateNode(TCreateNodeArgs::SymLink(parent, name, target))
+        .GetNode()
+        .GetId();
 }
 
-ui64 CreateSock(TTestBootstrap& bootstrap, ui64 parent, const TString& name, int mode = 0)
+ui64 CreateSock(
+    TTestBootstrap& bootstrap,
+    ui64 parent,
+    const TString& name,
+    int mode = 0)
 {
-    return bootstrap.CreateNode(TCreateNodeArgs::Sock(parent, name, mode)).GetNode().GetId();
+    return bootstrap.CreateNode(TCreateNodeArgs::Sock(parent, name, mode))
+        .GetNode()
+        .GetId();
 }
 
-ui64 CreateFifo(TTestBootstrap& bootstrap, ui64 parent, const TString& name, int mode = 0)
+ui64 CreateFifo(
+    TTestBootstrap& bootstrap,
+    ui64 parent,
+    const TString& name,
+    int mode = 0)
 {
-    return bootstrap.CreateNode(TCreateNodeArgs::Fifo(parent, name, mode)).GetNode().GetId();
+    return bootstrap.CreateNode(TCreateNodeArgs::Fifo(parent, name, mode))
+        .GetNode()
+        .GetId();
 }
 
 TVector<TString> ListNames(TTestBootstrap& bootstrap, ui64 node)
@@ -960,10 +1016,11 @@ TVector<TString> ListNames(TTestBootstrap& bootstrap, ui64 node)
     auto all = bootstrap.ListNodes(node).GetNames();
 
     TVector<TString> names;
-    std::copy_if(begin(all), end(all), std::back_inserter(names),
-        [] (const TString& name) {
-            return name != "." && name != "..";
-        });
+    std::copy_if(
+        begin(all),
+        end(all),
+        std::back_inserter(names),
+        [](const TString& name) { return name != "." && name != ".."; });
 
     return names;
 }
@@ -1007,1393 +1064,1437 @@ std::pair<NProto::TStatFileStoreResponse, struct statfs> GetFileSystemStat(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(LocalFileStore)
+Y_UNIT_TEST_SUITE(
+    LocalFileStore){Y_UNIT_TEST(ShouldCreateStore){TTestBootstrap bootstrap;
+
+bootstrap.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
+auto response = bootstrap.GetFileStoreInfo("fs");
+
+const auto& store = response.GetFileStore();
+UNIT_ASSERT_VALUES_EQUAL(store.GetFileSystemId(), "fs");
+UNIT_ASSERT_VALUES_EQUAL(store.GetCloudId(), "cloud");
+UNIT_ASSERT_VALUES_EQUAL(store.GetFolderId(), "folder");
+UNIT_ASSERT_VALUES_EQUAL(store.GetBlockSize(), 100500);
+UNIT_ASSERT_VALUES_EQUAL(store.GetBlocksCount(), 500100);
+}   // namespace NCloud::NFileStore
+
+Y_UNIT_TEST(ShouldListExternallyCreatedFilestores)
 {
-    Y_UNIT_TEST(ShouldCreateStore)
-    {
-        TTestBootstrap bootstrap;
+    TTestBootstrap bootstrapExt;
+    TTestBootstrap bootstrap(bootstrapExt.Cwd);
 
-        bootstrap.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
-        auto response = bootstrap.GetFileStoreInfo("fs");
+    bootstrapExt.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
 
-        const auto& store = response.GetFileStore();
-        UNIT_ASSERT_VALUES_EQUAL(store.GetFileSystemId(), "fs");
-        UNIT_ASSERT_VALUES_EQUAL(store.GetCloudId(), "cloud");
-        UNIT_ASSERT_VALUES_EQUAL(store.GetFolderId(), "folder");
-        UNIT_ASSERT_VALUES_EQUAL(store.GetBlockSize(), 100500);
-        UNIT_ASSERT_VALUES_EQUAL(store.GetBlocksCount(), 500100);
+    for (auto* bs: {&bootstrapExt, &bootstrap}) {
+        auto response = bs->ListFileStores();
+        const auto& fsIds = response.GetFileStores();
+        UNIT_ASSERT_VALUES_EQUAL(1, fsIds.size());
+        UNIT_ASSERT_VALUES_EQUAL("fs", fsIds[0]);
+    }
+}
+
+Y_UNIT_TEST(ShouldAlterStore)
+{
+    TTestBootstrap bootstrap;
+
+    bootstrap.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
+    bootstrap.AlterFileStore("fs", "xxxx", "yyyy");
+
+    auto response = bootstrap.GetFileStoreInfo("fs");
+    const auto& store = response.GetFileStore();
+    UNIT_ASSERT_VALUES_EQUAL(store.GetFileSystemId(), "fs");
+    UNIT_ASSERT_VALUES_EQUAL(store.GetCloudId(), "xxxx");
+    UNIT_ASSERT_VALUES_EQUAL(store.GetFolderId(), "yyyy");
+    UNIT_ASSERT_VALUES_EQUAL(store.GetBlockSize(), 100500);
+    UNIT_ASSERT_VALUES_EQUAL(store.GetBlocksCount(), 500100);
+}
+
+void ValidateCreateSession(auto& bootstrap)
+{
+    auto response = bootstrap.CreateSession("fs", "client", "");
+    auto id = response.GetSession().GetSessionId();
+    UNIT_ASSERT(id != "");
+
+    THeaders session{
+        .FileSystemId = "fs",
+        .ClientId = "client",
+        .SessionId = id};
+
+    THeaders badClientSession{
+        .FileSystemId = "fs",
+        .ClientId = "client-xxx",
+        .SessionId = id};
+
+    THeaders badIdSession{
+        .FileSystemId = "fs",
+        .ClientId = "client",
+        .SessionId = "random session"};
+
+    // restore
+    bootstrap.CreateSession("fs", "client", id);
+    UNIT_ASSERT(bootstrap.GetClientFsStateDir("fs", "client"));
+
+    bootstrap.AssertCreateSessionFailed("fs", "client-xxx", id);
+
+    bootstrap.SwitchToSession(session);
+    bootstrap.PingSession();
+
+    bootstrap.SwitchToSession(badClientSession);
+    bootstrap.AssertPingSessionFailed();
+
+    bootstrap.SwitchToSession(badIdSession);
+    bootstrap.AssertPingSessionFailed();
+
+    bootstrap.SwitchToSession(session);
+    bootstrap.DestroySession();
+    UNIT_ASSERT(!bootstrap.GetClientFsStateDir("fs", "client"));
+}
+
+Y_UNIT_TEST(ShouldCreateSession)
+{
+    TTestBootstrap bootstrap;
+    bootstrap.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
+    UNIT_ASSERT(bootstrap.GetFsStateDir("fs"));
+
+    ValidateCreateSession(bootstrap);
+}
+
+Y_UNIT_TEST(ShouldCreateSessionOnExternallyCreatedFilestore)
+{
+    TTestBootstrap bootstrapExt;
+    TTestBootstrap bootstrap(bootstrapExt.Cwd);
+
+    bootstrapExt.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
+    UNIT_ASSERT(bootstrapExt.GetFsStateDir("fs"));
+
+    ValidateCreateSession(bootstrap);
+}
+
+Y_UNIT_TEST(ShouldNotCreateTheSameStore)
+{
+    TTestBootstrap bootstrap("fs");
+    bootstrap.AssertCreateFileStoreFailed("fs", "cloud", "filestore", 100, 500);
+}
+
+Y_UNIT_TEST(ShouldDestroyStore)
+{
+    TTestBootstrap bootstrap("fs");
+    UNIT_ASSERT(bootstrap.GetFsStateDir("fs"));
+
+    bootstrap.DestroyFileStore("fs");
+    UNIT_ASSERT(!bootstrap.GetFsStateDir("fs"));
+
+    // intentionally
+    bootstrap.DestroyFileStore("fs");
+}
+
+Y_UNIT_TEST(ShouldNotListExternallyDestroyedFilestores)
+{
+    TTestBootstrap bootstrapExt;
+    TTestBootstrap bootstrap(bootstrapExt.Cwd);
+
+    bootstrapExt.CreateFileStore("fs1", "cloud", "folder", 100500, 500100);
+    bootstrapExt.CreateFileStore("fs2", "cloud", "folder", 100500, 500100);
+
+    for (auto* bs: {&bootstrapExt, &bootstrap}) {
+        auto response = bs->ListFileStores();
+
+        const auto& fsIds = response.GetFileStores();
+        TVector<TString> ids(fsIds.begin(), fsIds.end());
+        Sort(ids);
+        TVector<TString> expectedIds = {"fs1", "fs2"};
+        UNIT_ASSERT_VALUES_EQUAL(expectedIds, ids);
     }
 
-    Y_UNIT_TEST(ShouldListExternallyCreatedFilestores)
+    bootstrapExt.DestroyFileStore("fs1");
+
+    for (auto* bs: {&bootstrapExt, &bootstrap}) {
+        auto response = bs->ListFileStores();
+
+        const auto& fsIds = response.GetFileStores();
+        UNIT_ASSERT_VALUES_EQUAL(1, fsIds.size());
+        UNIT_ASSERT_VALUES_EQUAL("fs2", fsIds[0]);
+        UNIT_ASSERT(!bootstrap.GetFsStateDir("fs1"));
+    }
+}
+
+Y_UNIT_TEST(ShouldNotCreateSessionOnExternallyDestroyedFilestore)
+{
+    TTestBootstrap bootstrapExt;
+    TTestBootstrap bootstrap(bootstrapExt.Cwd);
+
+    bootstrapExt.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
+    UNIT_ASSERT(bootstrapExt.GetFsStateDir("fs"));
+
     {
-        TTestBootstrap bootstrapExt;
-        TTestBootstrap bootstrap(bootstrapExt.Cwd);
-
-        bootstrapExt.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
-
-        for (auto* bs : {&bootstrapExt, &bootstrap}) {
-            auto response = bs->ListFileStores();
-            const auto& fsIds = response.GetFileStores();
-            UNIT_ASSERT_VALUES_EQUAL(1, fsIds.size());
-            UNIT_ASSERT_VALUES_EQUAL("fs", fsIds[0]);
-        }
+        auto response = bootstrap.ListFileStores();
+        const auto& fsIds = response.GetFileStores();
+        UNIT_ASSERT_VALUES_EQUAL(1, fsIds.size());
+        UNIT_ASSERT_VALUES_EQUAL("fs", fsIds[0]);
     }
 
-    Y_UNIT_TEST(ShouldAlterStore)
+    bootstrapExt.DestroyFileStore("fs");
+
     {
-        TTestBootstrap bootstrap;
-
-        bootstrap.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
-        bootstrap.AlterFileStore("fs", "xxxx", "yyyy");
-
-        auto response = bootstrap.GetFileStoreInfo("fs");
-        const auto& store = response.GetFileStore();
-        UNIT_ASSERT_VALUES_EQUAL(store.GetFileSystemId(), "fs");
-        UNIT_ASSERT_VALUES_EQUAL(store.GetCloudId(), "xxxx");
-        UNIT_ASSERT_VALUES_EQUAL(store.GetFolderId(), "yyyy");
-        UNIT_ASSERT_VALUES_EQUAL(store.GetBlockSize(), 100500);
-        UNIT_ASSERT_VALUES_EQUAL(store.GetBlocksCount(), 500100);
+        auto response = bootstrap.AssertCreateSessionFailed("fs", "client", "");
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response.GetError().GetCode());
     }
+}
 
-    void ValidateCreateSession(auto& bootstrap)
-    {
-        auto response = bootstrap.CreateSession("fs", "client", "");
-        auto id = response.GetSession().GetSessionId();
-        UNIT_ASSERT(id != "");
+Y_UNIT_TEST(ShouldRecoverLocalStores)
+{
+    TTestBootstrap bootstrap;
+    bootstrap.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
 
-        THeaders session {
-            .FileSystemId = "fs",
-            .ClientId = "client",
-            .SessionId = id};
+    TTestBootstrap other(bootstrap.Cwd);
+    auto store = other.GetFileStoreInfo("fs").GetFileStore();
 
-        THeaders badClientSession {
-            .FileSystemId = "fs",
-            .ClientId = "client-xxx",
-            .SessionId = id};
+    UNIT_ASSERT_VALUES_EQUAL(store.GetFileSystemId(), "fs");
+    UNIT_ASSERT_VALUES_EQUAL(store.GetFolderId(), "folder");
+    UNIT_ASSERT_VALUES_EQUAL(store.GetCloudId(), "cloud");
+    UNIT_ASSERT_VALUES_EQUAL(store.GetBlockSize(), 100500);
+    UNIT_ASSERT_VALUES_EQUAL(store.GetBlocksCount(), 500100);
+}
 
-        THeaders badIdSession {
-            .FileSystemId = "fs",
-            .ClientId = "client",
-            .SessionId = "random session"};
+Y_UNIT_TEST(ShouldRecoverFsNodes)
+{
+    TTestBootstrap bootstrap("fs", "client");
+    auto ctx = MakeIntrusive<TCallContext>();
 
-        // restore
-        bootstrap.CreateSession("fs", "client", id);
-        UNIT_ASSERT(bootstrap.GetClientFsStateDir("fs", "client"));
+    TVector<std::pair<TString, TVector<TString>>> testPaths = {
+        {"a/b/c/d/e", {"file1", "file2", "file3"}},
+        {"a/b/c/f/g", {"file4", "file5", "file6"}},
+    };
 
-        bootstrap.AssertCreateSessionFailed("fs", "client-xxx", id);
+    TVector<std::tuple<TVector<ui64>, TVector<ui64>, TVector<ui64>>> testNodes;
 
-        bootstrap.SwitchToSession(session);
-        bootstrap.PingSession();
-
-        bootstrap.SwitchToSession(badClientSession);
-        bootstrap.AssertPingSessionFailed();
-
-        bootstrap.SwitchToSession(badIdSession);
-        bootstrap.AssertPingSessionFailed();
-
-        bootstrap.SwitchToSession(session);
-        bootstrap.DestroySession();
-        UNIT_ASSERT(!bootstrap.GetClientFsStateDir("fs", "client"));
-    }
-
-    Y_UNIT_TEST(ShouldCreateSession)
-    {
-        TTestBootstrap bootstrap;
-        bootstrap.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
-        UNIT_ASSERT(bootstrap.GetFsStateDir("fs"));
-
-        ValidateCreateSession(bootstrap);
-    }
-
-    Y_UNIT_TEST(ShouldCreateSessionOnExternallyCreatedFilestore)
-    {
-        TTestBootstrap bootstrapExt;
-        TTestBootstrap bootstrap(bootstrapExt.Cwd);
-
-        bootstrapExt.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
-        UNIT_ASSERT(bootstrapExt.GetFsStateDir("fs"));
-
-        ValidateCreateSession(bootstrap);
-    }
-
-    Y_UNIT_TEST(ShouldNotCreateTheSameStore)
-    {
-        TTestBootstrap bootstrap("fs");
-        bootstrap.AssertCreateFileStoreFailed("fs", "cloud", "filestore", 100, 500);
-    }
-
-    Y_UNIT_TEST(ShouldDestroyStore)
-    {
-        TTestBootstrap bootstrap("fs");
-        UNIT_ASSERT(bootstrap.GetFsStateDir("fs"));
-
-        bootstrap.DestroyFileStore("fs");
-        UNIT_ASSERT(!bootstrap.GetFsStateDir("fs"));
-
-        // intentionally
-        bootstrap.DestroyFileStore("fs");
-    }
-
-    Y_UNIT_TEST(ShouldNotListExternallyDestroyedFilestores)
-    {
-        TTestBootstrap bootstrapExt;
-        TTestBootstrap bootstrap(bootstrapExt.Cwd);
-
-        bootstrapExt.CreateFileStore("fs1", "cloud", "folder", 100500, 500100);
-        bootstrapExt.CreateFileStore("fs2", "cloud", "folder", 100500, 500100);
-
-        for (auto* bs : {&bootstrapExt, &bootstrap}) {
-            auto response = bs->ListFileStores();
-
-            const auto& fsIds = response.GetFileStores();
-            TVector<TString> ids(fsIds.begin(), fsIds.end());
-            Sort(ids);
-            TVector<TString> expectedIds = {"fs1", "fs2"};
-            UNIT_ASSERT_VALUES_EQUAL(expectedIds, ids);
-        }
-
-        bootstrapExt.DestroyFileStore("fs1");
-
-        for (auto* bs : {&bootstrapExt, &bootstrap}) {
-            auto response = bs->ListFileStores();
-
-            const auto& fsIds = response.GetFileStores();
-            UNIT_ASSERT_VALUES_EQUAL(1, fsIds.size());
-            UNIT_ASSERT_VALUES_EQUAL("fs2", fsIds[0]);
-            UNIT_ASSERT(!bootstrap.GetFsStateDir("fs1"));
-        }
-    }
-
-    Y_UNIT_TEST(ShouldNotCreateSessionOnExternallyDestroyedFilestore)
-    {
-        TTestBootstrap bootstrapExt;
-        TTestBootstrap bootstrap(bootstrapExt.Cwd);
-
-        bootstrapExt.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
-        UNIT_ASSERT(bootstrapExt.GetFsStateDir("fs"));
-
-        {
-            auto response = bootstrap.ListFileStores();
-            const auto& fsIds = response.GetFileStores();
-            UNIT_ASSERT_VALUES_EQUAL(1, fsIds.size());
-            UNIT_ASSERT_VALUES_EQUAL("fs", fsIds[0]);
-        }
-
-        bootstrapExt.DestroyFileStore("fs");
-
-        {
-            auto response = bootstrap.AssertCreateSessionFailed("fs", "client", "");
-            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response.GetError().GetCode());
-        }
-    }
-
-    Y_UNIT_TEST(ShouldRecoverLocalStores)
-    {
-        TTestBootstrap bootstrap;
-        bootstrap.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
-
-        TTestBootstrap other(bootstrap.Cwd);
-        auto store = other.GetFileStoreInfo("fs").GetFileStore();
-
-        UNIT_ASSERT_VALUES_EQUAL(store.GetFileSystemId(), "fs");
-        UNIT_ASSERT_VALUES_EQUAL(store.GetFolderId(), "folder");
-        UNIT_ASSERT_VALUES_EQUAL(store.GetCloudId(), "cloud");
-        UNIT_ASSERT_VALUES_EQUAL(store.GetBlockSize(), 100500);
-        UNIT_ASSERT_VALUES_EQUAL(store.GetBlocksCount(), 500100);
-    }
-
-    Y_UNIT_TEST(ShouldRecoverFsNodes)
-    {
-        TTestBootstrap bootstrap("fs", "client");
-        auto ctx = MakeIntrusive<TCallContext>();
-
-        TVector<std::pair<TString, TVector<TString>>> testPaths = {
-            {"a/b/c/d/e", {"file1", "file2", "file3"}},
-            {"a/b/c/f/g", {"file4", "file5", "file6"}},
-        };
-
-        TVector<std::tuple<TVector<ui64>, TVector<ui64>, TVector<ui64>>>
-            testNodes;
-
-        for (auto& [dir, files]: testPaths) {
-            auto dirNodes = CreateDirectories(bootstrap, RootNodeId, dir);
-            TVector<ui64> fileNodes;
-            for (auto& file: files) {
-                auto fileNode =
-                    CreateFile(bootstrap, dirNodes.back(), file, 0755);
-                fileNodes.push_back(fileNode);
-            }
-
-            TVector<ui64> deletedNodes;
-            deletedNodes.push_back(
-                CreateFile(bootstrap, dirNodes.back(), "deletedFile", 0755));
-            deletedNodes.push_back(CreateDirectory(
-                bootstrap,
-                dirNodes.back(),
-                "deletedDir",
-                0755));
-
-            testNodes.emplace_back(
-                std::move(dirNodes),
-                std::move(fileNodes),
-                std::move(deletedNodes));
-        }
-
-        // delete nodes after all files/directories were created so nodes won't
-        // be reused then we can safely check that delete nodes were not
-        // recovered
-        for (auto& nodes: testNodes) {
-            auto& dirNodes = std::get<0>(nodes);
-            bootstrap.UnlinkNode(dirNodes.back(), "deletedFile", false);
-            bootstrap.UnlinkNode(dirNodes.back(), "deletedDir", true);
-        }
-
-        TTestBootstrap other(bootstrap.Cwd);
-
-        auto id = other.CreateSession("fs", "client", "", false, 0, true)
-                      .GetSession()
-                      .GetSessionId();
-        other.Headers.SessionId = id;
-        UNIT_ASSERT_VALUES_EQUAL(
-            bootstrap.Headers.SessionId,
-            other.Headers.SessionId);
-
-        for (ui32 testIndex = 0; testIndex < testPaths.size(); testIndex++) {
-            auto& dir = testPaths[testIndex].first;
-            auto& dirNodes = std::get<0>(testNodes[testIndex]);
-            auto& files = testPaths[testIndex].second;
-            auto& fileNodes = std::get<1>(testNodes[testIndex]);
-            auto& deletedNodes = std::get<2>(testNodes[testIndex]);
-
-            CheckDirectoryPath(other, RootNodeId, dir, dirNodes);
-
-            auto listedFiles = ListNames(other, dirNodes.back());
-            Sort(listedFiles);
-            UNIT_ASSERT_VALUES_EQUAL(listedFiles, files);
-
-            for (ui32 fileIndex = 0; fileIndex < files.size(); fileIndex++) {
-                auto stat = other.GetNodeAttr(dirNodes.back(), files[fileIndex])
-                                .GetNode();
-                UNIT_ASSERT_VALUES_EQUAL(fileNodes[fileIndex], stat.GetId());
-            }
-
-            for (auto& deletedNode: deletedNodes) {
-                auto response = other.AssertGetNodeAttrFailed(deletedNode);
-                UNIT_ASSERT_VALUES_EQUAL(
-                    E_FS_NOENT,
-                    response.GetError().GetCode());
-            }
-        }
-    }
-
-    Y_UNIT_TEST(ShouldRecoverSessionHandles)
-    {
-        TTestBootstrap bootstrap("fs", "client");
-        auto ctx = MakeIntrusive<TCallContext>();
-
-        TVector<TString> files = {"file1", "file2", "file3", "file4", "file5"};
-        TVector<ui64> handles;
-        TString expectedData = "aaaabbbbcccccdddddeeee";
-
+    for (auto& [dir, files]: testPaths) {
+        auto dirNodes = CreateDirectories(bootstrap, RootNodeId, dir);
+        TVector<ui64> fileNodes;
         for (auto& file: files) {
-            auto handle =
-                bootstrap
-                    .CreateHandle(RootNodeId, file, TCreateHandleArgs::CREATE)
-                    .GetHandle();
-
-            auto data = bootstrap.ReadData(handle, 0, 100).GetBuffer();
-            UNIT_ASSERT_VALUES_EQUAL(data.size(), 0);
-            handles.push_back(handle);
-
-            data = expectedData;
-            bootstrap.WriteData(handle, 0, data);
-
-            auto buffer = bootstrap.ReadData(handle, 0, 100).GetBuffer();
-            UNIT_ASSERT_VALUES_EQUAL(buffer, data);
+            auto fileNode = CreateFile(bootstrap, dirNodes.back(), file, 0755);
+            fileNodes.push_back(fileNode);
         }
 
-        // close half of the handles
-        for (ui32 i = 0; i < handles.size(); i++) {
-            if (i % 2 == 0) {
-                bootstrap.DestroyHandle(handles[i]);
-            }
+        TVector<ui64> deletedNodes;
+        deletedNodes.push_back(
+            CreateFile(bootstrap, dirNodes.back(), "deletedFile", 0755));
+        deletedNodes.push_back(
+            CreateDirectory(bootstrap, dirNodes.back(), "deletedDir", 0755));
+
+        testNodes.emplace_back(
+            std::move(dirNodes),
+            std::move(fileNodes),
+            std::move(deletedNodes));
+    }
+
+    // delete nodes after all files/directories were created so nodes won't
+    // be reused then we can safely check that delete nodes were not
+    // recovered
+    for (auto& nodes: testNodes) {
+        auto& dirNodes = std::get<0>(nodes);
+        bootstrap.UnlinkNode(dirNodes.back(), "deletedFile", false);
+        bootstrap.UnlinkNode(dirNodes.back(), "deletedDir", true);
+    }
+
+    TTestBootstrap other(bootstrap.Cwd);
+
+    auto id = other.CreateSession("fs", "client", "", false, 0, true)
+                  .GetSession()
+                  .GetSessionId();
+    other.Headers.SessionId = id;
+    UNIT_ASSERT_VALUES_EQUAL(
+        bootstrap.Headers.SessionId,
+        other.Headers.SessionId);
+
+    for (ui32 testIndex = 0; testIndex < testPaths.size(); testIndex++) {
+        auto& dir = testPaths[testIndex].first;
+        auto& dirNodes = std::get<0>(testNodes[testIndex]);
+        auto& files = testPaths[testIndex].second;
+        auto& fileNodes = std::get<1>(testNodes[testIndex]);
+        auto& deletedNodes = std::get<2>(testNodes[testIndex]);
+
+        CheckDirectoryPath(other, RootNodeId, dir, dirNodes);
+
+        auto listedFiles = ListNames(other, dirNodes.back());
+        Sort(listedFiles);
+        UNIT_ASSERT_VALUES_EQUAL(listedFiles, files);
+
+        for (ui32 fileIndex = 0; fileIndex < files.size(); fileIndex++) {
+            auto stat =
+                other.GetNodeAttr(dirNodes.back(), files[fileIndex]).GetNode();
+            UNIT_ASSERT_VALUES_EQUAL(fileNodes[fileIndex], stat.GetId());
         }
 
-        TTestBootstrap other(bootstrap.Cwd);
-
-        auto id = other.CreateSession("fs", "client", "", false, 0, true)
-                      .GetSession()
-                      .GetSessionId();
-        other.Headers.SessionId = id;
-        UNIT_ASSERT_VALUES_EQUAL(
-            bootstrap.Headers.SessionId,
-            other.Headers.SessionId);
-
-        for (ui32 i = 0; i < handles.size(); i++) {
-            if (i % 2 == 0) {
-                // check closed handles
-                auto response = other.AssertReadDataFailed(handles[i], 0, 100);
-                UNIT_ASSERT_VALUES_EQUAL(
-                    E_FS_BADHANDLE,
-                    response.GetError().GetCode());
-            } else {
-                // check open handles
-                auto buffer = other.ReadData(handles[i], 0, 100).GetBuffer();
-                UNIT_ASSERT_VALUES_EQUAL(buffer, expectedData);
-            }
+        for (auto& deletedNode: deletedNodes) {
+            auto response = other.AssertGetNodeAttrFailed(deletedNode);
+            UNIT_ASSERT_VALUES_EQUAL(E_FS_NOENT, response.GetError().GetCode());
         }
     }
+}
 
-    Y_UNIT_TEST(ShouldLimitNumberOfNodesAndHandles)
-    {
-        constexpr ui32 maxHandles = 4;
-        constexpr ui32 maxNodes = maxHandles + 2;
+Y_UNIT_TEST(ShouldRecoverSessionHandles)
+{
+    TTestBootstrap bootstrap("fs", "client");
+    auto ctx = MakeIntrusive<TCallContext>();
 
-        TTestBootstrap bootstrap("fs", "client", {}, maxNodes, maxHandles);
+    TVector<TString> files = {"file1", "file2", "file3", "file4", "file5"};
+    TVector<ui64> handles;
+    TString expectedData = "aaaabbbbcccccdddddeeee";
 
-        TVector<ui64> nodes;
-        TVector<ui64> handles;
-        for (ui32 i = 0; i < maxNodes+1; i++) {
-            auto fileName = ToString(i);
-            if (i >= maxNodes) {
-                auto response = bootstrap.AssertCreateNodeFailed(
-                    TCreateNodeArgs::File(RootNodeId, fileName, 0755));
-                UNIT_ASSERT_VALUES_EQUAL(
-                    E_FS_NOSPC,
-                    response.GetError().GetCode());
-                continue;
-            }
+    for (auto& file: files) {
+        auto handle =
+            bootstrap.CreateHandle(RootNodeId, file, TCreateHandleArgs::CREATE)
+                .GetHandle();
 
-            auto node = CreateFile(bootstrap, RootNodeId, fileName, 0755);
-            nodes.push_back(node);
-
-            if (i < maxHandles) {
-                auto handle =
-                    bootstrap.CreateHandle(node, "", TCreateHandleArgs::RDNLY)
-                        .GetHandle();
-                handles.push_back(handle);
-            } else {
-                auto response = bootstrap.AssertCreateHandleFailed(
-                    node,
-                    "",
-                    TCreateHandleArgs::RDNLY);
-                UNIT_ASSERT_VALUES_EQUAL(
-                    E_FS_NOSPC,
-                    response.GetError().GetCode());
-            }
-        }
-
-        UNIT_ASSERT_VALUES_EQUAL(maxNodes, nodes.size());
-        UNIT_ASSERT_VALUES_EQUAL(maxHandles, handles.size());
-
-        // make sure that after deleting node it's poissible to create node once
-        // again
-        bootstrap.UnlinkNode(RootNodeId, "0", false);
-        CreateFile(bootstrap, RootNodeId, "100", 0755);
-
-        // make sure that after closing handle it's poissible to open handle
-        // once again
-        bootstrap.DestroyHandle(handles[0]);
-        bootstrap.CreateHandle(nodes[1], "", TCreateHandleArgs::RDNLY)
-            .GetHandle();
-    }
-
-    Y_UNIT_TEST(ShouldCreateFileNode)
-    {
-        TTestBootstrap bootstrap("fs");
-        auto ctx = MakeIntrusive<TCallContext>();
-
-        CreateFile(bootstrap, RootNodeId, "file1", 0755);
-        CreateFile(bootstrap, RootNodeId, "file2", 0555);
-
-        auto nodes = ListNames(bootstrap, RootNodeId);
-        Sort(nodes);
-
-        UNIT_ASSERT_VALUES_EQUAL(nodes.size(), 2);
-        UNIT_ASSERT_VALUES_EQUAL(nodes[0], "file1");
-        UNIT_ASSERT_VALUES_EQUAL(nodes[1], "file2");
-    }
-
-    Y_UNIT_TEST(ShouldCreateSockNode)
-    {
-        TTestBootstrap bootstrap("fs");
-        auto ctx = MakeIntrusive<TCallContext>();
-
-        CreateSock(bootstrap, RootNodeId, "file1", 0755);
-
-        auto nodes = bootstrap.ListNodes(RootNodeId);
-
-        UNIT_ASSERT_VALUES_EQUAL(nodes.GetNames().size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(nodes.GetNames(0), "file1");
-        UNIT_ASSERT_VALUES_EQUAL(nodes.GetNodes(0).GetType(), (ui32)NProto::E_SOCK_NODE);
-    }
-
-    Y_UNIT_TEST(ShouldCreateFifoNode)
-    {
-        TTestBootstrap bootstrap("fs");
-        auto ctx = MakeIntrusive<TCallContext>();
-
-        CreateFifo(bootstrap, RootNodeId, "file1", 0755);
-
-        auto nodes = bootstrap.ListNodes(RootNodeId);
-
-        UNIT_ASSERT_VALUES_EQUAL(nodes.GetNames().size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(nodes.GetNames(0), "file1");
-        UNIT_ASSERT_VALUES_EQUAL(nodes.GetNodes(0).GetType(), (ui32)NProto::E_FIFO_NODE);
-    }
-
-    Y_UNIT_TEST(ShouldCreateDirNode)
-    {
-        TTestBootstrap bootstrap("fs");
-
-        auto id = CreateDirectory(bootstrap, RootNodeId, "dir1");
-        CreateFile(bootstrap, id, "file1", 0555);
-
-        auto nodes = ListNames(bootstrap, id);
-        UNIT_ASSERT_VALUES_EQUAL(nodes.size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(nodes[0], "file1");
-    }
-
-    Y_UNIT_TEST(ShouldCreateHardLinkNode)
-    {
-        TTestBootstrap bootstrap("fs");
-
-        auto id = CreateDirectory(bootstrap, RootNodeId, "dir");
-
-        auto id1 = CreateFile(bootstrap, id, "file", 0777);
-        auto id2 = CreateHardLink(bootstrap, RootNodeId, "link", id1);
-
-        UNIT_ASSERT_VALUES_EQUAL(id1, id2);
-
-        // cannot hard link directories
-        bootstrap.AssertCreateNodeFailed(TCreateNodeArgs::Link(RootNodeId, "newdir", id));
-    }
-
-    Y_UNIT_TEST(ShouldCreateSymLinkNode)
-    {
-        TTestBootstrap bootstrap("fs");
-
-        auto id = CreateSymLink(bootstrap, RootNodeId, "link", "/xxxxxxx");
-
-        auto response = bootstrap.ReadLink(id);
-        UNIT_ASSERT_VALUES_EQUAL(response.GetSymLink(), "/xxxxxxx");
-    }
-
-    Y_UNIT_TEST(ShouldRemoveFileNode)
-    {
-        TTestBootstrap bootstrap("fs");
-        auto ctx = MakeIntrusive<TCallContext>();
-
-        CreateFile(bootstrap, RootNodeId, "file1");
-        CreateSymLink(bootstrap, RootNodeId, "link", "/file1");
-        bootstrap.UnlinkNode(RootNodeId, "file1", false);
-
-        auto nodes = ListNames(bootstrap, RootNodeId);
-        UNIT_ASSERT_VALUES_EQUAL(nodes.size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(nodes[0], "link");
-    }
-
-    Y_UNIT_TEST(ShouldRemoveDirectoryNode)
-    {
-        TTestBootstrap bootstrap("fs");
-
-        auto id1 = CreateDirectory(bootstrap, RootNodeId, "dir");
-        auto id2 = CreateDirectory(bootstrap, id1, "dir");
-
-        bootstrap.AssertUnlinkNodeFailed(id1, "file", false);
-        bootstrap.AssertUnlinkNodeFailed(id2, "file", true);
-
-        // not empty
-        bootstrap.AssertUnlinkNodeFailed(RootNodeId, "dir", false);
-        bootstrap.AssertUnlinkNodeFailed(RootNodeId, "dir", true);
-
-
-        bootstrap.AssertUnlinkNodeFailed(id1, "dir", false);
-        bootstrap.UnlinkNode(id1, "dir", true);
-        bootstrap.UnlinkNode(RootNodeId, "dir", true);
-
-        auto nodes = ListNames(bootstrap, RootNodeId);
-        UNIT_ASSERT_VALUES_EQUAL(nodes.size(), 0);
-    }
-
-    Y_UNIT_TEST(ShouldRemoveSymLinkNode)
-    {
-        TTestBootstrap bootstrap("fs");
-        CreateFile(bootstrap, RootNodeId, "file");
-        CreateSymLink(bootstrap, RootNodeId, "link", "/file");
-        bootstrap.UnlinkNode(RootNodeId, "link", false);
-
-        auto nodes = ListNames(bootstrap, RootNodeId);
-        UNIT_ASSERT_VALUES_EQUAL(nodes.size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(nodes[0], "file");
-    }
-
-    Y_UNIT_TEST(ShouldOpenFileHandle)
-    {
-        TTestBootstrap bootstrap("fs");
-
-        auto id = CreateFile(bootstrap, RootNodeId, "file");
-        auto handle = bootstrap.CreateHandle(id, "", TCreateHandleArgs::RDNLY).GetHandle();
-
-        bootstrap.DestroyHandle(handle);
-    }
-
-    Y_UNIT_TEST(ShouldCreateFileHandle)
-    {
-        TTestBootstrap bootstrap("fs");
-
-        bootstrap.AssertCreateHandleFailed(RootNodeId, "file", TCreateHandleArgs::RDNLY);
-
-        bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::CREATE);
-
-        auto nodes = ListNames(bootstrap, RootNodeId);
-        UNIT_ASSERT_VALUES_EQUAL(nodes.size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(nodes[0], "file");
-    }
-
-    Y_UNIT_TEST(ShouldReadAndWriteData)
-    {
-        TTestBootstrap bootstrap("fs");
-
-        ui64 handle = bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::CREATE).GetHandle();
         auto data = bootstrap.ReadData(handle, 0, 100).GetBuffer();
         UNIT_ASSERT_VALUES_EQUAL(data.size(), 0);
+        handles.push_back(handle);
 
-        data = "aaaabbbbcccccdddddeeee";
+        data = expectedData;
         bootstrap.WriteData(handle, 0, data);
 
         auto buffer = bootstrap.ReadData(handle, 0, 100).GetBuffer();
         UNIT_ASSERT_VALUES_EQUAL(buffer, data);
-
-        buffer = bootstrap.ReadData(handle, 0, 4).GetBuffer();
-        UNIT_ASSERT_VALUES_EQUAL(buffer, "aaaa");
-
-        buffer = bootstrap.ReadData(handle, 4, 4).GetBuffer();
-        UNIT_ASSERT_VALUES_EQUAL(buffer, "bbbb");
     }
 
-    Y_UNIT_TEST(ShouldAllocateData)
+    // close half of the handles
+    for (ui32 i = 0; i < handles.size(); i++) {
+        if (i % 2 == 0) {
+            bootstrap.DestroyHandle(handles[i]);
+        }
+    }
+
+    TTestBootstrap other(bootstrap.Cwd);
+
+    auto id = other.CreateSession("fs", "client", "", false, 0, true)
+                  .GetSession()
+                  .GetSessionId();
+    other.Headers.SessionId = id;
+    UNIT_ASSERT_VALUES_EQUAL(
+        bootstrap.Headers.SessionId,
+        other.Headers.SessionId);
+
+    for (ui32 i = 0; i < handles.size(); i++) {
+        if (i % 2 == 0) {
+            // check closed handles
+            auto response = other.AssertReadDataFailed(handles[i], 0, 100);
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_FS_BADHANDLE,
+                response.GetError().GetCode());
+        } else {
+            // check open handles
+            auto buffer = other.ReadData(handles[i], 0, 100).GetBuffer();
+            UNIT_ASSERT_VALUES_EQUAL(buffer, expectedData);
+        }
+    }
+}
+
+Y_UNIT_TEST(ShouldLimitNumberOfNodesAndHandles)
+{
+    constexpr ui32 maxHandles = 4;
+    constexpr ui32 maxNodes = maxHandles + 2;
+
+    TTestBootstrap bootstrap("fs", "client", {}, maxNodes, maxHandles);
+
+    TVector<ui64> nodes;
+    TVector<ui64> handles;
+    for (ui32 i = 0; i < maxNodes + 1; i++) {
+        auto fileName = ToString(i);
+        if (i >= maxNodes) {
+            auto response = bootstrap.AssertCreateNodeFailed(
+                TCreateNodeArgs::File(RootNodeId, fileName, 0755));
+            UNIT_ASSERT_VALUES_EQUAL(E_FS_NOSPC, response.GetError().GetCode());
+            continue;
+        }
+
+        auto node = CreateFile(bootstrap, RootNodeId, fileName, 0755);
+        nodes.push_back(node);
+
+        if (i < maxHandles) {
+            auto handle =
+                bootstrap.CreateHandle(node, "", TCreateHandleArgs::RDNLY)
+                    .GetHandle();
+            handles.push_back(handle);
+        } else {
+            auto response = bootstrap.AssertCreateHandleFailed(
+                node,
+                "",
+                TCreateHandleArgs::RDNLY);
+            UNIT_ASSERT_VALUES_EQUAL(E_FS_NOSPC, response.GetError().GetCode());
+        }
+    }
+
+    UNIT_ASSERT_VALUES_EQUAL(maxNodes, nodes.size());
+    UNIT_ASSERT_VALUES_EQUAL(maxHandles, handles.size());
+
+    // make sure that after deleting node it's poissible to create node once
+    // again
+    bootstrap.UnlinkNode(RootNodeId, "0", false);
+    CreateFile(bootstrap, RootNodeId, "100", 0755);
+
+    // make sure that after closing handle it's poissible to open handle
+    // once again
+    bootstrap.DestroyHandle(handles[0]);
+    bootstrap.CreateHandle(nodes[1], "", TCreateHandleArgs::RDNLY).GetHandle();
+}
+
+Y_UNIT_TEST(ShouldCreateFileNode)
+{
+    TTestBootstrap bootstrap("fs");
+    auto ctx = MakeIntrusive<TCallContext>();
+
+    CreateFile(bootstrap, RootNodeId, "file1", 0755);
+    CreateFile(bootstrap, RootNodeId, "file2", 0555);
+
+    auto nodes = ListNames(bootstrap, RootNodeId);
+    Sort(nodes);
+
+    UNIT_ASSERT_VALUES_EQUAL(nodes.size(), 2);
+    UNIT_ASSERT_VALUES_EQUAL(nodes[0], "file1");
+    UNIT_ASSERT_VALUES_EQUAL(nodes[1], "file2");
+}
+
+Y_UNIT_TEST(ShouldCreateSockNode)
+{
+    TTestBootstrap bootstrap("fs");
+    auto ctx = MakeIntrusive<TCallContext>();
+
+    CreateSock(bootstrap, RootNodeId, "file1", 0755);
+
+    auto nodes = bootstrap.ListNodes(RootNodeId);
+
+    UNIT_ASSERT_VALUES_EQUAL(nodes.GetNames().size(), 1);
+    UNIT_ASSERT_VALUES_EQUAL(nodes.GetNames(0), "file1");
+    UNIT_ASSERT_VALUES_EQUAL(
+        nodes.GetNodes(0).GetType(),
+        (ui32)NProto::E_SOCK_NODE);
+}
+
+Y_UNIT_TEST(ShouldCreateFifoNode)
+{
+    TTestBootstrap bootstrap("fs");
+    auto ctx = MakeIntrusive<TCallContext>();
+
+    CreateFifo(bootstrap, RootNodeId, "file1", 0755);
+
+    auto nodes = bootstrap.ListNodes(RootNodeId);
+
+    UNIT_ASSERT_VALUES_EQUAL(nodes.GetNames().size(), 1);
+    UNIT_ASSERT_VALUES_EQUAL(nodes.GetNames(0), "file1");
+    UNIT_ASSERT_VALUES_EQUAL(
+        nodes.GetNodes(0).GetType(),
+        (ui32)NProto::E_FIFO_NODE);
+}
+
+Y_UNIT_TEST(ShouldCreateDirNode)
+{
+    TTestBootstrap bootstrap("fs");
+
+    auto id = CreateDirectory(bootstrap, RootNodeId, "dir1");
+    CreateFile(bootstrap, id, "file1", 0555);
+
+    auto nodes = ListNames(bootstrap, id);
+    UNIT_ASSERT_VALUES_EQUAL(nodes.size(), 1);
+    UNIT_ASSERT_VALUES_EQUAL(nodes[0], "file1");
+}
+
+Y_UNIT_TEST(ShouldCreateHardLinkNode)
+{
+    TTestBootstrap bootstrap("fs");
+
+    auto id = CreateDirectory(bootstrap, RootNodeId, "dir");
+
+    auto id1 = CreateFile(bootstrap, id, "file", 0777);
+    auto id2 = CreateHardLink(bootstrap, RootNodeId, "link", id1);
+
+    UNIT_ASSERT_VALUES_EQUAL(id1, id2);
+
+    // cannot hard link directories
+    bootstrap.AssertCreateNodeFailed(
+        TCreateNodeArgs::Link(RootNodeId, "newdir", id));
+}
+
+Y_UNIT_TEST(ShouldCreateSymLinkNode)
+{
+    TTestBootstrap bootstrap("fs");
+
+    auto id = CreateSymLink(bootstrap, RootNodeId, "link", "/xxxxxxx");
+
+    auto response = bootstrap.ReadLink(id);
+    UNIT_ASSERT_VALUES_EQUAL(response.GetSymLink(), "/xxxxxxx");
+}
+
+Y_UNIT_TEST(ShouldRemoveFileNode)
+{
+    TTestBootstrap bootstrap("fs");
+    auto ctx = MakeIntrusive<TCallContext>();
+
+    CreateFile(bootstrap, RootNodeId, "file1");
+    CreateSymLink(bootstrap, RootNodeId, "link", "/file1");
+    bootstrap.UnlinkNode(RootNodeId, "file1", false);
+
+    auto nodes = ListNames(bootstrap, RootNodeId);
+    UNIT_ASSERT_VALUES_EQUAL(nodes.size(), 1);
+    UNIT_ASSERT_VALUES_EQUAL(nodes[0], "link");
+}
+
+Y_UNIT_TEST(ShouldRemoveDirectoryNode)
+{
+    TTestBootstrap bootstrap("fs");
+
+    auto id1 = CreateDirectory(bootstrap, RootNodeId, "dir");
+    auto id2 = CreateDirectory(bootstrap, id1, "dir");
+
+    bootstrap.AssertUnlinkNodeFailed(id1, "file", false);
+    bootstrap.AssertUnlinkNodeFailed(id2, "file", true);
+
+    // not empty
+    bootstrap.AssertUnlinkNodeFailed(RootNodeId, "dir", false);
+    bootstrap.AssertUnlinkNodeFailed(RootNodeId, "dir", true);
+
+    bootstrap.AssertUnlinkNodeFailed(id1, "dir", false);
+    bootstrap.UnlinkNode(id1, "dir", true);
+    bootstrap.UnlinkNode(RootNodeId, "dir", true);
+
+    auto nodes = ListNames(bootstrap, RootNodeId);
+    UNIT_ASSERT_VALUES_EQUAL(nodes.size(), 0);
+}
+
+Y_UNIT_TEST(ShouldRemoveSymLinkNode)
+{
+    TTestBootstrap bootstrap("fs");
+    CreateFile(bootstrap, RootNodeId, "file");
+    CreateSymLink(bootstrap, RootNodeId, "link", "/file");
+    bootstrap.UnlinkNode(RootNodeId, "link", false);
+
+    auto nodes = ListNames(bootstrap, RootNodeId);
+    UNIT_ASSERT_VALUES_EQUAL(nodes.size(), 1);
+    UNIT_ASSERT_VALUES_EQUAL(nodes[0], "file");
+}
+
+Y_UNIT_TEST(ShouldOpenFileHandle)
+{
+    TTestBootstrap bootstrap("fs");
+
+    auto id = CreateFile(bootstrap, RootNodeId, "file");
+    auto handle =
+        bootstrap.CreateHandle(id, "", TCreateHandleArgs::RDNLY).GetHandle();
+
+    bootstrap.DestroyHandle(handle);
+}
+
+Y_UNIT_TEST(ShouldCreateFileHandle)
+{
+    TTestBootstrap bootstrap("fs");
+
+    bootstrap.AssertCreateHandleFailed(
+        RootNodeId,
+        "file",
+        TCreateHandleArgs::RDNLY);
+
+    bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::CREATE);
+
+    auto nodes = ListNames(bootstrap, RootNodeId);
+    UNIT_ASSERT_VALUES_EQUAL(nodes.size(), 1);
+    UNIT_ASSERT_VALUES_EQUAL(nodes[0], "file");
+}
+
+Y_UNIT_TEST(ShouldReadAndWriteData)
+{
+    TTestBootstrap bootstrap("fs");
+
+    ui64 handle =
+        bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::CREATE)
+            .GetHandle();
+    auto data = bootstrap.ReadData(handle, 0, 100).GetBuffer();
+    UNIT_ASSERT_VALUES_EQUAL(data.size(), 0);
+
+    data = "aaaabbbbcccccdddddeeee";
+    bootstrap.WriteData(handle, 0, data);
+
+    auto buffer = bootstrap.ReadData(handle, 0, 100).GetBuffer();
+    UNIT_ASSERT_VALUES_EQUAL(buffer, data);
+
+    buffer = bootstrap.ReadData(handle, 0, 4).GetBuffer();
+    UNIT_ASSERT_VALUES_EQUAL(buffer, "aaaa");
+
+    buffer = bootstrap.ReadData(handle, 4, 4).GetBuffer();
+    UNIT_ASSERT_VALUES_EQUAL(buffer, "bbbb");
+}
+
+Y_UNIT_TEST(ShouldAllocateData)
+{
+    TTestBootstrap bootstrap("fs");
+
+    auto id = CreateFile(bootstrap, RootNodeId, "file");
+    auto handle =
+        bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::RDWR)
+            .GetHandle();
+
+    bootstrap.AllocateData(handle, 0, 1024, 0);
+    auto stat = bootstrap.GetNodeAttr(id).GetNode();
+    UNIT_ASSERT_VALUES_EQUAL(stat.GetSize(), 1024);
+
+    bootstrap.AllocateData(handle, 0, 512, 0);
+    stat = bootstrap.GetNodeAttr(id).GetNode();
+    // Should not change size, because new_length < old_length
+    UNIT_ASSERT_VALUES_EQUAL(stat.GetSize(), 1024);
+
+    bootstrap.AllocateData(handle, 256, 1280, 0);
+    stat = bootstrap.GetNodeAttr(id).GetNode();
+    UNIT_ASSERT_VALUES_EQUAL(stat.GetSize(), 1536);
+}
+
+Y_UNIT_TEST(ShouldAllocateDataWithFlags)
+{
+    TTestBootstrap bootstrap("fs");
+
+    auto id = CreateFile(bootstrap, RootNodeId, "file");
+    auto handle =
+        bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::RDWR)
+            .GetHandle();
+
+    TString data = "aaaabbbbccccddddeeee";
+    bootstrap.WriteData(handle, 0, data);
+
     {
-        TTestBootstrap bootstrap("fs");
+        const ui32 flags =
+            ProtoFlag(NProto::TAllocateDataRequest::F_ZERO_RANGE);
+        bootstrap.AllocateData(handle, 4, 4, flags);
 
-        auto id = CreateFile(bootstrap, RootNodeId, "file");
-        auto handle = bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::RDWR).GetHandle();
+        std::fill(data.begin() + 4, data.begin() + 8, 0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            data,
+            bootstrap.ReadData(handle, 0, 100).GetBuffer());
 
-        bootstrap.AllocateData(handle, 0, 1024, 0);
         auto stat = bootstrap.GetNodeAttr(id).GetNode();
-        UNIT_ASSERT_VALUES_EQUAL(stat.GetSize(), 1024);
-
-        bootstrap.AllocateData(handle, 0, 512, 0);
-        stat = bootstrap.GetNodeAttr(id).GetNode();
-        // Should not change size, because new_length < old_length
-        UNIT_ASSERT_VALUES_EQUAL(stat.GetSize(), 1024);
-
-        bootstrap.AllocateData(handle, 256, 1280, 0);
-        stat = bootstrap.GetNodeAttr(id).GetNode();
-        UNIT_ASSERT_VALUES_EQUAL(stat.GetSize(), 1536);
+        UNIT_ASSERT_VALUES_EQUAL(stat.GetSize(), 20);
     }
 
-    Y_UNIT_TEST(ShouldAllocateDataWithFlags)
     {
-        TTestBootstrap bootstrap("fs");
+        const ui32 flags =
+            ProtoFlag(NProto::TAllocateDataRequest::F_PUNCH_HOLE) |
+            ProtoFlag(NProto::TAllocateDataRequest::F_KEEP_SIZE);
+        bootstrap.AllocateData(handle, 18, 4, flags);
 
-        auto id = CreateFile(bootstrap, RootNodeId, "file");
-        auto handle = bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::RDWR).GetHandle();
+        std::fill(data.begin() + 18, data.begin() + 20, 0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            data,
+            bootstrap.ReadData(handle, 0, 100).GetBuffer());
 
-        TString data = "aaaabbbbccccddddeeee";
-        bootstrap.WriteData(handle, 0, data);
-
-        {
-            const ui32 flags =
-                ProtoFlag(NProto::TAllocateDataRequest::F_ZERO_RANGE);
-            bootstrap.AllocateData(handle, 4, 4, flags);
-
-            std::fill(data.begin() + 4, data.begin() + 8, 0);
-            UNIT_ASSERT_VALUES_EQUAL(
-                data,
-                bootstrap.ReadData(handle, 0, 100).GetBuffer());
-
-            auto stat = bootstrap.GetNodeAttr(id).GetNode();
-            UNIT_ASSERT_VALUES_EQUAL(stat.GetSize(), 20);
-        }
-
-        {
-            const ui32 flags =
-                ProtoFlag(NProto::TAllocateDataRequest::F_PUNCH_HOLE) |
-                ProtoFlag(NProto::TAllocateDataRequest::F_KEEP_SIZE);
-            bootstrap.AllocateData(handle, 18, 4, flags);
-
-            std::fill(data.begin() + 18, data.begin() + 20, 0);
-            UNIT_ASSERT_VALUES_EQUAL(
-                data,
-                bootstrap.ReadData(handle, 0, 100).GetBuffer());
-
-            auto stat = bootstrap.GetNodeAttr(id).GetNode();
-            UNIT_ASSERT_VALUES_EQUAL(stat.GetSize(), 20);
-        }
-
-        {
-            const ui32 flags =
-                ProtoFlag(NProto::TAllocateDataRequest::F_PUNCH_HOLE);
-            const auto response = bootstrap.AssertAllocateDataFailed(handle, 0, 4, flags);
-            UNIT_ASSERT_VALUES_EQUAL(E_FS_NOTSUPP, response.GetError().GetCode());
-
-            UNIT_ASSERT_VALUES_EQUAL(
-                data,
-                bootstrap.ReadData(handle, 0, 100).GetBuffer());
-
-            auto stat = bootstrap.GetNodeAttr(id).GetNode();
-            UNIT_ASSERT_VALUES_EQUAL(stat.GetSize(), 20);
-        }
+        auto stat = bootstrap.GetNodeAttr(id).GetNode();
+        UNIT_ASSERT_VALUES_EQUAL(stat.GetSize(), 20);
     }
 
-    Y_UNIT_TEST(ShouldLock)
     {
-        TTestBootstrap bootstrap("fs");
-
-        CreateFile(bootstrap, RootNodeId, "file", 0777);
-
-        auto handle1 = bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::RDWR).GetHandle();
-        bootstrap.AllocateData(handle1, 0, 1024, 0);
-        bootstrap.AcquireLock(handle1, 0, 128);
-
-        auto oldSession = bootstrap.Headers;
-
-        auto id = bootstrap.CreateSession("fs", "client2", "").GetSession().GetSessionId();
-        bootstrap.Headers.SessionId = id;
-
-        auto handle2 = bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::RDWR).GetHandle();
-        {
-            auto response = bootstrap.AssertTestLockFailed(handle2, 0, 128);
-            UNIT_ASSERT_VALUES_EQUAL(
-                E_FS_WOULDBLOCK,
-                response.GetError().GetCode());
-        }
-        bootstrap.AssertTestLockFailed(handle2, 32, 64);
-        bootstrap.AssertTestLockFailed(handle2, 64, 128);
-
-        bootstrap.TestLock(handle2, 128, 128);
-        // over the file range?
-        bootstrap.TestLock(handle2, 128, 1024);
-
-        {
-            auto response = bootstrap.AssertAcquireLockFailed(handle2, 0, 128);
-            UNIT_ASSERT_VALUES_EQUAL(
-                E_FS_WOULDBLOCK,
-                response.GetError().GetCode());
-        }
-        bootstrap.AssertAcquireLockFailed(handle2, 32, 64);
-        bootstrap.AssertAcquireLockFailed(handle2, 64,128);
-
-        bootstrap.AcquireLock(handle2, 128, 128);
-
-        std::swap(bootstrap.Headers, oldSession);
-        bootstrap.ReleaseLock(handle1, 0, 128);
-
-        std::swap(bootstrap.Headers, oldSession);
-        bootstrap.AcquireLock(handle2, 0, 128);
-    }
-
-    Y_UNIT_TEST(ShouldSharedLock)
-    {
-        TTestBootstrap bootstrap("fs");
-
-        CreateFile(bootstrap, RootNodeId, "file", 0777);
-
-        auto handle1 = bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::RDWR).GetHandle();
-        bootstrap.AllocateData(handle1, 0, 1024, 0);
-        bootstrap.AcquireLock(handle1, 0, 128, NProto::E_SHARED);
-
-        auto handle2 = bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::RDWR).GetHandle();
-        bootstrap.AcquireLock(handle2, 0, 128, NProto::E_SHARED);
-    }
-
-    Y_UNIT_TEST(ShouldHandleXAttrsForDirectory)
-    {
-        TTestBootstrap bootstrap("fs");
-        auto id = CreateDirectory(bootstrap, RootNodeId, "folder");
-
-        // no attributes
-
-        auto attributes = bootstrap.ListNodeXAttr(id).GetNames();
-        UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 0);
-
-        ui64 attrVersion = 0;
-        // 1 attribute
-        auto rsp = bootstrap.SetNodeXAttr(id, "user.xattr1", "");
-        attrVersion = rsp.GetVersion();
-
-
-        attributes = bootstrap.ListNodeXAttr(id).GetNames();
-        UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(attributes[0], "user.xattr1");
-
-        auto val = bootstrap.GetNodeXAttr(id, "user.xattr1").GetValue();
-        UNIT_ASSERT_VALUES_EQUAL(val, "");
-
-        rsp = bootstrap.SetNodeXAttr(id, "user.xattr1", "valueeee1");
-        UNIT_ASSERT_GT(rsp.GetVersion(), attrVersion);
-        attrVersion = rsp.GetVersion();
-
-        attributes = bootstrap.ListNodeXAttr(id).GetNames();
-        UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(attributes[0], "user.xattr1");
-
-        val = bootstrap.GetNodeXAttr(id, "user.xattr1").GetValue();
-        UNIT_ASSERT_VALUES_EQUAL(val, "valueeee1");
-
-        // 2 attributes
-        rsp = bootstrap.SetNodeXAttr(id, "user.xattr2", "valueeee2");
-        attrVersion = rsp.GetVersion();
-
-        attributes = bootstrap.ListNodeXAttr(id).GetNames();
-        UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 2);
-        UNIT_ASSERT_VALUES_EQUAL(attributes[0], "user.xattr1");
-        UNIT_ASSERT_VALUES_EQUAL(attributes[1], "user.xattr2");
-
-        val = bootstrap.GetNodeXAttr(id, "user.xattr1").GetValue();
-        UNIT_ASSERT_VALUES_EQUAL(val, "valueeee1");
-
-        val = bootstrap.GetNodeXAttr(id, "user.xattr2").GetValue();
-        UNIT_ASSERT_VALUES_EQUAL(val, "valueeee2");
-
-        rsp = bootstrap.SetNodeXAttr(id, "user.xattr2", "valueeee");
-        UNIT_ASSERT_GT(rsp.GetVersion(), attrVersion);
-
-        attributes = bootstrap.ListNodeXAttr(id).GetNames();
-        UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 2);
-        UNIT_ASSERT_VALUES_EQUAL(attributes[0], "user.xattr1");
-        UNIT_ASSERT_VALUES_EQUAL(attributes[1], "user.xattr2");
-
-        val = bootstrap.GetNodeXAttr(id, "user.xattr1").GetValue();
-        UNIT_ASSERT_VALUES_EQUAL(val, "valueeee1");
-
-        val = bootstrap.GetNodeXAttr(id, "user.xattr2").GetValue();
-        UNIT_ASSERT_VALUES_EQUAL(val, "valueeee");
-
-        // 1 attrribute
-        bootstrap.RemoveNodeXAttr(id, "user.xattr2");
-
-        attributes = bootstrap.ListNodeXAttr(id).GetNames();
-        UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(attributes[0], "user.xattr1");
-
-        val = bootstrap.GetNodeXAttr(id, "user.xattr1").GetValue();
-        UNIT_ASSERT_VALUES_EQUAL(val, "valueeee1");
-
-        // no attrributes
-        bootstrap.RemoveNodeXAttr(id, "user.xattr1");
-
-        attributes = bootstrap.ListNodeXAttr(id).GetNames();
-        UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 0);
-    }
-
-    Y_UNIT_TEST(ShouldHandleXAttrsForFiles)
-    {
-        TTestBootstrap bootstrap("fs");
-        auto id = CreateFile(bootstrap, RootNodeId, "file");
-
-        // no attributes
-
-        auto attributes = bootstrap.ListNodeXAttr(id).GetNames();
-        UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 0);
-
-        ui64 attrVersion = 0;
-        // 1 attribute
-        auto rsp = bootstrap.SetNodeXAttr(id, "user.xattr1", "");
-        attrVersion = rsp.GetVersion();
-
-        attributes = bootstrap.ListNodeXAttr(id).GetNames();
-        UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(attributes[0], "user.xattr1");
-
-        auto val = bootstrap.GetNodeXAttr(id, "user.xattr1").GetValue();
-        UNIT_ASSERT_VALUES_EQUAL(val, "");
-
-        rsp = bootstrap.SetNodeXAttr(id, "user.xattr1", "valueeee1");
-        UNIT_ASSERT_GT(rsp.GetVersion(), attrVersion);
-
-        attributes = bootstrap.ListNodeXAttr(id).GetNames();
-        UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(attributes[0], "user.xattr1");
-
-        val = bootstrap.GetNodeXAttr(id, "user.xattr1").GetValue();
-        UNIT_ASSERT_VALUES_EQUAL(val, "valueeee1");
-
-        // 2 attributes
-        rsp = bootstrap.SetNodeXAttr(id, "user.xattr2", "valueeee2");
-        attrVersion = rsp.GetVersion();
-
-        attributes = bootstrap.ListNodeXAttr(id).GetNames();
-        UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 2);
-        UNIT_ASSERT_VALUES_EQUAL(attributes[0], "user.xattr1");
-        UNIT_ASSERT_VALUES_EQUAL(attributes[1], "user.xattr2");
-
-        val = bootstrap.GetNodeXAttr(id, "user.xattr1").GetValue();
-        UNIT_ASSERT_VALUES_EQUAL(val, "valueeee1");
-
-        val = bootstrap.GetNodeXAttr(id, "user.xattr2").GetValue();
-        UNIT_ASSERT_VALUES_EQUAL(val, "valueeee2");
-
-        rsp = bootstrap.SetNodeXAttr(id, "user.xattr2", "valueeee");
-        UNIT_ASSERT_GT(rsp.GetVersion(), attrVersion);
-        attributes = bootstrap.ListNodeXAttr(id).GetNames();
-        UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 2);
-        UNIT_ASSERT_VALUES_EQUAL(attributes[0], "user.xattr1");
-        UNIT_ASSERT_VALUES_EQUAL(attributes[1], "user.xattr2");
-
-        val = bootstrap.GetNodeXAttr(id, "user.xattr1").GetValue();
-        UNIT_ASSERT_VALUES_EQUAL(val, "valueeee1");
-
-        val = bootstrap.GetNodeXAttr(id, "user.xattr2").GetValue();
-        UNIT_ASSERT_VALUES_EQUAL(val, "valueeee");
-
-        // 1 attrribute
-        bootstrap.RemoveNodeXAttr(id, "user.xattr2");
-
-        attributes = bootstrap.ListNodeXAttr(id).GetNames();
-        UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(attributes[0], "user.xattr1");
-
-        val = bootstrap.GetNodeXAttr(id, "user.xattr1").GetValue();
-        UNIT_ASSERT_VALUES_EQUAL(val, "valueeee1");
-
-        // no attrributes
-        bootstrap.RemoveNodeXAttr(id, "user.xattr1");
-
-        attributes = bootstrap.ListNodeXAttr(id).GetNames();
-        UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 0);
-    }
-
-    // TODO: should it work Y_UNIT_TEST(ShouldHandleXAttrsForSymLinks)
-
-    Y_UNIT_TEST(ShouldHandleInproperXAttrsRequests)
-    {
-        TTestBootstrap bootstrap("fs");
-        auto id = CreateFile(bootstrap, RootNodeId, "file");
-        auto nonexistent = id + 100500;
-
-        bootstrap.AssertListNodeXAttrFailed(nonexistent);
-
-        bootstrap.AssertSetNodeXAttrFailed(id, "invalid", "value");
-        bootstrap.AssertSetNodeXAttrFailed(nonexistent, "user.xattr", "value");
-
-        bootstrap.AssertGetNodeXAttrFailed(id, "user.xattr");
-        bootstrap.AssertGetNodeXAttrFailed(nonexistent, "user.xattr");
-
-        bootstrap.AssertRemoveNodeXAttrFailed(nonexistent, "user.xattr");
-        bootstrap.AssertRemoveNodeXAttrFailed(id, "user.xattr");
-    }
-
-    Y_UNIT_TEST(ShouldResetSessionStateAndRestoreByClient)
-    {
-        const TString state = "abcde";
-
-        TTestBootstrap bootstrap("fs");
-        bootstrap.ResetSession(state);
-
-        auto response = bootstrap.CreateSession("fs", "client", "", true);
-        UNIT_ASSERT_VALUES_EQUAL(response.GetSession().GetSessionState(), state);
-
-        TTestBootstrap other(bootstrap.Cwd);
-
-        auto otherResponse =
-            other.CreateSession("fs", "client", "", false, 0, true);
-        UNIT_ASSERT_VALUES_EQUAL(otherResponse.GetSession().GetSessionState(), state);
+        const ui32 flags =
+            ProtoFlag(NProto::TAllocateDataRequest::F_PUNCH_HOLE);
+        const auto response =
+            bootstrap.AssertAllocateDataFailed(handle, 0, 4, flags);
+        UNIT_ASSERT_VALUES_EQUAL(E_FS_NOTSUPP, response.GetError().GetCode());
 
         UNIT_ASSERT_VALUES_EQUAL(
-            response.GetSession().GetSessionId(),
-            otherResponse.GetSession().GetSessionId());
+            data,
+            bootstrap.ReadData(handle, 0, 100).GetBuffer());
+
+        auto stat = bootstrap.GetNodeAttr(id).GetNode();
+        UNIT_ASSERT_VALUES_EQUAL(stat.GetSize(), 20);
     }
+}
 
-    Y_UNIT_TEST(ShouldSupportMigration)
+Y_UNIT_TEST(ShouldLock)
+{
+    TTestBootstrap bootstrap("fs");
+
+    CreateFile(bootstrap, RootNodeId, "file", 0777);
+
+    auto handle1 =
+        bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::RDWR)
+            .GetHandle();
+    bootstrap.AllocateData(handle1, 0, 1024, 0);
+    bootstrap.AcquireLock(handle1, 0, 128);
+
+    auto oldSession = bootstrap.Headers;
+
+    auto id = bootstrap.CreateSession("fs", "client2", "")
+                  .GetSession()
+                  .GetSessionId();
+    bootstrap.Headers.SessionId = id;
+
+    auto handle2 =
+        bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::RDWR)
+            .GetHandle();
     {
-        TTestBootstrap bootstrap("fs");
-
-        auto response = bootstrap.CreateSession("fs", "client", "", false, 0);
-        auto sourceId = response.GetSession().GetSessionId();
-        UNIT_ASSERT(sourceId != "");
-
-        THeaders source {
-            .FileSystemId = "fs",
-            .ClientId = "client",
-            .SessionId = sourceId,
-            .SessionSeqNo = 0
-        };
-
-        bootstrap.SwitchToSession(source);
-        bootstrap.PingSession();
-
-        bootstrap.CreateNode(TCreateNodeArgs::File(RootNodeId, "file"));
-        bootstrap.ListNodes(1);
-
-        response = bootstrap.CreateSession("fs", "client", "", true, 1);
-        auto targetId = response.GetSession().GetSessionId();
-        UNIT_ASSERT(targetId == sourceId);
-
-        THeaders target {
-            .FileSystemId = "fs",
-            .ClientId = "client",
-            .SessionId = targetId,
-            .SessionSeqNo = 1
-        };
-
-        bootstrap.SwitchToSession(target);
-        bootstrap.PingSession();
-
-        response = bootstrap.CreateSession("fs", "client", "", false, 1);
-        UNIT_ASSERT(response.GetSession().GetSessionId() == targetId);
-
-        bootstrap.SwitchToSession(target);
-        bootstrap.PingSession();
-        bootstrap.CreateNode(TCreateNodeArgs::File(RootNodeId, "file2"));
-        bootstrap.ListNodes(1);
-
-        bootstrap.SwitchToSession(source);
-        bootstrap.DestroySession();
-
-        bootstrap.SwitchToSession(target);
-        bootstrap.CreateNode(TCreateNodeArgs::File(RootNodeId, "file3"));
+        auto response = bootstrap.AssertTestLockFailed(handle2, 0, 128);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_FS_WOULDBLOCK,
+            response.GetError().GetCode());
     }
+    bootstrap.AssertTestLockFailed(handle2, 32, 64);
+    bootstrap.AssertTestLockFailed(handle2, 64, 128);
 
-    Y_UNIT_TEST(ShouldRenameDirNodes)
+    bootstrap.TestLock(handle2, 128, 128);
+    // over the file range?
+    bootstrap.TestLock(handle2, 128, 1024);
+
     {
-        TTestBootstrap bootstrap("fs");
+        auto response = bootstrap.AssertAcquireLockFailed(handle2, 0, 128);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_FS_WOULDBLOCK,
+            response.GetError().GetCode());
+    }
+    bootstrap.AssertAcquireLockFailed(handle2, 32, 64);
+    bootstrap.AssertAcquireLockFailed(handle2, 64, 128);
 
-        bootstrap.CreateNode(TCreateNodeArgs::File(RootNodeId, "xxx"));
-        bootstrap.CreateNode(TCreateNodeArgs::SymLink(RootNodeId, "yyy", "zzz"));
-        auto id1 = bootstrap
-            .CreateNode(TCreateNodeArgs::Directory(RootNodeId, "a"))
-            .GetNode()
-            .GetId();
-        auto id2 = bootstrap
+    bootstrap.AcquireLock(handle2, 128, 128);
+
+    std::swap(bootstrap.Headers, oldSession);
+    bootstrap.ReleaseLock(handle1, 0, 128);
+
+    std::swap(bootstrap.Headers, oldSession);
+    bootstrap.AcquireLock(handle2, 0, 128);
+}
+
+Y_UNIT_TEST(ShouldSharedLock)
+{
+    TTestBootstrap bootstrap("fs");
+
+    CreateFile(bootstrap, RootNodeId, "file", 0777);
+
+    auto handle1 =
+        bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::RDWR)
+            .GetHandle();
+    bootstrap.AllocateData(handle1, 0, 1024, 0);
+    bootstrap.AcquireLock(handle1, 0, 128, NProto::E_SHARED);
+
+    auto handle2 =
+        bootstrap.CreateHandle(RootNodeId, "file", TCreateHandleArgs::RDWR)
+            .GetHandle();
+    bootstrap.AcquireLock(handle2, 0, 128, NProto::E_SHARED);
+}
+
+Y_UNIT_TEST(ShouldHandleXAttrsForDirectory)
+{
+    TTestBootstrap bootstrap("fs");
+    auto id = CreateDirectory(bootstrap, RootNodeId, "folder");
+
+    // no attributes
+
+    auto attributes = bootstrap.ListNodeXAttr(id).GetNames();
+    UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 0);
+
+    ui64 attrVersion = 0;
+    // 1 attribute
+    auto rsp = bootstrap.SetNodeXAttr(id, "user.xattr1", "");
+    attrVersion = rsp.GetVersion();
+
+    attributes = bootstrap.ListNodeXAttr(id).GetNames();
+    UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 1);
+    UNIT_ASSERT_VALUES_EQUAL(attributes[0], "user.xattr1");
+
+    auto val = bootstrap.GetNodeXAttr(id, "user.xattr1").GetValue();
+    UNIT_ASSERT_VALUES_EQUAL(val, "");
+
+    rsp = bootstrap.SetNodeXAttr(id, "user.xattr1", "valueeee1");
+    UNIT_ASSERT_GT(rsp.GetVersion(), attrVersion);
+    attrVersion = rsp.GetVersion();
+
+    attributes = bootstrap.ListNodeXAttr(id).GetNames();
+    UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 1);
+    UNIT_ASSERT_VALUES_EQUAL(attributes[0], "user.xattr1");
+
+    val = bootstrap.GetNodeXAttr(id, "user.xattr1").GetValue();
+    UNIT_ASSERT_VALUES_EQUAL(val, "valueeee1");
+
+    // 2 attributes
+    rsp = bootstrap.SetNodeXAttr(id, "user.xattr2", "valueeee2");
+    attrVersion = rsp.GetVersion();
+
+    attributes = bootstrap.ListNodeXAttr(id).GetNames();
+    UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 2);
+    UNIT_ASSERT_VALUES_EQUAL(attributes[0], "user.xattr1");
+    UNIT_ASSERT_VALUES_EQUAL(attributes[1], "user.xattr2");
+
+    val = bootstrap.GetNodeXAttr(id, "user.xattr1").GetValue();
+    UNIT_ASSERT_VALUES_EQUAL(val, "valueeee1");
+
+    val = bootstrap.GetNodeXAttr(id, "user.xattr2").GetValue();
+    UNIT_ASSERT_VALUES_EQUAL(val, "valueeee2");
+
+    rsp = bootstrap.SetNodeXAttr(id, "user.xattr2", "valueeee");
+    UNIT_ASSERT_GT(rsp.GetVersion(), attrVersion);
+
+    attributes = bootstrap.ListNodeXAttr(id).GetNames();
+    UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 2);
+    UNIT_ASSERT_VALUES_EQUAL(attributes[0], "user.xattr1");
+    UNIT_ASSERT_VALUES_EQUAL(attributes[1], "user.xattr2");
+
+    val = bootstrap.GetNodeXAttr(id, "user.xattr1").GetValue();
+    UNIT_ASSERT_VALUES_EQUAL(val, "valueeee1");
+
+    val = bootstrap.GetNodeXAttr(id, "user.xattr2").GetValue();
+    UNIT_ASSERT_VALUES_EQUAL(val, "valueeee");
+
+    // 1 attrribute
+    bootstrap.RemoveNodeXAttr(id, "user.xattr2");
+
+    attributes = bootstrap.ListNodeXAttr(id).GetNames();
+    UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 1);
+    UNIT_ASSERT_VALUES_EQUAL(attributes[0], "user.xattr1");
+
+    val = bootstrap.GetNodeXAttr(id, "user.xattr1").GetValue();
+    UNIT_ASSERT_VALUES_EQUAL(val, "valueeee1");
+
+    // no attrributes
+    bootstrap.RemoveNodeXAttr(id, "user.xattr1");
+
+    attributes = bootstrap.ListNodeXAttr(id).GetNames();
+    UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 0);
+}
+
+Y_UNIT_TEST(ShouldHandleXAttrsForFiles)
+{
+    TTestBootstrap bootstrap("fs");
+    auto id = CreateFile(bootstrap, RootNodeId, "file");
+
+    // no attributes
+
+    auto attributes = bootstrap.ListNodeXAttr(id).GetNames();
+    UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 0);
+
+    ui64 attrVersion = 0;
+    // 1 attribute
+    auto rsp = bootstrap.SetNodeXAttr(id, "user.xattr1", "");
+    attrVersion = rsp.GetVersion();
+
+    attributes = bootstrap.ListNodeXAttr(id).GetNames();
+    UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 1);
+    UNIT_ASSERT_VALUES_EQUAL(attributes[0], "user.xattr1");
+
+    auto val = bootstrap.GetNodeXAttr(id, "user.xattr1").GetValue();
+    UNIT_ASSERT_VALUES_EQUAL(val, "");
+
+    rsp = bootstrap.SetNodeXAttr(id, "user.xattr1", "valueeee1");
+    UNIT_ASSERT_GT(rsp.GetVersion(), attrVersion);
+
+    attributes = bootstrap.ListNodeXAttr(id).GetNames();
+    UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 1);
+    UNIT_ASSERT_VALUES_EQUAL(attributes[0], "user.xattr1");
+
+    val = bootstrap.GetNodeXAttr(id, "user.xattr1").GetValue();
+    UNIT_ASSERT_VALUES_EQUAL(val, "valueeee1");
+
+    // 2 attributes
+    rsp = bootstrap.SetNodeXAttr(id, "user.xattr2", "valueeee2");
+    attrVersion = rsp.GetVersion();
+
+    attributes = bootstrap.ListNodeXAttr(id).GetNames();
+    UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 2);
+    UNIT_ASSERT_VALUES_EQUAL(attributes[0], "user.xattr1");
+    UNIT_ASSERT_VALUES_EQUAL(attributes[1], "user.xattr2");
+
+    val = bootstrap.GetNodeXAttr(id, "user.xattr1").GetValue();
+    UNIT_ASSERT_VALUES_EQUAL(val, "valueeee1");
+
+    val = bootstrap.GetNodeXAttr(id, "user.xattr2").GetValue();
+    UNIT_ASSERT_VALUES_EQUAL(val, "valueeee2");
+
+    rsp = bootstrap.SetNodeXAttr(id, "user.xattr2", "valueeee");
+    UNIT_ASSERT_GT(rsp.GetVersion(), attrVersion);
+    attributes = bootstrap.ListNodeXAttr(id).GetNames();
+    UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 2);
+    UNIT_ASSERT_VALUES_EQUAL(attributes[0], "user.xattr1");
+    UNIT_ASSERT_VALUES_EQUAL(attributes[1], "user.xattr2");
+
+    val = bootstrap.GetNodeXAttr(id, "user.xattr1").GetValue();
+    UNIT_ASSERT_VALUES_EQUAL(val, "valueeee1");
+
+    val = bootstrap.GetNodeXAttr(id, "user.xattr2").GetValue();
+    UNIT_ASSERT_VALUES_EQUAL(val, "valueeee");
+
+    // 1 attrribute
+    bootstrap.RemoveNodeXAttr(id, "user.xattr2");
+
+    attributes = bootstrap.ListNodeXAttr(id).GetNames();
+    UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 1);
+    UNIT_ASSERT_VALUES_EQUAL(attributes[0], "user.xattr1");
+
+    val = bootstrap.GetNodeXAttr(id, "user.xattr1").GetValue();
+    UNIT_ASSERT_VALUES_EQUAL(val, "valueeee1");
+
+    // no attrributes
+    bootstrap.RemoveNodeXAttr(id, "user.xattr1");
+
+    attributes = bootstrap.ListNodeXAttr(id).GetNames();
+    UNIT_ASSERT_VALUES_EQUAL(attributes.size(), 0);
+}
+
+// TODO: should it work Y_UNIT_TEST(ShouldHandleXAttrsForSymLinks)
+
+Y_UNIT_TEST(ShouldHandleInproperXAttrsRequests)
+{
+    TTestBootstrap bootstrap("fs");
+    auto id = CreateFile(bootstrap, RootNodeId, "file");
+    auto nonexistent = id + 100500;
+
+    bootstrap.AssertListNodeXAttrFailed(nonexistent);
+
+    bootstrap.AssertSetNodeXAttrFailed(id, "invalid", "value");
+    bootstrap.AssertSetNodeXAttrFailed(nonexistent, "user.xattr", "value");
+
+    bootstrap.AssertGetNodeXAttrFailed(id, "user.xattr");
+    bootstrap.AssertGetNodeXAttrFailed(nonexistent, "user.xattr");
+
+    bootstrap.AssertRemoveNodeXAttrFailed(nonexistent, "user.xattr");
+    bootstrap.AssertRemoveNodeXAttrFailed(id, "user.xattr");
+}
+
+Y_UNIT_TEST(ShouldResetSessionStateAndRestoreByClient)
+{
+    const TString state = "abcde";
+
+    TTestBootstrap bootstrap("fs");
+    bootstrap.ResetSession(state);
+
+    auto response = bootstrap.CreateSession("fs", "client", "", true);
+    UNIT_ASSERT_VALUES_EQUAL(response.GetSession().GetSessionState(), state);
+
+    TTestBootstrap other(bootstrap.Cwd);
+
+    auto otherResponse =
+        other.CreateSession("fs", "client", "", false, 0, true);
+    UNIT_ASSERT_VALUES_EQUAL(
+        otherResponse.GetSession().GetSessionState(),
+        state);
+
+    UNIT_ASSERT_VALUES_EQUAL(
+        response.GetSession().GetSessionId(),
+        otherResponse.GetSession().GetSessionId());
+}
+
+Y_UNIT_TEST(ShouldSupportMigration)
+{
+    TTestBootstrap bootstrap("fs");
+
+    auto response = bootstrap.CreateSession("fs", "client", "", false, 0);
+    auto sourceId = response.GetSession().GetSessionId();
+    UNIT_ASSERT(sourceId != "");
+
+    THeaders source{
+        .FileSystemId = "fs",
+        .ClientId = "client",
+        .SessionId = sourceId,
+        .SessionSeqNo = 0};
+
+    bootstrap.SwitchToSession(source);
+    bootstrap.PingSession();
+
+    bootstrap.CreateNode(TCreateNodeArgs::File(RootNodeId, "file"));
+    bootstrap.ListNodes(1);
+
+    response = bootstrap.CreateSession("fs", "client", "", true, 1);
+    auto targetId = response.GetSession().GetSessionId();
+    UNIT_ASSERT(targetId == sourceId);
+
+    THeaders target{
+        .FileSystemId = "fs",
+        .ClientId = "client",
+        .SessionId = targetId,
+        .SessionSeqNo = 1};
+
+    bootstrap.SwitchToSession(target);
+    bootstrap.PingSession();
+
+    response = bootstrap.CreateSession("fs", "client", "", false, 1);
+    UNIT_ASSERT(response.GetSession().GetSessionId() == targetId);
+
+    bootstrap.SwitchToSession(target);
+    bootstrap.PingSession();
+    bootstrap.CreateNode(TCreateNodeArgs::File(RootNodeId, "file2"));
+    bootstrap.ListNodes(1);
+
+    bootstrap.SwitchToSession(source);
+    bootstrap.DestroySession();
+
+    bootstrap.SwitchToSession(target);
+    bootstrap.CreateNode(TCreateNodeArgs::File(RootNodeId, "file3"));
+}
+
+Y_UNIT_TEST(ShouldRenameDirNodes)
+{
+    TTestBootstrap bootstrap("fs");
+
+    bootstrap.CreateNode(TCreateNodeArgs::File(RootNodeId, "xxx"));
+    bootstrap.CreateNode(TCreateNodeArgs::SymLink(RootNodeId, "yyy", "zzz"));
+    auto id1 = bootstrap.CreateNode(TCreateNodeArgs::Directory(RootNodeId, "a"))
+                   .GetNode()
+                   .GetId();
+    auto id2 =
+        bootstrap
             .CreateNode(TCreateNodeArgs::Directory(RootNodeId, "non-empty"))
             .GetNode()
             .GetId();
-        bootstrap.CreateNode(TCreateNodeArgs::File(id2, "file"));
+    bootstrap.CreateNode(TCreateNodeArgs::File(id2, "file"));
 
-        // existing -> non-existing
-        bootstrap.RenameNode(RootNodeId, "a", RootNodeId, "empty", 0);
+    // existing -> non-existing
+    bootstrap.RenameNode(RootNodeId, "a", RootNodeId, "empty", 0);
 
+    const auto response = bootstrap.ListNodes(RootNodeId);
+    auto names = response.GetNames();
+    std::sort(names.begin(), names.end());
+    UNIT_ASSERT_VALUES_EQUAL(names.size(), 4);
+    UNIT_ASSERT_VALUES_EQUAL(names[0], "empty");
+    UNIT_ASSERT_VALUES_EQUAL(names[1], "non-empty");
+    UNIT_ASSERT_VALUES_EQUAL(names[2], "xxx");
+    UNIT_ASSERT_VALUES_EQUAL(names[3], "yyy");
+
+    // file -> dir
+    {
+        const auto response = bootstrap.AssertRenameNodeFailed(
+            RootNodeId,
+            "xxx",
+            RootNodeId,
+            "empty",
+            0);
+        const auto& error = response.GetError();
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::E_FS_ISDIR),
+            STATUS_FROM_CODE(error.GetCode()));
+    }
+
+    // dir -> file
+    {
+        const auto response = bootstrap.AssertRenameNodeFailed(
+            RootNodeId,
+            "empty",
+            RootNodeId,
+            "xxx",
+            0);
+        const auto& error = response.GetError();
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::E_FS_NOTDIR),
+            STATUS_FROM_CODE(error.GetCode()));
+    }
+
+    // link -> dir
+    {
+        const auto response = bootstrap.AssertRenameNodeFailed(
+            RootNodeId,
+            "yyy",
+            RootNodeId,
+            "empty",
+            0);
+        const auto& error = response.GetError();
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::E_FS_ISDIR),
+            STATUS_FROM_CODE(error.GetCode()));
+    }
+
+    // dir -> link
+    {
+        const auto response = bootstrap.AssertRenameNodeFailed(
+            RootNodeId,
+            "empty",
+            RootNodeId,
+            "yyy",
+            0);
+        const auto& error = response.GetError();
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::E_FS_NOTDIR),
+            STATUS_FROM_CODE(error.GetCode()));
+    }
+
+    // existing -> existing not empty
+    {
+        const auto response = bootstrap.AssertRenameNodeFailed(
+            RootNodeId,
+            "empty",
+            RootNodeId,
+            "non-empty",
+            0);
+        const auto& error = response.GetError();
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::E_FS_NOTEMPTY),
+            STATUS_FROM_CODE(error.GetCode()));
+    }
+
+    // existing -> existing empty
+    bootstrap.RenameNode(RootNodeId, "non-empty", RootNodeId, "empty", 0);
+    bootstrap.AssertAccessNodeFailed(id1, 0);
+
+    {
         const auto response = bootstrap.ListNodes(RootNodeId);
         auto names = response.GetNames();
         std::sort(names.begin(), names.end());
-        UNIT_ASSERT_VALUES_EQUAL(names.size(), 4);
+        UNIT_ASSERT_VALUES_EQUAL(names.size(), 3);
         UNIT_ASSERT_VALUES_EQUAL(names[0], "empty");
-        UNIT_ASSERT_VALUES_EQUAL(names[1], "non-empty");
-        UNIT_ASSERT_VALUES_EQUAL(names[2], "xxx");
-        UNIT_ASSERT_VALUES_EQUAL(names[3], "yyy");
-
-        // file -> dir
-        {
-            const auto response = bootstrap
-                .AssertRenameNodeFailed(RootNodeId, "xxx", RootNodeId, "empty", 0);
-            const auto& error = response.GetError();
-            UNIT_ASSERT_VALUES_EQUAL(
-                static_cast<ui32>(NProto::E_FS_ISDIR),
-                STATUS_FROM_CODE(error.GetCode()));
-        }
-
-        // dir -> file
-        {
-            const auto response = bootstrap
-                .AssertRenameNodeFailed(RootNodeId, "empty", RootNodeId, "xxx", 0);
-            const auto& error = response.GetError();
-            UNIT_ASSERT_VALUES_EQUAL(
-                static_cast<ui32>(NProto::E_FS_NOTDIR),
-                STATUS_FROM_CODE(error.GetCode()));
-        }
-
-        // link -> dir
-        {
-            const auto response = bootstrap
-                .AssertRenameNodeFailed(RootNodeId, "yyy", RootNodeId, "empty", 0);
-            const auto& error = response.GetError();
-            UNIT_ASSERT_VALUES_EQUAL(
-                static_cast<ui32>(NProto::E_FS_ISDIR),
-                STATUS_FROM_CODE(error.GetCode()));
-        }
-
-        // dir -> link
-        {
-            const auto response = bootstrap
-                .AssertRenameNodeFailed(RootNodeId, "empty", RootNodeId, "yyy", 0);
-            const auto& error = response.GetError();
-            UNIT_ASSERT_VALUES_EQUAL(
-                static_cast<ui32>(NProto::E_FS_NOTDIR),
-                STATUS_FROM_CODE(error.GetCode()));
-        }
-
-        // existing -> existing not empty
-        {
-            const auto response = bootstrap
-                .AssertRenameNodeFailed(RootNodeId, "empty", RootNodeId, "non-empty", 0);
-            const auto& error = response.GetError();
-            UNIT_ASSERT_VALUES_EQUAL(
-                static_cast<ui32>(NProto::E_FS_NOTEMPTY),
-                STATUS_FROM_CODE(error.GetCode()));
-        }
-
-        // existing -> existing empty
-        bootstrap.RenameNode(RootNodeId, "non-empty", RootNodeId, "empty", 0);
-        bootstrap.AssertAccessNodeFailed(id1, 0);
-
-        {
-            const auto response = bootstrap.ListNodes(RootNodeId);
-            auto names = response.GetNames();
-            std::sort(names.begin(), names.end());
-            UNIT_ASSERT_VALUES_EQUAL(names.size(), 3);
-            UNIT_ASSERT_VALUES_EQUAL(names[0], "empty");
-            UNIT_ASSERT_VALUES_EQUAL(names[1], "xxx");
-            UNIT_ASSERT_VALUES_EQUAL(names[2], "yyy");
-        }
-
-        {
-            const auto response = bootstrap.ListNodes(id2);
-            const auto& names = response.GetNames();
-            UNIT_ASSERT_VALUES_EQUAL(names.size(), 1);
-            UNIT_ASSERT_VALUES_EQUAL(names[0], "file");
-        }
+        UNIT_ASSERT_VALUES_EQUAL(names[1], "xxx");
+        UNIT_ASSERT_VALUES_EQUAL(names[2], "yyy");
     }
 
-    Y_UNIT_TEST(ShouldRenameFileNodes)
     {
-        TTestBootstrap bootstrap("fs");
+        const auto response = bootstrap.ListNodes(id2);
+        const auto& names = response.GetNames();
+        UNIT_ASSERT_VALUES_EQUAL(names.size(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(names[0], "file");
+    }
+}
 
-        auto id1 = bootstrap.CreateNode(TCreateNodeArgs::File(RootNodeId, "a")).GetNode().GetId();
-        bootstrap.CreateNode(TCreateNodeArgs::Link(RootNodeId, "b", id1));
+Y_UNIT_TEST(ShouldRenameFileNodes)
+{
+    TTestBootstrap bootstrap("fs");
 
-        // If oldpath and newpath are existing hard links to the same file, then rename() does nothing
-        bootstrap.RenameNode(RootNodeId, "a", RootNodeId, "b", 0);
-        {
-            auto response = bootstrap.ListNodes(RootNodeId);
-            auto names = response.GetNames();
-            std::sort(names.begin(), names.end());
-            UNIT_ASSERT_VALUES_EQUAL(names.size(), 2);
-            UNIT_ASSERT_VALUES_EQUAL(names[0], "a");
-            UNIT_ASSERT_VALUES_EQUAL(names[1], "b");
-        }
+    auto id1 = bootstrap.CreateNode(TCreateNodeArgs::File(RootNodeId, "a"))
+                   .GetNode()
+                   .GetId();
+    bootstrap.CreateNode(TCreateNodeArgs::Link(RootNodeId, "b", id1));
 
-        // a b -> b c
-        bootstrap.RenameNode(RootNodeId, "a", RootNodeId, "c", 0);
-        {
-            auto response = bootstrap.ListNodes(RootNodeId);
-            auto names = response.GetNames();
-            std::sort(names.begin(), names.end());
-            UNIT_ASSERT_VALUES_EQUAL(names.size(), 2);
-            UNIT_ASSERT_VALUES_EQUAL(names[0], "b");
-            UNIT_ASSERT_VALUES_EQUAL(names[1], "c");
-        }
-
-        // b c d -> b c
-        auto id2 = bootstrap.CreateNode(TCreateNodeArgs::SymLink(RootNodeId, "d", "b")).GetNode().GetId();
-        bootstrap.RenameNode(RootNodeId, "d", RootNodeId, "b", 0);
-        {
-            auto response = bootstrap.ReadLink(id2);
-            UNIT_ASSERT_VALUES_EQUAL(response.GetSymLink(), "b");
-
-            auto stat = bootstrap.GetNodeAttr(id1).GetNode();
-            UNIT_ASSERT_VALUES_EQUAL(stat.GetId(), id1);
-            UNIT_ASSERT_VALUES_EQUAL(stat.GetLinks(), 1);
-        }
-
-        // b c -> c
-        bootstrap.CreateHandle(id1, "", TCreateHandleArgs::RDWR);
-        bootstrap.RenameNode(RootNodeId, "b", RootNodeId, "c", 0);
-        {
-            auto response = bootstrap.ListNodes(RootNodeId);
-            const auto& names = response.GetNames();
-            UNIT_ASSERT_VALUES_EQUAL(names.size(), 1);
-            UNIT_ASSERT_VALUES_EQUAL(names[0], "c");
-
-            auto link = bootstrap.ReadLink(id2);
-            UNIT_ASSERT_VALUES_EQUAL(link.GetSymLink(), "b");
-
-            auto stat = bootstrap.AssertGetNodeAttrFailed(id1);
-        }
-
-        // non-existing to existing
-        bootstrap.AssertRenameNodeFailed(RootNodeId, "", RootNodeId, "c", 0);
-        // existing to invalid
-        bootstrap.AssertRenameNodeFailed(RootNodeId, "c", RootNodeId + 100, "c", 0);
-
-        // rename into different dir
-        auto id3 = bootstrap.CreateNode(TCreateNodeArgs::Directory(RootNodeId, "dir")).GetNode().GetId();
-        bootstrap.RenameNode(RootNodeId, "c", id3, "c", 0);
-        {
-            auto response = bootstrap.ListNodes(RootNodeId);
-            auto names = response.GetNames();
-            UNIT_ASSERT_VALUES_EQUAL(names.size(), 1);
-            UNIT_ASSERT_VALUES_EQUAL(names[0], "dir");
-
-            response = bootstrap.ListNodes(id3);
-            names = response.GetNames();
-            UNIT_ASSERT_VALUES_EQUAL(names.size(), 1);
-            UNIT_ASSERT_VALUES_EQUAL(names[0], "c");
-
-            auto link = bootstrap.ReadLink(id2);
-            UNIT_ASSERT_VALUES_EQUAL(link.GetSymLink(), "b");
-        }
+    // If oldpath and newpath are existing hard links to the same file, then
+    // rename() does nothing
+    bootstrap.RenameNode(RootNodeId, "a", RootNodeId, "b", 0);
+    {
+        auto response = bootstrap.ListNodes(RootNodeId);
+        auto names = response.GetNames();
+        std::sort(names.begin(), names.end());
+        UNIT_ASSERT_VALUES_EQUAL(names.size(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(names[0], "a");
+        UNIT_ASSERT_VALUES_EQUAL(names[1], "b");
     }
 
-    Y_UNIT_TEST(ShouldRenameAccordingToFlags)
+    // a b -> b c
+    bootstrap.RenameNode(RootNodeId, "a", RootNodeId, "c", 0);
     {
-        const ui32 noreplace = ProtoFlag(NProto::TRenameNodeRequest::F_NOREPLACE);
-        const ui32 exchange = ProtoFlag(NProto::TRenameNodeRequest::F_EXCHANGE);
-
-        TTestBootstrap bootstrap("fs");
-
-        auto id1 = bootstrap.CreateNode(TCreateNodeArgs::File(RootNodeId, "a")).GetNode().GetId();
-        auto id2 = bootstrap.CreateNode(TCreateNodeArgs::File(RootNodeId, "b")).GetNode().GetId();
-
-        // if newpath exists we should not perform
-        bootstrap.AssertRenameNodeFailed(RootNodeId, "a", RootNodeId, "b", noreplace);
-        // both flags is invalid
-        bootstrap.AssertRenameNodeFailed(RootNodeId, "a", RootNodeId, "b", noreplace | exchange);
-        // target should exist for exchange
-        bootstrap.AssertRenameNodeFailed(RootNodeId, "a", RootNodeId, "c", exchange);
-
-        // should keep both
-        bootstrap.RenameNode(RootNodeId, "a", RootNodeId, "b", exchange);
-        {
-            const auto response = bootstrap.ListNodes(RootNodeId);
-            auto names = response.GetNames();
-            std::sort(names.begin(), names.end());
-            UNIT_ASSERT_VALUES_EQUAL(names.size(), 2);
-            UNIT_ASSERT_VALUES_EQUAL(names[0], "a");
-            UNIT_ASSERT_VALUES_EQUAL(names[1], "b");
-
-            auto stat = bootstrap.GetNodeAttr(RootNodeId, "a").GetNode();
-            UNIT_ASSERT_VALUES_EQUAL(stat.GetId(), id2);
-            UNIT_ASSERT_VALUES_EQUAL(stat.GetLinks(), 1);
-
-            stat = bootstrap.GetNodeAttr(RootNodeId, "b").GetNode();
-            UNIT_ASSERT_VALUES_EQUAL(stat.GetId(), id1);
-            UNIT_ASSERT_VALUES_EQUAL(stat.GetLinks(), 1);
-        }
-
-        // non empty dir
-        auto id3 = bootstrap.CreateNode(TCreateNodeArgs::Directory(RootNodeId, "c")).GetNode().GetId();
-        bootstrap.CreateNode(TCreateNodeArgs::Directory(id3, "d"));
-        // different fs implementations can explicitly hardlink directories via . or ..
-        // thus creating subdirectories will increase links count
-        ui32 expectedLinks = 0;
-        {
-            const auto stat = bootstrap.GetNodeAttr(RootNodeId, "c").GetNode();
-            UNIT_ASSERT_VALUES_EQUAL(stat.GetId(), id3);
-            expectedLinks = stat.GetLinks();
-        }
-
-        // should allow to rename any nodes
-        bootstrap.RenameNode(RootNodeId, "a", RootNodeId, "c", exchange);
-        {
-            auto response = bootstrap.ListNodes(RootNodeId);
-            auto names1 = response.GetNames();
-            std::sort(names1.begin(), names1.end());
-            UNIT_ASSERT_VALUES_EQUAL(names1.size(), 3);
-            UNIT_ASSERT_VALUES_EQUAL(names1[0], "a");
-            UNIT_ASSERT_VALUES_EQUAL(names1[1], "b");
-            UNIT_ASSERT_VALUES_EQUAL(names1[2], "c");
-
-            auto stat = bootstrap.GetNodeAttr(RootNodeId, "c").GetNode();
-            UNIT_ASSERT_VALUES_EQUAL(stat.GetId(), id2);
-            UNIT_ASSERT_VALUES_EQUAL(stat.GetLinks(), 1);
-
-            stat = bootstrap.GetNodeAttr(RootNodeId, "a").GetNode();
-            UNIT_ASSERT_VALUES_EQUAL(stat.GetId(), id3);
-            UNIT_ASSERT_VALUES_EQUAL(stat.GetLinks(), expectedLinks);
-
-            response = bootstrap.ListNodes(id3);
-            const auto& names2 = response.GetNames();
-            UNIT_ASSERT_VALUES_EQUAL(names2.size(), 1);
-            UNIT_ASSERT_VALUES_EQUAL(names2[0], "d");
-        }
+        auto response = bootstrap.ListNodes(RootNodeId);
+        auto names = response.GetNames();
+        std::sort(names.begin(), names.end());
+        UNIT_ASSERT_VALUES_EQUAL(names.size(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(names[0], "b");
+        UNIT_ASSERT_VALUES_EQUAL(names[1], "c");
     }
 
-    Y_UNIT_TEST(ShouldFsyncFileAndDir)
+    // b c d -> b c
+    auto id2 =
+        bootstrap.CreateNode(TCreateNodeArgs::SymLink(RootNodeId, "d", "b"))
+            .GetNode()
+            .GetId();
+    bootstrap.RenameNode(RootNodeId, "d", RootNodeId, "b", 0);
     {
-        TTestBootstrap bootstrap("fs");
+        auto response = bootstrap.ReadLink(id2);
+        UNIT_ASSERT_VALUES_EQUAL(response.GetSymLink(), "b");
 
-        auto fileNodeId = CreateFile(bootstrap, RootNodeId, "file1");
-        auto dirNodeId = CreateDirectory(bootstrap, RootNodeId, "dir1");
-
-        auto fileHandle =
-            bootstrap.CreateHandle(fileNodeId, "", TCreateHandleArgs::RDWR)
-                .GetHandle();
-
-        for (auto dataSync: {true, false}) {
-            bootstrap.Fsync(fileNodeId, fileHandle, dataSync);
-            bootstrap.FsyncDir(dirNodeId, dataSync);
-        }
+        auto stat = bootstrap.GetNodeAttr(id1).GetNode();
+        UNIT_ASSERT_VALUES_EQUAL(stat.GetId(), id1);
+        UNIT_ASSERT_VALUES_EQUAL(stat.GetLinks(), 1);
     }
 
-    void CheckReadAndWriteDataWithDirectIo(ui32 directIoAlign)
+    // b c -> c
+    bootstrap.CreateHandle(id1, "", TCreateHandleArgs::RDWR);
+    bootstrap.RenameNode(RootNodeId, "b", RootNodeId, "c", 0);
     {
-        TTestBootstrap bootstrap(
-            "fs",
-            "client",
-            {},
-            1000,
-            1000,
-            true /* direct io enabled */,
-            directIoAlign);
+        auto response = bootstrap.ListNodes(RootNodeId);
+        const auto& names = response.GetNames();
+        UNIT_ASSERT_VALUES_EQUAL(names.size(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(names[0], "c");
 
-        ui64 handle =
-            bootstrap
-                .CreateHandle(
-                    RootNodeId,
-                    "file",
-                    TCreateHandleArgs::CREATE | TCreateHandleArgs::DIRECT)
-                .GetHandle();
-        auto readRsp = bootstrap.ReadData(handle, 0, 100);
-        auto data = readRsp.GetBuffer().substr(readRsp.GetBufferOffset());
-        UNIT_ASSERT_VALUES_EQUAL(data.size(), 0);
+        auto link = bootstrap.ReadLink(id2);
+        UNIT_ASSERT_VALUES_EQUAL(link.GetSymLink(), "b");
 
-        data = "aaaabbbbcccccdddddeeee";
-        const auto response = bootstrap.AssertWriteDataAlignedFailed(
-            handle,
-            0,
-            data,
-            directIoAlign);
-        const auto& error = response.GetError();
+        auto stat = bootstrap.AssertGetNodeAttrFailed(id1);
+    }
+
+    // non-existing to existing
+    bootstrap.AssertRenameNodeFailed(RootNodeId, "", RootNodeId, "c", 0);
+    // existing to invalid
+    bootstrap.AssertRenameNodeFailed(RootNodeId, "c", RootNodeId + 100, "c", 0);
+
+    // rename into different dir
+    auto id3 =
+        bootstrap.CreateNode(TCreateNodeArgs::Directory(RootNodeId, "dir"))
+            .GetNode()
+            .GetId();
+    bootstrap.RenameNode(RootNodeId, "c", id3, "c", 0);
+    {
+        auto response = bootstrap.ListNodes(RootNodeId);
+        auto names = response.GetNames();
+        UNIT_ASSERT_VALUES_EQUAL(names.size(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(names[0], "dir");
+
+        response = bootstrap.ListNodes(id3);
+        names = response.GetNames();
+        UNIT_ASSERT_VALUES_EQUAL(names.size(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(names[0], "c");
+
+        auto link = bootstrap.ReadLink(id2);
+        UNIT_ASSERT_VALUES_EQUAL(link.GetSymLink(), "b");
+    }
+}
+
+Y_UNIT_TEST(ShouldRenameAccordingToFlags)
+{
+    const ui32 noreplace = ProtoFlag(NProto::TRenameNodeRequest::F_NOREPLACE);
+    const ui32 exchange = ProtoFlag(NProto::TRenameNodeRequest::F_EXCHANGE);
+
+    TTestBootstrap bootstrap("fs");
+
+    auto id1 = bootstrap.CreateNode(TCreateNodeArgs::File(RootNodeId, "a"))
+                   .GetNode()
+                   .GetId();
+    auto id2 = bootstrap.CreateNode(TCreateNodeArgs::File(RootNodeId, "b"))
+                   .GetNode()
+                   .GetId();
+
+    // if newpath exists we should not perform
+    bootstrap
+        .AssertRenameNodeFailed(RootNodeId, "a", RootNodeId, "b", noreplace);
+    // both flags is invalid
+    bootstrap.AssertRenameNodeFailed(
+        RootNodeId,
+        "a",
+        RootNodeId,
+        "b",
+        noreplace | exchange);
+    // target should exist for exchange
+    bootstrap
+        .AssertRenameNodeFailed(RootNodeId, "a", RootNodeId, "c", exchange);
+
+    // should keep both
+    bootstrap.RenameNode(RootNodeId, "a", RootNodeId, "b", exchange);
+    {
+        const auto response = bootstrap.ListNodes(RootNodeId);
+        auto names = response.GetNames();
+        std::sort(names.begin(), names.end());
+        UNIT_ASSERT_VALUES_EQUAL(names.size(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(names[0], "a");
+        UNIT_ASSERT_VALUES_EQUAL(names[1], "b");
+
+        auto stat = bootstrap.GetNodeAttr(RootNodeId, "a").GetNode();
+        UNIT_ASSERT_VALUES_EQUAL(stat.GetId(), id2);
+        UNIT_ASSERT_VALUES_EQUAL(stat.GetLinks(), 1);
+
+        stat = bootstrap.GetNodeAttr(RootNodeId, "b").GetNode();
+        UNIT_ASSERT_VALUES_EQUAL(stat.GetId(), id1);
+        UNIT_ASSERT_VALUES_EQUAL(stat.GetLinks(), 1);
+    }
+
+    // non empty dir
+    auto id3 = bootstrap.CreateNode(TCreateNodeArgs::Directory(RootNodeId, "c"))
+                   .GetNode()
+                   .GetId();
+    bootstrap.CreateNode(TCreateNodeArgs::Directory(id3, "d"));
+    // different fs implementations can explicitly hardlink directories via . or
+    // .. thus creating subdirectories will increase links count
+    ui32 expectedLinks = 0;
+    {
+        const auto stat = bootstrap.GetNodeAttr(RootNodeId, "c").GetNode();
+        UNIT_ASSERT_VALUES_EQUAL(stat.GetId(), id3);
+        expectedLinks = stat.GetLinks();
+    }
+
+    // should allow to rename any nodes
+    bootstrap.RenameNode(RootNodeId, "a", RootNodeId, "c", exchange);
+    {
+        auto response = bootstrap.ListNodes(RootNodeId);
+        auto names1 = response.GetNames();
+        std::sort(names1.begin(), names1.end());
+        UNIT_ASSERT_VALUES_EQUAL(names1.size(), 3);
+        UNIT_ASSERT_VALUES_EQUAL(names1[0], "a");
+        UNIT_ASSERT_VALUES_EQUAL(names1[1], "b");
+        UNIT_ASSERT_VALUES_EQUAL(names1[2], "c");
+
+        auto stat = bootstrap.GetNodeAttr(RootNodeId, "c").GetNode();
+        UNIT_ASSERT_VALUES_EQUAL(stat.GetId(), id2);
+        UNIT_ASSERT_VALUES_EQUAL(stat.GetLinks(), 1);
+
+        stat = bootstrap.GetNodeAttr(RootNodeId, "a").GetNode();
+        UNIT_ASSERT_VALUES_EQUAL(stat.GetId(), id3);
+        UNIT_ASSERT_VALUES_EQUAL(stat.GetLinks(), expectedLinks);
+
+        response = bootstrap.ListNodes(id3);
+        const auto& names2 = response.GetNames();
+        UNIT_ASSERT_VALUES_EQUAL(names2.size(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(names2[0], "d");
+    }
+}
+
+Y_UNIT_TEST(ShouldFsyncFileAndDir)
+{
+    TTestBootstrap bootstrap("fs");
+
+    auto fileNodeId = CreateFile(bootstrap, RootNodeId, "file1");
+    auto dirNodeId = CreateDirectory(bootstrap, RootNodeId, "dir1");
+
+    auto fileHandle =
+        bootstrap.CreateHandle(fileNodeId, "", TCreateHandleArgs::RDWR)
+            .GetHandle();
+
+    for (auto dataSync: {true, false}) {
+        bootstrap.Fsync(fileNodeId, fileHandle, dataSync);
+        bootstrap.FsyncDir(dirNodeId, dataSync);
+    }
+}
+
+void CheckReadAndWriteDataWithDirectIo(ui32 directIoAlign)
+{
+    TTestBootstrap bootstrap(
+        "fs",
+        "client",
+        {},
+        1000,
+        1000,
+        true /* direct io enabled */,
+        directIoAlign);
+
+    ui64 handle = bootstrap
+                      .CreateHandle(
+                          RootNodeId,
+                          "file",
+                          TCreateHandleArgs::CREATE | TCreateHandleArgs::DIRECT)
+                      .GetHandle();
+    auto readRsp = bootstrap.ReadData(handle, 0, 100);
+    auto data = readRsp.GetBuffer().substr(readRsp.GetBufferOffset());
+    UNIT_ASSERT_VALUES_EQUAL(data.size(), 0);
+
+    data = "aaaabbbbcccccdddddeeee";
+    const auto response =
+        bootstrap.AssertWriteDataAlignedFailed(handle, 0, data, directIoAlign);
+    const auto& error = response.GetError();
+    UNIT_ASSERT_VALUES_EQUAL(
+        static_cast<ui32>(NProto::E_FS_INVAL),
+        STATUS_FROM_CODE(error.GetCode()));
+
+    data.append(directIoAlign - data.size(), 'x');
+    data.append(directIoAlign, 'y');
+    bootstrap.WriteDataAligned(handle, 0, data, directIoAlign);
+
+    auto readDataWithOffset = [&bootstrap](ui64 handle, ui64 offset, ui32 len)
+    {
+        auto rsp = bootstrap.ReadData(handle, offset, len);
+        return rsp.GetBuffer().substr(rsp.GetBufferOffset());
+    };
+
+    // read [0, 2*align]
+    auto buffer = readDataWithOffset(handle, 0, data.size());
+    UNIT_ASSERT_VALUES_EQUAL(buffer, data);
+
+    // read [0, align]
+    buffer = readDataWithOffset(handle, 0, directIoAlign);
+    UNIT_ASSERT_VALUES_EQUAL(buffer, data.substr(0, directIoAlign));
+
+    // read [align, align]
+    buffer = readDataWithOffset(handle, directIoAlign, directIoAlign);
+    UNIT_ASSERT_VALUES_EQUAL(buffer, data.substr(directIoAlign, directIoAlign));
+}
+
+Y_UNIT_TEST(ShouldReadAndWriteDataWithDirectIoAlignedTo512)
+{
+    CheckReadAndWriteDataWithDirectIo(512);
+}
+
+Y_UNIT_TEST(ShouldReadAndWriteDataWithDirectIoAlignedTo4096)
+{
+    CheckReadAndWriteDataWithDirectIo(4096);
+}
+
+Y_UNIT_TEST(ShouldStatFileStore)
+{
+    TTestBootstrap bootstrap("fs");
+
+    auto [response, stfs] = GetFileSystemStat(bootstrap);
+    UNIT_ASSERT_VALUES_EQUAL(
+        response.GetFileStore().GetBlockSize(),
+        stfs.f_bsize);
+    UNIT_ASSERT_VALUES_EQUAL(
+        response.GetFileStore().GetBlocksCount(),
+        stfs.f_blocks);
+    UNIT_ASSERT_VALUES_EQUAL(
+        response.GetFileStore().GetNodesCount(),
+        stfs.f_files);
+    // skip checking free blocks/nodes since they constantly change on current
+    // fs and it could be tricky to measure during quiescent state
+}
+
+Y_UNIT_TEST(ShouldUseFeaturesConfig)
+{
+    TTestBootstrap bootstrap("fs");
+    bootstrap.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
+
+    auto defaultTimeout = bootstrap.Config->GetEntryTimeout().MilliSeconds();
+    auto featureTimeout = 3000;
+
+    UNIT_ASSERT_VALUES_UNEQUAL(defaultTimeout, featureTimeout);
+
+    // no feature set return default value
+    {
+        auto response = bootstrap.CreateSession("fs", "client", "");
         UNIT_ASSERT_VALUES_EQUAL(
-            static_cast<ui32>(NProto::E_FS_INVAL),
-            STATUS_FROM_CODE(error.GetCode()));
-
-        data.append(directIoAlign-data.size(), 'x');
-        data.append(directIoAlign, 'y');
-        bootstrap.WriteDataAligned(handle, 0, data, directIoAlign);
-
-        auto readDataWithOffset =
-            [&bootstrap](ui64 handle, ui64 offset, ui32 len)
-        {
-            auto rsp = bootstrap.ReadData(handle, offset, len);
-            return rsp.GetBuffer().substr(rsp.GetBufferOffset());
-        };
-
-        // read [0, 2*align]
-        auto buffer = readDataWithOffset(handle, 0, data.size());
-        UNIT_ASSERT_VALUES_EQUAL(buffer, data);
-
-        // read [0, align]
-        buffer = readDataWithOffset(handle, 0, directIoAlign);
-        UNIT_ASSERT_VALUES_EQUAL(buffer, data.substr(0, directIoAlign));
-
-        // read [align, align]
-        buffer = readDataWithOffset(handle, directIoAlign, directIoAlign);
-        UNIT_ASSERT_VALUES_EQUAL(
-            buffer,
-            data.substr(directIoAlign, directIoAlign));
+            bootstrap.Config->GetEntryTimeout().MilliSeconds(),
+            defaultTimeout);
     }
 
-    Y_UNIT_TEST(ShouldReadAndWriteDataWithDirectIoAlignedTo512)
+    // whitelist fs id set
     {
-        CheckReadAndWriteDataWithDirectIo(512);
-    }
+        NProto::TFeaturesConfig fc;
+        auto* f = fc.AddFeatures();
+        f->SetName("EntryTimeout");
+        f->SetValue(ToString(featureTimeout) + "ms");
+        *f->MutableWhitelist()->AddEntityIds() = "fs";
+        bootstrap.SetFeaturesConfig(fc);
 
-    Y_UNIT_TEST(ShouldReadAndWriteDataWithDirectIoAlignedTo4096)
-    {
-        CheckReadAndWriteDataWithDirectIo(4096);
-    }
-
-    Y_UNIT_TEST(ShouldStatFileStore)
-    {
-        TTestBootstrap bootstrap("fs");
-
-        auto [response, stfs] = GetFileSystemStat(bootstrap);
+        auto response = bootstrap.CreateSession("fs", "client", "");
         UNIT_ASSERT_VALUES_EQUAL(
-            response.GetFileStore().GetBlockSize(),
-            stfs.f_bsize);
-        UNIT_ASSERT_VALUES_EQUAL(
-            response.GetFileStore().GetBlocksCount(),
-            stfs.f_blocks);
-        UNIT_ASSERT_VALUES_EQUAL(
-            response.GetFileStore().GetNodesCount(),
-            stfs.f_files);
-        // skip checking free blocks/nodes since they constantly change on current fs and it could be tricky
-        // to measure during quiescent state
+            response.GetFileStore().GetFeatures().GetEntryTimeout(),
+            featureTimeout);
     }
 
-    Y_UNIT_TEST(ShouldUseFeaturesConfig)
+    // whitelist cloud id
     {
-        TTestBootstrap bootstrap("fs");
-        bootstrap.CreateFileStore("fs", "cloud", "folder", 100500, 500100);
+        NProto::TFeaturesConfig fc;
+        auto* f = fc.AddFeatures();
+        f->SetName("EntryTimeout");
+        f->SetValue(ToString(featureTimeout) + "ms");
+        *f->MutableWhitelist()->AddCloudIds() = "cloud";
+        bootstrap.SetFeaturesConfig(fc);
 
-        auto defaultTimeout = bootstrap.Config->GetEntryTimeout().MilliSeconds();
-        auto featureTimeout = 3000;
-
-        UNIT_ASSERT_VALUES_UNEQUAL(defaultTimeout, featureTimeout);
-
-        // no feature set return default value
-        {
-            auto response = bootstrap.CreateSession("fs", "client", "");
-            UNIT_ASSERT_VALUES_EQUAL(
-                bootstrap.Config->GetEntryTimeout().MilliSeconds(),
-                defaultTimeout);
-        }
-
-        // whitelist fs id set
-        {
-            NProto::TFeaturesConfig fc;
-            auto* f = fc.AddFeatures();
-            f->SetName("EntryTimeout");
-            f->SetValue(ToString(featureTimeout) + "ms");
-            *f->MutableWhitelist()->AddEntityIds() = "fs";
-            bootstrap.SetFeaturesConfig(fc);
-
-            auto response = bootstrap.CreateSession("fs", "client", "");
-            UNIT_ASSERT_VALUES_EQUAL(
-                response.GetFileStore().GetFeatures().GetEntryTimeout(),
-                featureTimeout);
-        }
-
-        // whitelist cloud id
-        {
-            NProto::TFeaturesConfig fc;
-            auto* f = fc.AddFeatures();
-            f->SetName("EntryTimeout");
-            f->SetValue(ToString(featureTimeout) + "ms");
-            *f->MutableWhitelist()->AddCloudIds() = "cloud";
-            bootstrap.SetFeaturesConfig(fc);
-
-            auto response = bootstrap.CreateSession("fs", "client", "");
-            UNIT_ASSERT_VALUES_EQUAL(
-                response.GetFileStore().GetFeatures().GetEntryTimeout(),
-                featureTimeout);
-        }
-
-        // whitelist folder id
-        {
-            NProto::TFeaturesConfig fc;
-            auto* f = fc.AddFeatures();
-            f->SetName("EntryTimeout");
-            f->SetValue(ToString(featureTimeout) + "ms");
-            *f->MutableWhitelist()->AddFolderIds() = "folder";
-            bootstrap.SetFeaturesConfig(fc);
-
-            auto response = bootstrap.CreateSession("fs", "client", "");
-            UNIT_ASSERT_VALUES_EQUAL(
-                response.GetFileStore().GetFeatures().GetEntryTimeout(),
-                featureTimeout);
-        }
-
-        // blacklist fs id
-        {
-            NProto::TFeaturesConfig fc;
-            auto* f = fc.AddFeatures();
-            f->SetName("EntryTimeout");
-            f->SetValue(ToString(featureTimeout) + "ms");
-            *f->MutableBlacklist()->AddEntityIds() = "fs";
-            *f->MutableWhitelist()->AddCloudIds() = "cloud";
-            *f->MutableWhitelist()->AddFolderIds() = "folder";
-            bootstrap.SetFeaturesConfig(fc);
-
-            auto response = bootstrap.CreateSession("fs", "client", "");
-            UNIT_ASSERT_VALUES_EQUAL(
-                response.GetFileStore().GetFeatures().GetEntryTimeout(),
-                defaultTimeout);
-        }
+        auto response = bootstrap.CreateSession("fs", "client", "");
+        UNIT_ASSERT_VALUES_EQUAL(
+            response.GetFileStore().GetFeatures().GetEntryTimeout(),
+            featureTimeout);
     }
-};
+
+    // whitelist folder id
+    {
+        NProto::TFeaturesConfig fc;
+        auto* f = fc.AddFeatures();
+        f->SetName("EntryTimeout");
+        f->SetValue(ToString(featureTimeout) + "ms");
+        *f->MutableWhitelist()->AddFolderIds() = "folder";
+        bootstrap.SetFeaturesConfig(fc);
+
+        auto response = bootstrap.CreateSession("fs", "client", "");
+        UNIT_ASSERT_VALUES_EQUAL(
+            response.GetFileStore().GetFeatures().GetEntryTimeout(),
+            featureTimeout);
+    }
+
+    // blacklist fs id
+    {
+        NProto::TFeaturesConfig fc;
+        auto* f = fc.AddFeatures();
+        f->SetName("EntryTimeout");
+        f->SetValue(ToString(featureTimeout) + "ms");
+        *f->MutableBlacklist()->AddEntityIds() = "fs";
+        *f->MutableWhitelist()->AddCloudIds() = "cloud";
+        *f->MutableWhitelist()->AddFolderIds() = "folder";
+        bootstrap.SetFeaturesConfig(fc);
+
+        auto response = bootstrap.CreateSession("fs", "client", "");
+        UNIT_ASSERT_VALUES_EQUAL(
+            response.GetFileStore().GetFeatures().GetEntryTimeout(),
+            defaultTimeout);
+    }
+}
+}
+;
 
 }   // namespace NCloud::NFileStore

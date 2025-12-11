@@ -65,18 +65,17 @@ private:
 };
 
 TDescribeSchemeActor::TDescribeSchemeActor(
-        int logComponent,
-        TRequestInfo requestInfo,
-        TActorId pathDescriptionBackup,
-        TString path)
+    int logComponent,
+    TRequestInfo requestInfo,
+    TActorId pathDescriptionBackup,
+    TString path)
     : LogComponent(logComponent)
     , RequestInfo(std::move(requestInfo))
     , PathDescriptionBackup(std::move(pathDescriptionBackup))
     , Path(std::move(path))
 {}
 
-void TDescribeSchemeActor::Bootstrap(
-    const TActorContext& ctx)
+void TDescribeSchemeActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
@@ -99,8 +98,8 @@ void TDescribeSchemeActor::HandleReadBackupResponse(
             // should not return fatal error to client
             error = MakeError(
                 E_REJECTED,
-                "E_NOT_FOUND from PathDescriptionBackup converted to E_REJECTED"
-            );
+                "E_NOT_FOUND from PathDescriptionBackup converted to "
+                "E_REJECTED");
         }
 
         response = std::make_unique<TResponse>(std::move(error));
@@ -150,10 +149,12 @@ void TSSProxyFallbackActor::Bootstrap(const TActorContext& ctx)
         auto actor = std::make_unique<TPathDescriptionBackup>(
             Config.LogComponent,
             Config.PathDescriptionBackupFilePath,
-            true    // readOnlyMode
+            true   // readOnlyMode
         );
         PathDescriptionBackup = ctx.Register(
-            actor.release(), TMailboxType::HTSwap, AppData()->IOPoolId);
+            actor.release(),
+            TMailboxType::HTSwap,
+            AppData()->IOPoolId);
     }
 }
 

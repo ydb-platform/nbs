@@ -25,10 +25,14 @@ TVector<ui32> GetItemOrder(const NProto::TProfileLogRecord& record)
     order.resize(record.RequestsSize());
     std::iota(order.begin(), order.end(), 0);
 
-    Sort(order.begin(), order.end(), [&] (const auto& i, const auto& j) {
-        return record.GetRequests(i).GetTimestampMcs()
-            < record.GetRequests(j).GetTimestampMcs();
-    });
+    Sort(
+        order.begin(),
+        order.end(),
+        [&](const auto& i, const auto& j)
+        {
+            return record.GetRequests(i).GetTimestampMcs() <
+                   record.GetRequests(j).GetTimestampMcs();
+        });
 
     return order;
 }
@@ -46,7 +50,8 @@ TString RequestName(const ui32 requestType)
         name = GetFileStoreFuseRequestName(
             static_cast<NFuse::EFileStoreFuseRequest>(requestType));
     } else if (
-        requestType > static_cast<ui32>(NStorage::EFileStoreSystemRequest::MIN) &&
+        requestType >
+            static_cast<ui32>(NStorage::EFileStoreSystemRequest::MIN) &&
         requestType < static_cast<ui32>(NStorage::EFileStoreSystemRequest::MAX))
     {
         name = GetFileStoreSystemRequestName(
@@ -95,15 +100,16 @@ void DumpRequest(
     if (printerIt == printers.end()) {
         const auto requestType = r.GetRequestType();
         printerIt =
-            printers.emplace(requestType, CreateRequestPrinter(requestType)).first;
+            printers.emplace(requestType, CreateRequestPrinter(requestType))
+                .first;
     }
 
-    (*out) << TInstant::MicroSeconds(r.GetTimestampMcs())
-        << "\t" << record.GetFileSystemId()
-        << "\t" << RequestName(r.GetRequestType())
-        << "\t" << TDuration::MicroSeconds(r.GetDurationMcs())
-        << "\t" << FormatResultCode(r.GetErrorCode())
-        << "\t" << printerIt->second->DumpInfo(r) << "\n";
+    (*out) << TInstant::MicroSeconds(r.GetTimestampMcs()) << "\t"
+           << record.GetFileSystemId() << "\t"
+           << RequestName(r.GetRequestType()) << "\t"
+           << TDuration::MicroSeconds(r.GetDurationMcs()) << "\t"
+           << FormatResultCode(r.GetErrorCode()) << "\t"
+           << printerIt->second->DumpInfo(r) << "\n";
 }
 
 void DumpDiscardedRequestCount(

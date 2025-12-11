@@ -22,7 +22,7 @@ namespace {
 
 struct TFree
 {
-    void operator () (void* ptr) const
+    void operator()(void* ptr) const
     {
         std::free(ptr);
     }
@@ -77,10 +77,7 @@ Y_UNIT_TEST_SUITE(TNvmeManagerTest)
     Y_UNIT_TEST_F(ShouldGetSerialNumber, TFixture)
     {
         auto [sn, error] = NvmeManager->GetSerialNumber(DevicePath);
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            S_OK,
-            error.GetCode(),
-            FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
         UNIT_ASSERT(sn);
     }
 

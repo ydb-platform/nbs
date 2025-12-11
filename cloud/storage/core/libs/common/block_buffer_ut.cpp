@@ -24,9 +24,9 @@ Y_UNIT_TEST_SUITE(TBlockBufferTest)
 
     using TContent = TVector<TBlock>;
 
-    void Fill(TBlockBuffer& b, const TContent& content)
+    void Fill(TBlockBuffer & b, const TContent& content)
     {
-        for (auto c : content) {
+        for (auto c: content) {
             if (c.fill) {
                 TString tmp(c.size, *c.fill);
                 b.AddBlock({tmp.data(), tmp.size()});
@@ -50,7 +50,9 @@ Y_UNIT_TEST_SUITE(TBlockBufferTest)
                 const TString expectedData(
                     expectedBlock.size,
                     *expectedBlock.fill);
-                UNIT_ASSERT_VALUES_EQUAL(expectedData, actualBlock.AsStringBuf());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expectedData,
+                    actualBlock.AsStringBuf());
             } else {
                 UNIT_ASSERT_VALUES_EQUAL(nullptr, actualBlock.Data());
                 UNIT_ASSERT_VALUES_EQUAL(
@@ -67,7 +69,7 @@ Y_UNIT_TEST_SUITE(TBlockBufferTest)
         UNIT_ASSERT(static_cast<bool>(expected) == static_cast<bool>(b));
 
         size_t expectedBytesCount = 0;
-        for (auto block : expected) {
+        for (auto block: expected) {
             expectedBytesCount += block.size;
         }
         UNIT_ASSERT_VALUES_EQUAL(expectedBytesCount, b.GetBytesCount());
@@ -83,7 +85,7 @@ Y_UNIT_TEST_SUITE(TBlockBufferTest)
         CheckBlocks(expected, b.GetBlocks());
 
         TString expectedData;
-        for (auto block : expected) {
+        for (auto block: expected) {
             if (block.fill) {
                 expectedData += TString(block.size, *block.fill);
             } else {
@@ -102,7 +104,7 @@ Y_UNIT_TEST_SUITE(TBlockBufferTest)
     Y_UNIT_TEST(MoveConstructor)
     {
         TBlockBuffer moved;
-        const TContent expected = { {One, 1}, {Zero, 2}, {Two, 3} };
+        const TContent expected = {{One, 1}, {Zero, 2}, {Two, 3}};
         Fill(moved, expected);
 
         TBlockBuffer b(std::move(moved));
@@ -114,7 +116,7 @@ Y_UNIT_TEST_SUITE(TBlockBufferTest)
     Y_UNIT_TEST(MoveAssignment)
     {
         TBlockBuffer moved;
-        const TContent expected = { {Zero, 1}, {One, 2}, {Two, 3} };
+        const TContent expected = {{Zero, 1}, {One, 2}, {Two, 3}};
         Fill(moved, expected);
 
         TBlockBuffer b;
@@ -127,7 +129,7 @@ Y_UNIT_TEST_SUITE(TBlockBufferTest)
     Y_UNIT_TEST(Clone)
     {
         TBlockBuffer cloned;
-        const TContent expected = { {One, 1}, {Zero, 2}, {Two, 3} };
+        const TContent expected = {{One, 1}, {Zero, 2}, {Two, 3}};
         Fill(cloned, expected);
 
         TBlockBuffer b = cloned.Clone();
@@ -139,7 +141,7 @@ Y_UNIT_TEST_SUITE(TBlockBufferTest)
     Y_UNIT_TEST(DetachBlocks)
     {
         TBlockBuffer detached;
-        const TContent expected = { {Zero, 1}, {One, 2}, {Two, 3} };
+        const TContent expected = {{Zero, 1}, {One, 2}, {Two, 3}};
         Fill(detached, expected);
 
         const auto blocks = detached.DetachBlocks();
@@ -148,9 +150,9 @@ Y_UNIT_TEST_SUITE(TBlockBufferTest)
         CheckBlocks(expected, blocks);
 
         auto* allocator = TDefaultAllocator::Instance();
-        for (auto block : blocks) {
+        for (auto block: blocks) {
             if (block.Data()) {
-                allocator->Release({ (void *)block.Data(), block.Size() });
+                allocator->Release({(void*)block.Data(), block.Size()});
             }
         }
     }
@@ -158,7 +160,7 @@ Y_UNIT_TEST_SUITE(TBlockBufferTest)
     Y_UNIT_TEST(Clear)
     {
         TBlockBuffer b;
-        Fill(b, { {One, 1}, {Zero, 2}, {Two, 3} });
+        Fill(b, {{One, 1}, {Zero, 2}, {Two, 3}});
 
         b.Clear();
         Check({}, b);

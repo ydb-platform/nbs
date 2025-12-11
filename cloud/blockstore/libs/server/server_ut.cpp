@@ -54,42 +54,44 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto service = std::make_shared<TTestService>();
         service->PingHandler =
-            [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture<NProto::TPingResponse>();
-            };
+            [&](std::shared_ptr<NProto::TPingRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture<NProto::TPingResponse>();
+        };
 
         TTestFactory testFactory;
 
         auto server = testFactory.CreateServerBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildServer(service);
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildClient();
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildClient();
 
         server->Start();
         client->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             client->Stop();
             server->Stop();
-        };
+        }
 
         auto endpoint = client->CreateEndpoint();
         endpoint = testFactory.CreateDurableClient(std::move(endpoint));
 
         endpoint->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             endpoint->Stop();
-        };
+        }
 
         auto future = endpoint->Ping(
             MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TPingRequest>()
-        );
+            std::make_shared<NProto::TPingRequest>());
 
         const auto& response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_C(!HasError(response), response.GetError());
@@ -104,54 +106,55 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto service = std::make_shared<TTestService>();
         service->PingHandler =
-            [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                UNIT_ASSERT_VALUES_EQUAL(
-                    "test",
-                    request->GetHeaders().GetInternal().GetAuthToken()
-                );
-                return MakeFuture<NProto::TPingResponse>();
-            };
+            [&](std::shared_ptr<NProto::TPingRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                "test",
+                request->GetHeaders().GetInternal().GetAuthToken());
+            return MakeFuture<NProto::TPingResponse>();
+        };
 
         TTestFactory testFactory;
 
         auto server = testFactory.CreateServerBuilder()
-            .SetSecureEndpoint(
-                secureEndpointPort,
-                "certs/server.crt",
-                "certs/server.crt",
-                "certs/server.key")
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildServer(service);
+                          .SetSecureEndpoint(
+                              secureEndpointPort,
+                              "certs/server.crt",
+                              "certs/server.crt",
+                              "certs/server.key")
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
-            .SetSecureEndpoint(
-                secureEndpointPort,
-                "certs/server.crt",
-                "test")
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildClient();
+                          .SetSecureEndpoint(
+                              secureEndpointPort,
+                              "certs/server.crt",
+                              "test")
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildClient();
 
         server->Start();
         client->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             client->Stop();
             server->Stop();
-        };
+        }
 
         auto endpoint = client->CreateEndpoint();
         endpoint = testFactory.CreateDurableClient(std::move(endpoint));
 
         endpoint->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             endpoint->Stop();
-        };
+        }
 
         auto future = endpoint->Ping(
             MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TPingRequest>()
-        );
+            std::make_shared<NProto::TPingRequest>());
 
         const auto& response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_C(!HasError(response), response.GetError());
@@ -226,60 +229,58 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto service = std::make_shared<TTestService>();
         service->PingHandler =
-            [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                UNIT_ASSERT_VALUES_EQUAL(
-                    "test",
-                    request->GetHeaders().GetInternal().GetAuthToken()
-                );
-                return MakeFuture<NProto::TPingResponse>();
-            };
+            [&](std::shared_ptr<NProto::TPingRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                "test",
+                request->GetHeaders().GetInternal().GetAuthToken());
+            return MakeFuture<NProto::TPingResponse>();
+        };
 
         TTestFactory testFactory;
 
-        auto server = testFactory.CreateServerBuilder()
-            .SetSecureEndpoint(
-                secureEndpointPort,
-                "certs/server.crt",
-                {},
-                {})
-            .AddCert(
-                "certs/server_fallback.crt",
-                "certs/server.key")
-            .AddCert(
-                "certs/server.crt",
-                "certs/server.key")
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildServer(service);
+        auto server =
+            testFactory.CreateServerBuilder()
+                .SetSecureEndpoint(
+                    secureEndpointPort,
+                    "certs/server.crt",
+                    {},
+                    {})
+                .AddCert("certs/server_fallback.crt", "certs/server.key")
+                .AddCert("certs/server.crt", "certs/server.key")
+                .SetPort(port)
+                .SetDataPort(dataPort)
+                .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
-            .SetSecureEndpoint(
-                secureEndpointPort,
-                "certs/server.crt",
-                "test")
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildClient();
+                          .SetSecureEndpoint(
+                              secureEndpointPort,
+                              "certs/server.crt",
+                              "test")
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildClient();
 
         server->Start();
         client->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             client->Stop();
             server->Stop();
-        };
+        }
 
         auto endpoint = client->CreateEndpoint();
         endpoint = testFactory.CreateDurableClient(std::move(endpoint));
 
         endpoint->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             endpoint->Stop();
-        };
+        }
 
         auto future = endpoint->Ping(
             MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TPingRequest>()
-        );
+            std::make_shared<NProto::TPingRequest>());
 
         const auto& response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_C(!HasError(response), response.GetError());
@@ -294,72 +295,75 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto service = std::make_shared<TTestService>();
         service->PingHandler =
-            [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture<NProto::TPingResponse>();
-            };
+            [&](std::shared_ptr<NProto::TPingRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture<NProto::TPingResponse>();
+        };
 
         TTestFactory testFactory;
 
         auto server = testFactory.CreateServerBuilder()
-            .SetPort(insecurePort)
-            .SetSecureEndpoint(
-                securePort,
-                "certs/server.crt",
-                "certs/server.crt",
-                "certs/server.key")
-            .SetDataPort(dataPort)
-            .BuildServer(service);
+                          .SetPort(insecurePort)
+                          .SetSecureEndpoint(
+                              securePort,
+                              "certs/server.crt",
+                              "certs/server.crt",
+                              "certs/server.key")
+                          .SetDataPort(dataPort)
+                          .BuildServer(service);
 
-        auto secureClient = testFactory.CreateClientBuilder()
-            .SetSecureEndpoint(
-                securePort,
-                "certs/server.crt",
-                "test")
-            .SetDataPort(dataPort)
-            .BuildClient();
+        auto secureClient =
+            testFactory.CreateClientBuilder()
+                .SetSecureEndpoint(securePort, "certs/server.crt", "test")
+                .SetDataPort(dataPort)
+                .BuildClient();
 
         auto insecureClient = testFactory.CreateClientBuilder()
-            .SetPort(insecurePort)
-            .SetDataPort(dataPort)
-            .BuildClient();
+                                  .SetPort(insecurePort)
+                                  .SetDataPort(dataPort)
+                                  .BuildClient();
 
         server->Start();
         secureClient->Start();
         insecureClient->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             insecureClient->Stop();
             secureClient->Stop();
             server->Stop();
-        };
+        }
 
         auto secureEndpoint = secureClient->CreateEndpoint();
         auto insecureEndpoint = insecureClient->CreateEndpoint();
 
         secureEndpoint->Start();
         insecureEndpoint->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             insecureEndpoint->Stop();
             secureEndpoint->Stop();
-        };
+        }
 
         auto futureFromSecure = secureEndpoint->Ping(
             MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TPingRequest>()
-        );
+            std::make_shared<NProto::TPingRequest>());
 
         auto futureFromInsecure = insecureEndpoint->Ping(
             MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TPingRequest>()
-        );
+            std::make_shared<NProto::TPingRequest>());
 
         const auto& responseFromSecure =
             futureFromSecure.GetValue(TDuration::Seconds(5));
-        UNIT_ASSERT_C(!HasError(responseFromSecure), responseFromSecure.GetError());
+        UNIT_ASSERT_C(
+            !HasError(responseFromSecure),
+            responseFromSecure.GetError());
 
         const auto& responseFromInsecure =
             futureFromInsecure.GetValue(TDuration::Seconds(5));
-        UNIT_ASSERT_C(!HasError(responseFromInsecure), responseFromInsecure.GetError());
+        UNIT_ASSERT_C(
+            !HasError(responseFromInsecure),
+            responseFromInsecure.GetError());
     }
 
     Y_UNIT_TEST(ShouldFailRequestWithNonEmptyInternalHeaders)
@@ -370,47 +374,47 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto service = std::make_shared<TTestService>();
         service->PingHandler =
-            [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                UNIT_ASSERT_VALUES_EQUAL(
-                    "",
-                    request->GetHeaders().GetInternal().GetAuthToken()
-                );
-                return MakeFuture<NProto::TPingResponse>();
-            };
+            [&](std::shared_ptr<NProto::TPingRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                "",
+                request->GetHeaders().GetInternal().GetAuthToken());
+            return MakeFuture<NProto::TPingResponse>();
+        };
 
         TTestFactory testFactory;
 
         auto server = testFactory.CreateServerBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildServer(service);
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildClient();
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildClient();
 
         server->Start();
         client->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             client->Stop();
             server->Stop();
-        };
+        }
 
         auto endpoint = client->CreateEndpoint();
         endpoint = testFactory.CreateDurableClient(std::move(endpoint));
 
         endpoint->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             endpoint->Stop();
-        };
+        }
 
         auto request = std::make_shared<NProto::TPingRequest>();
         request->MutableHeaders()->MutableInternal()->SetAuthToken("test");
-        auto future = endpoint->Ping(
-            MakeIntrusive<TCallContext>(),
-            std::move(request)
-        );
+        auto future =
+            endpoint->Ping(MakeIntrusive<TCallContext>(), std::move(request));
 
         const auto& response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response.GetError().GetCode());
@@ -425,44 +429,48 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto service = std::make_shared<TTestService>();
         service->PingHandler =
-            [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                UNIT_ASSERT(request->HasHeaders());
-                UNIT_ASSERT_VALUES_EQUAL(clientId, request->GetHeaders().GetClientId());
-                return MakeFuture<NProto::TPingResponse>();
-            };
+            [&](std::shared_ptr<NProto::TPingRequest> request)
+        {
+            UNIT_ASSERT(request->HasHeaders());
+            UNIT_ASSERT_VALUES_EQUAL(
+                clientId,
+                request->GetHeaders().GetClientId());
+            return MakeFuture<NProto::TPingResponse>();
+        };
 
         TTestFactory testFactory;
 
         auto server = testFactory.CreateServerBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildServer(service);
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .SetClientId(clientId)
-            .BuildClient();
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .SetClientId(clientId)
+                          .BuildClient();
 
         server->Start();
         client->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             client->Stop();
             server->Stop();
-        };
+        }
 
         auto endpoint = client->CreateEndpoint();
         endpoint = testFactory.CreateDurableClient(std::move(endpoint));
 
         endpoint->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             endpoint->Stop();
-        };
+        }
 
         auto future = endpoint->Ping(
             MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TPingRequest>()
-        );
+            std::make_shared<NProto::TPingRequest>());
 
         const auto& response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_C(!HasError(response), response.GetError());
@@ -476,46 +484,46 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto service = std::make_shared<TTestService>();
         service->WriteBlocksHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture<NProto::TWriteBlocksResponse>();
-            };
+            [&](std::shared_ptr<NProto::TWriteBlocksRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture<NProto::TWriteBlocksResponse>();
+        };
 
         TTestFactory testFactory;
 
         auto server = testFactory.CreateServerBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildServer(service);
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildServer(service);
 
         // mismatched Client/DataClient
-        auto client = testFactory.CreateClientBuilder()
-            .SetPort(dataPort)
-            .BuildClient();
+        auto client =
+            testFactory.CreateClientBuilder().SetPort(dataPort).BuildClient();
 
         server->Start();
         client->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             client->Stop();
             server->Stop();
-        };
+        }
 
         auto endpoint = client->CreateEndpoint();
         endpoint->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             endpoint->Stop();
-        };
+        }
 
         auto future = endpoint->WriteBlocks(
             MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TWriteBlocksRequest>()
-        );
+            std::make_shared<NProto::TWriteBlocksRequest>());
 
         const auto& response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_VALUES_EQUAL(
             E_GRPC_UNIMPLEMENTED,
-            response.GetError().GetCode()
-        );
+            response.GetError().GetCode());
     }
 
     Y_UNIT_TEST(ShouldFailRequestsToWrongServiceFromDataClient)
@@ -526,46 +534,46 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto service = std::make_shared<TTestService>();
         service->WriteBlocksHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture<NProto::TWriteBlocksResponse>();
-            };
+            [&](std::shared_ptr<NProto::TWriteBlocksRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture<NProto::TWriteBlocksResponse>();
+        };
 
         TTestFactory testFactory;
 
         auto server = testFactory.CreateServerBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildServer(service);
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildServer(service);
 
         // mismatched Client/DataClient
-        auto client = testFactory.CreateClientBuilder()
-            .SetDataPort(port)
-            .BuildClient();
+        auto client =
+            testFactory.CreateClientBuilder().SetDataPort(port).BuildClient();
 
         server->Start();
         client->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             client->Stop();
             server->Stop();
-        };
+        }
 
         auto endpoint = client->CreateDataEndpoint();
         endpoint->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             endpoint->Stop();
-        };
+        }
 
         auto future = endpoint->WriteBlocks(
             MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TWriteBlocksRequest>()
-        );
+            std::make_shared<NProto::TWriteBlocksRequest>());
 
         const auto& response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_VALUES_EQUAL(
             E_GRPC_UNIMPLEMENTED,
-            response.GetError().GetCode()
-        );
+            response.GetError().GetCode());
     }
 
     Y_UNIT_TEST(ShouldCancelRequestsOnServerShutdown)
@@ -578,52 +586,54 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto service = std::make_shared<TTestService>();
         service->PingHandler =
-            [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture<NProto::TPingResponse>();
-            };
+            [&](std::shared_ptr<NProto::TPingRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture<NProto::TPingResponse>();
+        };
         service->WriteBlocksHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksRequest> request) {
-                Y_UNUSED(request);
-                return writePromise;   // will hang until value is set
-            };
+            [&](std::shared_ptr<NProto::TWriteBlocksRequest> request)
+        {
+            Y_UNUSED(request);
+            return writePromise;   // will hang until value is set
+        };
 
         TTestFactory testFactory;
 
         auto server = testFactory.CreateServerBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildServer(service);
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildClient();
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildClient();
 
         server->Start();
         client->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             client->Stop();
             server->Stop();
-        };
+        }
 
         auto endpoint = client->CreateEndpoint();
         endpoint->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             endpoint->Stop();
-        };
+        }
 
         auto future = endpoint->WriteBlocks(
             MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TWriteBlocksRequest>()
-        );
+            std::make_shared<NProto::TWriteBlocksRequest>());
 
         // control request to ensure client and server completely started
         {
             auto future = endpoint->Ping(
                 MakeIntrusive<TCallContext>(),
-                std::make_shared<NProto::TPingRequest>()
-            );
+                std::make_shared<NProto::TPingRequest>());
             const auto& response = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_C(!HasError(response), response.GetError());
         }
@@ -638,8 +648,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         UNIT_ASSERT_VALUES_EQUAL_C(
             EErrorKind::ErrorRetriable,
             GetErrorKind(response.GetError()),
-            response.GetError()
-        );
+            response.GetError());
 
         writePromise.SetValue(NProto::TWriteBlocksResponse());
     }
@@ -654,52 +663,54 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto service = std::make_shared<TTestService>();
         service->PingHandler =
-            [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture<NProto::TPingResponse>();
-            };
+            [&](std::shared_ptr<NProto::TPingRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture<NProto::TPingResponse>();
+        };
         service->WriteBlocksHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksRequest> request) {
-                Y_UNUSED(request);
-                return writePromise;   // will hang until value is set
-            };
+            [&](std::shared_ptr<NProto::TWriteBlocksRequest> request)
+        {
+            Y_UNUSED(request);
+            return writePromise;   // will hang until value is set
+        };
 
         TTestFactory testFactory;
 
         auto server = testFactory.CreateServerBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildServer(service);
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildClient();
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildClient();
 
         server->Start();
         client->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             client->Stop();
             server->Stop();
-        };
+        }
 
         auto endpoint = client->CreateEndpoint();
         endpoint->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             endpoint->Stop();
-        };
+        }
 
         auto future = endpoint->WriteBlocks(
             MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TWriteBlocksRequest>()
-        );
+            std::make_shared<NProto::TWriteBlocksRequest>());
 
         // control request to ensure client and server completely started
         {
             auto future = endpoint->Ping(
                 MakeIntrusive<TCallContext>(),
-                std::make_shared<NProto::TPingRequest>()
-            );
+                std::make_shared<NProto::TPingRequest>());
             const auto& response = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_C(!HasError(response), response.GetError());
         }
@@ -710,8 +721,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         const auto& response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_VALUES_EQUAL(
             E_GRPC_CANCELLED,
-            response.GetError().GetCode()
-        );
+            response.GetError().GetCode());
 
         writePromise.SetValue(NProto::TWriteBlocksResponse());
     }
@@ -724,45 +734,46 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto service = std::make_shared<TTestService>();
         service->ReadBlocksHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksRequest> request) {
-                UNIT_ASSERT_VALUES_EQUAL(
-                    int(NProto::SOURCE_INSECURE_CONTROL_CHANNEL),
-                    int(request->GetHeaders().GetInternal().GetRequestSource())
-                );
-                return MakeFuture<NProto::TReadBlocksResponse>();
-            };
+            [&](std::shared_ptr<NProto::TReadBlocksRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                int(NProto::SOURCE_INSECURE_CONTROL_CHANNEL),
+                int(request->GetHeaders().GetInternal().GetRequestSource()));
+            return MakeFuture<NProto::TReadBlocksResponse>();
+        };
 
         TTestFactory testFactory;
 
         auto server = testFactory.CreateServerBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildServer(service);
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildClient();
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildClient();
 
         server->Start();
         client->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             client->Stop();
             server->Stop();
-        };
+        }
 
         auto endpoint = client->CreateEndpoint();
         endpoint = testFactory.CreateDurableClient(std::move(endpoint));
 
         endpoint->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             endpoint->Stop();
-        };
+        }
 
         auto future = endpoint->ReadBlocks(
             MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TReadBlocksRequest>()
-        );
+            std::make_shared<NProto::TReadBlocksRequest>());
 
         const auto& response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_C(!HasError(response), response.GetError());
@@ -777,54 +788,53 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto service = std::make_shared<TTestService>();
         service->ReadBlocksHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksRequest> request) {
-                UNIT_ASSERT_VALUES_EQUAL(
-                    int(NProto::SOURCE_SECURE_CONTROL_CHANNEL),
-                    int(request->GetHeaders().GetInternal().GetRequestSource())
-                );
-                return MakeFuture<NProto::TReadBlocksResponse>();
-            };
+            [&](std::shared_ptr<NProto::TReadBlocksRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                int(NProto::SOURCE_SECURE_CONTROL_CHANNEL),
+                int(request->GetHeaders().GetInternal().GetRequestSource()));
+            return MakeFuture<NProto::TReadBlocksResponse>();
+        };
 
         TTestFactory testFactory;
 
         auto server = testFactory.CreateServerBuilder()
-            .SetSecureEndpoint(
-                securePort,
-                "certs/server.crt",
-                "certs/server.crt",
-                "certs/server.key")
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildServer(service);
+                          .SetSecureEndpoint(
+                              securePort,
+                              "certs/server.crt",
+                              "certs/server.crt",
+                              "certs/server.key")
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildServer(service);
 
-        auto client = testFactory.CreateClientBuilder()
-            .SetSecureEndpoint(
-                securePort,
-                "certs/server.crt",
-                "test")
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildClient();
+        auto client =
+            testFactory.CreateClientBuilder()
+                .SetSecureEndpoint(securePort, "certs/server.crt", "test")
+                .SetPort(port)
+                .SetDataPort(dataPort)
+                .BuildClient();
 
         server->Start();
         client->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             client->Stop();
             server->Stop();
-        };
+        }
 
         auto endpoint = client->CreateEndpoint();
         endpoint = testFactory.CreateDurableClient(std::move(endpoint));
 
         endpoint->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             endpoint->Stop();
-        };
+        }
 
         auto future = endpoint->ReadBlocks(
             MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TReadBlocksRequest>()
-        );
+            std::make_shared<NProto::TReadBlocksRequest>());
 
         const auto& response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_C(!HasError(response), response.GetError());
@@ -838,45 +848,46 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto service = std::make_shared<TTestService>();
         service->UploadClientMetricsHandler =
-            [&] (std::shared_ptr<NProto::TUploadClientMetricsRequest> request) {
-                UNIT_ASSERT_VALUES_EQUAL(
-                    int(NProto::SOURCE_TCP_DATA_CHANNEL),
-                    int(request->GetHeaders().GetInternal().GetRequestSource())
-                );
-                return MakeFuture<NProto::TUploadClientMetricsResponse>();
-            };
+            [&](std::shared_ptr<NProto::TUploadClientMetricsRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                int(NProto::SOURCE_TCP_DATA_CHANNEL),
+                int(request->GetHeaders().GetInternal().GetRequestSource()));
+            return MakeFuture<NProto::TUploadClientMetricsResponse>();
+        };
 
         TTestFactory testFactory;
 
         auto server = testFactory.CreateServerBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildServer(service);
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildClient();
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildClient();
 
         server->Start();
         client->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             client->Stop();
             server->Stop();
-        };
+        }
 
         auto endpoint = client->CreateDataEndpoint();
         endpoint = testFactory.CreateDurableClient(std::move(endpoint));
 
         endpoint->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             endpoint->Stop();
-        };
+        }
 
         auto future = endpoint->UploadClientMetrics(
             MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TUploadClientMetricsRequest>()
-        );
+            std::make_shared<NProto::TUploadClientMetricsRequest>());
 
         const auto& response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_C(!HasError(response), response.GetError());
@@ -891,47 +902,48 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto service = std::make_shared<TTestService>();
         service->ReadBlocksHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksRequest> request) {
-                UNIT_ASSERT_VALUES_EQUAL(
-                    int(NProto::SOURCE_FD_CONTROL_CHANNEL),
-                    int(request->GetHeaders().GetInternal().GetRequestSource())
-                );
-                return MakeFuture<NProto::TReadBlocksResponse>();
-            };
+            [&](std::shared_ptr<NProto::TReadBlocksRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                int(NProto::SOURCE_FD_CONTROL_CHANNEL),
+                int(request->GetHeaders().GetInternal().GetRequestSource()));
+            return MakeFuture<NProto::TReadBlocksResponse>();
+        };
 
         TTestFactory testFactory;
 
         auto server = testFactory.CreateServerBuilder()
-            .SetUnixSocketPath(unixSocket.GetPath())
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildServer(nullptr, service);
+                          .SetUnixSocketPath(unixSocket.GetPath())
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildServer(nullptr, service);
 
         auto client = testFactory.CreateClientBuilder()
-            .SetUnixSocketPath(unixSocket.GetPath())
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildClient();
+                          .SetUnixSocketPath(unixSocket.GetPath())
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildClient();
 
         server->Start();
         client->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             client->Stop();
             server->Stop();
-        };
+        }
 
         auto endpoint = client->CreateEndpoint();
         endpoint = testFactory.CreateDurableClient(std::move(endpoint));
 
         endpoint->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             endpoint->Stop();
-        };
+        }
 
         auto future = endpoint->ReadBlocks(
             MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TReadBlocksRequest>()
-        );
+            std::make_shared<NProto::TReadBlocksRequest>());
 
         const auto& response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_C(!HasError(response), response.GetError());
@@ -946,56 +958,57 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto service = std::make_shared<TTestService>();
         service->ReadBlocksHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksRequest> request) {
-                UNIT_ASSERT_VALUES_EQUAL(
-                    int(NProto::SOURCE_FD_CONTROL_CHANNEL),
-                    int(request->GetHeaders().GetInternal().GetRequestSource())
-                );
-                return MakeFuture<NProto::TReadBlocksResponse>();
-            };
+            [&](std::shared_ptr<NProto::TReadBlocksRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                int(NProto::SOURCE_FD_CONTROL_CHANNEL),
+                int(request->GetHeaders().GetInternal().GetRequestSource()));
+            return MakeFuture<NProto::TReadBlocksResponse>();
+        };
         service->ListEndpointsHandler =
-            [&] (std::shared_ptr<NProto::TListEndpointsRequest> request) {
-                UNIT_ASSERT_VALUES_EQUAL(
-                    int(NProto::SOURCE_FD_CONTROL_CHANNEL),
-                    int(request->GetHeaders().GetInternal().GetRequestSource())
-                );
-                return MakeFuture<NProto::TListEndpointsResponse>();
-            };
+            [&](std::shared_ptr<NProto::TListEndpointsRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                int(NProto::SOURCE_FD_CONTROL_CHANNEL),
+                int(request->GetHeaders().GetInternal().GetRequestSource()));
+            return MakeFuture<NProto::TListEndpointsResponse>();
+        };
 
         TTestFactory testFactory;
 
         auto server = testFactory.CreateServerBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .SetUnixSocketPath(unixSocket.GetPath())
-            .BuildServer(nullptr, service);
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .SetUnixSocketPath(unixSocket.GetPath())
+                          .BuildServer(nullptr, service);
 
         auto client = testFactory.CreateClientBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .SetUnixSocketPath(unixSocket.GetPath())
-            .BuildClient();
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .SetUnixSocketPath(unixSocket.GetPath())
+                          .BuildClient();
 
         server->Start();
         client->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             client->Stop();
             server->Stop();
-        };
+        }
 
         auto endpoint = client->CreateEndpoint();
         endpoint = testFactory.CreateDurableClient(std::move(endpoint));
 
         endpoint->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             endpoint->Stop();
-        };
+        }
 
         {
             auto future = endpoint->ReadBlocks(
                 MakeIntrusive<TCallContext>(),
-                std::make_shared<NProto::TReadBlocksRequest>()
-            );
+                std::make_shared<NProto::TReadBlocksRequest>());
 
             const auto& response = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_C(!HasError(response), response.GetError());
@@ -1004,8 +1017,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         {
             auto future = endpoint->ListEndpoints(
                 MakeIntrusive<TCallContext>(),
-                std::make_shared<NProto::TListEndpointsRequest>()
-            );
+                std::make_shared<NProto::TListEndpointsRequest>());
 
             const auto& response = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_C(!HasError(response), response.GetError());
@@ -1014,10 +1026,12 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
     Y_UNIT_TEST(ShouldThrowCriticalEventIfFailedToStartUnixSocketEndpoint)
     {
-        NMonitoring::TDynamicCountersPtr counters = new NMonitoring::TDynamicCounters();
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
         InitCriticalEventsCounter(counters);
-        auto errorCounter =
-            counters->GetCounter("AppCriticalEvents/EndpointStartingError", true);
+        auto errorCounter = counters->GetCounter(
+            "AppCriticalEvents/EndpointStartingError",
+            true);
 
         TFsPath unixSocket("./invalid/path/test_socket");
 
@@ -1027,45 +1041,47 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto service = std::make_shared<TTestService>();
         service->ReadBlocksHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture<NProto::TReadBlocksResponse>();
-            };
+            [&](std::shared_ptr<NProto::TReadBlocksRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture<NProto::TReadBlocksResponse>();
+        };
 
         TTestFactory testFactory;
         auto server = testFactory.CreateServerBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .SetUnixSocketPath(unixSocket.GetPath())
-            .BuildServer(service);
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .SetUnixSocketPath(unixSocket.GetPath())
+                          .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildClient();
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildClient();
 
         UNIT_ASSERT_VALUES_EQUAL(0, static_cast<int>(*errorCounter));
         server->Start();
         UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*errorCounter));
 
         client->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             client->Stop();
             server->Stop();
-        };
+        }
 
         auto endpoint = client->CreateEndpoint();
         endpoint = testFactory.CreateDurableClient(std::move(endpoint));
 
         endpoint->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             endpoint->Stop();
-        };
+        }
 
         auto future = endpoint->ReadBlocks(
             MakeIntrusive<TCallContext>(),
-            std::make_shared<NProto::TReadBlocksRequest>()
-        );
+            std::make_shared<NProto::TReadBlocksRequest>());
 
         const auto& response = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_C(!HasError(response), response.GetError());
@@ -1080,16 +1096,18 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto service = std::make_shared<TTestService>();
         service->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                NProto::TMountVolumeResponse response;
-                response.MutableVolume()->SetDiskId(request->GetDiskId());
-                return MakeFuture(response);
-            };
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            NProto::TMountVolumeResponse response;
+            response.MutableVolume()->SetDiskId(request->GetDiskId());
+            return MakeFuture(response);
+        };
         service->UnmountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TUnmountVolumeRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture<NProto::TUnmountVolumeResponse>();
-            };
+            [&](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture<NProto::TUnmountVolumeResponse>();
+        };
 
         auto serverVolumeStats = std::make_shared<TTestVolumeStats<>>();
         auto clientVolumeStats = std::make_shared<TTestVolumeStats<>>();
@@ -1097,31 +1115,33 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TTestFactory testFactory;
 
         auto server = testFactory.CreateServerBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .SetVolumeStats(serverVolumeStats)
-            .BuildServer(service);
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .SetVolumeStats(serverVolumeStats)
+                          .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .SetVolumeStats(clientVolumeStats)
-            .BuildClient();
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .SetVolumeStats(clientVolumeStats)
+                          .BuildClient();
 
         server->Start();
         client->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             client->Stop();
             server->Stop();
-        };
+        }
 
         auto endpoint = client->CreateEndpoint();
         endpoint = testFactory.CreateDurableClient(std::move(endpoint));
 
         endpoint->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             endpoint->Stop();
-        };
+        }
 
         {
             auto request = std::make_shared<NProto::TMountVolumeRequest>();
@@ -1137,12 +1157,10 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             TSet<TString>{diskId},
-            serverVolumeStats->DiskIds
-        );
+            serverVolumeStats->DiskIds);
         UNIT_ASSERT_VALUES_EQUAL(
             TSet<TString>{diskId},
-            clientVolumeStats->DiskIds
-        );
+            clientVolumeStats->DiskIds);
 
         {
             auto request = std::make_shared<NProto::TUnmountVolumeRequest>();
@@ -1156,14 +1174,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
             UNIT_ASSERT_C(!HasError(response), response.GetError());
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            TSet<TString>(),
-            serverVolumeStats->DiskIds
-        );
-        UNIT_ASSERT_VALUES_EQUAL(
-            TSet<TString>(),
-            clientVolumeStats->DiskIds
-        );
+        UNIT_ASSERT_VALUES_EQUAL(TSet<TString>(), serverVolumeStats->DiskIds);
+        UNIT_ASSERT_VALUES_EQUAL(TSet<TString>(), clientVolumeStats->DiskIds);
     }
 
     Y_UNIT_TEST(ShouldHandleRequestsWithUnixSocketAfterRestart)
@@ -1175,24 +1187,25 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto service = std::make_shared<TTestService>();
         service->ReadBlocksHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture<NProto::TReadBlocksResponse>();
-            };
+            [&](std::shared_ptr<NProto::TReadBlocksRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture<NProto::TReadBlocksResponse>();
+        };
 
         TTestFactory testFactory;
 
         auto server = testFactory.CreateServerBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .SetUnixSocketPath(unixSocket.GetPath())
-            .BuildServer(nullptr, service);
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .SetUnixSocketPath(unixSocket.GetPath())
+                          .BuildServer(nullptr, service);
 
         auto client = testFactory.CreateClientBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .SetUnixSocketPath(unixSocket.GetPath())
-            .BuildClient();
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .SetUnixSocketPath(unixSocket.GetPath())
+                          .BuildClient();
 
         server->Start();
 
@@ -1204,10 +1217,10 @@ Y_UNIT_TEST_SUITE(TServerTest)
         {
             server->Stop();
             server = testFactory.CreateServerBuilder()
-                .SetPort(port)
-                .SetDataPort(dataPort)
-                .SetUnixSocketPath(unixSocket.GetPath())
-                .BuildServer(nullptr, service);
+                         .SetPort(port)
+                         .SetDataPort(dataPort)
+                         .SetUnixSocketPath(unixSocket.GetPath())
+                         .BuildServer(nullptr, service);
             server->Start();
         }
 
@@ -1215,8 +1228,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         for (int i = 0; i < 3; ++i) {
             auto future = endpoint->ReadBlocks(
                 MakeIntrusive<TCallContext>(),
-                std::make_shared<NProto::TReadBlocksRequest>()
-            );
+                std::make_shared<NProto::TReadBlocksRequest>());
 
             const auto& response = future.GetValue(TDuration::Seconds(5));
             if (!HasError(response)) {
@@ -1245,64 +1257,65 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto service = std::make_shared<TTestService>();
         service->ReadBlocksHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksRequest> request) {
-                UNIT_ASSERT_VALUES_EQUAL(blocksCount, request->GetBlocksCount());
+            [&](std::shared_ptr<NProto::TReadBlocksRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(blocksCount, request->GetBlocksCount());
 
-                NProto::TReadBlocksResponse response;
-                auto& buffers = *response.MutableBlocks()->MutableBuffers();
-                for (size_t i = 0; i < blocksCount; ++i) {
-                    auto* buf = buffers.Add();
-                    buf->ReserveAndResize(blockSize);
-                    memset(
-                        const_cast<char*>(buf->data()),
-                        content,
-                        buf->size());
-                }
+            NProto::TReadBlocksResponse response;
+            auto& buffers = *response.MutableBlocks()->MutableBuffers();
+            for (size_t i = 0; i < blocksCount; ++i) {
+                auto* buf = buffers.Add();
+                buf->ReserveAndResize(blockSize);
+                memset(const_cast<char*>(buf->data()), content, buf->size());
+            }
 
-                return MakeFuture(std::move(response));
-            };
+            return MakeFuture(std::move(response));
+        };
         service->WriteBlocksHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksRequest> request) {
+            [&](std::shared_ptr<NProto::TWriteBlocksRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                blocksCount,
+                request->GetBlocks().GetBuffers().size());
+
+            for (const auto& block: request->GetBlocks().GetBuffers()) {
+                UNIT_ASSERT_VALUES_EQUAL(block.size(), blockSize);
                 UNIT_ASSERT_VALUES_EQUAL(
-                    blocksCount,
-                    request->GetBlocks().GetBuffers().size());
+                    TString(blockSize, content),
+                    block.data());
+            }
 
-                for (const auto& block: request->GetBlocks().GetBuffers()) {
-                    UNIT_ASSERT_VALUES_EQUAL(block.size(), blockSize);
-                    UNIT_ASSERT_VALUES_EQUAL(
-                        TString(blockSize, content),
-                        block.data());
-                }
-
-                return MakeFuture<NProto::TWriteBlocksResponse>();
-            };
+            return MakeFuture<NProto::TWriteBlocksResponse>();
+        };
 
         TTestFactory testFactory;
 
         auto server = testFactory.CreateServerBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildServer(service);
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildClient();
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildClient();
 
         server->Start();
         client->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             client->Stop();
             server->Stop();
-        };
+        }
 
         auto endpoint = client->CreateEndpoint();
         endpoint = testFactory.CreateDurableClient(std::move(endpoint));
 
         endpoint->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             endpoint->Stop();
-        };
+        }
 
         {
             TString buffer(blocksCount * blockSize + overheadSize, 0);
@@ -1329,7 +1342,10 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         {
             TString buffer(blocksCount * blockSize + overheadSize, 0);
-            memset(const_cast<char*>(buffer.data()), content, blocksCount * blockSize);
+            memset(
+                const_cast<char*>(buffer.data()),
+                content,
+                blocksCount * blockSize);
 
             auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
             request->BlocksCount = blocksCount;
@@ -1353,59 +1369,67 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto service = std::make_shared<TTestService>();
         service->ReadBlocksHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture<NProto::TReadBlocksResponse>();
-            };
+            [&](std::shared_ptr<NProto::TReadBlocksRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture<NProto::TReadBlocksResponse>();
+        };
         service->WriteBlocksHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture<NProto::TWriteBlocksResponse>();
-            };
+            [&](std::shared_ptr<NProto::TWriteBlocksRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture<NProto::TWriteBlocksResponse>();
+        };
         service->ZeroBlocksHandler =
-            [&] (std::shared_ptr<NProto::TZeroBlocksRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture<NProto::TZeroBlocksResponse>();
-            };
+            [&](std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture<NProto::TZeroBlocksResponse>();
+        };
         service->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture<NProto::TMountVolumeResponse>();
-            };
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture<NProto::TMountVolumeResponse>();
+        };
         service->UnmountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TUnmountVolumeRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture<NProto::TUnmountVolumeResponse>();
-            };
+            [&](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture<NProto::TUnmountVolumeResponse>();
+        };
 
         TTestFactory testFactory;
 
         auto server = testFactory.CreateServerBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildServer(service);
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildClient();
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildClient();
 
         server->Start();
         client->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             client->Stop();
             server->Stop();
-        };
+        }
 
         auto endpoint = client->CreateDataEndpoint();
         endpoint = testFactory.CreateDurableClient(std::move(endpoint));
 
         endpoint->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             endpoint->Stop();
-        };
+        }
 
-        auto checkError = []<typename T>(T future) {
+        auto checkError = []<typename T>(T future)
+        {
             const auto& response = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT(HasError(response));
             auto error = response.GetError();
@@ -1437,37 +1461,41 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto service = std::make_shared<TTestService>();
         service->DescribeVolumeHandler =
-            [&] (std::shared_ptr<NProto::TDescribeVolumeRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture<NProto::TDescribeVolumeResponse>();
-            };
+            [&](std::shared_ptr<NProto::TDescribeVolumeRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture<NProto::TDescribeVolumeResponse>();
+        };
 
         TTestFactory testFactory;
 
-        auto server = testFactory.CreateServerBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .SetCellId("abc")  // turn on cell id check in DescribeVolume
-            .BuildServer(service);
+        auto server =
+            testFactory.CreateServerBuilder()
+                .SetPort(port)
+                .SetDataPort(dataPort)
+                .SetCellId("abc")   // turn on cell id check in DescribeVolume
+                .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildClient();
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildClient();
 
         server->Start();
         client->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             client->Stop();
             server->Stop();
-        };
+        }
 
         auto endpoint = client->CreateEndpoint();
 
         endpoint->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             endpoint->Stop();
-        };
+        }
 
         CheckDescribe(endpoint, "xyz", E_REJECTED);
         CheckDescribe(endpoint, "", S_OK);
@@ -1481,36 +1509,39 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto service = std::make_shared<TTestService>();
         service->DescribeVolumeHandler =
-            [&] (std::shared_ptr<NProto::TDescribeVolumeRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture<NProto::TDescribeVolumeResponse>();
-            };
+            [&](std::shared_ptr<NProto::TDescribeVolumeRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture<NProto::TDescribeVolumeResponse>();
+        };
 
         TTestFactory testFactory;
 
         auto server = testFactory.CreateServerBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildServer(service);
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildServer(service);
 
         auto client = testFactory.CreateClientBuilder()
-            .SetPort(port)
-            .SetDataPort(dataPort)
-            .BuildClient();
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildClient();
 
         server->Start();
         client->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             client->Stop();
             server->Stop();
-        };
+        }
 
         auto endpoint = client->CreateEndpoint();
 
         endpoint->Start();
-        Y_DEFER {
+        Y_DEFER
+        {
             endpoint->Stop();
-        };
+        }
 
         CheckDescribe(endpoint, "xyz", S_OK);
         CheckDescribe(endpoint, "", S_OK);

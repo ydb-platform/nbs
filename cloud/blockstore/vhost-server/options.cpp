@@ -110,7 +110,9 @@ void TOptions::Parse(int argc, char** argv)
         .RequiredArgument("INT")
         .StoreResult(&SocketAccessMode);
 
-    opts.AddLongOption("vmpte-flush-threshold", "Flush VmPTEs every threshold bytes")
+    opts.AddLongOption(
+            "vmpte-flush-threshold",
+            "Flush VmPTEs every threshold bytes")
         .RequiredArgument("INT")
         .StoreResult(&PteFlushByteThreshold);
 
@@ -159,9 +161,7 @@ void TOptions::Parse(int argc, char** argv)
         .RequiredArgument("INT")
         .StoreResult(&EncryptionKeyringId);
 
-    opts.AddLongOption(
-            "blockstore-service-pid",
-            "PID of blockstore service")
+    opts.AddLongOption("blockstore-service-pid", "PID of blockstore service")
         .RequiredArgument("INT")
         .StoreResult(&BlockstoreServicePid);
 

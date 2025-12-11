@@ -10,13 +10,12 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 static const TString DISK_STATE_MIGRATION_MESSAGE =
-    "data migration in progress, slight performance decrease may be experienced";
+    "data migration in progress, slight performance decrease may be "
+    "experienced";
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TUserNotification MakeBlankNotification(
-    ui64 seqNo,
-    TInstant timestamp)
+NProto::TUserNotification MakeBlankNotification(ui64 seqNo, TInstant timestamp)
 {
     NProto::TUserNotification notif;
     notif.SetSeqNo(seqNo);
@@ -29,17 +28,17 @@ NProto::TUserNotification MakeBlankNotification(
 ////////////////////////////////////////////////////////////////////////////////
 
 TNotificationSystem::TNotificationSystem(
-        TStorageConfigPtr storageConfig,
-        TVector<TString> errorNotifications,
-        TVector<NProto::TUserNotification> userNotifications,
-        TVector<TDiskId> disksToReallocate,
-        TVector<TDiskStateUpdate> diskStateUpdates,
-        ui64 diskStateSeqNo,
-        TVector<TDiskId> outdatedVolumes)
+    TStorageConfigPtr storageConfig,
+    TVector<TString> errorNotifications,
+    TVector<NProto::TUserNotification> userNotifications,
+    TVector<TDiskId> disksToReallocate,
+    TVector<TDiskStateUpdate> diskStateUpdates,
+    ui64 diskStateSeqNo,
+    TVector<TDiskId> outdatedVolumes)
     : StorageConfig(std::move(storageConfig))
     , UserNotifications(userNotifications.size() + errorNotifications.size())
-    , DiskStateUpdates {std::move(diskStateUpdates)}
-    , DiskStateSeqNo {diskStateSeqNo}
+    , DiskStateUpdates{std::move(diskStateUpdates)}
+    , DiskStateSeqNo{diskStateSeqNo}
 {
     PullInUserNotifications(
         std::move(errorNotifications),
@@ -111,9 +110,9 @@ void TNotificationSystem::DeleteDisk(
 
     db.DeleteOutdatedVolumeConfig(diskId);
 
-    std::erase_if(DiskStateUpdates, [&] (auto& update) {
-        return update.State.GetDiskId() == diskId;
-    });
+    std::erase_if(
+        DiskStateUpdates,
+        [&](auto& update) { return update.State.GetDiskId() == diskId; });
 }
 
 void TNotificationSystem::AddUserNotification(
@@ -129,12 +128,12 @@ void TNotificationSystem::AddUserNotification(
 
     auto& data = UserNotifications.Storage[id];
     if (data.LatestEvent == notification.GetEventCase()) {
-           return; // collapse repeats
+        return;   // collapse repeats
     }
 
     // TODO: Remove legacy compatibility in next release
-    if (notification.GetEventCase()
-        == NProto::TUserNotification::EventCase::kDiskError)
+    if (notification.GetEventCase() ==
+        NProto::TUserNotification::EventCase::kDiskError)
     {
         notification.SetHasLegacyCopy(true);
         db.AddErrorNotification(id);
@@ -158,9 +157,7 @@ void TNotificationSystem::DeleteUserNotification(
         auto it = std::find_if(
             notifications.begin(),
             notifications.end(),
-            [&seqNo] (const auto& notif) {
-                return notif.GetSeqNo() == seqNo;
-            });
+            [&seqNo](const auto& notif) { return notif.GetSeqNo() == seqNo; });
 
         if (it != notifications.end()) {
             // TODO: Remove legacy compatibility in next release
@@ -207,7 +204,7 @@ void TNotificationSystem::DeleteUserNotifications(
 void TNotificationSystem::GetUserNotifications(
     TVector<NProto::TUserNotification>& notifications) const
 {
-    notifications.reserve(notifications.size() +  UserNotifications.Count);
+    notifications.reserve(notifications.size() + UserNotifications.Count);
     for (auto&& [id, data]: UserNotifications.Storage) {
         notifications.insert(
             notifications.end(),
@@ -304,7 +301,7 @@ void TNotificationSystem::OnDiskStateChanged(
             auto notif = MakeBlankNotification(seqNo, timestamp);
             notif.MutableDiskError()->SetDiskId(diskId);
             AddUserNotification(db, std::move(notif));
-         }
+        }
     } else {
         if (oldState >= NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE) {
             auto notif = MakeBlankNotification(seqNo, timestamp);

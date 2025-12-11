@@ -24,7 +24,7 @@ TIndexNodePtr TryCreateChildNode(const TIndexNode& parent, const TString& name)
     return nullptr;
 }
 
-}
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -69,7 +69,9 @@ NProto::TCreateNodeResponse TLocalFileSystem::CreateNode(
 
         target = parent->CreateFile(request.GetName(), mode);
     } else if (request.HasSymLink()) {
-        target = parent->CreateSymlink(request.GetSymLink().GetTargetPath(), request.GetName());
+        target = parent->CreateSymlink(
+            request.GetSymLink().GetTargetPath(),
+            request.GetName());
     } else if (request.HasLink()) {
         auto node = session->LookupNode(request.GetLink().GetTargetNode());
         if (!node) {
@@ -145,7 +147,9 @@ NProto::TUnlinkNodeResponse TLocalFileSystem::UnlinkNode(
     auto stat = parent->Stat(request.GetName());
     parent->Unlink(request.GetName(), request.GetUnlinkDirectory());
 
-    if ((!stat.IsDir() && stat.NLinks == 1) || (stat.IsDir() && stat.NLinks <= 2)) {
+    if ((!stat.IsDir() && stat.NLinks == 1) ||
+        (stat.IsDir() && stat.NLinks <= 2))
+    {
         session->ForgetNode(stat.INode);
     }
 
@@ -155,8 +159,9 @@ NProto::TUnlinkNodeResponse TLocalFileSystem::UnlinkNode(
 NProto::TRenameNodeResponse TLocalFileSystem::RenameNode(
     const NProto::TRenameNodeRequest& request)
 {
-    STORAGE_TRACE("RenameNode " << DumpMessage(request)
-        << " flags: " << RenameFlagsToString(request.GetFlags()));
+    STORAGE_TRACE(
+        "RenameNode " << DumpMessage(request)
+                      << " flags: " << RenameFlagsToString(request.GetFlags()));
 
     auto session = GetSession(request);
     auto parent = session->LookupNode(request.GetNodeId());

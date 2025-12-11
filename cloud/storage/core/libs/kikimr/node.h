@@ -7,7 +7,6 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
-
 #include <cloud/storage/core/protos/config_dispatcher_settings.pb.h>
 
 #include <contrib/ydb/core/protos/config.pb.h>

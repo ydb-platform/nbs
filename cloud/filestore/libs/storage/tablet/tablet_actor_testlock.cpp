@@ -50,18 +50,13 @@ void TIndexTabletActor::HandleTestLock(
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TTestLockMethod>(*requestInfo);
 
-    ExecuteTx<TTestLock>(
-        ctx,
-        std::move(requestInfo),
-        msg->Record);
+    ExecuteTx<TTestLock>(ctx, std::move(requestInfo), msg->Record);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -89,10 +84,8 @@ void TIndexTabletActor::ExecuteTx_TestLock(
 
     FILESTORE_VALIDATE_TX_ERROR(TestLock, args);
 
-    auto* session = FindSession(
-        args.ClientId,
-        args.SessionId,
-        args.SessionSeqNo);
+    auto* session =
+        FindSession(args.ClientId, args.SessionId, args.SessionSeqNo);
     TABLET_VERIFY(session);
 
     auto* handle = FindHandle(args.Request.GetHandle());
@@ -116,7 +109,8 @@ void TIndexTabletActor::CompleteTx_TestLock(
 {
     RemoveTransaction(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvService::TEvTestLockResponse>(args.Error);
+    auto response =
+        std::make_unique<TEvService::TEvTestLockResponse>(args.Error);
     if (args.Incompatible.has_value()) {
         SetResponseDetails(response->Record, std::move(*args.Incompatible));
     }

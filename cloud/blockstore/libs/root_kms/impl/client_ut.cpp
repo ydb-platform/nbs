@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/root_kms/iface/client.h>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/string_utils/base64/base64.h>
@@ -20,8 +21,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFixture
-    : NUnitTest::TBaseFixture
+struct TFixture: NUnitTest::TBaseFixture
 {
     const TString KekId = "nbs";
     const ILoggingServicePtr Logging =
@@ -61,7 +61,6 @@ struct TFixture
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
-
 
 Y_UNIT_TEST_SUITE(TRootKmsClientTest)
 {

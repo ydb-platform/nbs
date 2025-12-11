@@ -18,10 +18,10 @@ struct TDeletionMarker
     ui32 BlockCount;
 
     TDeletionMarker(
-            ui64 nodeId,
-            ui64 commitId,
-            ui32 blockIndex,
-            ui32 blockCount)
+        ui64 nodeId,
+        ui64 commitId,
+        ui32 blockIndex,
+        ui32 blockCount)
         : NodeId(nodeId)
         , CommitId(commitId)
         , BlockIndex(blockIndex)
@@ -30,10 +30,8 @@ struct TDeletionMarker
 
     bool operator==(const TDeletionMarker& other) const
     {
-        return NodeId == other.NodeId
-            && CommitId == other.CommitId
-            && BlockIndex == other.BlockIndex
-            && BlockCount == other.BlockCount;
+        return NodeId == other.NodeId && CommitId == other.CommitId &&
+               BlockIndex == other.BlockIndex && BlockCount == other.BlockCount;
     }
 
     bool IsValid() const

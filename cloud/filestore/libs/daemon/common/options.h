@@ -13,15 +13,14 @@ namespace NCloud::NFileStore::NDaemon {
 
 enum class EServiceKind
 {
-    Null   /* "null"   */ ,
-    Local  /* "local"  */ ,
-    Kikimr /* "kikimr" */ ,
+    Null /* "null"   */,
+    Local /* "local"  */,
+    Kikimr /* "kikimr" */,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TOptionsCommon
-    : public NCloud::NStorage::TOptionsYdbBase
+struct TOptionsCommon: public NCloud::NStorage::TOptionsYdbBase
 {
     TString AppConfig;
     TString StorageConfig;
@@ -40,4 +39,4 @@ struct TOptionsCommon
     void Parse(int argc, char** argv) override;
 };
 
-} // NCloud::NFileStore::NDaemon
+}   // namespace NCloud::NFileStore::NDaemon

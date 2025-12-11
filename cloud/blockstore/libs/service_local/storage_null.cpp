@@ -12,8 +12,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TNullStorage final
-    : public IStorage
+class TNullStorage final: public IStorage
 {
 public:
     TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
@@ -66,8 +65,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TNullStorageProvider final
-    : public IStorageProvider
+class TNullStorageProvider final: public IStorageProvider
 {
 public:
     TFuture<IStoragePtr> CreateStorage(
@@ -80,7 +78,7 @@ public:
         Y_UNUSED(accessMode);
 
         return MakeFuture<IStoragePtr>(std::make_shared<TNullStorage>());
-    };
+    }
 };
 
 }   // namespace

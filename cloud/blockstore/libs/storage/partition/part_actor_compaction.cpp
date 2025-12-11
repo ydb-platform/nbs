@@ -52,20 +52,20 @@ struct TRangeCompactionInfo
     ui32 DiffCount = 0;
 
     TRangeCompactionInfo(
-            TBlockRange32 blockRange,
-            TPartialBlobId originalBlobId,
-            TPartialBlobId dataBlobId,
-            TBlockMask dataBlobSkipMask,
-            TPartialBlobId zeroBlobId,
-            TBlockMask zeroBlobSkipMask,
-            ui32 blobsSkippedByCompaction,
-            ui32 blocksSkippedByCompaction,
-            TVector<ui32> blockChecksums,
-            EChannelDataKind channelDataKind,
-            TBlockBuffer blobContent,
-            TVector<ui32> zeroBlocks,
-            TAffectedBlobs affectedBlobs,
-            TAffectedBlocks affectedBlocks)
+        TBlockRange32 blockRange,
+        TPartialBlobId originalBlobId,
+        TPartialBlobId dataBlobId,
+        TBlockMask dataBlobSkipMask,
+        TPartialBlobId zeroBlobId,
+        TBlockMask zeroBlobSkipMask,
+        ui32 blobsSkippedByCompaction,
+        ui32 blocksSkippedByCompaction,
+        TVector<ui32> blockChecksums,
+        EChannelDataKind channelDataKind,
+        TBlockBuffer blobContent,
+        TVector<ui32> zeroBlocks,
+        TAffectedBlobs affectedBlobs,
+        TAffectedBlocks affectedBlocks)
         : BlockRange(blockRange)
         , OriginalBlobId(originalBlobId)
         , DataBlobId(dataBlobId)
@@ -83,8 +83,7 @@ struct TRangeCompactionInfo
     {}
 };
 
-class TCompactionActor final
-    : public TActorBootstrapped<TCompactionActor>
+class TCompactionActor final: public TActorBootstrapped<TCompactionActor>
 {
 public:
     struct TRequest
@@ -97,13 +96,14 @@ public:
         ui32 GroupId;
         ui32 RangeCompactionIndex;
 
-        TRequest(const TPartialBlobId& blobId,
-                 const TActorId& proxy,
-                 ui16 blobOffset,
-                 ui32 blockIndex,
-                 size_t indexInBlobContent,
-                 ui32 groupId,
-                 ui32 rangeCompactionIndex)
+        TRequest(
+            const TPartialBlobId& blobId,
+            const TActorId& proxy,
+            ui16 blobOffset,
+            ui32 blockIndex,
+            size_t indexInBlobContent,
+            ui32 groupId,
+            ui32 rangeCompactionIndex)
             : BlobId(blobId)
             , Proxy(proxy)
             , BlobOffset(blobOffset)
@@ -126,13 +126,14 @@ public:
 
         TBatchRequest() = default;
 
-        TBatchRequest(const TPartialBlobId& blobId,
-                      const TActorId& proxy,
-                      TVector<ui16> blobOffsets,
-                      TVector<ui16> unchangedBlobOffsets,
-                      TVector<TRequest*> requests,
-                      TRangeCompactionInfo* rangeCompactionInfo,
-                      ui32 groupId)
+        TBatchRequest(
+            const TPartialBlobId& blobId,
+            const TActorId& proxy,
+            TVector<ui16> blobOffsets,
+            TVector<ui16> unchangedBlobOffsets,
+            TVector<TRequest*> requests,
+            TRangeCompactionInfo* rangeCompactionInfo,
+            ui32 groupId)
             : BlobId(blobId)
             , Proxy(proxy)
             , BlobOffsets(std::move(blobOffsets))
@@ -218,9 +219,7 @@ private:
     STFUNC(StateWork);
 
     template <typename TEvent>
-    void HandleWriteOrPatchBlobResponse(
-        TEvent& ev,
-        const TActorContext& ctx);
+    void HandleWriteOrPatchBlobResponse(TEvent& ev, const TActorContext& ctx);
 
     void HandleReadBlobResponse(
         const TEvPartitionCommonPrivate::TEvReadBlobResponse::TPtr& ev,
@@ -246,21 +245,21 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TCompactionActor::TCompactionActor(
-        TRequestInfoPtr requestInfo,
-        ui64 tabletId,
-        TString diskId,
-        const TActorId& tablet,
-        ui32 blockSize,
-        ui32 maxBlocksInBlob,
-        ui32 maxAffectedBlocksPerCompaction,
-        bool forceChecksumsCalculation,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
-        TDuration blobStorageAsyncRequestTimeout,
-        ECompactionType compactionType,
-        ui64 commitId,
-        TVector<TRangeCompactionInfo> rangeCompactionInfos,
-        TVector<TRequest> requests,
-        TChildLogTitle logTitle)
+    TRequestInfoPtr requestInfo,
+    ui64 tabletId,
+    TString diskId,
+    const TActorId& tablet,
+    ui32 blockSize,
+    ui32 maxBlocksInBlob,
+    ui32 maxAffectedBlocksPerCompaction,
+    bool forceChecksumsCalculation,
+    IBlockDigestGeneratorPtr blockDigestGenerator,
+    TDuration blobStorageAsyncRequestTimeout,
+    ECompactionType compactionType,
+    ui64 commitId,
+    TVector<TRangeCompactionInfo> rangeCompactionInfos,
+    TVector<TRequest> requests,
+    TChildLogTitle logTitle)
     : RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
     , DiskId(std::move(diskId))
@@ -311,7 +310,9 @@ void TCompactionActor::InitBlockDigests()
         const auto& sgList = rc.BlobContent.Get().GetBlocks();
 
         if (rc.DataBlobId) {
-            Y_ABORT_UNLESS(sgList.size() == rc.BlockRange.Size() - rc.DataBlobSkipMask.Count());
+            Y_ABORT_UNLESS(
+                sgList.size() ==
+                rc.BlockRange.Size() - rc.DataBlobSkipMask.Count());
 
             ui32 skipped = 0;
             for (const auto blockIndex: xrange(rc.BlockRange)) {
@@ -465,19 +466,20 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
 
         const bool shouldCalculateChecksums =
             !batch.RangeCompactionInfo->BlockChecksums.empty();
-        auto request = std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
-            MakeBlobId(TabletId, batch.BlobId),
-            batch.Proxy,
-            std::move(batch.BlobOffsets),
-            std::move(subSgList),
-            batch.GroupId,
-            true,            // async
-            readBlobDeadline, // deadline
-            shouldCalculateChecksums
-        );
+        auto request =
+            std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
+                MakeBlobId(TabletId, batch.BlobId),
+                batch.Proxy,
+                std::move(batch.BlobOffsets),
+                std::move(subSgList),
+                batch.GroupId,
+                true,               // async
+                readBlobDeadline,   // deadline
+                shouldCalculateChecksums);
 
-
-        if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
+        if (!RequestInfo->CallContext->LWOrbit.Fork(
+                request->CallContext->LWOrbit))
+        {
             LWTRACK(
                 ForkFailed,
                 RequestInfo->CallContext->LWOrbit,
@@ -487,11 +489,7 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
 
         ForkedReadCallContexts.emplace_back(request->CallContext);
 
-        NCloud::Send(
-            ctx,
-            Tablet,
-            std::move(request),
-            batchIndex);
+        NCloud::Send(ctx, Tablet, std::move(request), batchIndex);
     }
 }
 
@@ -504,8 +502,8 @@ void TCompactionActor::MakeDiffs(TRangeCompactionInfo& rc)
     ui32 i = 0;
     ui32 j = 0;
     while (true) {
-        while (j < rc.UnchangedBlobOffsets.size()
-                && rc.UnchangedBlobOffsets[j] == i)
+        while (j < rc.UnchangedBlobOffsets.size() &&
+               rc.UnchangedBlobOffsets[j] == i)
         {
             ++i;
             ++j;
@@ -548,7 +546,9 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
                     true,        // async
                     deadline);   // deadline
 
-            if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
+            if (!RequestInfo->CallContext->LWOrbit.Fork(
+                    request->CallContext->LWOrbit))
+            {
                 LWTRACK(
                     ForkFailed,
                     RequestInfo->CallContext->LWOrbit,
@@ -558,10 +558,7 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
 
             ForkedWriteAndPatchCallContexts.emplace_back(request->CallContext);
 
-            NCloud::Send(
-                ctx,
-                Tablet,
-                std::move(request));
+            NCloud::Send(ctx, Tablet, std::move(request));
         } else {
             auto request =
                 std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
@@ -571,7 +568,9 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
                     true,        // async
                     deadline);   // deadline
 
-            if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
+            if (!RequestInfo->CallContext->LWOrbit.Fork(
+                    request->CallContext->LWOrbit))
+            {
                 LWTRACK(
                     ForkFailed,
                     RequestInfo->CallContext->LWOrbit,
@@ -581,10 +580,7 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
 
             ForkedWriteAndPatchCallContexts.emplace_back(request->CallContext);
 
-            NCloud::Send(
-                ctx,
-                Tablet,
-                std::move(request));
+            NCloud::Send(ctx, Tablet, std::move(request));
         }
     }
 
@@ -600,14 +596,13 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
     TAffectedBlobs affectedBlobs;
     TAffectedBlocks affectedBlocks;
 
-    auto addBlob = [&] (
-        const TPartialBlobId& blobId,
-        TBlockRange32 range,
-        TBlockMask skipMask,
-        const TVector<ui32>& blockChecksums,
-        ui32 blobsSkipped,
-        ui32 blocksSkipped,
-        EChannelDataKind channelDataKind)
+    auto addBlob = [&](const TPartialBlobId& blobId,
+                       TBlockRange32 range,
+                       TBlockMask skipMask,
+                       const TVector<ui32>& blockChecksums,
+                       ui32 blobsSkipped,
+                       ui32 blocksSkipped,
+                       EChannelDataKind channelDataKind)
     {
         while (skipMask.Get(range.End - range.Start)) {
             Y_ABORT_UNLESS(range.End > range.Start);
@@ -630,7 +625,10 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                     blockIndices.emplace_back(blockIndex);
                 }
             }
-            mixedBlobs.emplace_back(blobId, std::move(blockIndices), blockChecksums);
+            mixedBlobs.emplace_back(
+                blobId,
+                std::move(blockIndices),
+                blockChecksums);
             mixedBlobCompactionInfos.push_back({blobsSkipped, blocksSkipped});
         } else {
             LOG_ERROR(
@@ -714,11 +712,15 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
             }
         }
 
-        Sort(rc.AffectedBlocks, [] (const auto& l, const auto& r) {
-            // sort by (BlockIndex ASC, CommitId DESC)
-            return (l.BlockIndex < r.BlockIndex)
-                || (l.BlockIndex == r.BlockIndex && l.CommitId > r.CommitId);
-        });
+        Sort(
+            rc.AffectedBlocks,
+            [](const auto& l, const auto& r)
+            {
+                // sort by (BlockIndex ASC, CommitId DESC)
+                return (l.BlockIndex < r.BlockIndex) ||
+                       (l.BlockIndex == r.BlockIndex &&
+                        l.CommitId > r.CommitId);
+            });
 
         if (rc.AffectedBlocks.size() > MaxAffectedBlocksPerCompaction) {
             // KIKIMR-6286: preventing heavy transactions
@@ -754,17 +756,15 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
 
     SafeToUseOrbit = false;
 
-    NCloud::Send(
-        ctx,
-        Tablet,
-        std::move(request));
+    NCloud::Send(ctx, Tablet, std::move(request));
 }
 
 void TCompactionActor::NotifyCompleted(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto request = std::make_unique<TEvPartitionPrivate::TEvCompactionCompleted>(error);
+    auto request =
+        std::make_unique<TEvPartitionPrivate::TEvCompactionCompleted>(error);
 
     request->ExecCycles = RequestInfo->GetExecCycles();
     request->TotalCycles = RequestInfo->GetTotalCycles();
@@ -793,7 +793,8 @@ void TCompactionActor::NotifyCompleted(
         TDuration execTime = CyclesToDurationSafe(execCycles - ReadExecCycles);
         TDuration waitTime;
         if (totalCycles > execCycles + ReadWaitCycles) {
-            waitTime = CyclesToDurationSafe(totalCycles - execCycles - ReadWaitCycles);
+            waitTime =
+                CyclesToDurationSafe(totalCycles - execCycles - ReadWaitCycles);
         }
 
         ui64 blocksCount = 0;
@@ -801,7 +802,8 @@ void TCompactionActor::NotifyCompleted(
         for (auto& rc: RangeCompactionInfos) {
             const auto curBlocksCount = rc.DataBlobId.BlobSize() / BlockSize;
             blocksCount += curBlocksCount;
-            realBlocksCount += rc.OriginalBlobId ? rc.DiffCount : curBlocksCount;
+            realBlocksCount +=
+                rc.OriginalBlobId ? rc.DiffCount : curBlocksCount;
         }
 
         SetCounters(
@@ -833,9 +835,7 @@ bool TCompactionActor::HandleError(
         ReplyAndDie(
             ctx,
             std::make_unique<TEvPartitionPrivate::TEvCompactionResponse>(
-                error
-            )
-        );
+                error));
         return true;
     }
     return false;
@@ -882,8 +882,7 @@ void TCompactionActor::HandleReadBlobResponse(
     const auto n = Min(batch.Requests.size(), msg->BlockChecksums.size());
     for (ui32 i = 0; i < n; ++i) {
         const auto* r = batch.Requests[i];
-        const auto expectedChecksum =
-            rc.BlockChecksums[r->IndexInBlobContent];
+        const auto expectedChecksum = rc.BlockChecksums[r->IndexInBlobContent];
 
         auto error = VerifyBlockChecksum(
             msg->BlockChecksums[i],
@@ -932,7 +931,8 @@ void TCompactionActor::HandleWriteOrPatchBlobResponse(
     }
 
     ++WriteAndPatchBlobRequestsCompleted;
-    Y_ABORT_UNLESS(WriteAndPatchBlobRequestsCompleted <= RangeCompactionInfos.size());
+    Y_ABORT_UNLESS(
+        WriteAndPatchBlobRequestsCompleted <= RangeCompactionInfos.size());
     if (WriteAndPatchBlobRequestsCompleted < RangeCompactionInfos.size()) {
         return;
     }
@@ -976,8 +976,7 @@ void TCompactionActor::HandleAddBlobsResponse(
 
     ReplyAndDie(
         ctx,
-        std::make_unique<TEvPartitionPrivate::TEvCompactionResponse>()
-    );
+        std::make_unique<TEvPartitionPrivate::TEvCompactionResponse>());
 }
 
 void TCompactionActor::HandlePoisonPill(
@@ -986,8 +985,9 @@ void TCompactionActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    auto response = std::make_unique<TEvPartitionPrivate::TEvCompactionResponse>(
-        MakeError(E_REJECTED, "tablet is shutting down"));
+    auto response =
+        std::make_unique<TEvPartitionPrivate::TEvCompactionResponse>(
+            MakeError(E_REJECTED, "tablet is shutting down"));
 
     ReplyAndDie(ctx, std::move(response));
 }
@@ -998,9 +998,15 @@ STFUNC(TCompactionActor::StateWork)
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvPartitionCommonPrivate::TEvReadBlobResponse, HandleReadBlobResponse);
-        HFunc(TEvPartitionPrivate::TEvWriteBlobResponse, HandleWriteBlobResponse);
-        HFunc(TEvPartitionPrivate::TEvPatchBlobResponse, HandlePatchBlobResponse);
+        HFunc(
+            TEvPartitionCommonPrivate::TEvReadBlobResponse,
+            HandleReadBlobResponse);
+        HFunc(
+            TEvPartitionPrivate::TEvWriteBlobResponse,
+            HandleWriteBlobResponse);
+        HFunc(
+            TEvPartitionPrivate::TEvPatchBlobResponse,
+            HandlePatchBlobResponse);
         HFunc(TEvPartitionPrivate::TEvAddBlobsResponse, HandleAddBlobsResponse);
 
         default:
@@ -1024,8 +1030,8 @@ private:
 
 public:
     TCompactionBlockVisitor(
-            TTxPartition::TRangeCompaction& args,
-            ui64 maxCommitId)
+        TTxPartition::TRangeCompaction& args,
+        ui64 maxCommitId)
         : Args(args)
         , MaxCommitId(maxCommitId)
     {}
@@ -1074,7 +1080,6 @@ ui32 GetPercentage(ui64 total, ui64 real)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-
 void TPartitionActor::ChangeRangeCountPerRunIfNeeded(
     ui64 rangeRealCount,
     ui64 rangeThreshold,
@@ -1090,25 +1095,25 @@ void TPartitionActor::ChangeRangeCountPerRunIfNeeded(
     ui32 thresholdPercentage = 0;
 
     if (rangeThreshold && rangeRealCount > rangeThreshold) {
-        thresholdPercentage =
-            GetPercentage(rangeThreshold, rangeRealCount);
+        thresholdPercentage = GetPercentage(rangeThreshold, rangeRealCount);
     }
 
     if (diskThreshold && diskRealCount > diskThreshold) {
         thresholdPercentage =
-            Max(thresholdPercentage, GetPercentage(diskThreshold, diskRealCount));
+            Max(thresholdPercentage,
+                GetPercentage(diskThreshold, diskRealCount));
     }
 
     const auto compactionRangeCountPerRun =
         State->GetCompactionRangeCountPerRun();
 
-    if (thresholdPercentage > countPerRunIncreasingThreshold
-        && compactionRangeCountPerRun <
-        Config->GetMaxCompactionRangeCountPerRun())
+    if (thresholdPercentage > countPerRunIncreasingThreshold &&
+        compactionRangeCountPerRun < Config->GetMaxCompactionRangeCountPerRun())
     {
         State->IncrementCompactionRangeCountPerRun();
         State->SetLastCompactionRangeCountPerRunTime(ctx.Now());
-    } else if (thresholdPercentage < countPerRunDecreasingThreshold &&
+    } else if (
+        thresholdPercentage < countPerRunDecreasingThreshold &&
         compactionRangeCountPerRun > 1)
     {
         State->DecrementCompactionRangeCountPerRun();
@@ -1153,23 +1158,27 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         });
     }
 
-    const auto blockCount = State->GetMixedBlocksCount()
-        + State->GetMergedBlocksCount() - State->GetCleanupQueue().GetQueueBlocks();
+    const auto blockCount = State->GetMixedBlocksCount() +
+                            State->GetMergedBlocksCount() -
+                            State->GetCleanupQueue().GetQueueBlocks();
     const auto diskGarbage =
         GetPercentage(State->GetUsedBlocksCount(), blockCount);
 
     const bool diskGarbageBelowThreshold =
         diskGarbage < Config->GetCompactionGarbageThreshold();
 
-    const auto blobCount = State->GetMixedBlobsCount() +
-        State->GetMergedBlobsCount();
+    const auto blobCount =
+        State->GetMixedBlobsCount() + State->GetMergedBlobsCount();
 
-    const bool diskBlobCountOverThreshold = State->GetMaxBlobsPerDisk() &&
-        blobCount > State->GetMaxBlobsPerDisk() + State->GetCleanupQueue().GetCount();
+    const bool diskBlobCountOverThreshold =
+        State->GetMaxBlobsPerDisk() &&
+        blobCount >
+            State->GetMaxBlobsPerDisk() + State->GetCleanupQueue().GetCount();
 
     ui32 rangeGarbage = 0;
 
-    if (topRange.Stat.CompactionScore.Score <= 0  && !diskBlobCountOverThreshold) {
+    if (topRange.Stat.CompactionScore.Score <= 0 && !diskBlobCountOverThreshold)
+    {
         if (!Config->GetV1GarbageCompactionEnabled()) {
             // nothing to compact
             return;
@@ -1182,12 +1191,11 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
 
         // ranges containing 0 used blocks could have a nonzero BlockCount value
         // in the corresponding compaction range before r7082716
-        const auto isZeroedRange = topByGarbageBlockCount.Stat.BlockCount
-            && !topByGarbageBlockCount.Stat.UsedBlockCount;
+        const auto isZeroedRange = topByGarbageBlockCount.Stat.BlockCount &&
+                                   !topByGarbageBlockCount.Stat.UsedBlockCount;
 
-        if (topByGarbageBlockCount.Stat.Compacted
-                || topByGarbageBlockCount.Stat.BlobCount < 2
-                && !isZeroedRange)
+        if (topByGarbageBlockCount.Stat.Compacted ||
+            topByGarbageBlockCount.Stat.BlobCount < 2 && !isZeroedRange)
         {
             // nothing to compact
             return;
@@ -1195,8 +1203,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
 
         rangeGarbage = GetPercentage(
             topByGarbageBlockCount.Stat.UsedBlockCount,
-            topByGarbageBlockCount.Stat.BlockCount
-        );
+            topByGarbageBlockCount.Stat.BlockCount);
 
         if (rangeGarbage < Config->GetCompactionRangeGarbageThreshold()) {
             // not enough garbage in this range
@@ -1209,23 +1216,28 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
                 // really not enough garbage in this range, see NBS-1045
                 return;
             }
-            PartCounters->Cumulative.CompactionByGarbageBlocksPerDisk.Increment(1);
+            PartCounters->Cumulative.CompactionByGarbageBlocksPerDisk.Increment(
+                1);
         } else {
-            PartCounters->Cumulative.CompactionByGarbageBlocksPerRange.Increment(1);
+            PartCounters->Cumulative.CompactionByGarbageBlocksPerRange
+                .Increment(1);
         }
 
         mode = TEvPartitionPrivate::GarbageCompaction;
-    } else if (topRange.Stat.CompactionScore.Score >= Config->GetCompactionScoreLimitForThrottling()) {
+    } else if (
+        topRange.Stat.CompactionScore.Score >=
+        Config->GetCompactionScoreLimitForThrottling())
+    {
         throttlingAllowed = false;
     }
 
-    State->GetCompactionState(ECompactionType::Tablet).SetStatus(
-        EOperationStatus::Enqueued);
+    State->GetCompactionState(ECompactionType::Tablet)
+        .SetStatus(EOperationStatus::Enqueued);
 
-    if (Config->GetCompactionCountPerRunIncreasingThreshold()
-        && Config->GetCompactionCountPerRunDecreasingThreshold()
-        && now - State->GetLastCompactionRangeCountPerRunTime() >
-        Config->GetCompactionCountPerRunChangingPeriod())
+    if (Config->GetCompactionCountPerRunIncreasingThreshold() &&
+        Config->GetCompactionCountPerRunDecreasingThreshold() &&
+        now - State->GetLastCompactionRangeCountPerRunTime() >
+            Config->GetCompactionCountPerRunChangingPeriod())
     {
         switch (mode) {
             case TEvPartitionPrivate::GarbageCompaction: {
@@ -1249,12 +1261,14 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         }
     }
 
-    if (topRange.Stat.CompactionScore.Score <= 0 && diskBlobCountOverThreshold) {
+    if (topRange.Stat.CompactionScore.Score <= 0 && diskBlobCountOverThreshold)
+    {
         PartCounters->Cumulative.CompactionByBlobCountPerDisk.Increment(1);
     } else if (mode != TEvPartitionPrivate::GarbageCompaction) {
         switch (topRange.Stat.CompactionScore.Type) {
             case TCompactionScore::EType::BlobCount: {
-                PartCounters->Cumulative.CompactionByBlobCountPerRange.Increment(1);
+                PartCounters->Cumulative.CompactionByBlobCountPerRange
+                    .Increment(1);
                 break;
             }
             case TCompactionScore::EType::Read: {
@@ -1268,8 +1282,8 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         MakeIntrusive<TCallContext>(CreateRequestId()),
         mode);
 
-    if (mode == TEvPartitionPrivate::GarbageCompaction
-            || !diskGarbageBelowThreshold)
+    if (mode == TEvPartitionPrivate::GarbageCompaction ||
+        !diskGarbageBelowThreshold)
     {
         request->CompactionOptions.set(ToBit(ECompactionOption::Full));
     }
@@ -1278,9 +1292,11 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
         auto execTime = State->GetCompactionExecTimeForLastSecond(ctx.Now());
         auto delay = Config->GetMinCompactionDelay();
         if (Config->GetMaxCompactionExecTimePerSecond()) {
-            auto throttlingFactor = double(execTime.GetValue())
-                / Config->GetMaxCompactionExecTimePerSecond().GetValue();
-            const auto throttleDelay = (TDuration::Seconds(1) - execTime) * throttlingFactor;
+            auto throttlingFactor =
+                double(execTime.GetValue()) /
+                Config->GetMaxCompactionExecTimePerSecond().GetValue();
+            const auto throttleDelay =
+                (TDuration::Seconds(1) - execTime) * throttlingFactor;
 
             delay = Max(delay, throttleDelay);
         }
@@ -1294,10 +1310,7 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
     if (State->GetCompactionDelay()) {
         ctx.Schedule(State->GetCompactionDelay(), request.release());
     } else {
-        NCloud::Send(
-            ctx,
-            SelfId(),
-            std::move(request));
+        NCloud::Send(ctx, SelfId(), std::move(request));
     }
 }
 
@@ -1307,10 +1320,8 @@ void TPartitionActor::HandleCompaction(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -1322,14 +1333,14 @@ void TPartitionActor::HandleCompaction(
         requestInfo->CallContext->RequestId,
         PartitionConfig.GetDiskId());
 
-    auto replyError = [=] (
-        const TActorContext& ctx,
-        TRequestInfo& requestInfo,
-        ui32 errorCode,
-        TString errorReason)
+    auto replyError = [=](const TActorContext& ctx,
+                          TRequestInfo& requestInfo,
+                          ui32 errorCode,
+                          TString errorReason)
     {
-        auto response = std::make_unique<TEvPartitionPrivate::TEvCompactionResponse>(
-            MakeError(errorCode, std::move(errorReason)));
+        auto response =
+            std::make_unique<TEvPartitionPrivate::TEvCompactionResponse>(
+                MakeError(errorCode, std::move(errorReason)));
 
         LWTRACK(
             ResponseSent_Partition,
@@ -1341,22 +1352,30 @@ void TPartitionActor::HandleCompaction(
     };
 
     const auto compactionType =
-        msg->CompactionOptions.test(ToBit(ECompactionOption::Forced)) ?
-        ECompactionType::Forced:
-        ECompactionType::Tablet;
+        msg->CompactionOptions.test(ToBit(ECompactionOption::Forced))
+            ? ECompactionType::Forced
+            : ECompactionType::Tablet;
 
     if (State->GetCompactionState(compactionType).Status ==
         EOperationStatus::Started)
     {
-        replyError(ctx, *requestInfo, E_TRY_AGAIN, "compaction already started");
+        replyError(
+            ctx,
+            *requestInfo,
+            E_TRY_AGAIN,
+            "compaction already started");
         return;
     }
 
     if (!State->IsCompactionAllowed()) {
-        State->GetCompactionState(compactionType).SetStatus(
-            EOperationStatus::Idle);
+        State->GetCompactionState(compactionType)
+            .SetStatus(EOperationStatus::Idle);
 
-        replyError(ctx, *requestInfo, E_BS_OUT_OF_SPACE, "all channels readonly");
+        replyError(
+            ctx,
+            *requestInfo,
+            E_BS_OUT_OF_SPACE,
+            "all channels readonly");
         return;
     }
 
@@ -1398,8 +1417,8 @@ void TPartitionActor::HandleCompaction(
     }
 
     if (tops.empty() || !tops.front().Stat.BlobCount) {
-        State->GetCompactionState(compactionType).SetStatus(
-            EOperationStatus::Idle);
+        State->GetCompactionState(compactionType)
+            .SetStatus(EOperationStatus::Idle);
 
         replyError(ctx, *requestInfo, S_ALREADY, "nothing to compact");
         return;
@@ -1440,7 +1459,8 @@ void TPartitionActor::HandleCompaction(
         ranges.emplace_back(rangeIdx, blockRange);
     }
 
-    State->GetCompactionState(compactionType).SetStatus(EOperationStatus::Started);
+    State->GetCompactionState(compactionType)
+        .SetStatus(EOperationStatus::Started);
 
     State->GetCommitQueue().AcquireBarrier(commitId);
     State->GetCleanupQueue().AcquireBarrier(commitId);
@@ -1520,14 +1540,14 @@ void TPartitionActor::HandleCompactionCompleted(
     State->GetCleanupQueue().ReleaseBarrier(commitId);
     State->GetGarbageQueue().ReleaseBarrier(commitId);
 
-    State->GetCompactionState(msg->CompactionType).SetStatus(
-        EOperationStatus::Idle);
+    State->GetCompactionState(msg->CompactionType)
+        .SetStatus(EOperationStatus::Idle);
 
     Actors.Erase(ev->Sender);
 
     const auto d = CyclesToDurationSafe(msg->TotalCycles);
-    ui32 blocks = msg->Stats.GetSysReadCounters().GetBlocksCount()
-        + msg->Stats.GetSysWriteCounters().GetBlocksCount();
+    ui32 blocks = msg->Stats.GetSysReadCounters().GetBlocksCount() +
+                  msg->Stats.GetSysWriteCounters().GetBlocksCount();
     PartCounters->RequestCounters.Compaction.AddRequest(
         d.MicroSeconds(),
         blocks * State->GetBlockSize());
@@ -1691,13 +1711,14 @@ void PrepareRangeCompaction(
     }
 
     const ui32 checksumBoundary =
-        config.GetDiskPrefixLengthWithBlockChecksumsInBlobs()
-        / state.GetBlockSize();
+        config.GetDiskPrefixLengthWithBlockChecksumsInBlobs() /
+        state.GetBlockSize();
     args.ChecksumsEnabled = args.BlockRange.Start < checksumBoundary;
 
     for (auto& kv: args.AffectedBlobs) {
         if (db.ReadBlockMask(kv.first, kv.second.BlockMask)) {
-            Y_ABORT_UNLESS(kv.second.BlockMask.Defined(),
+            Y_ABORT_UNLESS(
+                kv.second.BlockMask.Defined(),
                 "Could not read block mask for blob: %s",
                 ToString(MakeBlobId(tabletId, kv.first)).data());
         } else {
@@ -1706,7 +1727,8 @@ void PrepareRangeCompaction(
 
         if (args.ChecksumsEnabled) {
             if (db.ReadBlobMeta(kv.first, kv.second.BlobMeta)) {
-                Y_ABORT_UNLESS(kv.second.BlobMeta.Defined(),
+                Y_ABORT_UNLESS(
+                    kv.second.BlobMeta.Defined(),
                     "Could not read blob meta for blob: %s",
                     ToString(MakeBlobId(tabletId, kv.first)).data());
             } else {
@@ -1763,7 +1785,8 @@ void CompleteRangeCompaction(
             }
         }
 
-        const auto blobSize = (args.BlockRange.Size() - skipped) * state.GetBlockSize();
+        const auto blobSize =
+            (args.BlockRange.Size() - skipped) * state.GetBlockSize();
         if (blobSize < mergedBlobThreshold) {
             channelDataKind = EChannelDataKind::Mixed;
         }
@@ -1812,10 +1835,8 @@ void CompleteRangeCompaction(
                     rangeCompactionInfos.size());
 
                 // fresh block will be written
-                blobContent.AddBlock({
-                    mark.BlockContent.data(),
-                    mark.BlockContent.size()
-                });
+                blobContent.AddBlock(
+                    {mark.BlockContent.data(), mark.BlockContent.size()});
 
                 if (args.ChecksumsEnabled) {
                     blockChecksums.push_back(
@@ -1848,7 +1869,8 @@ void CompleteRangeCompaction(
                 if (args.ChecksumsEnabled) {
                     ui32 blockChecksum = 0;
 
-                    auto* affectedBlob = args.AffectedBlobs.FindPtr(mark.BlobId);
+                    auto* affectedBlob =
+                        args.AffectedBlobs.FindPtr(mark.BlobId);
                     Y_DEBUG_ABORT_UNLESS(affectedBlob);
                     if (affectedBlob) {
                         if (auto* meta = affectedBlob->BlobMeta.Get()) {
@@ -1901,9 +1923,8 @@ void CompleteRangeCompaction(
             dataBlobId.Cookie(),
             0);
 
-        TLogoBlobID realTargetBlobId = MakeBlobId(
-            tabletStorageInfo.TabletID,
-            targetBlobId);
+        TLogoBlobID realTargetBlobId =
+            MakeBlobId(tabletStorageInfo.TabletID, targetBlobId);
 
         ui32 originalChannel = patchingCandidate.Channel();
         ui32 originalGroup = tabletStorageInfo.GroupFor(
@@ -1929,9 +1950,8 @@ void CompleteRangeCompaction(
             dataBlocksCount - patchingCandidateChangedBlockCount;
         ui32 changedPercentage = 100 * patchingBlockCount / blockCount;
 
-        if (found &&
-            (!maxDiffPercentageForBlobPatching ||
-            changedPercentage <= maxDiffPercentageForBlobPatching))
+        if (found && (!maxDiffPercentageForBlobPatching ||
+                      changedPercentage <= maxDiffPercentageForBlobPatching))
         {
             dataBlobId = TPartialBlobId(
                 dataBlobId.Generation(),
@@ -2071,9 +2091,9 @@ void TPartitionActor::CompleteCompaction(
     }
 
     const auto compactionType =
-        args.CompactionOptions.test(ToBit(ECompactionOption::Forced)) ?
-            ECompactionType::Forced:
-            ECompactionType::Tablet;
+        args.CompactionOptions.test(ToBit(ECompactionOption::Forced))
+            ? ECompactionType::Forced
+            : ECompactionType::Tablet;
 
     auto actor = NCloud::Register<TCompactionActor>(
         ctx,

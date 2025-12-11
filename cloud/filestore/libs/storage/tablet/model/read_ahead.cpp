@@ -26,9 +26,10 @@ bool IsCloseToSequential(
         minOffset = Min(minOffset, tmp.back().Offset);
         maxEnd = Max(maxEnd, tmp.back().End());
     }
-    SortBy(tmp, [] (const TReadAheadCache::TRange& range) {
-        return std::make_pair(range.Offset, range.Length);
-    });
+    SortBy(
+        tmp,
+        [](const TReadAheadCache::TRange& range)
+        { return std::make_pair(range.Offset, range.Length); });
 
     const ui64 totalLength = maxEnd - minOffset;
     if (totalLength < 1_MB) {
@@ -126,8 +127,8 @@ TMaybe<TByteRange> TReadAheadCache::RegisterDescribeImpl(
 {
     auto& handleState = Access(nodeId, handle);
     handleState.LastRanges.PushBack(TRange(inputRange));
-    if (IsCloseToSequential(handleState.LastRanges, MaxGapPercentage)
-            && inputRange.Length < RangeSize)
+    if (IsCloseToSequential(handleState.LastRanges, MaxGapPercentage) &&
+        inputRange.Length < RangeSize)
     {
         return TByteRange(inputRange.Offset, RangeSize, inputRange.BlockSize);
     }
@@ -188,8 +189,8 @@ TReadAheadCache::THandleState& TReadAheadCache::Access(ui64 nodeId, ui64 handle)
     auto& nodeState = NodeStates[nodeId];
     // TODO: LRU eviction
     // +1 needed for the NoHandle entry
-    if (nodeState.HandleStates.size() >= MaxHandlesPerNode + 1
-            && !nodeState.HandleStates.contains(handle))
+    if (nodeState.HandleStates.size() >= MaxHandlesPerNode + 1 &&
+        !nodeState.HandleStates.contains(handle))
     {
         nodeState.HandleStates.clear();
     }

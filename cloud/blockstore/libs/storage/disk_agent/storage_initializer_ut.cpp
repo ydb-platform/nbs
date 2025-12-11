@@ -26,13 +26,12 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestNvmeManager
-    : NNvme::INvmeManager
+struct TTestNvmeManager: NNvme::INvmeManager
 {
     THashMap<TString, TString> PathToSerial;
 
     explicit TTestNvmeManager(
-            const TVector<std::pair<TString, TString>> pathToSerial)
+        const TVector<std::pair<TString, TString>> pathToSerial)
         : PathToSerial{pathToSerial.cbegin(), pathToSerial.cend()}
     {}
 
@@ -46,10 +45,8 @@ struct TTestNvmeManager
         return MakeFuture<NProto::TError>();
     }
 
-    TFuture<NProto::TError> Deallocate(
-        const TString& path,
-        ui64 offsetBytes,
-        ui64 sizeBytes) override
+    TFuture<NProto::TError>
+    Deallocate(const TString& path, ui64 offsetBytes, ui64 sizeBytes) override
     {
         Y_UNUSED(path);
         Y_UNUSED(offsetBytes);
@@ -78,8 +75,7 @@ struct TTestNvmeManager
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFixture
-    : NUnitTest::TBaseFixture
+struct TFixture: NUnitTest::TBaseFixture
 {
     const ui32 DeviceCountPerPath = 8;
     const ui32 PathCount = 4;
@@ -119,9 +115,7 @@ struct TFixture
 
     void PrepareFile(const TString& name)
     {
-        TFile fileData(
-            DevicesPath / name,
-            EOpenModeFlag::CreateNew);
+        TFile fileData(DevicesPath / name, EOpenModeFlag::CreateNew);
         fileData.Resize(
             HeaderSize + DeviceCountPerPath * DeviceSize +
             (DeviceCountPerPath - 1) * PaddingSize);
@@ -512,9 +506,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
 
         UNIT_ASSERT(!NFs::Exists(DefaultConfig.GetCachedConfigPath()));
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            2 * DeviceCountPerPath,
-            r.Configs.size());
+        UNIT_ASSERT_VALUES_EQUAL(2 * DeviceCountPerPath, r.Configs.size());
 
         UNIT_ASSERT_VALUES_EQUAL(r.Configs.size(), r.Devices.size());
         UNIT_ASSERT_VALUES_EQUAL(r.Configs.size(), r.Stats.size());
@@ -525,7 +517,7 @@ Y_UNIT_TEST_SUITE(TInitializerTest)
         THashSet<TString> allowedPaths{
             DevicesPath / "NVMENBS01",
             DevicesPath / "NVMENBS03"};
-        for (const auto& config : r.Configs) {
+        for (const auto& config: r.Configs) {
             UNIT_ASSERT(allowedPaths.contains(config.GetDeviceName()));
         }
     }

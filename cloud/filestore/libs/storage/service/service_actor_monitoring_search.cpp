@@ -23,9 +23,7 @@ private:
     const TString FileSystemId;
 
 public:
-    THttpFindFileSystemActor(
-            const TActorId& actorID,
-            TString fileSystemId)
+    THttpFindFileSystemActor(const TActorId& actorID, TString fileSystemId)
         : ActorID(actorID)
         , FileSystemId(std::move(fileSystemId))
     {}
@@ -35,7 +33,8 @@ public:
         NCloud::Send(
             ctx,
             MakeSSProxyServiceId(),
-            std::make_unique<TEvSSProxy::TEvDescribeFileStoreRequest>(FileSystemId));
+            std::make_unique<TEvSSProxy::TEvDescribeFileStoreRequest>(
+                FileSystemId));
 
         Become(&TThis::StateWork);
     }
@@ -44,7 +43,9 @@ private:
     STFUNC(StateWork)
     {
         switch (ev->GetTypeRewrite()) {
-            HFunc(TEvSSProxy::TEvDescribeFileStoreResponse, HandleDescribeResponse);
+            HFunc(
+                TEvSSProxy::TEvDescribeFileStoreResponse,
+                HandleDescribeResponse);
 
             default:
                 HandleUnexpectedEvent(
@@ -88,8 +89,8 @@ private:
         const TString& path)
     {
         TStringStream out;
-        out << "Could not resolve filesystem path " << path.Quote()
-            << ": " << FormatError(error);
+        out << "Could not resolve filesystem path " << path.Quote() << ": "
+            << FormatError(error);
 
         LOG_ERROR(ctx, TFileStoreComponents::SERVICE, out.Str());
         return out.Str();
@@ -99,26 +100,29 @@ private:
     {
         TStringStream out;
 
-        HTML(out) {
-            TAG(TH3) { out << "FileSystem"; }
-            TABLE_CLASS("table table-bordered") {
-                TABLEHEAD() {
-                    TABLER() {
-                        TABLEH() { out << "FileSystem"; }
-                        TABLEH() { out << "Tablet ID"; }
+        HTML (out) {
+            TAG (TH3) {
+                out << "FileSystem";
+            }
+            TABLE_CLASS ("table table-bordered") {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "FileSystem";
+                        }
+                        TABLEH () {
+                            out << "Tablet ID";
+                        }
                     }
                 }
-                TABLER() {
-                    TABLED() {
+                TABLER () {
+                    TABLED () {
                         out << path;
                     }
 
-                    TABLED() {
-                        out << "<a href='../tablets?TabletID="
-                            << tabletId
-                            << "'>"
-                            << tabletId
-                            << "</a>";
+                    TABLED () {
+                        out << "<a href='../tablets?TabletID=" << tabletId
+                            << "'>" << tabletId << "</a>";
                     }
                 }
             }
@@ -137,14 +141,13 @@ void TStorageServiceActor::HandleHttpInfo_Search(
     const TString& FileSystemId,
     const TActorContext& ctx)
 {
-    LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE,
         "Search FileSystem for id: %s",
         FileSystemId.Quote().data());
 
-    NCloud::Register<THttpFindFileSystemActor>(
-        ctx,
-        ev->Sender,
-        FileSystemId);
+    NCloud::Register<THttpFindFileSystemActor>(ctx, ev->Sender, FileSystemId);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

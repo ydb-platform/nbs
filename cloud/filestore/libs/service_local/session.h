@@ -7,6 +7,7 @@
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/filestore.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/persistent_table.h>
 
@@ -70,17 +71,18 @@ private:
 
     TLocalIndex Index;
     THashMap<ui64, std::pair<bool, TInstant>> SubSessions;
+
 public:
     TSession(
-             const TString& fileSystemId,
-             const TFsPath& root,
-             const TFsPath& statePath,
-             TString clientId,
-             ui32 maxNodeCount,
-             ui32 maxHandleCount,
-             bool openNodeByHandleEnabled,
-             ui32 nodeCleanupBatchSize,
-             ILoggingServicePtr logging)
+        const TString& fileSystemId,
+        const TFsPath& root,
+        const TFsPath& statePath,
+        TString clientId,
+        ui32 maxNodeCount,
+        ui32 maxHandleCount,
+        bool openNodeByHandleEnabled,
+        ui32 nodeCleanupBatchSize,
+        ILoggingServicePtr logging)
         : RootPath(root.RealPath())
         , StatePath(statePath.RealPath())
         , ClientId(std::move(clientId))
@@ -121,14 +123,11 @@ public:
         }
 
         STORAGE_INFO(
-            (isNewSession ? "Create" : "Restore") << " session" <<
-            ", StatePath=" << StatePath <<
-            ", SessionId=" << SessionId <<
-            ", MaxNodeCount=" << MaxNodeCount <<
-            ", MaxHandleCount=" << MaxHandleCount <<
-            ", OpenNodeByHandleEnabled=" << OpenNodeByHandleEnabled
-        );
-
+            (isNewSession ? "Create" : "Restore")
+            << " session" << ", StatePath=" << StatePath
+            << ", SessionId=" << SessionId << ", MaxNodeCount=" << MaxNodeCount
+            << ", MaxHandleCount=" << MaxHandleCount
+            << ", OpenNodeByHandleEnabled=" << OpenNodeByHandleEnabled);
 
         HandleTable = std::make_unique<THandleTable>(
             handlesPath.GetPath(),
@@ -139,14 +138,14 @@ public:
             maxHandleId = std::max(maxHandleId, it->HandleId);
 
             STORAGE_TRACE(
-                "Resolving, HandleId=" << it->HandleId <<
-                ", NodeId=" << it->NodeId <<
-                ", Flags=" << it->Flags);
+                "Resolving, HandleId=" << it->HandleId
+                                       << ", NodeId=" << it->NodeId
+                                       << ", Flags=" << it->Flags);
             auto node = LookupNode(it->NodeId);
             if (!node) {
                 STORAGE_ERROR(
-                    "Handle with missing node, HandleId=" << it->HandleId <<
-                    ", NodeId" << it->NodeId);
+                    "Handle with missing node, HandleId="
+                    << it->HandleId << ", NodeId" << it->NodeId);
                 ReportLocalFsMissingHandleNode();
                 HandleTable->DeleteRecord(it.GetIndex());
                 continue;
@@ -163,9 +162,9 @@ public:
                     it->HandleId);
             } catch (...) {
                 STORAGE_ERROR(
-                    "Failed to open Handle, HandleId=" << it->HandleId <<
-                    ", NodeId=" << it->NodeId <<
-                    ", Exception=" << CurrentExceptionMessage());
+                    "Failed to open Handle, HandleId="
+                    << it->HandleId << ", NodeId=" << it->NodeId
+                    << ", Exception=" << CurrentExceptionMessage());
                 HandleTable->DeleteRecord(it.GetIndex());
                 continue;
             }
@@ -192,9 +191,9 @@ public:
         state->Flags = flags;
 
         if (Handles.find(handleId) != Handles.end()) {
-            ReportLocalFsDuplicateFileHandle(TStringBuilder() <<
-                "HandleId=" << handleId <<
-                ", HandlesCount=" << Handles.size());
+            ReportLocalFsDuplicateFileHandle(
+                TStringBuilder() << "HandleId=" << handleId
+                                 << ", HandlesCount=" << Handles.size());
             return ErrorInvalidHandle(handleId);
         }
 
@@ -232,10 +231,8 @@ public:
         return Index.LookupNode(nodeId);
     }
 
-    [[nodiscard]] bool TryInsertNode(
-        TIndexNodePtr node,
-        ui64 parentNodeId,
-        const TString& name)
+    [[nodiscard]] bool
+    TryInsertNode(TIndexNodePtr node, ui64 parentNodeId, const TString& name)
     {
         return Index.TryInsertNode(std::move(node), parentNodeId, name);
     }
@@ -299,7 +296,8 @@ public:
     {
         EraseNodesIf(
             SubSessions,
-            [=] (const auto& val) {
+            [=](const auto& val)
+            {
                 const auto& [_, value] = val;
                 const auto [ro, ts] = value;
                 return ts < inactivityDeadline;
@@ -308,7 +306,7 @@ public:
     }
 
 private:
-    TString ReadStateFile(const TString &fileName)
+    TString ReadStateFile(const TString& fileName)
     {
         TFile file(
             StatePath / fileName,
@@ -316,7 +314,7 @@ private:
         return TFileInput(file).ReadAll();
     }
 
-    void WriteStateFile(const TString &fileName, const TString& value)
+    void WriteStateFile(const TString& fileName, const TString& value)
     {
         TFsPath tmpFilePath(
             MakeTempName(StatePath.GetPath().c_str(), fileName.c_str()));
@@ -324,12 +322,12 @@ private:
         tmpFilePath.ForceRenameTo(StatePath / fileName);
     }
 
-    bool HasStateFile(const TString &fileName)
+    bool HasStateFile(const TString& fileName)
     {
         return (StatePath / fileName).Exists();
     }
 
-    void DeleteStateFile(const TString &fileName)
+    void DeleteStateFile(const TString& fileName)
     {
         return (StatePath / fileName).DeleteIfExists();
     }

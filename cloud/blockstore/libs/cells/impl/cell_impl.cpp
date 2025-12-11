@@ -42,8 +42,8 @@ TResultOrError<TCellHostEndpoint> TCell::PickHost(
         if (ActiveHosts.empty()) {
             return MakeError(
                 E_REJECTED,
-                TStringBuilder()
-                    << "No endpoints available in cell " << Config->GetCellId());
+                TStringBuilder() << "No endpoints available in cell "
+                                 << Config->GetCellId());
         }
 
         auto index = RandomNumber<ui32>(ActiveHosts.size());
@@ -103,7 +103,8 @@ void TCell::AdjustActiveHostsToMinConnections()
     for (const auto& host: hostsToActivate) {
         auto future = host->Start();
         future.Subscribe(
-            [fqdn = host->GetConfig().GetFqdn(), weakPtr = weakPtr](const auto& future)
+            [fqdn = host->GetConfig().GetFqdn(),
+             weakPtr = weakPtr](const auto& future)
             {
                 if (auto self = weakPtr.lock(); self) {
                     with_lock (self->Lock) {

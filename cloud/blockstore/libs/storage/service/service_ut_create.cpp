@@ -1,12 +1,13 @@
 #include "service_ut.h"
 
+#include "cloud/blockstore/private/api/protos/volume.pb.h"
+
 #include <cloud/blockstore/libs/encryption/encryption_test.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_registry_proxy_mock.h>
-#include "cloud/blockstore/private/api/protos/volume.pb.h"
 
 #include <cloud/storage/core/libs/common/helpers.h>
 
@@ -36,8 +37,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             auto response = service.DescribeVolume();
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
-                response->Record.GetVolume().GetTabletVersion()
-            );
+                response->Record.GetVolume().GetTabletVersion());
             UNIT_ASSERT(response->Record.GetVolume().GetCreationTs() > 0);
         }
 
@@ -54,25 +54,27 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
 
         ui32 status = E_FAIL;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvWaitReadyResponse: {
-                        auto response = std::make_unique<TEvVolume::TEvWaitReadyResponse>(
-                            MakeError(status, "waitready failed")
-                        );
-                        runtime.Send(new IEventHandle(
-                            event->Recipient,
-                            event->Sender,
-                            response.release(),
-                            0, // flags
-                            event->Cookie
-                        ), nodeIdx);
+                        auto response =
+                            std::make_unique<TEvVolume::TEvWaitReadyResponse>(
+                                MakeError(status, "waitready failed"));
+                        runtime.Send(
+                            new IEventHandle(
+                                event->Recipient,
+                                event->Sender,
+                                response.release(),
+                                0,   // flags
+                                event->Cookie),
+                            nodeIdx);
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         service.SendCreateVolumeRequest();
         auto response = service.RecvCreateVolumeResponse();
@@ -90,7 +92,8 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(0, error.GetFlags());
     }
 
-    Y_UNIT_TEST(ShouldReturnSilentErrorIfDescribeFailsWithPathNotFoundAfterCreation)
+    Y_UNIT_TEST(
+        ShouldReturnSilentErrorIfDescribeFailsWithPathNotFoundAfterCreation)
     {
         TTestEnv env;
         ui32 nodeIdx = SetupTestEnv(env);
@@ -101,12 +104,19 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         const auto notFoundStatus = NKikimrScheme::StatusPathDoesNotExist;
         bool describeRequested = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case NSchemeShard::TEvSchemeShard::EvDescribeSchemeResult: {
-                        auto *record = event->Get<NSchemeShard::TEvSchemeShard::TEvDescribeSchemeResult>()->MutableRecord();
-                        auto path = record->GetPathDescription().GetSelf().GetName();
-                        if (path == "path_to_test_volume" && describeRequested) {
+                        auto* record = event
+                                           ->Get<NSchemeShard::TEvSchemeShard::
+                                                     TEvDescribeSchemeResult>()
+                                           ->MutableRecord();
+                        auto path =
+                            record->GetPathDescription().GetSelf().GetName();
+                        if (path == "path_to_test_volume" && describeRequested)
+                        {
                             record->SetStatus(notFoundStatus);
                             describeRequested = false;
                         }
@@ -116,8 +126,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         // but notFoundStatus should be treated in a slightly different way
         service.SendCreateVolumeRequest();
@@ -146,8 +155,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             auto response = service.DescribeVolume();
             UNIT_ASSERT_VALUES_EQUAL(
                 2,
-                response->Record.GetVolume().GetTabletVersion()
-            );
+                response->Record.GetVolume().GetTabletVersion());
         }
 
         service.DestroyVolume();
@@ -186,8 +194,8 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         };
 
         for (const auto mediaKind: mediaKinds) {
-            const auto diskId = TStringBuilder() << DefaultDiskId
-                << "-" << static_cast<int>(mediaKind);
+            const auto diskId = TStringBuilder() << DefaultDiskId << "-"
+                                                 << static_cast<int>(mediaKind);
 
             {
                 auto request = service.CreateCreateVolumeRequest(diskId, 0);
@@ -197,23 +205,20 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                 UNIT_ASSERT_VALUES_EQUAL_C(
                     E_ARGUMENT,
                     response->GetStatus(),
-                    response->GetErrorReason()
-                );
+                    response->GetErrorReason());
             }
 
             {
                 auto request = service.CreateCreateVolumeRequest(
                     diskId,
-                    MaxVolumeBlocksCount + 1
-                );
+                    MaxVolumeBlocksCount + 1);
                 service.SendRequest(MakeStorageServiceId(), std::move(request));
 
                 auto response = service.RecvCreateVolumeResponse();
                 UNIT_ASSERT_VALUES_EQUAL_C(
                     E_ARGUMENT,
                     response->GetStatus(),
-                    response->GetErrorReason()
-                );
+                    response->GetErrorReason());
             }
 
             {
@@ -221,18 +226,16 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                     diskId,
                     1000_GB / DefaultBlockSize,
                     DefaultBlockSize,
-                    "", // folderId
-                    "", // cloudId
-                    mediaKind
-                );
+                    "",   // folderId
+                    "",   // cloudId
+                    mediaKind);
                 service.SendRequest(MakeStorageServiceId(), std::move(request));
 
                 auto response = service.RecvCreateVolumeResponse();
                 UNIT_ASSERT_VALUES_EQUAL_C(
                     E_ARGUMENT,
                     response->GetStatus(),
-                    response->GetErrorReason()
-                );
+                    response->GetErrorReason());
             }
 
             {
@@ -240,18 +243,16 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                     diskId,
                     1_TB / DefaultBlockSize,
                     DefaultBlockSize,
-                    "", // folderId
-                    "", // cloudId
-                    mediaKind
-                );
+                    "",   // folderId
+                    "",   // cloudId
+                    mediaKind);
                 service.SendRequest(MakeStorageServiceId(), std::move(request));
 
                 auto response = service.RecvCreateVolumeResponse();
                 UNIT_ASSERT_VALUES_EQUAL_C(
                     S_OK,
                     response->GetStatus(),
-                    response->GetErrorReason()
-                );
+                    response->GetErrorReason());
             }
 
             {
@@ -259,18 +260,16 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                     diskId + "2",
                     256_TB / DefaultBlockSize,
                     DefaultBlockSize,
-                    "", // folderId
-                    "", // cloudId
-                    mediaKind
-                );
+                    "",   // folderId
+                    "",   // cloudId
+                    mediaKind);
                 service.SendRequest(MakeStorageServiceId(), std::move(request));
 
                 auto response = service.RecvCreateVolumeResponse();
                 UNIT_ASSERT_VALUES_EQUAL_C(
                     S_OK,
                     response->GetStatus(),
-                    response->GetErrorReason()
-                );
+                    response->GetErrorReason());
             }
 
             {
@@ -278,18 +277,16 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                     diskId + "3",
                     257_TB / DefaultBlockSize,
                     DefaultBlockSize,
-                    "", // folderId
-                    "", // cloudId
-                    mediaKind
-                );
+                    "",   // folderId
+                    "",   // cloudId
+                    mediaKind);
                 service.SendRequest(MakeStorageServiceId(), std::move(request));
 
                 auto response = service.RecvCreateVolumeResponse();
                 UNIT_ASSERT_VALUES_EQUAL_C(
                     E_ARGUMENT,
                     response->GetStatus(),
-                    response->GetErrorReason()
-                );
+                    response->GetErrorReason());
             }
         }
     }
@@ -308,8 +305,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         {
             auto request = service.CreateCreateVolumeRequest(
                 DefaultDiskId,
-                128_TB / DefaultBlockSize
-            );
+                128_TB / DefaultBlockSize);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvCreateVolumeResponse();
@@ -319,8 +315,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         {
             auto request = service.CreateCreateVolumeRequest(
                 DefaultDiskId + "2",
-                128_TB / DefaultBlockSize + 1
-            );
+                128_TB / DefaultBlockSize + 1);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvCreateVolumeResponse();
@@ -340,8 +335,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             auto request = service.CreateCreateVolumeRequest(
                 DefaultDiskId,
                 DefaultBlocksCount,
-                2_KB
-            );
+                2_KB);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvCreateVolumeResponse();
@@ -353,8 +347,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             auto request = service.CreateCreateVolumeRequest(
                 DefaultDiskId,
                 DefaultBlocksCount,
-                256_KB
-            );
+                256_KB);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvCreateVolumeResponse();
@@ -366,8 +359,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             auto request = service.CreateCreateVolumeRequest(
                 DefaultDiskId,
                 DefaultBlocksCount,
-                50000
-            );
+                50000);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvCreateVolumeResponse();
@@ -378,8 +370,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             auto request = service.CreateCreateVolumeRequest(
                 DefaultDiskId,
                 DefaultBlocksCount,
-                64_KB
-            );
+                64_KB);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvCreateVolumeResponse();
@@ -391,10 +382,9 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                 "nrd0",
                 93_GB / 512,
                 512,
-                {}, // folderId
-                {}, // cloudId
-                NProto::STORAGE_MEDIA_SSD_NONREPLICATED
-            );
+                {},   // folderId
+                {},   // cloudId
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvCreateVolumeResponse();
@@ -406,10 +396,9 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                 "local0",
                 93_GB / 512,
                 512,
-                {}, // folderId
-                {}, // cloudId
-                NProto::STORAGE_MEDIA_SSD_LOCAL
-            );
+                {},   // folderId
+                {},   // cloudId
+                NProto::STORAGE_MEDIA_SSD_LOCAL);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvCreateVolumeResponse();
@@ -421,10 +410,9 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                 "hdd_nrd0",
                 93_GB / 512,
                 512,
-                {}, // folderId
-                {}, // cloudId
-                NProto::STORAGE_MEDIA_HDD_NONREPLICATED
-            );
+                {},   // folderId
+                {},   // cloudId
+                NProto::STORAGE_MEDIA_HDD_NONREPLICATED);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvCreateVolumeResponse();
@@ -443,17 +431,23 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
 
         bool detectedCreateVolumeRequest = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
-                        auto* msg = event->Get<TEvSSProxy::TEvModifySchemeRequest>();
+                        auto* msg =
+                            event->Get<TEvSSProxy::TEvModifySchemeRequest>();
                         if (msg->ModifyScheme.GetOperationType() ==
                             NKikimrSchemeOp::ESchemeOpCreateBlockStoreVolume)
                         {
                             detectedCreateVolumeRequest = true;
-                            const auto& createRequest = msg->ModifyScheme.GetCreateBlockStoreVolume();
-                            const auto& volumeConfig = createRequest.GetVolumeConfig();
-                            UNIT_ASSERT(volumeConfig.ExplicitChannelProfilesSize() > 4);
+                            const auto& createRequest =
+                                msg->ModifyScheme.GetCreateBlockStoreVolume();
+                            const auto& volumeConfig =
+                                createRequest.GetVolumeConfig();
+                            UNIT_ASSERT(
+                                volumeConfig.ExplicitChannelProfilesSize() > 4);
                         }
                         break;
                     }
@@ -476,7 +470,9 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
 
         bool detectedCreateVolumeRequest = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
                         auto* msg =
@@ -503,13 +499,14 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             "hdd_nrd0",
             93_GB / DefaultBlockSize,
             DefaultBlockSize,
-            "", // folderId
-            "", // cloudId
+            "",   // folderId
+            "",   // cloudId
             NProto::STORAGE_MEDIA_HDD_NONREPLICATED);
         UNIT_ASSERT(detectedCreateVolumeRequest);
     }
 
-    Y_UNIT_TEST(ShouldCreateNonReplicatedHddInsteadOfReplicatedIfFeatureIsEnabled)
+    Y_UNIT_TEST(
+        ShouldCreateNonReplicatedHddInsteadOfReplicatedIfFeatureIsEnabled)
     {
         TTestEnv env;
         NProto::TStorageServiceConfig config;
@@ -528,7 +525,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             "hdd_nrd0",
             93_GB / DefaultBlockSize,
             DefaultBlockSize,
-            "", // folderId
+            "",   // folderId
             "cloud_id");
 
         {
@@ -563,12 +560,10 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             auto response = service.DescribeVolume("vol0");
             UNIT_ASSERT_VALUES_EQUAL(
                 2,
-                response->Record.GetVolume().GetPartitionsCount()
-            );
+                response->Record.GetVolume().GetPartitionsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 3'006'464,
-                response->Record.GetVolume().GetBlocksCount()
-            );
+                response->Record.GetVolume().GetBlocksCount());
         }
 
         service.CreateVolume("vol1", 2_GB / DefaultBlockSize);
@@ -576,33 +571,28 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             auto response = service.DescribeVolume("vol1");
             UNIT_ASSERT_VALUES_EQUAL(
                 1,
-                response->Record.GetVolume().GetPartitionsCount()
-            );
+                response->Record.GetVolume().GetPartitionsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 2_GB / DefaultBlockSize,
-                response->Record.GetVolume().GetBlocksCount()
-            );
+                response->Record.GetVolume().GetBlocksCount());
         }
 
         service.CreateVolume(
             "vol2",
             2_GB / DefaultBlockSize,
             DefaultBlockSize,
-            "", // folderId
-            "", // cloudId
-            NCloud::NProto::STORAGE_MEDIA_SSD
-        );
+            "",   // folderId
+            "",   // cloudId
+            NCloud::NProto::STORAGE_MEDIA_SSD);
 
         {
             auto response = service.DescribeVolume("vol2");
             UNIT_ASSERT_VALUES_EQUAL(
                 2,
-                response->Record.GetVolume().GetPartitionsCount()
-            );
+                response->Record.GetVolume().GetPartitionsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 2_GB / DefaultBlockSize,
-                response->Record.GetVolume().GetBlocksCount()
-            );
+                response->Record.GetVolume().GetBlocksCount());
         }
     }
 
@@ -626,76 +616,80 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                 "vol0",
                 2_GB / DefaultBlockSize,
                 DefaultBlockSize,
-                TString(),  // folderId
-                TString(),  // cloudId
+                TString(),   // folderId
+                TString(),   // cloudId
                 NCloud::NProto::STORAGE_MEDIA_SSD,
                 NProto::TVolumePerformanceProfile(),
-                TString(),  // placementGroupId
-                0,          // placementPartitionIndex
-                0,  // partitionsCount
-                NProto::TEncryptionSpec()
-            );
+                TString(),   // placementGroupId
+                0,           // placementPartitionIndex
+                0,           // partitionsCount
+                NProto::TEncryptionSpec());
 
             auto response = service.DescribeVolume("vol0");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-            UNIT_ASSERT_VALUES_EQUAL(2, response->Record.GetVolume().GetPartitionsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                2,
+                response->Record.GetVolume().GetPartitionsCount());
         }
         {
             service.CreateVolume(
                 "vol1",
                 2_GB / DefaultBlockSize,
                 DefaultBlockSize,
-                TString(),  // folderId
-                TString(),  // cloudId
+                TString(),   // folderId
+                TString(),   // cloudId
                 NCloud::NProto::STORAGE_MEDIA_SSD,
                 NProto::TVolumePerformanceProfile(),
-                TString(),  // placementGroupId
-                0,          // placementPartitionIndex
-                0,  // partitionsCount
+                TString(),   // placementGroupId
+                0,           // placementPartitionIndex
+                0,           // partitionsCount
                 NProto::TEncryptionSpec(),
-                true  // isSystem
+                true   // isSystem
             );
 
             auto response = service.DescribeVolume("vol1");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.GetVolume().GetPartitionsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                response->Record.GetVolume().GetPartitionsCount());
         }
         {
             service.CreateVolume(
                 "baseDisk",
                 2_GB / DefaultBlockSize,
                 DefaultBlockSize,
-                "", // folderId
-                "", // cloudId
+                "",   // folderId
+                "",   // cloudId
                 NCloud::NProto::STORAGE_MEDIA_SSD,
                 NProto::TVolumePerformanceProfile(),
-                TString(),  // placementGroupId
-                0,          // placementPartitionIndex
-                0,  // partitionsCount
+                TString(),   // placementGroupId
+                0,           // placementPartitionIndex
+                0,           // partitionsCount
                 NProto::TEncryptionSpec(),
-                true  // isSystem
+                true   // isSystem
             );
 
             service.CreateVolume(
                 "vol2",
                 2_GB / DefaultBlockSize,
                 DefaultBlockSize,
-                TString(),  // folderId
-                TString(),  // cloudId
+                TString(),   // folderId
+                TString(),   // cloudId
                 NCloud::NProto::STORAGE_MEDIA_SSD,
                 NProto::TVolumePerformanceProfile(),
-                TString(),  // placementGroupId
-                0,          // placementPartitionIndex
-                0,  // partitionsCount
+                TString(),   // placementGroupId
+                0,           // placementPartitionIndex
+                0,           // partitionsCount
                 NProto::TEncryptionSpec(),
-                false,  // isSystem
+                false,   // isSystem
                 "baseDisk",
-                "baseDiskCheckpointId"
-            );
+                "baseDiskCheckpointId");
 
             auto response = service.DescribeVolume("vol2");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.GetVolume().GetPartitionsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                response->Record.GetVolume().GetPartitionsCount());
         }
     }
 
@@ -719,41 +713,44 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                 "baseDisk",
                 2_GB / DefaultBlockSize,
                 DefaultBlockSize,
-                "", // folderId
-                "", // cloudId
+                "",   // folderId
+                "",   // cloudId
                 NCloud::NProto::STORAGE_MEDIA_SSD,
                 NProto::TVolumePerformanceProfile(),
-                TString(),  // placementGroupId
-                0,          // placementPartitionIndex
-                0,  // partitionsCount
-                NProto::TEncryptionSpec()
-            );
+                TString(),   // placementGroupId
+                0,           // placementPartitionIndex
+                0,           // partitionsCount
+                NProto::TEncryptionSpec());
 
             auto response = service.DescribeVolume("baseDisk");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-            UNIT_ASSERT_VALUES_EQUAL(2, response->Record.GetVolume().GetPartitionsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                2,
+                response->Record.GetVolume().GetPartitionsCount());
 
             service.CreateVolume(
                 "vol0",
                 2_GB / DefaultBlockSize,
                 DefaultBlockSize,
-                TString(),  // folderId
-                TString(),  // cloudId
+                TString(),   // folderId
+                TString(),   // cloudId
                 NCloud::NProto::STORAGE_MEDIA_SSD,
                 NProto::TVolumePerformanceProfile(),
-                TString(),  // placementGroupId
-                0,          // placementPartitionIndex
-                0,  // partitionsCount
+                TString(),   // placementGroupId
+                0,           // placementPartitionIndex
+                0,           // partitionsCount
                 NProto::TEncryptionSpec(),
-                true,  // isSystem
+                true,   // isSystem
                 "baseDisk",
                 "baseDiskCheckpointId",
-                0  // fillGeneration
+                0   // fillGeneration
             );
 
             response = service.DescribeVolume("vol0");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.GetVolume().GetPartitionsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                response->Record.GetVolume().GetPartitionsCount());
         }
     }
 
@@ -772,15 +769,14 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                 "vol0",
                 2_GB / DefaultBlockSize,
                 DefaultBlockSize,
-                TString(),  // folderId
-                TString(),  // cloudId
+                TString(),   // folderId
+                TString(),   // cloudId
                 NCloud::NProto::STORAGE_MEDIA_SSD,
                 NProto::TVolumePerformanceProfile(),
-                TString(),  // placementGroupId
-                0,          // placementPartitionIndex
-                0,  // partitionsCount
-                encryptionSpec
-            );
+                TString(),   // placementGroupId
+                0,           // placementPartitionIndex
+                0,           // partitionsCount
+                encryptionSpec);
 
             auto response = service.DescribeVolume("vol0");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
@@ -795,15 +791,14 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                 "vol1",
                 2_GB / DefaultBlockSize,
                 DefaultBlockSize,
-                TString(),  // folderId
-                TString(),  // cloudId
+                TString(),   // folderId
+                TString(),   // cloudId
                 NCloud::NProto::STORAGE_MEDIA_SSD,
                 NProto::TVolumePerformanceProfile(),
-                TString(),  // placementGroupId
-                0,          // placementPartitionIndex
-                0,  // partitionsCount
-                encryptionSpec
-            );
+                TString(),   // placementGroupId
+                0,           // placementPartitionIndex
+                0,           // partitionsCount
+                encryptionSpec);
 
             auto response = service.DescribeVolume("vol1");
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
@@ -818,26 +813,23 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                 "vol2",
                 2_GB / DefaultBlockSize,
                 DefaultBlockSize,
-                TString(),  // folderId
-                TString(),  // cloudId
+                TString(),   // folderId
+                TString(),   // cloudId
                 NCloud::NProto::STORAGE_MEDIA_SSD,
                 NProto::TVolumePerformanceProfile(),
-                TString(),  // placementGroupId
-                0,          // placementPartitionIndex
-                0,  // partitionsCount
-                encryptionSpec
-            );
+                TString(),   // placementGroupId
+                0,           // placementPartitionIndex
+                0,           // partitionsCount
+                encryptionSpec);
 
             auto response = service.RecvCreateVolumeResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT,
                 response->GetStatus(),
-                response->GetErrorReason()
-            );
+                response->GetErrorReason());
             UNIT_ASSERT_C(
                 response->GetErrorReason().Contains("KeyPath not supported"),
-                response->GetErrorReason()
-            );
+                response->GetErrorReason());
         }
     }
 
@@ -859,15 +851,15 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                 DefaultDiskId,
                 DefaultBlocksCount,
                 DefaultBlockSize,
-                TString(),  // folderId
-                TString(),  // cloudId
+                TString(),   // folderId
+                TString(),   // cloudId
                 NCloud::NProto::STORAGE_MEDIA_DEFAULT,
                 NProto::TVolumePerformanceProfile(),
-                TString(),  // placementGroupId
-                0,          // placementPartitionIndex
-                2,  // partitionsCount
+                TString(),   // placementGroupId
+                0,           // placementPartitionIndex
+                2,           // partitionsCount
                 NProto::TEncryptionSpec(),
-                true  // isSystem
+                true   // isSystem
             );
 
             auto response = service.RecvCreateVolumeResponse();
@@ -879,25 +871,25 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                 DefaultDiskId,
                 DefaultBlocksCount,
                 DefaultBlockSize,
-                TString(),  // folderId
-                TString(),  // cloudId
+                TString(),   // folderId
+                TString(),   // cloudId
                 NCloud::NProto::STORAGE_MEDIA_DEFAULT,
                 NProto::TVolumePerformanceProfile(),
-                TString(),  // placementGroupId
-                0,          // placementPartitionIndex
-                2,  // partitionsCount
+                TString(),   // placementGroupId
+                0,           // placementPartitionIndex
+                2,           // partitionsCount
                 NProto::TEncryptionSpec(),
-                false,  // isSystem
+                false,   // isSystem
                 "baseDiskId",
-                "baseDiskCheckpointId"
-            );
+                "baseDiskCheckpointId");
 
             auto response = service.RecvCreateVolumeResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
         }
     }
 
-    Y_UNIT_TEST(ShouldCreateVolumeWithMultiplePartitionsIfFeatureIsEnabledForCloud)
+    Y_UNIT_TEST(
+        ShouldCreateVolumeWithMultiplePartitionsIfFeatureIsEnabledForCloud)
     {
         TTestEnv env;
         NProto::TStorageServiceConfig config;
@@ -918,20 +910,17 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             DefaultDiskId,
             3'000'000,
             DefaultBlockSize,
-            TString(),  // folderId
-            "cloud_id"
-        );
+            TString(),   // folderId
+            "cloud_id");
 
         {
             auto response = service.DescribeVolume();
             UNIT_ASSERT_VALUES_EQUAL(
                 2,
-                response->Record.GetVolume().GetPartitionsCount()
-            );
+                response->Record.GetVolume().GetPartitionsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 3006464,
-                response->Record.GetVolume().GetBlocksCount()
-            );
+                response->Record.GetVolume().GetBlocksCount());
         }
     }
 
@@ -950,16 +939,14 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             DefaultDiskId,
             1024,
             DefaultBlockSize,
-            TString(),  // folderId
-            "cloud_id"
-        );
+            TString(),   // folderId
+            "cloud_id");
 
         {
             auto response = service.DescribeVolume();
             UNIT_ASSERT_VALUES_EQUAL(
                 1,
-                response->Record.GetVolume().GetFreshChannelsCount()
-            );
+                response->Record.GetVolume().GetFreshChannelsCount());
         }
     }
 
@@ -978,9 +965,8 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             DefaultDiskId,
             1024,
             DefaultBlockSize,
-            TString(),  // folderId
-            "cloud_id"
-        );
+            TString(),   // folderId
+            "cloud_id");
 
         {
             auto response = service.DescribeVolume();
@@ -1007,25 +993,23 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             DefaultDiskId,
             3'000'000,
             DefaultBlockSize,
-            TString(),  // folderId
-            TString(),  // cloudId
+            TString(),   // folderId
+            TString(),   // cloudId
             NCloud::NProto::STORAGE_MEDIA_DEFAULT,
             NProto::TVolumePerformanceProfile(),
-            TString(),  // placementGroupId
-            0,          // placementPartitionIndex
-            2  // partitionsCount
+            TString(),   // placementGroupId
+            0,           // placementPartitionIndex
+            2            // partitionsCount
         );
 
         {
             auto response = service.DescribeVolume();
             UNIT_ASSERT_VALUES_EQUAL(
                 2,
-                response->Record.GetVolume().GetPartitionsCount()
-            );
+                response->Record.GetVolume().GetPartitionsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 3006464,
-                response->Record.GetVolume().GetBlocksCount()
-            );
+                response->Record.GetVolume().GetBlocksCount());
         }
     }
 
@@ -1046,13 +1030,13 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             DefaultDiskId,
             3'000'000,
             DefaultBlockSize,
-            TString(),  // folderId
-            TString(),  // cloudId
+            TString(),   // folderId
+            TString(),   // cloudId
             NCloud::NProto::STORAGE_MEDIA_DEFAULT,
             NProto::TVolumePerformanceProfile(),
-            TString(),  // placementGroupId
-            0,          // placementPartitionIndex
-            17  // partitionsCount
+            TString(),   // placementGroupId
+            0,           // placementPartitionIndex
+            17           // partitionsCount
         );
 
         {
@@ -1090,47 +1074,56 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             "test_folder",
             "test_cloud",
             NCloud::NProto::STORAGE_MEDIA_DEFAULT,
-            pp
-        );
+            pp);
         service.MountVolume();
 
         service.SendStatVolumeRequest();
 
         auto response = service.RecvStatVolumeResponse();
         UNIT_ASSERT_C(
-            SUCCEEDED(response->GetStatus()), response->GetErrorReason());
+            SUCCEEDED(response->GetStatus()),
+            response->GetErrorReason());
         UNIT_ASSERT_VALUES_EQUAL(
-            512, response->Record.GetVolume().GetBlocksCount());
+            512,
+            response->Record.GetVolume().GetBlocksCount());
         UNIT_ASSERT_VALUES_EQUAL(
-            8_KB, response->Record.GetVolume().GetBlockSize());
+            8_KB,
+            response->Record.GetVolume().GetBlockSize());
         UNIT_ASSERT_VALUES_EQUAL(
-            "test_folder", response->Record.GetVolume().GetFolderId());
+            "test_folder",
+            response->Record.GetVolume().GetFolderId());
         UNIT_ASSERT_VALUES_EQUAL(
-            "test_cloud", response->Record.GetVolume().GetCloudId());
+            "test_cloud",
+            response->Record.GetVolume().GetCloudId());
 
         const auto& pp2 = response->Record.GetVolume().GetPerformanceProfile();
         UNIT_ASSERT_VALUES_EQUAL(
-            pp.GetMaxReadBandwidth(), pp2.GetMaxReadBandwidth());
+            pp.GetMaxReadBandwidth(),
+            pp2.GetMaxReadBandwidth());
         UNIT_ASSERT_VALUES_EQUAL(
-            pp.GetMaxWriteBandwidth(), pp2.GetMaxWriteBandwidth());
-        UNIT_ASSERT_VALUES_EQUAL(
-            pp.GetMaxReadIops(), pp2.GetMaxReadIops());
-        UNIT_ASSERT_VALUES_EQUAL(
-            pp.GetMaxWriteIops(), pp2.GetMaxWriteIops());
+            pp.GetMaxWriteBandwidth(),
+            pp2.GetMaxWriteBandwidth());
+        UNIT_ASSERT_VALUES_EQUAL(pp.GetMaxReadIops(), pp2.GetMaxReadIops());
+        UNIT_ASSERT_VALUES_EQUAL(pp.GetMaxWriteIops(), pp2.GetMaxWriteIops());
 
         UNIT_ASSERT_VALUES_EQUAL(
-            pp.GetBurstPercentage(), pp2.GetBurstPercentage());
+            pp.GetBurstPercentage(),
+            pp2.GetBurstPercentage());
         UNIT_ASSERT_VALUES_EQUAL(
-            pp.GetMaxPostponedWeight(), pp2.GetMaxPostponedWeight());
+            pp.GetMaxPostponedWeight(),
+            pp2.GetMaxPostponedWeight());
 
         UNIT_ASSERT_VALUES_EQUAL(pp.GetBoostTime(), pp2.GetBoostTime());
         UNIT_ASSERT_VALUES_EQUAL(
-            pp.GetBoostRefillTime(), pp2.GetBoostRefillTime());
+            pp.GetBoostRefillTime(),
+            pp2.GetBoostRefillTime());
         UNIT_ASSERT_VALUES_EQUAL(
-            pp.GetBoostPercentage(), pp2.GetBoostPercentage());
+            pp.GetBoostPercentage(),
+            pp2.GetBoostPercentage());
 
         UNIT_ASSERT_VALUES_EQUAL(
-            pp.GetThrottlingEnabled(), pp2.GetThrottlingEnabled());
+            pp.GetThrottlingEnabled(),
+            pp2.GetThrottlingEnabled());
     }
 
     Y_UNIT_TEST(ShouldDestroyVolumeIdempotent)
@@ -1156,8 +1149,12 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         auto response1 = service.RecvDestroyVolumeResponse();
         auto response2 = service.RecvDestroyVolumeResponse();
 
-        UNIT_ASSERT_C(SUCCEEDED(response1->GetStatus()), response1->GetErrorReason());
-        UNIT_ASSERT_C(SUCCEEDED(response2->GetStatus()), response2->GetErrorReason());
+        UNIT_ASSERT_C(
+            SUCCEEDED(response1->GetStatus()),
+            response1->GetErrorReason());
+        UNIT_ASSERT_C(
+            SUCCEEDED(response2->GetStatus()),
+            response2->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldNotReturnEmptyErrorReasonInCaseOfError)
@@ -1201,7 +1198,9 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
 
         TServiceClient service1(env.GetRuntime(), nodeIdx1);
         service1.CreateVolume();
-        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(5));
+        env.GetRuntime().DispatchEvents(
+            TDispatchOptions(),
+            TDuration::Seconds(5));
 
         TServiceClient service2(env.GetRuntime(), nodeIdx2);
         service2.DestroyVolume();
@@ -1213,7 +1212,9 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         TServiceClient service3(env.GetRuntime(), nodeIdx3);
         service3.SendStatVolumeRequest();
         auto response = service3.RecvStatVolumeResponse();
-        UNIT_ASSERT_C(FAILED(response->GetStatus()), response->GetErrorReason());
+        UNIT_ASSERT_C(
+            FAILED(response->GetStatus()),
+            response->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldRejectRequestsIfVolumeWasDestroyed)
@@ -1224,13 +1225,17 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
 
         TServiceClient service1(env.GetRuntime(), nodeIdx1);
         service1.CreateVolume();
-        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(5));
+        env.GetRuntime().DispatchEvents(
+            TDispatchOptions(),
+            TDuration::Seconds(5));
 
         TServiceClient service2(env.GetRuntime(), nodeIdx2);
         service2.StatVolume();
 
         bool tabletDeadSeen = false;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvTablet::EvTabletDead: {
                         tabletDeadSeen = true;
@@ -1251,7 +1256,9 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         service2.SendStatVolumeRequest();
 
         auto response = service2.RecvStatVolumeResponse();
-        UNIT_ASSERT_C(FAILED(response->GetStatus()), response->GetErrorReason());
+        UNIT_ASSERT_C(
+            FAILED(response->GetStatus()),
+            response->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldValidateDiskId)
@@ -1329,8 +1336,8 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             DefaultDiskId,
             DefaultBlocksCount,
             DefaultBlockSize,
-            "", // folder id
-            "", // cloud id
+            "",   // folder id
+            "",   // cloud id
             NCloud::NProto::STORAGE_MEDIA_SSD);
         service.DestroyVolume();
     }
@@ -1346,8 +1353,8 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             DefaultDiskId,
             DefaultBlocksCount,
             DefaultBlockSize,
-            "", // folder id
-            "", // cloud id
+            "",   // folder id
+            "",   // cloud id
             NCloud::NProto::STORAGE_MEDIA_HYBRID);
         service.DestroyVolume();
     }
@@ -1360,19 +1367,21 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         auto& runtime = env.GetRuntime();
         TServiceClient service(runtime, nodeIdx);
 
-        runtime.SetObserverFunc( [nodeIdx, &runtime] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [nodeIdx, &runtime](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
-                        auto response = std::make_unique<TEvSSProxy::TEvModifySchemeResponse>(
-                            MakeError(
-                                NKikimrScheme::StatusPathDoesNotExist,
-                                "path does not exist"));
+                        auto response = std::make_unique<
+                            TEvSSProxy::TEvModifySchemeResponse>(MakeError(
+                            NKikimrScheme::StatusPathDoesNotExist,
+                            "path does not exist"));
                         runtime.Send(
                             new IEventHandle(
                                 event->Sender,
                                 event->Recipient,
                                 response.release(),
-                                0, // flags
+                                0,   // flags
                                 event->Cookie),
                             nodeIdx);
                         return TTestActorRuntime::EEventAction::DROP;
@@ -1395,19 +1404,22 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         TServiceClient service(runtime, nodeIdx);
         service.CreateVolume();
 
-        auto error = MakeError(NKikimrScheme::StatusAccessDenied, "Access denied");
+        auto error =
+            MakeError(NKikimrScheme::StatusAccessDenied, "Access denied");
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifyVolumeRequest: {
-                        auto response = std::make_unique<TEvSSProxy::TEvModifyVolumeResponse>(
-                            error);
+                        auto response = std::make_unique<
+                            TEvSSProxy::TEvModifyVolumeResponse>(error);
                         runtime.Send(
                             new IEventHandle(
                                 event->Sender,
                                 event->Recipient,
                                 response.release(),
-                                0, // flags
+                                0,   // flags
                                 event->Cookie),
                             nodeIdx);
                         return TTestActorRuntime::EEventAction::DROP;
@@ -1421,9 +1433,10 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL_C(
             error.GetCode(),
             response->GetStatus(),
-            response->GetErrorReason()
-        );
-        UNIT_ASSERT_VALUES_EQUAL(error.GetMessage(), response->GetErrorReason());
+            response->GetErrorReason());
+        UNIT_ASSERT_VALUES_EQUAL(
+            error.GetMessage(),
+            response->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldNotifyDiskRegistryUponDiskRegistryVolumeDestruction)
@@ -1449,34 +1462,30 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         ui32 markedDisks = 0;
 
         for (const auto mediaKind: mediaKinds) {
-            const auto diskId = TStringBuilder() << DefaultDiskId
-                << "-" << static_cast<int>(mediaKind);
+            const auto diskId = TStringBuilder() << DefaultDiskId << "-"
+                                                 << static_cast<int>(mediaKind);
 
             service.CreateVolume(
                 diskId,
                 1_GB / DefaultBlockSize,
                 DefaultBlockSize,
-                "", // folderId
-                "", // cloudId
-                mediaKind
-            );
+                "",   // folderId
+                "",   // cloudId
+                mediaKind);
 
             UNIT_ASSERT_VALUES_EQUAL(
                 markedDisks,
-                state.DiskRegistryState->DisksMarkedForCleanup.size()
-            );
+                state.DiskRegistryState->DisksMarkedForCleanup.size());
 
             service.DestroyVolume(diskId);
             ++markedDisks;
 
             UNIT_ASSERT_VALUES_EQUAL(
                 markedDisks,
-                state.DiskRegistryState->DisksMarkedForCleanup.size()
-            );
+                state.DiskRegistryState->DisksMarkedForCleanup.size());
 
-            UNIT_ASSERT(
-                state.DiskRegistryState->DisksMarkedForCleanup.contains(diskId)
-            );
+            UNIT_ASSERT(state.DiskRegistryState->DisksMarkedForCleanup.contains(
+                diskId));
         }
     }
 
@@ -1494,24 +1503,25 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             NCloud::NProto::STORAGE_MEDIA_HDD,
             NCloud::NProto::STORAGE_MEDIA_SSD,
             NCloud::NProto::STORAGE_MEDIA_HYBRID,
-            NCloud::NProto::STORAGE_MEDIA_DEFAULT
-        };
+            NCloud::NProto::STORAGE_MEDIA_DEFAULT};
 
         std::array<NCloud::NProto::EStorageMediaKind, 4> expectedMediaKinds{
             NCloud::NProto::STORAGE_MEDIA_HDD,
             NCloud::NProto::STORAGE_MEDIA_SSD,
             NCloud::NProto::STORAGE_MEDIA_HYBRID,
-            NCloud::NProto::STORAGE_MEDIA_HDD
-        };
+            NCloud::NProto::STORAGE_MEDIA_HDD};
 
         // Run once before actual test to ensure the dir for the volume exists
         service.CreateVolume();
         service.DestroyVolume();
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
-                        auto* msg = event->Get<TEvSSProxy::TEvModifySchemeRequest>();
+                        auto* msg =
+                            event->Get<TEvSSProxy::TEvModifySchemeRequest>();
                         if (msg->ModifyScheme.GetOperationType() ==
                             NKikimrSchemeOp::ESchemeOpCreateBlockStoreVolume)
                         {
@@ -1520,8 +1530,10 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                             const auto& volumeConfig =
                                 createBlockStoreVolume.GetVolumeConfig();
                             UNIT_ASSERT(createBlockStoreVolumeEventCount < 4);
-                            UNIT_ASSERT(volumeConfig.GetStorageMediaKind() ==
-                                (ui32)expectedMediaKinds[createBlockStoreVolumeEventCount]);
+                            UNIT_ASSERT(
+                                volumeConfig.GetStorageMediaKind() ==
+                                (ui32)expectedMediaKinds
+                                    [createBlockStoreVolumeEventCount]);
                             ++createBlockStoreVolumeEventCount;
                         }
                         break;
@@ -1554,17 +1566,20 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         service.CreateVolume();
 
         NProto::TError error;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvWaitReadyRequest: {
-                        auto response = std::make_unique<TEvVolume::TEvWaitReadyResponse>(
-                            error);
+                        auto response =
+                            std::make_unique<TEvVolume::TEvWaitReadyResponse>(
+                                error);
                         runtime.Send(
                             new IEventHandle(
                                 event->Sender,
                                 event->Recipient,
                                 response.release(),
-                                0, // flags
+                                0,   // flags
                                 event->Cookie),
                             nodeIdx);
                         return TTestActorRuntime::EEventAction::DROP;
@@ -1592,7 +1607,9 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         service.SendDescribeVolumeRequest();
         {
             auto response = service.RecvDescribeVolumeResponse();
-            UNIT_ASSERT_C(S_OK != response->GetStatus(), response->GetErrorReason());
+            UNIT_ASSERT_C(
+                S_OK != response->GetStatus(),
+                response->GetErrorReason());
         }
     }
 
@@ -1609,18 +1626,21 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         client.SetClientId("c");
         client.SetInstanceId("i");
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvService::EvStatVolumeRequest: {
-                        auto response =
-                            std::make_unique<TEvService::TEvStatVolumeResponse>();
-                        response->Record.MutableClients()->Add()->CopyFrom(client);
+                        auto response = std::make_unique<
+                            TEvService::TEvStatVolumeResponse>();
+                        response->Record.MutableClients()->Add()->CopyFrom(
+                            client);
                         runtime.Send(
                             new IEventHandle(
                                 event->Sender,
                                 event->Recipient,
                                 response.release(),
-                                0, // flags
+                                0,   // flags
                                 event->Cookie),
                             nodeIdx);
                         return TTestActorRuntime::EEventAction::DROP;
@@ -1650,7 +1670,9 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         service.SendDescribeVolumeRequest();
         {
             auto response = service.RecvDescribeVolumeResponse();
-            UNIT_ASSERT_C(S_OK != response->GetStatus(), response->GetErrorReason());
+            UNIT_ASSERT_C(
+                S_OK != response->GetStatus(),
+                response->GetErrorReason());
         }
 
         service.CreateVolume();
@@ -1681,7 +1703,9 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         service.SendDescribeVolumeRequest();
         {
             auto response = service.RecvDescribeVolumeResponse();
-            UNIT_ASSERT_C(S_OK != response->GetStatus(), response->GetErrorReason());
+            UNIT_ASSERT_C(
+                S_OK != response->GetStatus(),
+                response->GetErrorReason());
         }
     }
 
@@ -1717,17 +1741,25 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
 
         bool detectedCreateVolumeRequest = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
-                        auto* msg = event->Get<TEvSSProxy::TEvModifySchemeRequest>();
+                        auto* msg =
+                            event->Get<TEvSSProxy::TEvModifySchemeRequest>();
                         if (msg->ModifyScheme.GetOperationType() ==
                             NKikimrSchemeOp::ESchemeOpCreateBlockStoreVolume)
                         {
                             detectedCreateVolumeRequest = true;
-                            const auto& createRequest = msg->ModifyScheme.GetCreateBlockStoreVolume();
-                            const auto& volumeConfig = createRequest.GetVolumeConfig();
-                            UNIT_ASSERT_VALUES_EQUAL(3, volumeConfig.VolumeExplicitChannelProfilesSize());
+                            const auto& createRequest =
+                                msg->ModifyScheme.GetCreateBlockStoreVolume();
+                            const auto& volumeConfig =
+                                createRequest.GetVolumeConfig();
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                3,
+                                volumeConfig
+                                    .VolumeExplicitChannelProfilesSize());
                         }
                         break;
                     }
@@ -1751,7 +1783,9 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         service.SendRequest(MakeStorageServiceId(), std::move(request));
 
         auto response = service.RecvCreateVolumeResponse();
-        UNIT_ASSERT_C(response->GetStatus() == S_OK, response->GetErrorReason());
+        UNIT_ASSERT_C(
+            response->GetStatus() == S_OK,
+            response->GetErrorReason());
 
         service.SendDescribeVolumeRequest();
         {
@@ -1775,7 +1809,9 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         service.SendRequest(MakeStorageServiceId(), std::move(request));
 
         auto response = service.RecvCreateVolumeResponse();
-        UNIT_ASSERT_C(response->GetStatus() == S_OK, response->GetErrorReason());
+        UNIT_ASSERT_C(
+            response->GetStatus() == S_OK,
+            response->GetErrorReason());
 
         auto volumeConfig = GetVolumeConfig(service, DefaultDiskId);
         UNIT_ASSERT_VALUES_EQUAL(1, volumeConfig.GetFillGeneration());
@@ -1794,7 +1830,9 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvCreateVolumeResponse();
-            UNIT_ASSERT_C(response->GetStatus() == S_OK, response->GetErrorReason());
+            UNIT_ASSERT_C(
+                response->GetStatus() == S_OK,
+                response->GetErrorReason());
         }
 
         {
@@ -1803,7 +1841,9 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvCreateVolumeResponse();
-            UNIT_ASSERT_C(response->GetStatus() == E_INVALID_STATE, response->GetStatus());
+            UNIT_ASSERT_C(
+                response->GetStatus() == E_INVALID_STATE,
+                response->GetStatus());
         }
 
         {
@@ -1812,7 +1852,9 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvCreateVolumeResponse();
-            UNIT_ASSERT_C(response->GetStatus() == E_ABORTED, response->GetStatus());
+            UNIT_ASSERT_C(
+                response->GetStatus() == E_ABORTED,
+                response->GetStatus());
         }
     }
 
@@ -1823,41 +1865,50 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
-        auto createVolume = [&](const TString& diskId) {
+        auto createVolume = [&](const TString& diskId)
+        {
             auto request = service.CreateCreateVolumeRequest();
             request->Record.SetDiskId(diskId);
             request->Record.SetFillGeneration(713);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvCreateVolumeResponse();
-            UNIT_ASSERT_C(response->GetStatus() == S_OK, response->GetErrorReason());
+            UNIT_ASSERT_C(
+                response->GetStatus() == S_OK,
+                response->GetErrorReason());
         };
 
-        auto failToDestroy = [&] (const TString& diskId, ui64 fillGeneration) {
-            service.SendDestroyVolumeRequest(
-                diskId,
-                false,
-                false,
-                fillGeneration);
+        auto failToDestroy = [&](const TString& diskId, ui64 fillGeneration)
+        {
+            service
+                .SendDestroyVolumeRequest(diskId, false, false, fillGeneration);
             auto destroyResponse = service.RecvDestroyVolumeResponse();
-            // Expect that volume is not destroyed, but request finished without error.
-            UNIT_ASSERT_C(destroyResponse->GetStatus() == S_OK, destroyResponse->GetErrorReason());
+            // Expect that volume is not destroyed, but request finished without
+            // error.
+            UNIT_ASSERT_C(
+                destroyResponse->GetStatus() == S_OK,
+                destroyResponse->GetErrorReason());
 
             auto describeResponse = service.DescribeVolume(diskId);
-            UNIT_ASSERT_C(describeResponse->GetStatus() == S_OK, describeResponse->GetErrorReason());
+            UNIT_ASSERT_C(
+                describeResponse->GetStatus() == S_OK,
+                describeResponse->GetErrorReason());
         };
 
-        auto successfullyDestroy = [&] (const TString& diskId, ui64 fillGeneration) {
-            auto destroyResponse = service.DestroyVolume(
-                diskId,
-                false,
-                false,
-                fillGeneration);
-            UNIT_ASSERT_C(destroyResponse->GetStatus() == S_OK, destroyResponse->GetErrorReason());
+        auto successfullyDestroy =
+            [&](const TString& diskId, ui64 fillGeneration)
+        {
+            auto destroyResponse =
+                service.DestroyVolume(diskId, false, false, fillGeneration);
+            UNIT_ASSERT_C(
+                destroyResponse->GetStatus() == S_OK,
+                destroyResponse->GetErrorReason());
 
             service.SendDescribeVolumeRequest(diskId);
             auto describeResponse = service.RecvDescribeVolumeResponse();
-            UNIT_ASSERT_C(S_OK != describeResponse->GetStatus(), describeResponse->GetErrorReason());
+            UNIT_ASSERT_C(
+                S_OK != describeResponse->GetStatus(),
+                describeResponse->GetErrorReason());
         };
 
         createVolume("vol");

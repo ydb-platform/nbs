@@ -17,9 +17,7 @@ Y_UNIT_TEST_SUITE(THistogrmTest)
         THistogram<> hist;
 
         int count = 0;
-        hist.IterateBuckets([&count] (auto, auto, auto) {
-            ++count;
-        });
+        hist.IterateBuckets([&count](auto, auto, auto) { ++count; });
 
         UNIT_ASSERT_VALUES_EQUAL(0, count);
     }
@@ -36,9 +34,8 @@ Y_UNIT_TEST_SUITE(THistogrmTest)
 
         TVector<TBucket> buckets;
 
-        hist.IterateBuckets([&] (ui64 start, ui64 end, ui64 count) {
-            buckets.emplace_back(start, end, count);
-        });
+        hist.IterateBuckets([&](ui64 start, ui64 end, ui64 count)
+                            { buckets.emplace_back(start, end, count); });
 
         UNIT_ASSERT_VALUES_EQUAL(1, buckets.size());
 
@@ -64,9 +61,8 @@ Y_UNIT_TEST_SUITE(THistogrmTest)
 
         TVector<TBucket> buckets;
 
-        hist.IterateBuckets([&] (ui64 start, ui64 end, ui64 count) {
-            buckets.emplace_back(start, end, count);
-        });
+        hist.IterateBuckets([&](ui64 start, ui64 end, ui64 count)
+                            { buckets.emplace_back(start, end, count); });
 
         UNIT_ASSERT_VALUES_EQUAL(3, buckets.size());
 
@@ -108,10 +104,13 @@ Y_UNIT_TEST_SUITE(THistogrmTest)
 
         {
             TVector<TBucket> buckets;
-            hist.IterateDiffBuckets({}, [&] (ui64 start, ui64 end, ui64 count) {
-                Y_UNUSED(end);
-                buckets.emplace_back(start, count);
-            });
+            hist.IterateDiffBuckets(
+                {},
+                [&](ui64 start, ui64 end, ui64 count)
+                {
+                    Y_UNUSED(end);
+                    buckets.emplace_back(start, count);
+                });
 
             UNIT_ASSERT_VALUES_EQUAL(4, buckets.size());
             UNIT_ASSERT_EQUAL(TBucket(1, 1), buckets[0]);
@@ -124,10 +123,13 @@ Y_UNIT_TEST_SUITE(THistogrmTest)
 
         {
             TVector<TBucket> buckets;
-            newHist.IterateDiffBuckets(hist, [&] (ui64 start, ui64 end, ui64 count) {
-                Y_UNUSED(end);
-                buckets.emplace_back(start, count);
-            });
+            newHist.IterateDiffBuckets(
+                hist,
+                [&](ui64 start, ui64 end, ui64 count)
+                {
+                    Y_UNUSED(end);
+                    buckets.emplace_back(start, count);
+                });
 
             UNIT_ASSERT_VALUES_EQUAL(0, buckets.size());
         }
@@ -137,10 +139,13 @@ Y_UNIT_TEST_SUITE(THistogrmTest)
 
         {
             TVector<TBucket> buckets;
-            newHist.IterateDiffBuckets(hist, [&] (ui64 start, ui64 end, ui64 count) {
-                Y_UNUSED(end);
-                buckets.emplace_back(start, count);
-            });
+            newHist.IterateDiffBuckets(
+                hist,
+                [&](ui64 start, ui64 end, ui64 count)
+                {
+                    Y_UNUSED(end);
+                    buckets.emplace_back(start, count);
+                });
 
             UNIT_ASSERT_VALUES_EQUAL(2, buckets.size());
             UNIT_ASSERT_EQUAL(TBucket(8_KB, 10), buckets[0]);

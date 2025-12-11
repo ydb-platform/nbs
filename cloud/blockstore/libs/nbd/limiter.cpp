@@ -6,8 +6,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TLimiter final
-    : public ILimiter
+class TLimiter final: public ILimiter
 {
 private:
     TLog Log;
@@ -61,8 +60,7 @@ void TLimiter::Release(size_t requestBytes)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TLimiterStub final
-    : public ILimiter
+class TLimiterStub final: public ILimiter
 {
 public:
     bool Acquire(size_t requestBytes) override
@@ -81,10 +79,8 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ILimiterPtr CreateLimiter(
-    const TLog& log,
-    TContExecutor* e,
-    size_t maxInFlightBytes)
+ILimiterPtr
+CreateLimiter(const TLog& log, TContExecutor* e, size_t maxInFlightBytes)
 {
     return std::make_shared<TLimiter>(log, e, maxInFlightBytes);
 }

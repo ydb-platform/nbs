@@ -93,10 +93,12 @@ NProto::TTestLockResponse TLocalFileSystem::TestLock(
         request.GetLength(),
         shared);
     if (!tested) {
-        return TErrorResponse(E_FS_WOULDBLOCK, TStringBuilder()
-            << "lock denied for " << static_cast<FHANDLE>(*handle)
-            << " at (" << request.GetOffset()
-            << ", " << request.GetLength() << ")");
+        return TErrorResponse(
+            E_FS_WOULDBLOCK,
+            TStringBuilder()
+                << "lock denied for " << static_cast<FHANDLE>(*handle)
+                << " at (" << request.GetOffset() << ", " << request.GetLength()
+                << ")");
     }
 
     return {};

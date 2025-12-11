@@ -2,8 +2,10 @@
 
 #include "public.h"
 
-#include <cloud/filestore/config/diagnostics.pb.h>
 #include "cloud/storage/core/libs/diagnostics/histogram_counter_options.h"
+
+#include <cloud/filestore/config/diagnostics.pb.h>
+
 #include <cloud/storage/core/libs/diagnostics/trace_reader.h>
 
 #include <util/datetime/base.h>
@@ -47,16 +49,16 @@ struct TFileSystemPerformanceProfile
     TFileSystemPerformanceProfile() = default;
 
     TFileSystemPerformanceProfile(
-            TRequestPerformanceProfile read,
-            TRequestPerformanceProfile write,
-            TRequestPerformanceProfile listNodes,
-            TRequestPerformanceProfile getNodeAttr,
-            TRequestPerformanceProfile createHandle,
-            TRequestPerformanceProfile destroyHandle,
-            TRequestPerformanceProfile createNode,
-            TRequestPerformanceProfile renameNode,
-            TRequestPerformanceProfile unlinkNode,
-            TRequestPerformanceProfile statFileStore)
+        TRequestPerformanceProfile read,
+        TRequestPerformanceProfile write,
+        TRequestPerformanceProfile listNodes,
+        TRequestPerformanceProfile getNodeAttr,
+        TRequestPerformanceProfile createHandle,
+        TRequestPerformanceProfile destroyHandle,
+        TRequestPerformanceProfile createNode,
+        TRequestPerformanceProfile renameNode,
+        TRequestPerformanceProfile unlinkNode,
+        TRequestPerformanceProfile statFileStore)
         : Read(read)
         , Write(write)
         , ListNodes(listNodes)
@@ -83,7 +85,9 @@ struct TMonitoringUrlData: public TAtomicRefCount<TMonitoringUrlData>
     TString MonitoringUrl;
     TString MonitoringProject;
 
-    TMonitoringUrlData() : MonitoringProject("nfs") {}
+    TMonitoringUrlData()
+        : MonitoringProject("nfs")
+    {}
     TMonitoringUrlData(const TMonitoringUrlData& rhs) = default;
 
     TMonitoringUrlData(const NProto::TMonitoringUrlData& data)

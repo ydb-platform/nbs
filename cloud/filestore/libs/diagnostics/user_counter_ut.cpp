@@ -36,12 +36,10 @@ NJson::TJsonValue GetValue(const auto& object, const auto& name)
     }
     UNIT_ASSERT_C(false, "Value not found " << name);
     return NJson::TJsonValue{};
-};
+}
 
-NJson::TJsonValue GetHist(
-    const auto& object,
-    const auto& name,
-    const auto& valueName)
+NJson::TJsonValue
+GetHist(const auto& object, const auto& name, const auto& valueName)
 {
     for (const auto& data: object["sensors"].GetArray()) {
         if (data["labels"]["name"] == name) {
@@ -52,12 +50,10 @@ NJson::TJsonValue GetHist(
     }
     UNIT_ASSERT_C(false, "Value not found " << name << "/" << valueName);
     return NJson::TJsonValue{};
-};
+}
 
-NJson::TJsonValue GetHistBucket(
-    const auto& object,
-    const auto& name,
-    const auto& bucketName)
+NJson::TJsonValue
+GetHistBucket(const auto& object, const auto& name, const auto& bucketName)
 {
     for (const auto& data: object["sensors"].GetArray()) {
         if (data["labels"]["name"] == name) {
@@ -81,7 +77,7 @@ NJson::TJsonValue GetHistBucket(
         false,
         "Value not found sensor=" << name << ", bucket=" << bucketName);
     return NJson::TJsonValue{};
-};
+}
 
 void ValidateJsons(
     const NJson::TJsonValue& expectedJson,
@@ -95,15 +91,13 @@ void ValidateJsons(
                 UNIT_ASSERT_STRINGS_EQUAL_C(
                     NJson::WriteJson(GetHist(expectedJson, name, valueName)),
                     NJson::WriteJson(GetHist(actualJson, name, valueName)),
-                    name
-                );
+                    name);
             }
         } else {
             UNIT_ASSERT_STRINGS_EQUAL_C(
                 NJson::WriteJson(GetValue(expectedJson, name)),
                 NJson::WriteJson(GetValue(actualJson, name)),
-                name
-            );
+                name);
         }
     }
 }
@@ -190,8 +184,7 @@ void SetTimeHistogramCountersMs(
 const TString METRIC_COMPONENT = "test";
 const TString METRIC_FS_COMPONENT = METRIC_COMPONENT + "_fs";
 
-struct TEnv
-    : public NUnitTest::TBaseFixture
+struct TEnv: public NUnitTest::TBaseFixture
 {
     NMonitoring::TDynamicCountersPtr Counters;
     ITimerPtr Timer;
@@ -203,11 +196,11 @@ struct TEnv
         , Timer(CreateWallClockTimer())
         , Supplier(CreateUserCounterSupplier())
         , Registry(CreateRequestStatsRegistry(
-            METRIC_COMPONENT,
-            std::make_shared<TDiagnosticsConfig>(),
-            Counters,
-            Timer,
-            Supplier))
+              METRIC_COMPONENT,
+              std::make_shared<TDiagnosticsConfig>(),
+              Counters,
+              Timer,
+              Supplier))
     {}
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
@@ -391,7 +384,8 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
                 DurationToCyclesSafe(duration));
 
             NProto::TError error =
-                isError ? MakeError(E_NOT_IMPLEMENTED, "Test error") : MakeError(S_OK);
+                isError ? MakeError(E_NOT_IMPLEMENTED, "Test error")
+                        : MakeError(S_OK);
             stats->RequestCompleted(*context, error);
         };
 

@@ -16,13 +16,15 @@
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/blockstore/libs/service_local/storage_rdma.h>
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
-#include <cloud/contrib/vhost/include/vhost/server.h>
+
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+
+#include <cloud/contrib/vhost/include/vhost/server.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
 
@@ -39,8 +41,7 @@ constexpr ui32 REQUEST_TIMEOUT_MSEC = 86400000;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TStorageDataClient final
-    : public IBlockStore
+class TStorageDataClient final: public IBlockStore
 {
 private:
     const IStoragePtr Storage;
@@ -72,15 +73,15 @@ public:
         return MakeFuture<NProto::T##name##Response>(TErrorResponse(           \
             E_NOT_IMPLEMENTED,                                                 \
             TStringBuilder() << "Unsupported request " << type.Quote()));      \
-    }                                                                          \
+    }
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        return Storage->name(std::move(callContext), std::move(request));      \
-    }                                                                          \
+#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                            \
+    TFuture<NProto::T##name##Response> name(                              \
+        TCallContextPtr callContext,                                      \
+        std::shared_ptr<NProto::T##name##Request> request) override       \
+    {                                                                     \
+        return Storage->name(std::move(callContext), std::move(request)); \
+    }
 
     BLOCKSTORE_GRPC_SERVICE(BLOCKSTORE_DONT_IMPLEMENT_METHOD)
     BLOCKSTORE_LOCAL_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
@@ -91,15 +92,15 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRetryPolicy : public NClient::IRetryPolicy
+class TRetryPolicy: public NClient::IRetryPolicy
 {
 private:
     NClient::IRetryPolicyPtr Impl;
 
 public:
     TRetryPolicy(
-            NClient::TClientAppConfigPtr config,
-            NProto::EStorageMediaKind mediaKind)
+        NClient::TClientAppConfigPtr config,
+        NProto::EStorageMediaKind mediaKind)
         : Impl(NClient::CreateRetryPolicy(std::move(config), mediaKind))
     {}
 
@@ -150,10 +151,8 @@ public:
 private:
     void ProcessReadRequest(struct vhd_io* io, TCpuCycles startCycles);
     void ProcessWriteRequest(struct vhd_io* io, TCpuCycles startCycles);
-    void CompleteRequest(
-        struct vhd_io* io,
-        TCpuCycles startCycles,
-        bool isError);
+    void
+    CompleteRequest(struct vhd_io* io, TCpuCycles startCycles, bool isError);
     IBlockStorePtr CreateDataClient(IStoragePtr storage);
 };
 
@@ -210,10 +209,10 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
         DevicePath devicePath("rdma");
         auto error = devicePath.Parse(chunk.DevicePath);
         STORAGE_VERIFY_C(
-                !HasError(error),
-                TWellKnownEntityTypes::ENDPOINT,
-                ClientId,
-                "device parse error: " << error.GetMessage());
+            !HasError(error),
+            TWellKnownEntityTypes::ENDPOINT,
+            ClientId,
+            "device parse error: " << error.GetMessage());
 
         auto* device = Volume.MutableDevices()->Add();
         device->SetDeviceUUID(devicePath.Uuid);
@@ -224,27 +223,24 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
             chunk.Offset == 0,
             TWellKnownEntityTypes::ENDPOINT,
             ClientId,
-            "device chunk offset is not 0"
-                << ", device=" << chunk.DevicePath
-                << ", offset=" << chunk.Offset);
+            "device chunk offset is not 0" << ", device=" << chunk.DevicePath
+                                           << ", offset=" << chunk.Offset);
 
         STORAGE_VERIFY_C(
             chunk.ByteCount % BlockSize == 0,
             TWellKnownEntityTypes::ENDPOINT,
             ClientId,
             "device chunk size is not aligned to "
-                << BlockSize
-                << ", device=" << chunk.DevicePath
+                << BlockSize << ", device=" << chunk.DevicePath
                 << ", byte_count=" << chunk.ByteCount);
 
         device->SetBlockCount(chunk.ByteCount / BlockSize);
         totalBytes += chunk.ByteCount;
     }
 
-    STORAGE_INFO("Volume:"
-        << " DiskId=" << Volume.GetDiskId()
-        << " TotalBlocks=" << totalBytes / BlockSize
-        << " BlockSize=" << BlockSize);
+    STORAGE_INFO(
+        "Volume:" << " DiskId=" << Volume.GetDiskId() << " TotalBlocks="
+                  << totalBytes / BlockSize << " BlockSize=" << BlockSize);
 
     return {
         .serial = options.Serial.c_str(),
@@ -254,7 +250,6 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
         .total_blocks = totalBytes / BlockSize,
         .features = ReadOnly ? VHD_BDEV_F_READONLY : 0,
         .pte_flush_byte_threshold = options.PteFlushByteThreshold};
-
 }
 
 IBlockStorePtr TRdmaBackend::CreateDataClient(IStoragePtr storage)
@@ -291,10 +286,7 @@ void TRdmaBackend::Start()
 
     auto accessMode = ReadOnly ? NProto::VOLUME_ACCESS_READ_ONLY
                                : NProto::VOLUME_ACCESS_READ_WRITE;
-    auto future = StorageProvider->CreateStorage(
-        Volume,
-        ClientId,
-        accessMode);
+    auto future = StorageProvider->CreateStorage(Volume, ClientId, accessMode);
     auto storage = future.GetValueSync();
     DataClient = CreateDataClient(std::move(storage));
 }
@@ -422,8 +414,9 @@ void TRdmaBackend::ProcessWriteRequest(
         request->GetStartIndex(),
         request->BlocksCount,
         request->BlockSize);
-    auto future =
-        DataClient->WriteBlocksLocal(std::move(callContext), std::move(request));
+    auto future = DataClient->WriteBlocksLocal(
+        std::move(callContext),
+        std::move(request));
     future.Subscribe(
         [this, io, requestId, startCycles](const auto& future)
         {

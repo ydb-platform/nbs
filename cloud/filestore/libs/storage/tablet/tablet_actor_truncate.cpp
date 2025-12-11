@@ -16,8 +16,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTruncateWorker
-    : public TActorBootstrapped<TTruncateWorker>
+class TTruncateWorker: public TActorBootstrapped<TTruncateWorker>
 {
 private:
     const TString LogTag;
@@ -35,13 +34,13 @@ private:
 
 public:
     TTruncateWorker(
-            TString logTag,
-            TActorId tablet,
-            TRequestInfoPtr requestInfo,
-            ui64 nodeId,
-            TByteRange range,
-            ui64 maxBlocks,
-            ui32 inflight)
+        TString logTag,
+        TActorId tablet,
+        TRequestInfoPtr requestInfo,
+        ui64 nodeId,
+        TByteRange range,
+        ui64 maxBlocks,
+        ui32 inflight)
         : LogTag(std::move(logTag))
         , Tablet(tablet)
         , RequestInfo(std::move(requestInfo))
@@ -62,7 +61,9 @@ private:
     STFUNC(StateWork)
     {
         switch (ev->GetTypeRewrite()) {
-            HFunc(TEvIndexTabletPrivate::TEvTruncateRangeResponse, HandleTruncate);
+            HFunc(
+                TEvIndexTabletPrivate::TEvTruncateRangeResponse,
+                HandleTruncate);
             HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
             default:
@@ -83,10 +84,12 @@ private:
             }
 
             TABLET_VERIFY(next > LastOffset);
-            TByteRange range(LastOffset, next - LastOffset, TotalRange.BlockSize);
-            auto request = std::make_unique<TEvIndexTabletPrivate::TEvTruncateRangeRequest>(
-                NodeId,
-                range);
+            TByteRange range(
+                LastOffset,
+                next - LastOffset,
+                TotalRange.BlockSize);
+            auto request = std::make_unique<
+                TEvIndexTabletPrivate::TEvTruncateRangeRequest>(NodeId, range);
 
             NCloud::Send(ctx, Tablet, std::move(request));
 
@@ -146,7 +149,8 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TIndexTabletActor::EnqueueTruncateIfNeeded(const NActors::TActorContext& ctx)
+void TIndexTabletActor::EnqueueTruncateIfNeeded(
+    const NActors::TActorContext& ctx)
 {
     while (HasPendingTruncateOps()) {
         auto [nodeId, range] = DequeueTruncateOp();
@@ -172,16 +176,16 @@ void TIndexTabletActor::HandleTruncate(
 
     auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s Truncate @%lu %s",
         LogTag.c_str(),
         msg->NodeId,
         msg->Range.Describe().c_str());
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     FILESTORE_TRACK(
@@ -220,10 +224,7 @@ void TIndexTabletActor::HandleTruncateCompleted(
         MakeIntrusive<TCallContext>(GetFileSystemId()));
     requestInfo->StartedTs = ctx.Now();
 
-    ExecuteTx<TTruncateCompleted>(
-        ctx,
-        std::move(requestInfo),
-        msg->NodeId);
+    ExecuteTx<TTruncateCompleted>(ctx, std::move(requestInfo), msg->NodeId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -269,16 +270,16 @@ void TIndexTabletActor::HandleTruncateRange(
 {
     auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s TruncateRange @%lu %s",
         LogTag.c_str(),
         msg->NodeId,
         msg->Range.Describe().c_str());
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     FILESTORE_TRACK(
@@ -342,7 +343,9 @@ void TIndexTabletActor::CompleteTx_TruncateRange(
         args.Error,
         ProfileLog);
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s TruncateRange %lu %s completed",
         LogTag.c_str(),
         args.NodeId,

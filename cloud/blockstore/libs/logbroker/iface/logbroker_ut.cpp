@@ -19,10 +19,7 @@ static constexpr TDuration WaitTimeout = TDuration::Seconds(30);
 
 auto CreateData()
 {
-    TVector<TMessage> messages{
-        { "hello", 100 },
-        { "world", 200 }
-    };
+    TVector<TMessage> messages{{"hello", 100}, {"world", 200}};
 
     return messages;
 }
@@ -38,8 +35,7 @@ Y_UNIT_TEST_SUITE(TLogbrokerIfaceTest)
         auto service = CreateServiceStub();
         service->Start();
 
-        auto r = service->Write(CreateData(), Now())
-            .GetValue(WaitTimeout);
+        auto r = service->Write(CreateData(), Now()).GetValue(WaitTimeout);
 
         UNIT_ASSERT_C(!HasError(r), "Unexpected error: " << FormatError(r));
 

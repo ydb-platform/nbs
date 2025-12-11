@@ -4,6 +4,7 @@
 #include "kms_client.h"
 
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
+
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
 
@@ -31,10 +32,10 @@ private:
 
 public:
     TKmsKeyProvider(
-            TExecutorPtr executor,
-            NIamClient::IIamTokenClientPtr iamTokenClient,
-            IComputeClientPtr computeClient,
-            IKmsClientPtr kmsClient)
+        TExecutorPtr executor,
+        NIamClient::IIamTokenClientPtr iamTokenClient,
+        IComputeClientPtr computeClient,
+        IKmsClientPtr kmsClient)
         : Executor(std::move(executor))
         , IamTokenClient(std::move(iamTokenClient))
         , ComputeClient(std::move(computeClient))
@@ -63,18 +64,20 @@ private:
         auto decodeResponse = SafeBase64Decode(kmsKey.GetEncryptedDEK());
         if (HasError(decodeResponse)) {
             const auto& err = decodeResponse.GetError();
-            return MakeError(err.GetCode(), TStringBuilder()
-                << "failed to decode dek for disk " << diskId
-                << ", error: " << err.GetMessage());
+            return MakeError(
+                err.GetCode(),
+                TStringBuilder() << "failed to decode dek for disk " << diskId
+                                 << ", error: " << err.GetMessage());
         }
 
         auto iamFuture = IamTokenClient->GetTokenAsync();
         const auto& iamResponse = Executor->WaitFor(iamFuture);
         if (HasError(iamResponse)) {
             const auto& err = iamResponse.GetError();
-            return MakeError(err.GetCode(), TStringBuilder()
-                << "failed to get iam-token for disk " << diskId
-                << ", error: " << err.GetMessage());
+            return MakeError(
+                err.GetCode(),
+                TStringBuilder() << "failed to get iam-token for disk "
+                                 << diskId << ", error: " << err.GetMessage());
         }
 
         auto computeFuture = ComputeClient->CreateTokenForDEK(
@@ -84,9 +87,10 @@ private:
         const auto& computeResponse = Executor->WaitFor(computeFuture);
         if (HasError(computeResponse)) {
             const auto& err = computeResponse.GetError();
-            return MakeError(err.GetCode(), TStringBuilder()
-                << "failed to create token for disk " << diskId
-                << ", error: " << err.GetMessage());
+            return MakeError(
+                err.GetCode(),
+                TStringBuilder() << "failed to create token for disk " << diskId
+                                 << ", error: " << err.GetMessage());
         }
 
         auto kmsFuture = KmsClient->Decrypt(
@@ -96,9 +100,10 @@ private:
         auto kmsResponse = Executor->WaitFor(kmsFuture);
         if (HasError(kmsResponse)) {
             const auto& err = kmsResponse.GetError();
-            return MakeError(err.GetCode(), TStringBuilder()
-                << "failed to decrypt dek for disk " << diskId
-                << ", error: " << err.GetMessage());
+            return MakeError(
+                err.GetCode(),
+                TStringBuilder() << "failed to decrypt dek for disk " << diskId
+                                 << ", error: " << err.GetMessage());
         }
 
         return TEncryptionKey(kmsResponse.ExtractResult());

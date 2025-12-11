@@ -20,10 +20,8 @@ struct ILimiter
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ILimiterPtr CreateLimiter(
-    const TLog& log,
-    TContExecutor* e,
-    size_t maxInFlightBytes);
+ILimiterPtr
+CreateLimiter(const TLog& log, TContExecutor* e, size_t maxInFlightBytes);
 
 ILimiterPtr CreateLimiterStub();
 

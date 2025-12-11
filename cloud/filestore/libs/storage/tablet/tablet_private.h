@@ -26,68 +26,65 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(xxx, ...)                      \
-    xxx(Compaction,                             __VA_ARGS__)                   \
-    xxx(CollectGarbage,                         __VA_ARGS__)                   \
-    xxx(SyncSessions,                           __VA_ARGS__)                   \
-    xxx(CleanupSessions,                        __VA_ARGS__)                   \
-    xxx(DeleteCheckpoint,                       __VA_ARGS__)                   \
-    xxx(DumpCompactionRange,                    __VA_ARGS__)                   \
-    xxx(Flush,                                  __VA_ARGS__)                   \
-    xxx(FlushBytes,                             __VA_ARGS__)                   \
-    xxx(ForcedRangeOperation,                   __VA_ARGS__)                   \
-    xxx(Truncate,                               __VA_ARGS__)                   \
-    xxx(ReadBlob,                               __VA_ARGS__)                   \
-    xxx(WriteBlob,                              __VA_ARGS__)                   \
-    xxx(WriteBatch,                             __VA_ARGS__)                   \
-// FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC
+#define FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(xxx, ...) \
+    xxx(Compaction, __VA_ARGS__)                          \
+    xxx(CollectGarbage, __VA_ARGS__)                      \
+    xxx(SyncSessions, __VA_ARGS__)                        \
+    xxx(CleanupSessions, __VA_ARGS__)                     \
+    xxx(DeleteCheckpoint, __VA_ARGS__)                    \
+    xxx(DumpCompactionRange, __VA_ARGS__)                 \
+    xxx(Flush, __VA_ARGS__)                               \
+    xxx(FlushBytes, __VA_ARGS__)                          \
+    xxx(ForcedRangeOperation, __VA_ARGS__)                \
+    xxx(Truncate, __VA_ARGS__)                            \
+    xxx(ReadBlob, __VA_ARGS__)                            \
+    xxx(WriteBlob, __VA_ARGS__)                           \
+    xxx(WriteBatch, __VA_ARGS__)                          \
+    // FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC
 
-#define FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(xxx, ...)                       \
-    xxx(AddBlob,                                __VA_ARGS__)                   \
-    xxx(Cleanup,                                __VA_ARGS__)                   \
-    xxx(DeleteZeroCompactionRanges,             __VA_ARGS__)                   \
-    xxx(DeleteGarbage,                          __VA_ARGS__)                   \
-    xxx(TruncateRange,                          __VA_ARGS__)                   \
-    xxx(ZeroRange,                              __VA_ARGS__)                   \
-    xxx(FilterAliveNodes,                       __VA_ARGS__)                   \
-    xxx(GenerateCommitId,                       __VA_ARGS__)                   \
-    xxx(SyncShardSessions,                      __VA_ARGS__)                   \
-    xxx(LoadCompactionMapChunk,                 __VA_ARGS__)                   \
-// FILESTORE_TABLET_REQUESTS_PRIVATE
+#define FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(xxx, ...) \
+    xxx(AddBlob, __VA_ARGS__)                            \
+    xxx(Cleanup, __VA_ARGS__)                            \
+    xxx(DeleteZeroCompactionRanges, __VA_ARGS__)         \
+    xxx(DeleteGarbage, __VA_ARGS__)                      \
+    xxx(TruncateRange, __VA_ARGS__)                      \
+    xxx(ZeroRange, __VA_ARGS__)                          \
+    xxx(FilterAliveNodes, __VA_ARGS__)                   \
+    xxx(GenerateCommitId, __VA_ARGS__)                   \
+    xxx(SyncShardSessions, __VA_ARGS__)                  \
+    xxx(LoadCompactionMapChunk, __VA_ARGS__)             \
+    // FILESTORE_TABLET_REQUESTS_PRIVATE
 
-#define FILESTORE_TABLET_REQUESTS_PRIVATE(xxx, ...)                            \
-    FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(xxx, __VA_ARGS__)                  \
-    FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(xxx,  __VA_ARGS__)                  \
-// FILESTORE_TABLET_REQUESTS_PRIVATE
+#define FILESTORE_TABLET_REQUESTS_PRIVATE(xxx, ...)           \
+    FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(xxx, __VA_ARGS__) \
+    FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(xxx, __VA_ARGS__)  \
+    // FILESTORE_TABLET_REQUESTS_PRIVATE
 
-#define FILESTORE_DECLARE_PRIVATE_EVENT_IDS(name, ...)                         \
-    FILESTORE_DECLARE_EVENT_IDS(name, __VA_ARGS__)                             \
-    Ev##name##Completed,                                                       \
-// FILESTORE_DECLARE_PRIVATE_EVENT_IDS
+#define FILESTORE_DECLARE_PRIVATE_EVENT_IDS(name, ...) \
+    FILESTORE_DECLARE_EVENT_IDS(name, __VA_ARGS__)     \
+    Ev##name##Completed,   // FILESTORE_DECLARE_PRIVATE_EVENT_IDS
 
-#define FILESTORE_DECLARE_PRIVATE_EVENTS(name, ...)                            \
-    FILESTORE_DECLARE_EVENTS(name, __VA_ARGS__)                                \
-                                                                               \
-    using TEv##name##Completed = TResponseEvent<                               \
-        T##name##Completed,                                                    \
-        Ev##name##Completed                                                    \
-    >;                                                                         \
-// FILESTORE_DECLARE_PRIVATE_EVENTS
+#define FILESTORE_DECLARE_PRIVATE_EVENTS(name, ...)              \
+    FILESTORE_DECLARE_EVENTS(name, __VA_ARGS__)                  \
+                                                                 \
+    using TEv##name##Completed =                                 \
+        TResponseEvent<T##name##Completed, Ev##name##Completed>; \
+    // FILESTORE_DECLARE_PRIVATE_EVENTS
 
-#define FILESTORE_IMPLEMENT_ASYNC_REQUEST(name, ns)                            \
-    FILESTORE_IMPLEMENT_REQUEST(name, ns)                                      \
-    void Handle##name##Completed(                                              \
-        const ns::TEv##name##Completed::TPtr& ev,                              \
-        const NActors::TActorContext& ctx);                                    \
-// FILESTORE_IMPLEMENT_ASYNC_REQUEST
+#define FILESTORE_IMPLEMENT_ASYNC_REQUEST(name, ns) \
+    FILESTORE_IMPLEMENT_REQUEST(name, ns)           \
+    void Handle##name##Completed(                   \
+        const ns::TEv##name##Completed::TPtr& ev,   \
+        const NActors::TActorContext& ctx);         \
+    // FILESTORE_IMPLEMENT_ASYNC_REQUEST
 
-#define FILESTORE_HANDLE_COMPLETION(name, ns)                                  \
-    HFunc(ns::TEv##name##Completed, Handle##name##Completed);                  \
-// FILESTORE_HANDLE_COMPLETION
+#define FILESTORE_HANDLE_COMPLETION(name, ns)                 \
+    HFunc(ns::TEv##name##Completed, Handle##name##Completed); \
+    // FILESTORE_HANDLE_COMPLETION
 
-#define FILESTORE_IGNORE_COMPLETION(name, ns)                                  \
-    IgnoreFunc(ns::TEv##name##Completed);                                      \
-// FILESTORE_IGNORE_COMPLETION
+#define FILESTORE_IGNORE_COMPLETION(name, ns) \
+    IgnoreFunc(ns::TEv##name##Completed);     \
+    // FILESTORE_IGNORE_COMPLETION
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -163,9 +160,8 @@ struct TWriteRange
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TCreateNodeInShardResult = std::variant<
-    NProto::TCreateNodeResponse,
-    NProto::TCreateHandleResponse>;
+using TCreateNodeInShardResult =
+    std::variant<NProto::TCreateNodeResponse, NProto::TCreateHandleResponse>;
 
 using TUnlinkNodeInShardResult = std::variant<
     NProto::TUnlinkNodeResponse,
@@ -185,13 +181,10 @@ struct TEvIndexTabletPrivate
         const TSet<ui32> MixedBlocksRanges;
         const ui64 CommitId;
 
-        TIndexOperationCompleted(
-                TSet<ui32> mixedBlocksRanges,
-                ui64 commitId)
+        TIndexOperationCompleted(TSet<ui32> mixedBlocksRanges, ui64 commitId)
             : MixedBlocksRanges(std::move(mixedBlocksRanges))
             , CommitId(commitId)
-        {
-        }
+        {}
     };
 
     //
@@ -276,14 +269,13 @@ struct TEvIndexTabletPrivate
         const TDuration Time;
 
         TDataOperationCompleted(
-                ui32 requestCount,
-                ui32 requestBytes,
-                TDuration d)
+            ui32 requestCount,
+            ui32 requestBytes,
+            TDuration d)
             : Count(requestCount)
             , Size(requestBytes)
             , Time(d)
-        {
-        }
+        {}
     };
 
     struct TOperationCompleted
@@ -291,15 +283,14 @@ struct TEvIndexTabletPrivate
         , TDataOperationCompleted
     {
         TOperationCompleted(
-                TSet<ui32> mixedBlocksRanges,
-                ui64 commitId,
-                ui32 requestCount,
-                ui32 requestBytes,
-                TDuration d)
+            TSet<ui32> mixedBlocksRanges,
+            ui64 commitId,
+            ui32 requestCount,
+            ui32 requestBytes,
+            TDuration d)
             : TIndexOperationCompleted(std::move(mixedBlocksRanges), commitId)
             , TDataOperationCompleted(requestCount, requestBytes, d)
-        {
-        }
+        {}
     };
 
     using TReadBlobCompleted = TDataOperationCompleted;
@@ -329,14 +320,13 @@ struct TEvIndexTabletPrivate
         const TVector<TWriteRequestResult> Results;
 
         TWriteBlobCompleted(
-                ui32 requestCount,
-                ui32 requestBytes,
-                TDuration d,
-                TVector<TWriteRequestResult> results)
+            ui32 requestCount,
+            ui32 requestBytes,
+            TDuration d,
+            TVector<TWriteRequestResult> results)
             : TDataOperationCompleted(requestCount, requestBytes, d)
             , Results(std::move(results))
-        {
-        }
+        {}
     };
 
     //
@@ -354,14 +344,13 @@ struct TEvIndexTabletPrivate
         const ui64 CommitId;
 
         TAddDataCompleted(
-                ui32 requestCount,
-                ui32 requestBytes,
-                TDuration d,
-                ui64 commitId)
+            ui32 requestCount,
+            ui32 requestBytes,
+            TDuration d,
+            ui64 commitId)
             : TDataOperationCompleted(requestCount, requestBytes, d)
             , CommitId(commitId)
-        {
-        }
+        {}
     };
 
     //
@@ -395,7 +384,6 @@ struct TEvIndexTabletPrivate
     {
     };
 
-
     using TFlushCompleted = TOperationCompleted;
 
     //
@@ -418,20 +406,19 @@ struct TEvIndexTabletPrivate
         const ui64 ChunkId;
 
         TFlushBytesCompleted(
-                ui32 requestCount,
-                ui32 requestBytes,
-                TDuration d,
-                TCallContextPtr callContext,
-                TSet<ui32> mixedBlocksRanges,
-                ui64 commitId,
-                ui64 chunkId)
+            ui32 requestCount,
+            ui32 requestBytes,
+            TDuration d,
+            TCallContextPtr callContext,
+            TSet<ui32> mixedBlocksRanges,
+            ui64 commitId,
+            ui64 chunkId)
             : TDataOperationCompleted(requestCount, requestBytes, d)
             , CallContext(std::move(callContext))
             , MixedBlocksRanges(std::move(mixedBlocksRanges))
             , CommitId(commitId)
             , ChunkId(chunkId)
-        {
-        }
+        {}
     };
 
     //
@@ -502,9 +489,9 @@ struct TEvIndexTabletPrivate
         const bool OutOfOrder;
 
         TLoadCompactionMapChunkRequest(
-                ui32 firstRangeId,
-                ui32 rangeCount,
-                bool outOfOrder)
+            ui32 firstRangeId,
+            ui32 rangeCount,
+            bool outOfOrder)
             : FirstRangeId(firstRangeId)
             , RangeCount(rangeCount)
             , OutOfOrder(outOfOrder)
@@ -518,9 +505,7 @@ struct TEvIndexTabletPrivate
 
         TLoadCompactionMapChunkResponse() = default;
 
-        TLoadCompactionMapChunkResponse(
-                ui32 firstRangeId,
-                ui32 lastRangeId)
+        TLoadCompactionMapChunkResponse(ui32 firstRangeId, ui32 lastRangeId)
             : FirstRangeId(firstRangeId)
             , LastRangeId(lastRangeId)
         {}
@@ -538,10 +523,10 @@ struct TEvIndexTabletPrivate
         const TDuration SchedulePeriod;
 
         TLoadNodeRefsRequest(
-                ui64 nodeId,
-                TString cookie,
-                ui32 maxNodeRefs,
-                TDuration schedulePeriod)
+            ui64 nodeId,
+            TString cookie,
+            ui32 maxNodeRefs,
+            TDuration schedulePeriod)
             : NodeId(nodeId)
             , Cookie(std::move(cookie))
             , MaxNodeRefs(maxNodeRefs)
@@ -559,10 +544,7 @@ struct TEvIndexTabletPrivate
         const ui32 MaxNodes;
         const TDuration SchedulePeriod;
 
-        TLoadNodesRequest(
-                ui64 nodeId,
-                ui32 maxNodes,
-                TDuration schedulePeriod)
+        TLoadNodesRequest(ui64 nodeId, ui32 maxNodes, TDuration schedulePeriod)
             : NodeId(nodeId)
             , MaxNodes(maxNodes)
             , SchedulePeriod(schedulePeriod)
@@ -587,9 +569,9 @@ struct TEvIndexTabletPrivate
         TString OperationId;
 
         TForcedRangeOperationRequest(
-                TVector<ui32> ranges,
-                EForcedRangeOperationMode mode,
-                TString operationId)
+            TVector<ui32> ranges,
+            EForcedRangeOperationMode mode,
+            TString operationId)
             : Ranges(std::move(ranges))
             , Mode(mode)
             , OperationId(std::move(operationId))
@@ -608,8 +590,7 @@ struct TEvIndexTabletPrivate
 
         explicit TForcedRangeOperationProgress(ui32 current)
             : Current(current)
-        {
-        }
+        {}
     };
 
     //
@@ -626,20 +607,19 @@ struct TEvIndexTabletPrivate
         TCreateNodeInShardResult Result;
 
         TNodeCreatedInShard(
-                TRequestInfoPtr requestInfo,
-                TString sessionId,
-                ui64 requestId,
-                ui64 opLogEntryId,
-                TString nodeName,
-                TCreateNodeInShardResult result)
+            TRequestInfoPtr requestInfo,
+            TString sessionId,
+            ui64 requestId,
+            ui64 opLogEntryId,
+            TString nodeName,
+            TCreateNodeInShardResult result)
             : RequestInfo(std::move(requestInfo))
             , SessionId(std::move(sessionId))
             , RequestId(requestId)
             , OpLogEntryId(opLogEntryId)
             , NodeName(std::move(nodeName))
             , Result(std::move(result))
-        {
-        }
+        {}
     };
 
     //
@@ -657,13 +637,13 @@ struct TEvIndexTabletPrivate
         NProto::TUnlinkNodeRequest OriginalRequest;
 
         TNodeUnlinkedInShard(
-                TRequestInfoPtr requestInfo,
-                TString sessionId,
-                ui64 requestId,
-                ui64 opLogEntryId,
-                TUnlinkNodeInShardResult result,
-                bool shouldUnlockUponCompletion,
-                NProto::TUnlinkNodeRequest originalRequest)
+            TRequestInfoPtr requestInfo,
+            TString sessionId,
+            ui64 requestId,
+            ui64 opLogEntryId,
+            TUnlinkNodeInShardResult result,
+            bool shouldUnlockUponCompletion,
+            NProto::TUnlinkNodeRequest originalRequest)
             : RequestInfo(std::move(requestInfo))
             , SessionId(std::move(sessionId))
             , RequestId(requestId)
@@ -671,8 +651,7 @@ struct TEvIndexTabletPrivate
             , Result(std::move(result))
             , ShouldUnlockUponCompletion(shouldUnlockUponCompletion)
             , OriginalRequest(std::move(originalRequest))
-        {
-        }
+        {}
     };
 
     //
@@ -689,20 +668,19 @@ struct TEvIndexTabletPrivate
         NProtoPrivate::TRenameNodeInDestinationResponse Response;
 
         TNodeRenamedInDestination(
-                TRequestInfoPtr requestInfo,
-                TString sessionId,
-                ui64 requestId,
-                ui64 opLogEntryId,
-                NProto::TRenameNodeRequest request,
-                NProtoPrivate::TRenameNodeInDestinationResponse response)
+            TRequestInfoPtr requestInfo,
+            TString sessionId,
+            ui64 requestId,
+            ui64 opLogEntryId,
+            NProto::TRenameNodeRequest request,
+            NProtoPrivate::TRenameNodeInDestinationResponse response)
             : RequestInfo(std::move(requestInfo))
             , SessionId(std::move(sessionId))
             , RequestId(requestId)
             , OpLogEntryId(opLogEntryId)
             , Request(std::move(request))
             , Response(std::move(response))
-        {
-        }
+        {}
     };
 
     //
@@ -725,7 +703,9 @@ struct TEvIndexTabletPrivate
 
         TDumpCompactionRangeResponse() = default;
 
-        TDumpCompactionRangeResponse(ui32 rangeId, TVector<TMixedBlobMeta> blobs)
+        TDumpCompactionRangeResponse(
+            ui32 rangeId,
+            TVector<TMixedBlobMeta> blobs)
             : RangeId(rangeId)
             , Blobs(std::move(blobs))
         {}
@@ -754,9 +734,9 @@ struct TEvIndexTabletPrivate
         TVector<TPartialBlobId> GarbageBlobs;
 
         TDeleteGarbageRequest(
-                ui64 collectCommitId,
-                TVector<TPartialBlobId> newBlobs,
-                TVector<TPartialBlobId> garbageBlobs)
+            ui64 collectCommitId,
+            TVector<TPartialBlobId> newBlobs,
+            TVector<TPartialBlobId> garbageBlobs)
             : CollectCommitId(collectCommitId)
             , NewBlobs(std::move(newBlobs))
             , GarbageBlobs(std::move(garbageBlobs))
@@ -777,8 +757,8 @@ struct TEvIndexTabletPrivate
         EDeleteCheckpointMode Mode;
 
         TDeleteCheckpointRequest(
-                TString checkpointId,
-                EDeleteCheckpointMode mode)
+            TString checkpointId,
+            EDeleteCheckpointMode mode)
             : CheckpointId(std::move(checkpointId))
             , Mode(mode)
         {}
@@ -806,7 +786,8 @@ struct TEvIndexTabletPrivate
     };
 
     struct TTruncateRangeResponse
-    {};
+    {
+    };
 
     //
     //  Truncate node
@@ -919,9 +900,10 @@ struct TEvIndexTabletPrivate
         EvBegin = TFileStoreEventsPrivate::TABLET_START,
 
         FILESTORE_TABLET_REQUESTS_PRIVATE_SYNC(FILESTORE_DECLARE_EVENT_IDS)
-        FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(FILESTORE_DECLARE_PRIVATE_EVENT_IDS)
+        FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(
+            FILESTORE_DECLARE_PRIVATE_EVENT_IDS)
 
-        EvUpdateCounters,
+            EvUpdateCounters,
         EvUpdateLeakyBucketCounters,
 
         EvReadDataCompleted,
@@ -948,7 +930,8 @@ struct TEvIndexTabletPrivate
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TFileStoreEventsPrivate::TABLET_END,
+    static_assert(
+        EvEnd < (int)TFileStoreEventsPrivate::TABLET_END,
         "EvEnd expected to be < TFileStoreEventsPrivate::TABLET_END");
 
     FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC(FILESTORE_DECLARE_PRIVATE_EVENTS)
@@ -990,8 +973,7 @@ struct TEvIndexTabletPrivate
     using TEvLoadNodeRefsRequest =
         TRequestEvent<TLoadNodeRefsRequest, EvLoadNodeRefs>;
 
-    using TEvLoadNodesRequest =
-        TRequestEvent<TLoadNodesRequest, EvLoadNodes>;
+    using TEvLoadNodesRequest = TRequestEvent<TLoadNodesRequest, EvLoadNodes>;
 
     using TEvEnqueueBlobIndexOpIfNeeded =
         TRequestEvent<TEmpty, EvEnqueueBlobIndexOpIfNeeded>;

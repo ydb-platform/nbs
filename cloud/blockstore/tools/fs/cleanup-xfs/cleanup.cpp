@@ -22,22 +22,30 @@ void Cleanup(
     const ui64 bufferSize = 4_MB;
 
     char* zero = static_cast<char*>(std::aligned_alloc(4_KB, bufferSize));
-    Y_DEFER { std::free(zero); };
+    Y_DEFER
+    {
+        std::free(zero);
+    }
 
     std::memset(zero, 0, bufferSize);
 
     const ui64 headerSize = 4 * sb.SectorSize;
 
     if (sb.BlockSize > headerSize) {
-        char* buffer = static_cast<char*>(std::aligned_alloc(4_KB, sb.BlockSize));
-        Y_DEFER { std::free(buffer); };
+        char* buffer =
+            static_cast<char*>(std::aligned_alloc(4_KB, sb.BlockSize));
+        Y_DEFER
+        {
+            std::free(buffer);
+        }
 
         for (ui64 i = 1; i < sb.GroupCount; ++i) {
             const ui64 offset = i * sb.BlocksPerGroup * sb.BlockSize;
 
             if (verbose) {
-                Cout << "[cleanup] cleanup AG #" << i << " first block: " << offset
-                    << " (" << offset / sb.BlockSize << ")" << Endl;
+                Cout << "[cleanup] cleanup AG #" << i
+                     << " first block: " << offset << " ("
+                     << offset / sb.BlockSize << ")" << Endl;
             }
 
             dev.Pload(buffer, sb.BlockSize, offset);
@@ -47,7 +55,7 @@ void Cleanup(
     }
 
     // [len, offset]
-    NThreading::TBlockingQueue< std::tuple<ui32, i64> > queue(threads);
+    NThreading::TBlockingQueue<std::tuple<ui32, i64> > queue(threads);
 
     using TThread = THolder<IThreadFactory::IThread>;
 
@@ -56,7 +64,8 @@ void Cleanup(
 
     for (ui32 i = 0; i != threads; ++i) {
         workers.push_back(SystemThreadFactory()->Run(
-            [zero, &queue, &dev]() {
+            [zero, &queue, &dev]()
+            {
                 while (auto task = queue.Pop()) {
                     auto [len, offset] = *task;
 
@@ -66,25 +75,24 @@ void Cleanup(
 
                     dev.Pwrite(zero, len, offset);
                 }
-            }
-        ));
+            }));
     }
 
     for (auto [group, offset, count]: freesp) {
-        ui64 offsetInBytes = (group * sb.BlocksPerGroup + offset) * sb.BlockSize;
+        ui64 offsetInBytes =
+            (group * sb.BlocksPerGroup + offset) * sb.BlockSize;
         ui64 byteCount = count * sb.BlockSize;
 
         if (verbose) {
-            Cout << "[cleanup] " << offsetInBytes << ":" << byteCount
-                << " (" << NCloud::FormatByteSize(byteCount) << ")"
-                << " #" << group << " " << offset << ":" << count
-                << Endl;
+            Cout << "[cleanup] " << offsetInBytes << ":" << byteCount << " ("
+                 << NCloud::FormatByteSize(byteCount) << ")" << " #" << group
+                 << " " << offset << ":" << count << Endl;
         }
 
         while (byteCount) {
             const ui32 len = static_cast<ui32>(std::min(byteCount, bufferSize));
 
-            queue.Push({ len, offsetInBytes });
+            queue.Push({len, offsetInBytes});
 
             offsetInBytes += len;
             byteCount -= len;

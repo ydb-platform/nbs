@@ -1,4 +1,5 @@
 #include "config_initializer.h"
+
 #include "options.h"
 
 #include <cloud/filestore/libs/diagnostics/config.h>
@@ -13,8 +14,8 @@ using namespace NCloud::NStorage;
 ////////////////////////////////////////////////////////////////////////////////
 
 TConfigInitializerCommon::TConfigInitializerCommon(
-        TConfigHandlers configHandlers,
-        TOptionsCommonPtr options)
+    TConfigHandlers configHandlers,
+    TOptionsCommonPtr options)
     : TConfigInitializerYdbBase(options)
     , ConfigHandlers(std::move(configHandlers))
     , Options(std::move(options))
@@ -37,8 +38,7 @@ void TConfigInitializerCommon::InitDiagnosticsConfig()
         ParseProtoTextFromFileRobust(Options->DiagnosticsConfig, config);
     }
 
-    DiagnosticsConfig = std::make_shared<TDiagnosticsConfig>(
-        std::move(config));
+    DiagnosticsConfig = std::make_shared<TDiagnosticsConfig>(std::move(config));
 }
 
 void TConfigInitializerCommon::InitStorageConfig()
@@ -50,8 +50,7 @@ void TConfigInitializerCommon::InitStorageConfig()
 
     ApplyOptionsToStorageConfig(storageConfig);
 
-    StorageConfig = std::make_shared<NStorage::TStorageConfig>(
-        storageConfig);
+    StorageConfig = std::make_shared<NStorage::TStorageConfig>(storageConfig);
 }
 
 void TConfigInitializerCommon::InitFeaturesConfig()
@@ -61,21 +60,26 @@ void TConfigInitializerCommon::InitFeaturesConfig()
         ParseProtoTextFromFileRobust(Options->FeaturesConfig, featuresConfig);
     }
 
-    FeaturesConfig = std::make_shared<NFeatures::TFeaturesConfig>(
-        std::move(featuresConfig));
+    FeaturesConfig =
+        std::make_shared<NFeatures::TFeaturesConfig>(std::move(featuresConfig));
 }
 
 TNodeRegistrationSettings
-    TConfigInitializerCommon::GetNodeRegistrationSettings()
+TConfigInitializerCommon::GetNodeRegistrationSettings()
 {
     TNodeRegistrationSettings settings;
     settings.MaxAttempts = StorageConfig->GetNodeRegistrationMaxAttempts();
-    settings.LegacyRegistrationTimeout = StorageConfig->GetNodeRegistrationTimeout();
-    settings.LoadConfigsFromCmsRetryMinDelay = StorageConfig->GetLoadConfigsFromCmsRetryMinDelay(),
-    settings.LoadConfigsFromCmsRetryMaxDelay = StorageConfig->GetLoadConfigsFromCmsRetryMaxDelay(),
-    settings.LoadConfigsFromCmsTotalTimeout = StorageConfig->GetLoadConfigsFromCmsTotalTimeout(),
+    settings.LegacyRegistrationTimeout =
+        StorageConfig->GetNodeRegistrationTimeout();
+    settings.LoadConfigsFromCmsRetryMinDelay =
+        StorageConfig->GetLoadConfigsFromCmsRetryMinDelay(),
+    settings.LoadConfigsFromCmsRetryMaxDelay =
+        StorageConfig->GetLoadConfigsFromCmsRetryMaxDelay(),
+    settings.LoadConfigsFromCmsTotalTimeout =
+        StorageConfig->GetLoadConfigsFromCmsTotalTimeout(),
     settings.ErrorTimeout = StorageConfig->GetNodeRegistrationErrorTimeout();
-    settings.PathToGrpcCaFile = StorageConfig->GetNodeRegistrationRootCertsFile();
+    settings.PathToGrpcCaFile =
+        StorageConfig->GetNodeRegistrationRootCertsFile();
     settings.NodeRegistrationToken = StorageConfig->GetNodeRegistrationToken();
     settings.NodeType = StorageConfig->GetNodeType();
 
@@ -106,8 +110,7 @@ void TConfigInitializerCommon::ApplyDiagnosticsConfig(const TString& text)
     NProto::TDiagnosticsConfig config;
     ParseProtoTextFromStringRobust(text, config);
 
-    DiagnosticsConfig = std::make_shared<TDiagnosticsConfig>(
-        std::move(config));
+    DiagnosticsConfig = std::make_shared<TDiagnosticsConfig>(std::move(config));
 }
 
 void TConfigInitializerCommon::ApplyStorageConfig(const TString& text)
@@ -117,10 +120,11 @@ void TConfigInitializerCommon::ApplyStorageConfig(const TString& text)
 
     ApplyOptionsToStorageConfig(config);
 
-    StorageConfig = std::make_shared<NStorage::TStorageConfig>(
-        std::move(config));
+    StorageConfig =
+        std::make_shared<NStorage::TStorageConfig>(std::move(config));
 
-    Y_ENSURE(!Options->SchemeShardDir ||
+    Y_ENSURE(
+        !Options->SchemeShardDir ||
         GetFullSchemeShardDir() == StorageConfig->GetSchemeShardDir());
 }
 
@@ -129,8 +133,8 @@ void TConfigInitializerCommon::ApplyFeaturesConfig(const TString& text)
     NCloud::NProto::TFeaturesConfig config;
     ParseProtoTextFromStringRobust(text, config);
 
-    FeaturesConfig = std::make_shared<NFeatures::TFeaturesConfig>(
-        std::move(config));
+    FeaturesConfig =
+        std::make_shared<NFeatures::TFeaturesConfig>(std::move(config));
 }
 
 void TConfigInitializerCommon::ApplyOptionsToStorageConfig(

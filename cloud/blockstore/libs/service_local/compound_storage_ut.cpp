@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/storage.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -30,8 +31,7 @@ constexpr ui32 DefaultBlockSize = 8;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestStorage final
-    : public IStorage
+struct TTestStorage final: public IStorage
 {
     TString Data;
 
@@ -72,7 +72,7 @@ struct TTestStorage final
         const auto offset = request->GetStartIndex() * DefaultBlockSize;
         const auto bytes = SgListGetSize(dst);
 
-        SgListCopy({ Data.begin() + offset, bytes }, dst);
+        SgListCopy({Data.begin() + offset, bytes}, dst);
 
         return MakeFuture(NProto::TReadBlocksLocalResponse());
     }
@@ -91,7 +91,7 @@ struct TTestStorage final
         const auto offset = request->GetStartIndex() * DefaultBlockSize;
         const auto bytes = SgListGetSize(src);
 
-        SgListCopy(src, { Data.begin() + offset, bytes });
+        SgListCopy(src, {Data.begin() + offset, bytes});
 
         return MakeFuture(NProto::TWriteBlocksLocalResponse());
     }
@@ -104,7 +104,7 @@ struct TTestStorage final
 
         Y_ABORT_UNLESS(std::align(DefaultBlockSize, bytesCount, p, space));
 
-        return { static_cast<char*>(p), &std::free };
+        return {static_cast<char*>(p), &std::free};
     }
 
     TFuture<NProto::TError> EraseDevice(
@@ -132,7 +132,8 @@ void SetBlocks(R& request, ui32 blockCount, char fill = 0)
     }
 }
 
-TSgList CreateSgListFromBuffer(TString& buffer, ui64 startIndex, ui64 blockCount)
+TSgList
+CreateSgListFromBuffer(TString& buffer, ui64 startIndex, ui64 blockCount)
 {
     UNIT_ASSERT(startIndex * DefaultBlockSize <= buffer.size());
     UNIT_ASSERT(blockCount * DefaultBlockSize <= buffer.size());
@@ -141,7 +142,7 @@ TSgList CreateSgListFromBuffer(TString& buffer, ui64 startIndex, ui64 blockCount
     auto data = &buffer[0] + startIndex * DefaultBlockSize;
 
     for (auto& buf: sglist) {
-        buf = { data, DefaultBlockSize };
+        buf = {data, DefaultBlockSize};
         data += DefaultBlockSize;
     }
 
@@ -168,8 +169,8 @@ IStoragePtr CreateTestStorage(
     }
 
     auto serverGroup = monitoring->GetCounters()
-        ->GetSubgroup("counters", "blockstore")
-        ->GetSubgroup("component", "server");
+                           ->GetSubgroup("counters", "blockstore")
+                           ->GetSubgroup("component", "server");
 
     auto serverStats = CreateServerStats(
         std::make_shared<TServerAppConfig>(),
@@ -184,15 +185,18 @@ IStoragePtr CreateTestStorage(
         CreateVolumeStatsStub());
 
     return CreateCompoundStorage(
-        { storages.begin(), storages.end() },
+        {storages.begin(), storages.end()},
         std::move(offsets),
         DefaultBlockSize,
-        {}, // diskId
-        {}, // clientId
+        {},   // diskId
+        {},   // clientId
         std::move(serverStats));
 }
 
-auto RequestReadBlocksLocal(IStoragePtr storage, ui64 startIndex, ui32 blockCount)
+auto RequestReadBlocksLocal(
+    IStoragePtr storage,
+    ui64 startIndex,
+    ui32 blockCount)
 {
     auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
     request->SetStartIndex(startIndex);
@@ -203,12 +207,12 @@ auto RequestReadBlocksLocal(IStoragePtr storage, ui64 startIndex, ui32 blockCoun
     auto buffer = storage->AllocateBuffer(bytes);
 
     if (bytes) {
-        request->Sglist.SetSgList({{ buffer.get(), bytes }});
+        request->Sglist.SetSgList({{buffer.get(), bytes}});
     }
 
-    return storage->ReadBlocksLocal(
-        MakeIntrusive<TCallContext>(),
-        std::move(request)).ExtractValueSync();
+    return storage
+        ->ReadBlocksLocal(MakeIntrusive<TCallContext>(), std::move(request))
+        .ExtractValueSync();
 }
 
 TString ReadBlocksLocal(IStoragePtr storage, ui64 startIndex, ui32 blockCount)
@@ -222,19 +226,24 @@ TString ReadBlocksLocal(IStoragePtr storage, ui64 startIndex, ui32 blockCount)
     auto buffer = storage->AllocateBuffer(bytes);
 
     if (bytes) {
-        request->Sglist.SetSgList({{ buffer.get(), bytes }});
+        request->Sglist.SetSgList({{buffer.get(), bytes}});
     }
 
-    auto response = storage->ReadBlocksLocal(
-        MakeIntrusive<TCallContext>(),
-        std::move(request)).ExtractValueSync();
+    auto response =
+        storage
+            ->ReadBlocksLocal(MakeIntrusive<TCallContext>(), std::move(request))
+            .ExtractValueSync();
 
     UNIT_ASSERT(!HasError(response));
 
     return TString(buffer.get(), bytes);
 }
 
-void ValidateBlocks(IStoragePtr storage, ui64 startIndex, ui32 blockCount, char value)
+void ValidateBlocks(
+    IStoragePtr storage,
+    ui64 startIndex,
+    ui32 blockCount,
+    char value)
 {
     const TString expected(DefaultBlockSize, value);
     TString buffer = ReadBlocksLocal(storage, startIndex, blockCount);
@@ -261,17 +270,22 @@ auto RequestWriteBlocksLocal(
     memset(buffer.get(), value, bytes);
 
     if (bytes) {
-        request->Sglist.SetSgList({{ buffer.get(), bytes }});
+        request->Sglist.SetSgList({{buffer.get(), bytes}});
     }
 
-    return storage->WriteBlocksLocal(
-        MakeIntrusive<TCallContext>(),
-        std::move(request)).ExtractValueSync();
+    return storage
+        ->WriteBlocksLocal(MakeIntrusive<TCallContext>(), std::move(request))
+        .ExtractValueSync();
 }
 
-void WriteBlocksLocal(IStoragePtr storage, ui64 startIndex, ui32 blockCount, char value)
+void WriteBlocksLocal(
+    IStoragePtr storage,
+    ui64 startIndex,
+    ui32 blockCount,
+    char value)
 {
-    auto response = RequestWriteBlocksLocal(storage, startIndex, blockCount, value);
+    auto response =
+        RequestWriteBlocksLocal(storage, startIndex, blockCount, value);
     UNIT_ASSERT(!HasError(response));
 }
 
@@ -281,9 +295,9 @@ auto RequestZeroBlocks(IStoragePtr storage, ui64 startIndex, ui32 blockCount)
     request->SetStartIndex(startIndex);
     request->SetBlocksCount(blockCount);
 
-    return storage->ZeroBlocks(
-        MakeIntrusive<TCallContext>(),
-        std::move(request)).ExtractValueSync();
+    return storage
+        ->ZeroBlocks(MakeIntrusive<TCallContext>(), std::move(request))
+        .ExtractValueSync();
 }
 
 void ZeroBlocks(IStoragePtr storage, ui64 startIndex, ui32 blockCount)
@@ -328,11 +342,9 @@ Y_UNIT_TEST_SUITE(TCompoundStorageTest)
         auto monitoring = CreateMonitoringServiceStub();
 
         auto storage = CreateTestStorage(
-            {
-                std::make_shared<TTestStorage>(100, 'A'),
-                std::make_shared<TTestStorage>(200, 'B'),
-                std::make_shared<TTestStorage>(300, 'C')
-            },
+            {std::make_shared<TTestStorage>(100, 'A'),
+             std::make_shared<TTestStorage>(200, 'B'),
+             std::make_shared<TTestStorage>(300, 'C')},
             monitoring);
 
         UNIT_ASSERT_VALUES_EQUAL(0, GetReadFastPathCounterValue(monitoring));
@@ -374,11 +386,9 @@ Y_UNIT_TEST_SUITE(TCompoundStorageTest)
         auto monitoring = CreateMonitoringServiceStub();
 
         auto storage = CreateTestStorage(
-            {
-                std::make_shared<TTestStorage>(100, 'A'),
-                std::make_shared<TTestStorage>(200, 'B'),
-                std::make_shared<TTestStorage>(300, 'C')
-            },
+            {std::make_shared<TTestStorage>(100, 'A'),
+             std::make_shared<TTestStorage>(200, 'B'),
+             std::make_shared<TTestStorage>(300, 'C')},
             monitoring);
 
         UNIT_ASSERT_VALUES_EQUAL(0, GetReadFastPathCounterValue(monitoring));
@@ -386,21 +396,27 @@ Y_UNIT_TEST_SUITE(TCompoundStorageTest)
         {
             auto buffer = ReadBlocksLocal(storage, 0, 100);
             for (auto buf: CreateSgListFromBuffer(buffer)) {
-                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), buf.AsStringBuf());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, 'A'),
+                    buf.AsStringBuf());
             }
         }
 
         {
             auto buffer = ReadBlocksLocal(storage, 100, 200);
             for (auto buf: CreateSgListFromBuffer(buffer)) {
-                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'B'), buf.AsStringBuf());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, 'B'),
+                    buf.AsStringBuf());
             }
         }
 
         {
             auto buffer = ReadBlocksLocal(storage, 300, 300);
             for (auto buf: CreateSgListFromBuffer(buffer)) {
-                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'C'), buf.AsStringBuf());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, 'C'),
+                    buf.AsStringBuf());
             }
         }
 
@@ -409,15 +425,21 @@ Y_UNIT_TEST_SUITE(TCompoundStorageTest)
         {
             auto buffer = ReadBlocksLocal(storage, 0, 600);
             for (auto buf: CreateSgListFromBuffer(buffer, 0, 100)) {
-                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), buf.AsStringBuf());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, 'A'),
+                    buf.AsStringBuf());
             }
 
             for (auto buf: CreateSgListFromBuffer(buffer, 100, 200)) {
-                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'B'), buf.AsStringBuf());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, 'B'),
+                    buf.AsStringBuf());
             }
 
             for (auto buf: CreateSgListFromBuffer(buffer, 300, 300)) {
-                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'C'), buf.AsStringBuf());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, 'C'),
+                    buf.AsStringBuf());
             }
         }
 
@@ -426,11 +448,15 @@ Y_UNIT_TEST_SUITE(TCompoundStorageTest)
         {
             auto buffer = ReadBlocksLocal(storage, 50, 150);
             for (auto buf: CreateSgListFromBuffer(buffer, 0, 50)) {
-                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'A'), buf.AsStringBuf());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, 'A'),
+                    buf.AsStringBuf());
             }
 
             for (auto buf: CreateSgListFromBuffer(buffer, 50, 100)) {
-                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'B'), buf.AsStringBuf());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, 'B'),
+                    buf.AsStringBuf());
             }
         }
 
@@ -438,7 +464,9 @@ Y_UNIT_TEST_SUITE(TCompoundStorageTest)
         {
             auto buffer = ReadBlocksLocal(storage, 550, 10);
             for (auto buf: CreateSgListFromBuffer(buffer)) {
-                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'C'), buf.AsStringBuf());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, 'C'),
+                    buf.AsStringBuf());
             }
         }
 
@@ -447,14 +475,12 @@ Y_UNIT_TEST_SUITE(TCompoundStorageTest)
 
     Y_UNIT_TEST(ShouldWriteLocal)
     {
-         auto monitoring = CreateMonitoringServiceStub();
+        auto monitoring = CreateMonitoringServiceStub();
 
         auto storage = CreateTestStorage(
-            {
-                std::make_shared<TTestStorage>(100, 'A'),
-                std::make_shared<TTestStorage>(200, 'B'),
-                std::make_shared<TTestStorage>(300, 'C')
-            },
+            {std::make_shared<TTestStorage>(100, 'A'),
+             std::make_shared<TTestStorage>(200, 'B'),
+             std::make_shared<TTestStorage>(300, 'C')},
             monitoring);
 
         UNIT_ASSERT_VALUES_EQUAL(0, GetReadFastPathCounterValue(monitoring));
@@ -494,11 +520,9 @@ Y_UNIT_TEST_SUITE(TCompoundStorageTest)
         auto monitoring = CreateMonitoringServiceStub();
 
         auto storage = CreateTestStorage(
-            {
-                std::make_shared<TTestStorage>(100, 'X'),
-                std::make_shared<TTestStorage>(200, 'X'),
-                std::make_shared<TTestStorage>(300, 'X')
-            },
+            {std::make_shared<TTestStorage>(100, 'X'),
+             std::make_shared<TTestStorage>(200, 'X'),
+             std::make_shared<TTestStorage>(300, 'X')},
             monitoring);
 
         UNIT_ASSERT(ReadBlocksLocal(storage, 0, 0).empty());
@@ -525,11 +549,9 @@ Y_UNIT_TEST_SUITE(TCompoundStorageTest)
         auto monitoring = CreateMonitoringServiceStub();
 
         auto storage = CreateTestStorage(
-            {
-                std::make_shared<TTestStorage>(100, 'A'),
-                std::make_shared<TTestStorage>(200, 'B'),
-                std::make_shared<TTestStorage>(300, 'C')
-            },
+            {std::make_shared<TTestStorage>(100, 'A'),
+             std::make_shared<TTestStorage>(200, 'B'),
+             std::make_shared<TTestStorage>(300, 'C')},
             monitoring);
 
         // reads local
@@ -672,32 +694,26 @@ Y_UNIT_TEST_SUITE(TCompoundStorageTest)
         auto monitoring = CreateMonitoringServiceStub();
 
         auto storage1 = CreateTestStorage(
-            {
-                std::make_shared<TTestStorage>(100, 'A'),
-                std::make_shared<TTestStorage>(100, 'B'),
-                std::make_shared<TTestStorage>(100, 'C')
-            },
+            {std::make_shared<TTestStorage>(100, 'A'),
+             std::make_shared<TTestStorage>(100, 'B'),
+             std::make_shared<TTestStorage>(100, 'C')},
             monitoring);
 
         auto storage2 = CreateTestStorage(
-            {
-                std::make_shared<TTestStorage>(200, 'X'),
-                std::make_shared<TTestStorage>(200, 'Y'),
-                std::make_shared<TTestStorage>(200, 'Z')
-            },
+            {std::make_shared<TTestStorage>(200, 'X'),
+             std::make_shared<TTestStorage>(200, 'Y'),
+             std::make_shared<TTestStorage>(200, 'Z')},
             monitoring);
 
         auto storage3 = CreateTestStorage(
-            {
-                std::make_shared<TTestStorage>(300, '1'),
-                std::make_shared<TTestStorage>(300, '2'),
-                std::make_shared<TTestStorage>(300, '3')
-            },
+            {std::make_shared<TTestStorage>(300, '1'),
+             std::make_shared<TTestStorage>(300, '2'),
+             std::make_shared<TTestStorage>(300, '3')},
             monitoring);
 
         auto serverGroup = monitoring->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server");
+                               ->GetSubgroup("counters", "blockstore")
+                               ->GetSubgroup("component", "server");
 
         auto serverStats = CreateServerStats(
             std::make_shared<TServerAppConfig>(),
@@ -712,14 +728,14 @@ Y_UNIT_TEST_SUITE(TCompoundStorageTest)
             CreateVolumeStatsStub());
 
         auto storage = CreateCompoundStorage(
-            { storage1, storage2, storage3 },
-            { 300, 900, 1800 },
+            {storage1, storage2, storage3},
+            {300, 900, 1800},
             DefaultBlockSize,
-            {}, // diskId
-            {}, // clientId
+            {},   // diskId
+            {},   // clientId
             std::move(serverStats));
 
-        ValidateBlocks(storage,   0, 100, 'A');
+        ValidateBlocks(storage, 0, 100, 'A');
         ValidateBlocks(storage, 100, 100, 'B');
         ValidateBlocks(storage, 200, 100, 'C');
 
@@ -727,29 +743,29 @@ Y_UNIT_TEST_SUITE(TCompoundStorageTest)
         ValidateBlocks(storage, 500, 200, 'Y');
         ValidateBlocks(storage, 700, 200, 'Z');
 
-        ValidateBlocks(storage,  900, 300, '1');
+        ValidateBlocks(storage, 900, 300, '1');
         ValidateBlocks(storage, 1200, 300, '2');
         ValidateBlocks(storage, 1500, 300, '3');
 
-        WriteBlocksLocal(storage,   0, 300, 'K');
+        WriteBlocksLocal(storage, 0, 300, 'K');
         WriteBlocksLocal(storage, 300, 600, 'L');
         WriteBlocksLocal(storage, 900, 900, 'M');
 
-        ValidateBlocks(storage1,   0, 300, 'K');
-        ValidateBlocks(storage2,   0, 600, 'L');
-        ValidateBlocks(storage3,   0, 900, 'M');
+        ValidateBlocks(storage1, 0, 300, 'K');
+        ValidateBlocks(storage2, 0, 600, 'L');
+        ValidateBlocks(storage3, 0, 900, 'M');
 
-        ValidateBlocks(storage,   0, 300, 'K');
+        ValidateBlocks(storage, 0, 300, 'K');
         ValidateBlocks(storage, 300, 600, 'L');
         ValidateBlocks(storage, 900, 900, 'M');
 
         ZeroBlocks(storage, 0, 1800);
 
-        ValidateBlocks(storage1,   0, 300, '\0');
-        ValidateBlocks(storage2,   0, 600, '\0');
-        ValidateBlocks(storage3,   0, 900, '\0');
+        ValidateBlocks(storage1, 0, 300, '\0');
+        ValidateBlocks(storage2, 0, 600, '\0');
+        ValidateBlocks(storage3, 0, 900, '\0');
 
-        ValidateBlocks(storage,   0, 300, '\0');
+        ValidateBlocks(storage, 0, 300, '\0');
         ValidateBlocks(storage, 300, 600, '\0');
         ValidateBlocks(storage, 900, 900, '\0');
 
@@ -765,15 +781,21 @@ Y_UNIT_TEST_SUITE(TCompoundStorageTest)
         {
             auto buffer = ReadBlocksLocal(storage, 0, 1800);
             for (auto buf: CreateSgListFromBuffer(buffer, 0, 600)) {
-                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, '-'), buf.AsStringBuf());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, '-'),
+                    buf.AsStringBuf());
             }
 
             for (auto buf: CreateSgListFromBuffer(buffer, 600, 600)) {
-                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, '+'), buf.AsStringBuf());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, '+'),
+                    buf.AsStringBuf());
             }
 
             for (auto buf: CreateSgListFromBuffer(buffer, 1200, 600)) {
-                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, '='), buf.AsStringBuf());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, '='),
+                    buf.AsStringBuf());
             }
         }
     }
@@ -783,11 +805,9 @@ Y_UNIT_TEST_SUITE(TCompoundStorageTest)
         auto monitoring = CreateMonitoringServiceStub();
 
         auto storage = CreateTestStorage(
-            {
-                std::make_shared<TTestStorage>(100, 'A'),
-                std::make_shared<TTestStorage>(200, 'B'),
-                std::make_shared<TTestStorage>(300, 'C')
-            },
+            {std::make_shared<TTestStorage>(100, 'A'),
+             std::make_shared<TTestStorage>(200, 'B'),
+             std::make_shared<TTestStorage>(300, 'C')},
             monitoring);
 
         {
@@ -797,11 +817,15 @@ Y_UNIT_TEST_SUITE(TCompoundStorageTest)
             request->BlockSize = DefaultBlockSize;
             request->Sglist.Close();
 
-            auto response = storage->WriteBlocksLocal(
-                MakeIntrusive<TCallContext>(),
-                std::move(request)).ExtractValueSync();
+            auto response = storage
+                                ->WriteBlocksLocal(
+                                    MakeIntrusive<TCallContext>(),
+                                    std::move(request))
+                                .ExtractValueSync();
 
-            UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, response.GetError().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_CANCELLED,
+                response.GetError().GetCode());
         }
 
         {
@@ -810,11 +834,15 @@ Y_UNIT_TEST_SUITE(TCompoundStorageTest)
             request->BlockSize = DefaultBlockSize;
             request->Sglist.Close();
 
-            auto response = storage->ReadBlocksLocal(
-                MakeIntrusive<TCallContext>(),
-                std::move(request)).ExtractValueSync();
+            auto response = storage
+                                ->ReadBlocksLocal(
+                                    MakeIntrusive<TCallContext>(),
+                                    std::move(request))
+                                .ExtractValueSync();
 
-            UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, response.GetError().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_CANCELLED,
+                response.GetError().GetCode());
         }
     }
 }

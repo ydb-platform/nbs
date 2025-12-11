@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cloud/blockstore/public/api/protos/encryption.pb.h>
+
 #include <cloud/storage/core/libs/common/affinity.h>
 
 #include <util/datetime/base.h>

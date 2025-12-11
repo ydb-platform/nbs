@@ -34,8 +34,7 @@ void TPartitionActor::EnqueueTrimFreshLogIfNeeded(const TActorContext& ctx)
 
     using TRequest = TEvPartitionCommonPrivate::TEvTrimFreshLogRequest;
     auto request = std::make_unique<TRequest>(
-        MakeIntrusive<TCallContext>(CreateRequestId())
-    );
+        MakeIntrusive<TCallContext>(CreateRequestId()));
 
     if (State->GetTrimFreshLogBackoffDelay()) {
         LOG_DEBUG(
@@ -55,10 +54,7 @@ void TPartitionActor::EnqueueTrimFreshLogIfNeeded(const TActorContext& ctx)
             LogTitle.GetWithTime().c_str(),
             request->CallContext->RequestId);
 
-        NCloud::Send(
-            ctx,
-            SelfId(),
-            std::move(request));
+        NCloud::Send(ctx, SelfId(), std::move(request));
     }
 }
 
@@ -69,10 +65,8 @@ void TPartitionActor::HandleTrimFreshLog(
     auto* msg = ev->Get();
 
     using TMethod = TEvPartitionCommonPrivate::TTrimFreshLogMethod;
-    auto requestInfo = CreateRequestInfo<TMethod>(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo<TMethod>(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -84,16 +78,14 @@ void TPartitionActor::HandleTrimFreshLog(
         requestInfo->CallContext->RequestId,
         PartitionConfig.GetDiskId());
 
-    auto replyError = [=] (
-        const TActorContext& ctx,
-        TRequestInfo& requestInfo,
-        ui32 errorCode,
-        TString errorReason)
+    auto replyError = [=](const TActorContext& ctx,
+                          TRequestInfo& requestInfo,
+                          ui32 errorCode,
+                          TString errorReason)
     {
         using TResponse = TEvPartitionCommonPrivate::TEvTrimFreshLogResponse;
         auto response = std::make_unique<TResponse>(
-            MakeError(errorCode, std::move(errorReason))
-        );
+            MakeError(errorCode, std::move(errorReason)));
 
         LWTRACK(
             ResponseSent_Partition,
@@ -127,9 +119,8 @@ void TPartitionActor::HandleTrimFreshLog(
 
     State->GetTrimFreshLogState().SetStatus(EOperationStatus::Started);
 
-    TVector<ui32> freshChannels = State->GetChannelsByKind([](auto kind) {
-        return kind == EChannelDataKind::Fresh;
-    });
+    TVector<ui32> freshChannels = State->GetChannelsByKind(
+        [](auto kind) { return kind == EChannelDataKind::Fresh; });
 
     auto actor = NCloud::Register<TTrimFreshLogActor>(
         ctx,

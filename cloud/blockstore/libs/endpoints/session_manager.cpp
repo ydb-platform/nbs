@@ -60,15 +60,15 @@ private:
 
 public:
     TEndpoint(
-            TExecutor& executor,
-            ISwitchableSessionPtr switchableSession,
-            ISessionPtr session,
-            IBlockStorePtr dataClient,
-            ISwitchableBlockStorePtr switchableDataClient,
-            IThrottlerProviderPtr throttlerProvider,
-            TString clientId,
-            TString diskId,
-            NProto::TStartEndpointRequest startRequest)
+        TExecutor& executor,
+        ISwitchableSessionPtr switchableSession,
+        ISessionPtr session,
+        IBlockStorePtr dataClient,
+        ISwitchableBlockStorePtr switchableDataClient,
+        IThrottlerProviderPtr throttlerProvider,
+        TString clientId,
+        TString diskId,
+        NProto::TStartEndpointRequest startRequest)
         : Executor(executor)
         , SwitchableSession(std::move(switchableSession))
         , Session(std::move(session))
@@ -215,12 +215,12 @@ private:
 
 public:
     TStorageDataClient(
-            IStoragePtr storage,
-            IBlockStorePtr service,
-            IServerStatsPtr serverStats,
-            TString clientId,
-            TDuration requestTimeout,
-            ui32 blockSize)
+        IStoragePtr storage,
+        IBlockStorePtr service,
+        IServerStatsPtr serverStats,
+        TString clientId,
+        TDuration requestTimeout,
+        ui32 blockSize)
         : Storage(std::move(storage))
         , Service(std::move(service))
         , ServerStats(std::move(serverStats))
@@ -240,16 +240,16 @@ public:
         return Storage->AllocateBuffer(bytesCount);
     }
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, receiver)                            \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        SetBlockSize(*request);                                                \
-        PrepareRequestHeaders(*request->MutableHeaders(), *callContext);       \
-        return receiver->name(std::move(callContext), std::move(request));     \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
+#define BLOCKSTORE_IMPLEMENT_METHOD(name, receiver)                        \
+    TFuture<NProto::T##name##Response> name(                               \
+        TCallContextPtr callContext,                                       \
+        std::shared_ptr<NProto::T##name##Request> request) override        \
+    {                                                                      \
+        SetBlockSize(*request);                                            \
+        PrepareRequestHeaders(*request->MutableHeaders(), *callContext);   \
+        return receiver->name(std::move(callContext), std::move(request)); \
+    }                                                                      \
+    // BLOCKSTORE_IMPLEMENT_METHOD
 
     BLOCKSTORE_IMPLEMENT_METHOD(ReadBlocksLocal, Storage)
     BLOCKSTORE_IMPLEMENT_METHOD(WriteBlocksLocal, Storage)
@@ -264,9 +264,8 @@ public:
     {
         const TString instanceId = request->GetInstanceId();
         PrepareRequestHeaders(*request->MutableHeaders(), *callContext);
-        auto future = Service->MountVolume(
-            std::move(callContext),
-            std::move(request));
+        auto future =
+            Service->MountVolume(std::move(callContext), std::move(request));
 
         return future.Apply(
             [=, weakSelf = weak_from_this()](const auto& f)
@@ -295,9 +294,8 @@ public:
         auto diskId = request->GetDiskId();
 
         PrepareRequestHeaders(*request->MutableHeaders(), *callContext);
-        auto future = Service->UnmountVolume(
-            std::move(callContext),
-            std::move(request));
+        auto future =
+            Service->UnmountVolume(std::move(callContext), std::move(request));
 
         return future.Apply(
             [=, weakSelf = weak_from_this()](const auto& f)
@@ -310,9 +308,7 @@ public:
                 const auto& response = f.GetValue();
 
                 if (!HasError(response)) {
-                    self->ServerStats->UnmountVolume(
-                        diskId,
-                        self->ClientId);
+                    self->ServerStats->UnmountVolume(diskId, self->ClientId);
                 }
                 return f;
             });
@@ -380,20 +376,20 @@ private:
 
 public:
     TSessionManager(
-            ITimerPtr timer,
-            ISchedulerPtr scheduler,
-            ILoggingServicePtr logging,
-            IMonitoringServicePtr monitoring,
-            IRequestStatsPtr requestStats,
-            IVolumeStatsPtr volumeStats,
-            IServerStatsPtr serverStats,
-            IBlockStorePtr service,
-            NCells::ICellManagerPtr cellManager,
-            IStorageProviderPtr storageProvider,
-            IThrottlerProviderPtr throttlerProvider,
-            IEncryptionClientFactoryPtr encryptionClientFactory,
-            TExecutorPtr executor,
-            TSessionManagerOptions options)
+        ITimerPtr timer,
+        ISchedulerPtr scheduler,
+        ILoggingServicePtr logging,
+        IMonitoringServicePtr monitoring,
+        IRequestStatsPtr requestStats,
+        IVolumeStatsPtr volumeStats,
+        IServerStatsPtr serverStats,
+        IBlockStorePtr service,
+        NCells::ICellManagerPtr cellManager,
+        IStorageProviderPtr storageProvider,
+        IThrottlerProviderPtr throttlerProvider,
+        IEncryptionClientFactoryPtr encryptionClientFactory,
+        TExecutorPtr executor,
+        TSessionManagerOptions options)
         : Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Logging(std::move(logging))
@@ -512,21 +508,16 @@ TFuture<TSessionManager::TSessionOrError> TSessionManager::CreateSession(
     const NProto::TStartEndpointRequest& request)
 {
     return Executor->Execute(
-        [callContext = std::move(callContext), request, this] () mutable
-        {
-            return CreateSessionImpl(std::move(callContext), request);
-        }
-    );
+        [callContext = std::move(callContext), request, this]() mutable
+        { return CreateSessionImpl(std::move(callContext), request); });
 }
 
 TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
     TCallContextPtr callContext,
     NProto::TStartEndpointRequest request)
 {
-    auto describeResponse = DescribeVolume(
-        callContext,
-        request.GetDiskId(),
-        request.GetHeaders());
+    auto describeResponse =
+        DescribeVolume(callContext, request.GetDiskId(), request.GetHeaders());
     if (HasError(describeResponse)) {
         return TErrorResponse(describeResponse.GetError());
     }
@@ -537,7 +528,8 @@ TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
         // The original volume no longer exists. Use principal volume instead.
         request.SetDiskId(volume.GetDiskId());
     } else if (volume.GetPrincipalDiskId()) {
-        // The original volume has lost leadership. Use principal volume instead.
+        // The original volume has lost leadership. Use principal volume
+        // instead.
         request.SetDiskId(volume.GetPrincipalDiskId());
         return CreateSessionImpl(std::move(callContext), std::move(request));
     }
@@ -554,19 +546,15 @@ TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
     }
 
     with_lock (EndpointLock) {
-        auto [it, inserted] = Endpoints.emplace(
-            request.GetUnixSocketPath(),
-            endpoint);
+        auto [it, inserted] =
+            Endpoints.emplace(request.GetUnixSocketPath(), endpoint);
         STORAGE_VERIFY(
             inserted,
             TWellKnownEntityTypes::ENDPOINT,
             request.GetUnixSocketPath());
     }
 
-    return TSessionInfo {
-        .Volume = volume,
-        .Session = endpoint->GetSession()
-    };
+    return TSessionInfo{.Volume = volume, .Session = endpoint->GetSession()};
 }
 
 NProto::TDescribeVolumeResponse TSessionManager::DescribeVolume(
@@ -590,11 +578,15 @@ TFuture<NProto::TError> TSessionManager::RemoveSession(
     const NProto::THeaders& headers)
 {
     return Executor->Execute(
-        [this, callContext = std::move(callContext), socketPath, headers] () mutable
-        {
-            return RemoveSessionImpl(std::move(callContext), socketPath, headers);
-        }
-    );
+        [this,
+         callContext = std::move(callContext),
+         socketPath,
+         headers]() mutable {
+            return RemoveSessionImpl(
+                std::move(callContext),
+                socketPath,
+                headers);
+        });
 }
 
 NProto::TError TSessionManager::RemoveSessionImpl(
@@ -637,7 +629,7 @@ TFuture<NProto::TError> TSessionManager::AlterSession(
          accessMode,
          mountMode,
          mountSeqNumber,
-         headers] () mutable
+         headers]() mutable
         {
             return AlterSessionImpl(
                 std::move(callContext),
@@ -646,8 +638,7 @@ TFuture<NProto::TError> TSessionManager::AlterSession(
                 mountMode,
                 mountSeqNumber,
                 headers);
-        }
-    );
+        });
 }
 
 NProto::TError TSessionManager::AlterSessionImpl(
@@ -665,9 +656,8 @@ NProto::TError TSessionManager::AlterSessionImpl(
         if (it == Endpoints.end()) {
             return TErrorResponse(
                 E_INVALID_STATE,
-                TStringBuilder()
-                    << "endpoint " << socketPath.Quote()
-                    << " hasn't been started");
+                TStringBuilder() << "endpoint " << socketPath.Quote()
+                                 << " hasn't been started");
         }
         endpoint = it->second;
     }
@@ -686,14 +676,12 @@ TFuture<TSessionManager::TSessionOrError> TSessionManager::GetSession(
     const NProto::THeaders& headers)
 {
     return Executor->Execute(
-        [this, callContext = std::move(callContext), socketPath, headers] () mutable
-        {
-            return GetSessionImpl(
-                std::move(callContext),
-                socketPath,
-                headers);
-        }
-    );
+        [this,
+         callContext = std::move(callContext),
+         socketPath,
+         headers]() mutable {
+            return GetSessionImpl(std::move(callContext), socketPath, headers);
+        });
 }
 
 TSessionManager::TSessionOrError TSessionManager::GetSessionImpl(
@@ -708,25 +696,21 @@ TSessionManager::TSessionOrError TSessionManager::GetSessionImpl(
         if (it == Endpoints.end()) {
             return TErrorResponse(
                 E_INVALID_STATE,
-                TStringBuilder()
-                    << "endpoint " << socketPath.Quote()
-                    << " hasn't been started");
+                TStringBuilder() << "endpoint " << socketPath.Quote()
+                                 << " hasn't been started");
         }
         endpoint = it->second;
     }
 
-    auto describeResponse = DescribeVolume(
-        std::move(callContext),
-        endpoint->GetDiskId(),
-        headers);
+    auto describeResponse =
+        DescribeVolume(std::move(callContext), endpoint->GetDiskId(), headers);
     if (HasError(describeResponse)) {
         return TErrorResponse(describeResponse.GetError());
     }
 
-    return TSessionInfo {
+    return TSessionInfo{
         .Volume = describeResponse.GetVolume(),
-        .Session = endpoint->GetSession()
-    };
+        .Session = endpoint->GetSession()};
 }
 
 TResultOrError<NProto::TClientPerformanceProfile> TSessionManager::GetProfile(
@@ -739,9 +723,8 @@ TResultOrError<NProto::TClientPerformanceProfile> TSessionManager::GetProfile(
         if (it == Endpoints.end()) {
             return TErrorResponse(
                 E_INVALID_STATE,
-                TStringBuilder()
-                    << "endpoint " << socketPath.Quote()
-                    << " hasn't been started");
+                TStringBuilder() << "endpoint " << socketPath.Quote()
+                                 << " hasn't been started");
         }
         endpoint = it->second;
     }
@@ -807,9 +790,7 @@ TResultOrError<IBlockStorePtr> TSessionManager::CreateStorageDataClient(
     IStoragePtr storage;
 
     if (!cellId.empty()) {
-        auto result = CellManager->GetCellEndpoint(
-            cellId,
-            clientConfig);
+        auto result = CellManager->GetCellEndpoint(cellId, clientConfig);
         if (HasError(result)) {
             return result.GetError();
         }
@@ -823,15 +804,13 @@ TResultOrError<IBlockStorePtr> TSessionManager::CreateStorageDataClient(
         storage = Executor->ResultOrError(future).GetResult();
     }
 
-    return {
-        std::make_shared<TStorageDataClient>(
-            std::move(storage),
-            std::move(service),
-            ServerStats,
-            clientId,
-            clientConfig->GetRequestTimeout(),
-            volume.GetBlockSize())
-    };
+    return {std::make_shared<TStorageDataClient>(
+        std::move(storage),
+        std::move(service),
+        ServerStats,
+        clientId,
+        clientConfig->GetRequestTimeout(),
+        volume.GetBlockSize())};
 }
 
 TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
@@ -865,7 +844,7 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     if (Options.TemporaryServer) {
         client = CreateErrorTransformService(
             std::move(client),
-            {{ EErrorKind::ErrorFatal, E_REJECTED }});
+            {{EErrorKind::ErrorFatal, E_REJECTED}});
     }
 
     if (Options.EnableDataIntegrityClient ||
@@ -883,9 +862,9 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
     auto retryPolicy =
         CreateRetryPolicy(clientConfig, volume.GetStorageMediaKind());
 
-    if (!Options.DisableDurableClient
-            && (volume.GetStorageMediaKind() != NProto::STORAGE_MEDIA_SSD_LOCAL
-                || !clientConfig->GetLocalNonreplDisableDurableClient()))
+    if (!Options.DisableDurableClient &&
+        (volume.GetStorageMediaKind() != NProto::STORAGE_MEDIA_SSD_LOCAL ||
+         !clientConfig->GetLocalNonreplDisableDurableClient()))
     {
         client = CreateDurableClient(
             clientConfig,
@@ -897,7 +876,8 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
             RequestStats,
             VolumeStats);
     } else {
-        STORAGE_WARN("disable durable client for " << volume.GetDiskId().Quote());
+        STORAGE_WARN(
+            "disable durable client for " << volume.GetDiskId().Quote());
     }
 
     auto encryptionFuture = EncryptionClientFactory->CreateEncryptionClient(

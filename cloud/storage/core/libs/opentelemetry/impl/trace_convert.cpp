@@ -233,9 +233,9 @@ private:
 
 public:
     TTraceConverter(
-            ui64 traceId,
-            TReferenceTimeCycle referenceTimeCycle,
-            bool hasConflicts)
+        ui64 traceId,
+        TReferenceTimeCycle referenceTimeCycle,
+        bool hasConflicts)
         : TraceId(traceId)
         , ReferenceTimeCycle(referenceTimeCycle)
         , HasConflicts(hasConflicts)

@@ -12,8 +12,7 @@ namespace NCloud::NBlockStore::NSpdk {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct ISpdkTarget
-    : public IStartable
+struct ISpdkTarget: public IStartable
 {
     virtual ~ISpdkTarget() = default;
 

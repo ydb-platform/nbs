@@ -7,6 +7,7 @@
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <contrib/libs/protobuf/src/google/protobuf/stubs/stringpiece.h>
+
 #include <google/protobuf/util/json_util.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -83,9 +84,8 @@ TString GenerateValidateData(ui32 size, ui32 seed = 0)
 void WaitForTabletStart(TServiceClient& service)
 {
     TDispatchOptions options;
-    options.FinalEvents = {
-        TDispatchOptions::TFinalEventCondition(
-            TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest)};
+    options.FinalEvents = {TDispatchOptions::TFinalEventCondition(
+        TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest)};
     service.AccessRuntime().DispatchEvents(options);
 }
 
@@ -118,11 +118,10 @@ NProtoPrivate::TMarkNodeRefsExhaustiveResponse ExecuteMarkNodeRefsExhaustive(
 
     auto jsonResponse = service.ExecuteAction("marknoderefsexhaustive", buf);
     NProtoPrivate::TMarkNodeRefsExhaustiveResponse response;
-    UNIT_ASSERT(
-        google::protobuf::util::JsonStringToMessage(
-            jsonResponse->Record.GetOutput(),
-            &response)
-            .ok());
+    UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                    jsonResponse->Record.GetOutput(),
+                    &response)
+                    .ok());
     return response;
 }
 
@@ -176,7 +175,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
 
         ui64 observedNodeId = 0;
         bool observedKeepDown = false;
-        env.GetRuntime().SetObserverFunc([&](TAutoPtr<IEventHandle>& event)
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvHive::EvDrainNode: {
@@ -194,10 +194,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             TString requestJson;
             google::protobuf::util::MessageToJsonString(request, &requestJson);
 
-            auto response = service.ExecuteAction(DrainTabletsActionName, requestJson);
+            auto response =
+                service.ExecuteAction(DrainTabletsActionName, requestJson);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
-            UNIT_ASSERT_VALUES_EQUAL(service.GetSender().NodeId(), observedNodeId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                service.GetSender().NodeId(),
+                observedNodeId);
             UNIT_ASSERT(!observedKeepDown);
         }
 
@@ -207,9 +210,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             TString requestJson;
             google::protobuf::util::MessageToJsonString(request, &requestJson);
 
-            auto response = service.ExecuteAction(DrainTabletsActionName, requestJson);
+            auto response =
+                service.ExecuteAction(DrainTabletsActionName, requestJson);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-            UNIT_ASSERT_VALUES_EQUAL(service.GetSender().NodeId(), observedNodeId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                service.GetSender().NodeId(),
+                observedNodeId);
             UNIT_ASSERT(observedKeepDown);
         }
     }
@@ -230,11 +236,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
 
         auto response = ExecuteGetStorageConfig("", service);
         UNIT_ASSERT(google::protobuf::util::MessageDifferencer::Equals(
-            response, env.GetStorageConfig()->GetStorageConfigProto()));
+            response,
+            env.GetStorageConfig()->GetStorageConfigProto()));
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            42,
-            response.GetReadAheadCacheMaxNodes());
+        UNIT_ASSERT_VALUES_EQUAL(42, response.GetReadAheadCacheMaxNodes());
 
         {
             NProto::TStorageConfig newConfig;
@@ -315,8 +320,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
 
             NProtoPrivate::TUnsafeGetNodeResponse response;
             UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-                r.GetOutput(),
-                &response).ok());
+                            r.GetOutput(),
+                            &response)
+                            .ok());
 
             UNIT_ASSERT_VALUES_EQUAL(id3, response.GetNode().GetId());
             UNIT_ASSERT_VALUES_EQUAL(333, response.GetNode().GetSize());
@@ -359,8 +365,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
 
             NProtoPrivate::TUnsafeGetNodeResponse response;
             UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-                r.GetOutput(),
-                &response).ok());
+                            r.GetOutput(),
+                            &response)
+                            .ok());
 
             UNIT_ASSERT(!response.HasNode());
         }
@@ -415,12 +422,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         auto writeToFile =
             [&](const TString& fileName, const TString& d1, const TString& d2)
         {
-            const auto handle = service.CreateHandle(
-                headers,
-                fsId,
-                RootNodeId,
-                fileName,
-                TCreateHandleArgs::CREATE)->Record;
+            const auto handle = service
+                                    .CreateHandle(
+                                        headers,
+                                        fsId,
+                                        RootNodeId,
+                                        fileName,
+                                        TCreateHandleArgs::CREATE)
+                                    ->Record;
 
             const auto nodeId = handle.GetNodeAttr().GetId();
             const auto handleId = handle.GetHandle();
@@ -432,7 +441,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         writeToFile("file1", data1, data2);
         writeToFile("file2", data2, data3);
 
-        struct TFileSystemInfo {
+        struct TFileSystemInfo
+        {
             const TString Id;
             const ui64 Size;
         };
@@ -451,22 +461,19 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         // EvAggregateStatsCompleted for the main filesystem and every shard.
         env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
         TDispatchOptions options;
-        options.FinalEvents = {
-            TDispatchOptions::TFinalEventCondition(
-                TEvIndexTabletPrivate::EvAggregateStatsCompleted,
-                strictFileSystemSizeEnforcementEnabled ? 3 : 1)
-        };
+        options.FinalEvents = {TDispatchOptions::TFinalEventCondition(
+            TEvIndexTabletPrivate::EvAggregateStatsCompleted,
+            strictFileSystemSizeEnforcementEnabled ? 3 : 1)};
         env.GetRuntime().DispatchEvents(options);
 
-        auto checkShardStats = [&](const NProtoPrivate::TStorageStats& stats) {
+        auto checkShardStats = [&](const NProtoPrivate::TStorageStats& stats)
+        {
             UNIT_ASSERT_VALUES_EQUAL(2, stats.ShardStatsSize());
 
             for (ui64 i = 0; i < shardsCount; ++i) {
                 const auto& shardStats = stats.GetShardStats(i);
                 const auto& fsInfo = fileSystems[i];
-                UNIT_ASSERT_VALUES_EQUAL(
-                    fsInfo.Id,
-                    shardStats.GetShardId());
+                UNIT_ASSERT_VALUES_EQUAL(fsInfo.Id, shardStats.GetShardId());
                 const ui64 shardTotalBlocksCount =
                     (strictFileSystemSizeEnforcementEnabled ? filestoreSize
                                                             : autoShardsSize) /
@@ -477,9 +484,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
                 UNIT_ASSERT_VALUES_EQUAL(
                     fsInfo.Size / blockSize,
                     shardStats.GetUsedBlocksCount());
-                UNIT_ASSERT_VALUES_UNEQUAL(
-                    0,
-                    shardStats.GetCurrentLoad());
+                UNIT_ASSERT_VALUES_UNEQUAL(0, shardStats.GetCurrentLoad());
             }
         };
 
@@ -602,12 +607,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         auto writeToFile =
             [&](const TString& fileName, const TString& d1, const TString& d2)
         {
-            const auto handle = service.CreateHandle(
-                headers,
-                fsId,
-                RootNodeId,
-                fileName,
-                TCreateHandleArgs::CREATE)->Record;
+            const auto handle = service
+                                    .CreateHandle(
+                                        headers,
+                                        fsId,
+                                        RootNodeId,
+                                        fileName,
+                                        TCreateHandleArgs::CREATE)
+                                    ->Record;
 
             const auto nodeId = handle.GetNodeAttr().GetId();
             const auto handleId = handle.GetHandle();
@@ -706,33 +713,32 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
 
         auto headers = service.InitSession("test", "client");
 
-        ui64 nodeId = service.CreateNode(
-            headers,
-            TCreateNodeArgs::File(RootNodeId, "file")
-        )->Record.GetNode().GetId();
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
 
-        ui64 handle = service.CreateHandle(
-            headers,
-            "test",
-            nodeId,
-            "",
-            TCreateHandleArgs::RDWR)->Record.GetHandle();
+        ui64 handle = service
+                          .CreateHandle(
+                              headers,
+                              "test",
+                              nodeId,
+                              "",
+                              TCreateHandleArgs::RDWR)
+                          ->Record.GetHandle();
 
-        service.WriteData(
-            headers,
-            "test",
-            nodeId,
-            handle,
-            0,
-            TString(1_MB, 'a'));
+        service
+            .WriteData(headers, "test", nodeId, handle, 0, TString(1_MB, 'a'));
 
         TAutoPtr<IEventHandle> completion;
         ui32 compactionCounter = 0;
         env.GetRuntime().SetEventFilter(
-            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
                 Y_UNUSED(runtime);
                 if (event->GetTypeRewrite() ==
-                        TEvIndexTabletPrivate::EvCompactionCompleted)
+                    TEvIndexTabletPrivate::EvCompactionCompleted)
                 {
                     ++compactionCounter;
                     if (compactionCounter == 2) {
@@ -757,7 +763,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             auto jsonResponse = service.ExecuteAction("forcedoperation", buf);
             NProtoPrivate::TForcedOperationResponse response;
             UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-                jsonResponse->Record.GetOutput(), &response).ok());
+                            jsonResponse->Record.GetOutput(),
+                            &response)
+                            .ok());
             UNIT_ASSERT_VALUES_EQUAL(4, response.GetRangeCount());
             operationId = response.GetOperationId();
             UNIT_ASSERT_VALUES_UNEQUAL("", operationId);
@@ -774,7 +782,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
                 service.ExecuteAction("forcedoperationstatus", buf);
             NProtoPrivate::TForcedOperationStatusResponse response;
             UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-                jsonResponse->Record.GetOutput(), &response).ok());
+                            jsonResponse->Record.GetOutput(),
+                            &response)
+                            .ok());
             UNIT_ASSERT_VALUES_EQUAL(4, response.GetRangeCount());
             UNIT_ASSERT_VALUES_EQUAL(2, response.GetProcessedRangeCount());
             UNIT_ASSERT_VALUES_EQUAL(
@@ -809,7 +819,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
                 jsonResponse->GetErrorReason());
             NProtoPrivate::TForcedOperationStatusResponse response;
             UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-                jsonResponse->Record.GetOutput(), &response).ok());
+                            jsonResponse->Record.GetOutput(),
+                            &response)
+                            .ok());
             UNIT_ASSERT_VALUES_EQUAL(4, response.GetRangeCount());
             UNIT_ASSERT_VALUES_EQUAL(4, response.GetProcessedRangeCount());
         }

@@ -25,8 +25,7 @@ constexpr ui64 DefaultBytesCount = DefaultBlockSize * DefaultBlockCount;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestStorage final
-    : public IStorage
+struct TTestStorage final: public IStorage
 {
     NProto::TError Error;
 
@@ -107,10 +106,8 @@ void ReadBlocksLocal(IStoragePtr storage)
         DefaultBlockCount,
         TString(DefaultBlockSize, 'A')));
 
-    storage->ReadBlocksLocal(
-        MakeIntrusive<TCallContext>(),
-        std::move(request)
-    ).GetValueSync();
+    storage->ReadBlocksLocal(MakeIntrusive<TCallContext>(), std::move(request))
+        .GetValueSync();
 }
 
 void WriteBlocksLocal(IStoragePtr storage)
@@ -125,10 +122,8 @@ void WriteBlocksLocal(IStoragePtr storage)
         DefaultBlockCount,
         TString(DefaultBlockSize, 'A')));
 
-    storage->WriteBlocksLocal(
-        MakeIntrusive<TCallContext>(),
-        std::move(request)
-    ).GetValueSync();
+    storage->WriteBlocksLocal(MakeIntrusive<TCallContext>(), std::move(request))
+        .GetValueSync();
 }
 
 void ZeroBlocksLocal(IStoragePtr storage)
@@ -136,10 +131,8 @@ void ZeroBlocksLocal(IStoragePtr storage)
     auto request = std::make_shared<NProto::TZeroBlocksRequest>();
     request->SetBlocksCount(DefaultBlockCount);
 
-    storage->ZeroBlocks(
-        MakeIntrusive<TCallContext>(),
-        std::move(request)
-    ).GetValueSync();
+    storage->ZeroBlocks(MakeIntrusive<TCallContext>(), std::move(request))
+        .GetValueSync();
 }
 
 IStoragePtr CreateTestStorage(TStorageIoStatsPtr stats)
@@ -182,7 +175,8 @@ Y_UNIT_TEST_SUITE(TStorageWithIoStatsTest)
 
             UNIT_ASSERT_VALUES_EQUAL(i + 1, AtomicGet(stats->NumReadOps));
             UNIT_ASSERT_VALUES_EQUAL(
-                DefaultBytesCount * (i + 1), AtomicGet(stats->BytesRead));
+                DefaultBytesCount * (i + 1),
+                AtomicGet(stats->BytesRead));
         }
     }
 
@@ -201,7 +195,8 @@ Y_UNIT_TEST_SUITE(TStorageWithIoStatsTest)
 
             UNIT_ASSERT_VALUES_EQUAL(i + 1, AtomicGet(stats->NumWriteOps));
             UNIT_ASSERT_VALUES_EQUAL(
-                DefaultBytesCount * (i + 1), AtomicGet(stats->BytesWritten));
+                DefaultBytesCount * (i + 1),
+                AtomicGet(stats->BytesWritten));
         }
     }
 
@@ -220,7 +215,8 @@ Y_UNIT_TEST_SUITE(TStorageWithIoStatsTest)
 
             UNIT_ASSERT_VALUES_EQUAL(i + 1, AtomicGet(stats->NumZeroOps));
             UNIT_ASSERT_VALUES_EQUAL(
-                DefaultBytesCount * (i + 1), AtomicGet(stats->BytesZeroed));
+                DefaultBytesCount * (i + 1),
+                AtomicGet(stats->BytesZeroed));
         }
     }
 

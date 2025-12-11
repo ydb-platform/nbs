@@ -1,4 +1,5 @@
 #include "disk_registry_actor.h"
+
 #include "util/string/join.h"
 
 #include <cloud/blockstore/libs/storage/core/monitoring_utils.h>
@@ -62,13 +63,13 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TChangeDeviceStateActor::TChangeDeviceStateActor(
-        const TActorId& owner,
-        ui64 tabletID,
-        TRequestInfoPtr requestInfo,
-        TString deviceId,
-        NProto::EDeviceState newState,
-        NProto::EDeviceState oldState,
-        TString message)
+    const TActorId& owner,
+    ui64 tabletID,
+    TRequestInfoPtr requestInfo,
+    TString deviceId,
+    NProto::EDeviceState newState,
+    NProto::EDeviceState oldState,
+    TString message)
     : Owner(owner)
     , TabletID(tabletID)
     , RequestInfo(std::move(requestInfo))

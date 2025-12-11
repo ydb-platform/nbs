@@ -257,10 +257,10 @@ struct TPipe
 
     TPipe()
     {
-        int fds[2] {};
+        int fds[2]{};
         Y_ENSURE(!::pipe2(fds, O_CLOEXEC | O_NONBLOCK));
-        TFileHandle r {fds[0]};
-        TFileHandle w {fds[1]};
+        TFileHandle r{fds[0]};
+        TFileHandle w{fds[1]};
 
         r.Swap(R);
         w.Swap(W);
@@ -270,7 +270,7 @@ struct TPipe
     {
         R.Close();
 
-        TFileHandle h {fd};
+        TFileHandle h{fd};
 
         h.LinkTo(W);
         h.Release();
@@ -279,9 +279,7 @@ struct TPipe
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TChild SpawnChild(
-    const TString& binaryPath,
-    TVector<TString> args)
+TChild SpawnChild(const TString& binaryPath, TVector<TString> args)
 {
     args.push_back("--blockstore-service-pid=" + ToString(::getpid()));
 
@@ -333,14 +331,13 @@ TChild SpawnChild(
     }
 
     int err = errno;
-    char buf[64] {};
+    char buf[64]{};
     Y_ABORT("Process was not created: %s", ::strerror_r(err, buf, sizeof(buf)));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TEndpointProcess final
-    : public TThrRefBase
+class TEndpointProcess final: public TThrRefBase
 {
 private:
     const ILoggingServicePtr Logging;
@@ -356,10 +353,10 @@ private:
 
 public:
     TEndpointProcess(
-            TString clientId,
-            ILoggingServicePtr logging,
-            TEndpointStats stats,
-            TChild process)
+        TString clientId,
+        ILoggingServicePtr logging,
+        TEndpointStats stats,
+        TChild process)
         : Logging{std::move(logging)}
         , ClientId{std::move(clientId)}
         , Log{Logging->CreateLog("BLOCKSTORE_EXTERNAL_ENDPOINT")}
@@ -379,7 +376,9 @@ public:
 
     void Start(TContExecutor* e)
     {
-        e->Create<TEndpointProcess, &TEndpointProcess::ReadStats>(this, "stats");
+        e->Create<TEndpointProcess, &TEndpointProcess::ReadStats>(
+            this,
+            "stats");
         e->Create<TEndpointProcess, &TEndpointProcess::ReadStdErr>(this, "err");
     }
 
@@ -481,7 +480,7 @@ private:
 
     void ReadStdErrImpl(TCont* c)
     {
-        char buf[1024] {};
+        char buf[1024]{};
         TString incompleteLine;
 
         for (;;) {
@@ -492,7 +491,7 @@ private:
                 break;
             }
 
-            TStringBuf s {buf, len};
+            TStringBuf s{buf, len};
             for (;;) {
                 size_t i = s.find('\n');
                 if (i == s.npos) {
@@ -535,15 +534,13 @@ private:
 
 void AddToCGroups(pid_t pid, const TVector<TString>& cgroups)
 {
-    const auto flags =
-          EOpenModeFlag::OpenExisting
-        | EOpenModeFlag::WrOnly
-        | EOpenModeFlag::ForAppend;
+    const auto flags = EOpenModeFlag::OpenExisting | EOpenModeFlag::WrOnly |
+                       EOpenModeFlag::ForAppend;
 
     const TString line = ToString(pid) + '\n';
 
     for (auto& cgroup: cgroups) {
-        TFile file {TFsPath {cgroup} / "cgroup.procs", flags};
+        TFile file{TFsPath{cgroup} / "cgroup.procs", flags};
 
         file.Write(line.data(), line.size());
     }
@@ -579,13 +576,13 @@ private:
 
 public:
     TEndpoint(
-            TString clientId,
-            ILoggingServicePtr logging,
-            TExecutorPtr executor,
-            TEndpointStats stats,
-            TString binaryPath,
-            TVector<TString> args,
-            TVector<TString> cgroups)
+        TString clientId,
+        ILoggingServicePtr logging,
+        TExecutorPtr executor,
+        TEndpointStats stats,
+        TString binaryPath,
+        TVector<TString> args,
+        TVector<TString> cgroups)
         : Logging{std::move(logging)}
         , Executor{std::move(executor)}
         , ClientId{std::move(clientId)}
@@ -685,11 +682,12 @@ private:
             LogPrefix << "Endpoint process has been started, PID:"
                       << process.Pid);
 
-        Y_SCOPE_EXIT(&process) {
+        Y_SCOPE_EXIT(&process)
+        {
             if (process.Pid) {
                 process.Terminate();
             }
-        };
+        }
 
         try {
             AddToCGroups(process.Pid, Cgroups);
@@ -705,9 +703,8 @@ private:
             std::move(process));
         process = TChild{0};
 
-        Executor->ExecuteSimple([=, this] {
-            ep->Start(Executor->GetContExecutor());
-        });
+        Executor->ExecuteSimple([=, this]
+                                { ep->Start(Executor->GetContExecutor()); });
 
         return ep;
     }
@@ -769,14 +766,14 @@ private:
 
 public:
     TExternalVhostEndpointListener(
-            TServerAppConfigPtr serverConfig,
-            ILoggingServicePtr logging,
-            IServerStatsPtr serverStats,
-            TExecutorPtr executor,
-            TString localAgentId,
-            bool isAlignedDataEnabled,
-            IEndpointListenerPtr fallbackListener,
-            TExternalEndpointFactory endpointFactory)
+        TServerAppConfigPtr serverConfig,
+        ILoggingServicePtr logging,
+        IServerStatsPtr serverStats,
+        TExecutorPtr executor,
+        TString localAgentId,
+        bool isAlignedDataEnabled,
+        IEndpointListenerPtr fallbackListener,
+        TExternalEndpointFactory endpointFactory)
         : ServerConfig{std::move(serverConfig)}
         , Logging{std::move(logging)}
         , ServerStats{std::move(serverStats)}
@@ -801,16 +798,18 @@ public:
         const auto& socketPath = request.GetUnixSocketPath();
 
         if (Endpoints.contains(socketPath)) {
-            return MakeFuture(MakeError(E_ARGUMENT, TStringBuilder()
-                << "endpoint " << socketPath.Quote()
-                << " has already been started"));
+            return MakeFuture(MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "endpoint " << socketPath.Quote()
+                                 << " has already been started"));
         }
 
         if (!TryStartExternalEndpoint(request, volume)) {
             Endpoints.emplace(socketPath, nullptr);
 
-            STORAGE_INFO("starting endpoint "
-                << request.GetUnixSocketPath() << ", epType=FALLBACK");
+            STORAGE_INFO(
+                "starting endpoint " << request.GetUnixSocketPath()
+                                     << ", epType=FALLBACK");
 
             return FallbackListener->StartEndpoint(
                 request,
@@ -830,12 +829,17 @@ public:
 
         auto it = Endpoints.find(socketPath);
         if (it == Endpoints.end()) {
-            return MakeFuture(MakeError(E_NOT_FOUND, TStringBuilder()
-                << "endpoint " << socketPath.Quote() << " not found"));
+            return MakeFuture(MakeError(
+                E_NOT_FOUND,
+                TStringBuilder()
+                    << "endpoint " << socketPath.Quote() << " not found"));
         }
 
         if (!it->second && !CanStartExternalEndpoint(request, volume)) {
-            return FallbackListener->AlterEndpoint(request, volume, std::move(session));
+            return FallbackListener->AlterEndpoint(
+                request,
+                volume,
+                std::move(session));
         }
 
         return TrySwitchEndpoint(request, volume, session);
@@ -845,9 +849,10 @@ public:
     {
         auto it = Endpoints.find(socketPath);
         if (it == Endpoints.end()) {
-            return MakeFuture(MakeError(S_ALREADY, TStringBuilder()
-                << "endpoint " << socketPath.Quote()
-                << " has already been stopped"));
+            return MakeFuture(MakeError(
+                S_ALREADY,
+                TStringBuilder() << "endpoint " << socketPath.Quote()
+                                 << " has already been stopped"));
         }
 
         auto ep = std::move(it->second);
@@ -866,8 +871,10 @@ public:
     {
         auto it = Endpoints.find(socketPath);
         if (it == Endpoints.end()) {
-            return MakeError(E_NOT_FOUND, TStringBuilder()
-                << "endpoint " << socketPath.Quote() << " not found");
+            return MakeError(
+                E_NOT_FOUND,
+                TStringBuilder()
+                    << "endpoint " << socketPath.Quote() << " not found");
         }
 
         if (!it->second) {
@@ -887,8 +894,10 @@ public:
         const auto& socketPath = request.GetUnixSocketPath();
         auto it = Endpoints.find(socketPath);
         if (it == Endpoints.end()) {
-            return MakeFuture(MakeError(E_NOT_FOUND, TStringBuilder()
-                << "endpoint " << socketPath.Quote() << " not found"));
+            return MakeFuture(MakeError(
+                E_NOT_FOUND,
+                TStringBuilder()
+                    << "endpoint " << socketPath.Quote() << " not found"));
         }
 
         bool isExternalEndpoint = it->second != nullptr;
@@ -907,7 +916,8 @@ private:
     {
         auto epType = GetEndpointType(request, volume);
 
-        STORAGE_INFO(TStringBuilder()
+        STORAGE_INFO(
+            TStringBuilder()
             << "switching endpoint " << request.GetUnixSocketPath()
             << ", epType=" << GetEndpointTypeName(epType)
             << ", external=" << CanStartExternalEndpoint(request, volume));
@@ -915,17 +925,19 @@ private:
         auto self = weak_from_this();
 
         return StopEndpoint(request.GetUnixSocketPath())
-            .Apply([=] (const auto& future) {
-                if (future.HasException() || HasError(future.GetValue())) {
-                    return future;
-                }
+            .Apply(
+                [=](const auto& future)
+                {
+                    if (future.HasException() || HasError(future.GetValue())) {
+                        return future;
+                    }
 
-                if (auto p = self.lock()) {
-                    return p->StartEndpoint(request, volume, session);
-                }
+                    if (auto p = self.lock()) {
+                        return p->StartEndpoint(request, volume, session);
+                    }
 
-                return MakeFuture(MakeError(E_REJECTED, "Cancelled"));
-            });
+                    return MakeFuture(MakeError(E_REJECTED, "Cancelled"));
+                });
     }
 
     bool IsLocalMode(
@@ -952,12 +964,12 @@ private:
     {
         auto epType = GetEndpointType(request, volume);
         switch (epType) {
-        case EEndpointType::Local:
-            return true;
-        case EEndpointType::Rdma:
-            return volume.GetMigrations().empty();
-        case EEndpointType::Fallback:
-            return false;
+            case EEndpointType::Local:
+                return true;
+            case EEndpointType::Rdma:
+                return volume.GetMigrations().empty();
+            case EEndpointType::Fallback:
+                return false;
         }
     }
 
@@ -1007,30 +1019,30 @@ private:
     TString GetDeviceBackend(EEndpointType epType)
     {
         switch (epType) {
-        case EEndpointType::Local:
-            return "aio";
-        case EEndpointType::Rdma:
-            return "rdma";
-        case EEndpointType::Fallback:
-            return "fallback";
+            case EEndpointType::Local:
+                return "aio";
+            case EEndpointType::Rdma:
+                return "rdma";
+            case EEndpointType::Fallback:
+                return "fallback";
         }
     }
 
     TString GetDevicePath(EEndpointType epType, const NProto::TDevice& device)
     {
         switch (epType) {
-        case EEndpointType::Local:
-            return device.GetDeviceName();
-        case EEndpointType::Rdma: {
-            DevicePath path(
-                "rdma",
-                device.GetRdmaEndpoint().GetHost(),
-                device.GetRdmaEndpoint().GetPort(),
-                device.GetDeviceUUID());
-            return path.Serialize();
-        }
-        case EEndpointType::Fallback:
-            return "";
+            case EEndpointType::Local:
+                return device.GetDeviceName();
+            case EEndpointType::Rdma: {
+                DevicePath path(
+                    "rdma",
+                    device.GetRdmaEndpoint().GetHost(),
+                    device.GetRdmaEndpoint().GetPort(),
+                    device.GetDeviceUUID());
+                return path.Serialize();
+            }
+            case EEndpointType::Fallback:
+                return "";
         }
     }
 
@@ -1039,17 +1051,16 @@ private:
         const NProto::TStartEndpointRequest& request,
         const NProto::TVolume& volume)
     {
-        STORAGE_INFO("starting endpoint "
-            << request.GetUnixSocketPath() << ", epType="
-            << GetEndpointTypeName(epType));
+        STORAGE_INFO(
+            "starting endpoint " << request.GetUnixSocketPath()
+                                 << ", epType=" << GetEndpointTypeName(epType));
 
         const auto& socketPath = request.GetUnixSocketPath();
         const auto& deviceName = request.GetDeviceName()
-            ? request.GetDeviceName()
-            : volume.GetDiskId();
-        const auto& clientId = request.GetClientId()
-            ? request.GetClientId()
-            : request.GetInstanceId();
+                                     ? request.GetDeviceName()
+                                     : volume.GetDiskId();
+        const auto& clientId = request.GetClientId() ? request.GetClientId()
+                                                     : request.GetInstanceId();
 
         if (volume.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD_LOCAL &&
             volume.GetBlockSize() != DefaultLocalSSDBlockSize)
@@ -1059,16 +1070,21 @@ private:
                 {{"disk", volume.GetDiskId()}});
         }
 
-        TVector<TString> args {
-            "--disk-id", request.GetDiskId(),
-            "--block-size", ToString(volume.GetBlockSize()),
-            "--serial", deviceName,
-            "--socket-path", socketPath,
-            "--socket-access-mode", ToString(SocketAccessMode),
-            "-q", ToString(request.GetVhostQueuesCount()),
+        TVector<TString> args{
+            "--disk-id",
+            request.GetDiskId(),
+            "--block-size",
+            ToString(volume.GetBlockSize()),
+            "--serial",
+            deviceName,
+            "--socket-path",
+            socketPath,
+            "--socket-access-mode",
+            ToString(SocketAccessMode),
+            "-q",
+            ToString(request.GetVhostQueuesCount()),
             "--wait-after-parent-exit",
-            ToString(VhostServerTimeoutAfterParentExit.Seconds()).c_str()
-        };
+            ToString(VhostServerTimeoutAfterParentExit.Seconds()).c_str()};
 
         if (epType == EEndpointType::Rdma) {
             args.emplace_back("--client-id");
@@ -1097,12 +1113,11 @@ private:
                 offset = 0;
             }
 
-            args.insert(args.end(), {
-                "--device", TStringBuilder()
-                    << GetDevicePath(epType, device) << ":"
-                    << size << ":"
-                    << offset
-                });
+            args.insert(
+                args.end(),
+                {"--device",
+                 TStringBuilder() << GetDevicePath(epType, device) << ":"
+                                  << size << ":" << offset});
         }
 
         if (request.GetVolumeAccessMode() == NProto::VOLUME_ACCESS_READ_ONLY) {
@@ -1130,16 +1145,13 @@ private:
 
         TVector<TString> cgroups(
             request.GetClientCGroups().begin(),
-            request.GetClientCGroups().end()
-        );
-
+            request.GetClientCGroups().end());
 
         auto ep = EndpointFactory(
             clientId,
             request.GetDiskId(),
             std::move(args),
-            std::move(cgroups)
-        );
+            std::move(cgroups));
 
         ep->PrepareToStart();
         ShutdownOldEndpoint(request.GetDiskId());
@@ -1150,20 +1162,21 @@ private:
 
     bool IsOnLocalAgent(const NProto::TVolume& volume) const
     {
-        return LocalAgentId.empty() || AllOf(
-            volume.GetDevices(),
-            [&] (const auto& d) {
-                return d.GetAgentId() == LocalAgentId;
-            });
+        return LocalAgentId.empty() ||
+               AllOf(
+                   volume.GetDevices(),
+                   [&](const auto& d)
+                   { return d.GetAgentId() == LocalAgentId; });
     }
 
     bool IsOnRdmaAgent(const NProto::TVolume& volume) const
     {
         return AllOf(
             volume.GetDevices(),
-            [&] (const auto& d) {
-                return d.GetRdmaEndpoint().GetHost() == d.GetAgentId()
-                    && d.GetAgentId() != "";
+            [&](const auto& d)
+            {
+                return d.GetRdmaEndpoint().GetHost() == d.GetAgentId() &&
+                       d.GetAgentId() != "";
             });
     }
 
@@ -1259,25 +1272,22 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     bool isAlignedDataEnabled,
     IEndpointListenerPtr fallbackListener)
 {
-    auto defaultFactory = [=] (
-        const TString& clientId,
-        const TString& diskId,
-        TVector<TString> args,
-        TVector<TString> cgroups)
+    auto defaultFactory = [=](const TString& clientId,
+                              const TString& diskId,
+                              TVector<TString> args,
+                              TVector<TString> cgroups)
     {
         return std::make_shared<TEndpoint>(
             clientId,
             logging,
             executor,
-            TEndpointStats {
+            TEndpointStats{
                 .ClientId = clientId,
                 .DiskId = diskId,
-                .ServerStats = serverStats
-            },
+                .ServerStats = serverStats},
             serverConfig->GetVhostServerPath(),
             std::move(args),
-            std::move(cgroups)
-        );
+            std::move(cgroups));
     };
 
     return std::make_shared<TExternalVhostEndpointListener>(

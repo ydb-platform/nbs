@@ -20,8 +20,7 @@ private:
     NProto::TLogbrokerConfig::TIamJwtFile Config;
 
 public:
-    explicit TIamJwtFile(
-            NProto::TLogbrokerConfig::TIamJwtFile config = {})
+    explicit TIamJwtFile(NProto::TLogbrokerConfig::TIamJwtFile config = {})
         : Config(std::move(config))
     {}
 
@@ -38,7 +37,7 @@ private:
 
 public:
     explicit TIamMetadataServer(
-            NProto::TLogbrokerConfig::TIamMetadataServer config = {})
+        NProto::TLogbrokerConfig::TIamMetadataServer config = {})
         : Config(std::move(config))
     {}
 

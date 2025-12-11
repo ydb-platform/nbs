@@ -146,10 +146,9 @@ Y_UNIT_TEST_SUITE(TRequestBoundsTrackerTest)
 
             UNIT_ASSERT(requestsInProgress.Overlaps(
                 TBlockRange64::WithLength(0, blocksPerTrackingRange)));
-            UNIT_ASSERT(
-                requestsInProgress.Overlaps(TBlockRange64::WithLength(
-                    blocksPerTrackingRange,
-                    2 * blocksPerTrackingRange)));
+            UNIT_ASSERT(requestsInProgress.Overlaps(TBlockRange64::WithLength(
+                blocksPerTrackingRange,
+                2 * blocksPerTrackingRange)));
         }
     }
 

@@ -78,13 +78,13 @@ private:
 
 template <ReadRequest TMethod>
 TReadAndClearEmptyBlocksActor<TMethod>::TReadAndClearEmptyBlocksActor(
-        TRequestInfoPtr requestInfo,
-        typename TMethod::TRequest::ProtoRecordType request,
-        const TCompressedBitmap& usedBlocks,
-        TActorId partActorId,
-        ui64 volumeTabletId,
-        TActorId volumeActorId,
-        TChildLogTitle logTitle)
+    TRequestInfoPtr requestInfo,
+    typename TMethod::TRequest::ProtoRecordType request,
+    const TCompressedBitmap& usedBlocks,
+    TActorId partActorId,
+    ui64 volumeTabletId,
+    TActorId volumeActorId,
+    TChildLogTitle logTitle)
     : Request(std::move(request))
     , RequestInfo(std::move(requestInfo))
     , UsedBlocks(MakeUsedBlockMarks(
@@ -174,8 +174,10 @@ void TReadAndClearEmptyBlocksActor<TMethod>::HandleUndelivery(
         LogTitle.GetWithTime().c_str(),
         TMethod::Name);
 
-    Response.MutableError()->CopyFrom(MakeError(E_REJECTED, TStringBuilder()
-        << TMethod::Name << " request undelivered to partition"));
+    Response.MutableError()->CopyFrom(MakeError(
+        E_REJECTED,
+        TStringBuilder() << TMethod::Name
+                         << " request undelivered to partition"));
 
     Done(ctx);
 }

@@ -54,9 +54,8 @@ int main(int argc, char** argv)
 
     ui32 i = 0;
     while (i < data.size()) {
-        auto csum = ComputeDefaultDigest(TBlockDataRef(
-            data.begin() + i,
-            opts.BlockSize));
+        auto csum = ComputeDefaultDigest(
+            TBlockDataRef(data.begin() + i, opts.BlockSize));
 
         Cout << i << "\t" << csum << Endl;
 

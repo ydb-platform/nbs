@@ -11,7 +11,6 @@
 #include <cloud/filestore/libs/service/endpoint.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/service/request.h>
-
 #include <cloud/filestore/public/api/protos/fs.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -21,6 +20,7 @@
 #include <cloud/storage/core/libs/iam/iface/client.h>
 
 #include <contrib/ydb/library/actors/util/should_continue.h>
+
 #include <library/cpp/getopt/small/last_getopt.h>
 #include <library/cpp/threading/future/future.h>
 
@@ -127,8 +127,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFileStoreServiceCommand
-    : public TCommand
+class TFileStoreServiceCommand: public TCommand
 {
 protected:
     TString ClientId;
@@ -149,8 +148,7 @@ protected:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFileStoreCommand
-    : public TFileStoreServiceCommand
+class TFileStoreCommand: public TFileStoreServiceCommand
 {
 public:
     TFileStoreCommand();
@@ -189,10 +187,8 @@ protected:
         ui64 parentNodeId,
         TString name,
         bool ignoreMissing);
-    TVector<TPathEntry> ResolvePath(
-        ISession& session,
-        TStringBuf path,
-        bool ignoreMissing);
+    TVector<TPathEntry>
+    ResolvePath(ISession& session, TStringBuf path, bool ignoreMissing);
     NProto::TListNodesResponse ListAll(
         ISession& session,
         const TString& fsId,
@@ -212,8 +208,7 @@ protected:
             : FileStoreCmd(fileStoreCmd)
             , Session(std::move(session))
             , Log(FileStoreCmd.AccessLog())
-        {
-        }
+        {}
 
         ~TSessionGuard()
         {
@@ -241,8 +236,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TEndpointCommand
-    : public TCommand
+class TEndpointCommand: public TCommand
 {
 protected:
     IEndpointManagerPtr Client;

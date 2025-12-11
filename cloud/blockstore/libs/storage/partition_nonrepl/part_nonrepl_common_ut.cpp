@@ -11,31 +11,26 @@ namespace NCloud::NBlockStore::NStorage {
 
 Y_UNIT_TEST_SUITE(TNonreplicatedPartitionUtilTest)
 {
-    void DoTestShouldBuildDeviceRequests(NProto::TWriteBlocksRequest& request)
+    void DoTestShouldBuildDeviceRequests(NProto::TWriteBlocksRequest & request)
     {
         TVector<TDeviceRequest> deviceRequests;
         NProto::TDeviceConfig dummy;
         const size_t blockCountForFirstDevice = 128;
         const size_t blockCountForSecondDevice = 1024 - 128;
-        deviceRequests.push_back({
-            dummy,
-            /*deviceIdx=*/0,
-            /*relativeDeviceIdx=*/0,
-            TBlockRange64::WithLength(100'000, blockCountForFirstDevice),
-            TBlockRange64::WithLength(100, blockCountForFirstDevice)
-        });
-        deviceRequests.push_back({
-            dummy,
-            /*deviceIdx=*/1,
-            /*relativeDeviceIdx=*/1,
-            TBlockRange64::WithLength(100'128, blockCountForSecondDevice),
-            TBlockRange64::WithLength(0, blockCountForSecondDevice )
-        });
+        deviceRequests.push_back(
+            {dummy,
+             /*deviceIdx=*/0,
+             /*relativeDeviceIdx=*/0,
+             TBlockRange64::WithLength(100'000, blockCountForFirstDevice),
+             TBlockRange64::WithLength(100, blockCountForFirstDevice)});
+        deviceRequests.push_back(
+            {dummy,
+             /*deviceIdx=*/1,
+             /*relativeDeviceIdx=*/1,
+             TBlockRange64::WithLength(100'128, blockCountForSecondDevice),
+             TBlockRange64::WithLength(0, blockCountForSecondDevice)});
 
-        TDeviceRequestBuilder builder(
-            deviceRequests,
-            4_KB,
-            request);
+        TDeviceRequestBuilder builder(deviceRequests, 4_KB, request);
 
         NProto::TWriteDeviceBlocksRequest r;
 

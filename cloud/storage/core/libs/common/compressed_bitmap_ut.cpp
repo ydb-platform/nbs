@@ -17,8 +17,7 @@ struct TReferenceImplementation
 
     TReferenceImplementation(size_t size)
         : Vals(size)
-    {
-    }
+    {}
 
     ui64 Set(ui64 b, ui64 e)
     {
@@ -45,7 +44,7 @@ struct TReferenceImplementation
     ui64 Count() const
     {
         ui64 c = 0;
-        for (auto b : Vals) {
+        for (auto b: Vals) {
             c += !!b;
         }
         return c;
@@ -158,8 +157,7 @@ Y_UNIT_TEST_SUITE(TCompressedBitmapTest)
             ref.Unset(b, Min(b + update.Capacity(), size));
             UNIT_ASSERT_VALUES_EQUAL(
                 ref.Set(b + offsetPatch, Min(e + offsetPatch, size)),
-                bitmap.Update(update, b)
-            );
+                bitmap.Update(update, b));
 
             UNIT_ASSERT_VALUES_EQUAL(ref.Count(), bitmap.Count());
 
@@ -197,7 +195,8 @@ Y_UNIT_TEST_SUITE(TCompressedBitmapTest)
 
         ui64 blocksAfterMerged = 0;
 
-        auto serializer = bitmapUpdate.RangeSerializer(0, bitmapUpdate.Capacity());
+        auto serializer =
+            bitmapUpdate.RangeSerializer(0, bitmapUpdate.Capacity());
         TCompressedBitmap::TSerializedChunk sc;
         while (serializer.Next(&sc)) {
             blocksAfterMerged += bitmap.Merge(sc);
@@ -226,7 +225,8 @@ Y_UNIT_TEST_SUITE(TCompressedBitmapTest)
 
             ui64 blocksAfterMerged = 0;
 
-            auto serializer = bitmapUpdate.RangeSerializer(0, bitmapUpdate.Capacity());
+            auto serializer =
+                bitmapUpdate.RangeSerializer(0, bitmapUpdate.Capacity());
             TCompressedBitmap::TSerializedChunk sc;
             while (serializer.Next(&sc)) {
                 blocksAfterMerged += bitmap.Merge(sc);

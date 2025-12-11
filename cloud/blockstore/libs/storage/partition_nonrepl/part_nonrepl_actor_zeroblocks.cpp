@@ -1,4 +1,5 @@
 #include "part_nonrepl_actor.h"
+
 #include "part_nonrepl_actor_base_request.h"
 #include "part_nonrepl_common.h"
 
@@ -59,17 +60,17 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDiskAgentZeroActor::TDiskAgentZeroActor(
-        TRequestInfoPtr requestInfo,
-        NProto::TZeroBlocksRequest request,
-        TRequestTimeoutPolicy timeoutPolicy,
-        TVector<TDeviceRequest> deviceRequests,
-        TNonreplicatedPartitionConfigPtr partConfig,
-        TActorId volumeActorId,
-        const TActorId& part,
-        ui32 blockSize,
-        bool assignVolumeRequestId,
-        TChildLogTitle logTitle)
-    :TDiskAgentBaseRequestActor(
+    TRequestInfoPtr requestInfo,
+    NProto::TZeroBlocksRequest request,
+    TRequestTimeoutPolicy timeoutPolicy,
+    TVector<TDeviceRequest> deviceRequests,
+    TNonreplicatedPartitionConfigPtr partConfig,
+    TActorId volumeActorId,
+    const TActorId& part,
+    ui32 blockSize,
+    bool assignVolumeRequestId,
+    TChildLogTitle logTitle)
+    : TDiskAgentBaseRequestActor(
           std::move(requestInfo),
           GetRequestId(request),
           "ZeroBlocks",
@@ -112,15 +113,14 @@ void TDiskAgentZeroActor::SendRequest(const TActorContext& ctx)
             request.release(),
             IEventHandle::FlagForwardOnNondelivery,
             cookie++,
-            &ctx.SelfID // forwardOnNondelivery
+            &ctx.SelfID   // forwardOnNondelivery
         );
 
         ctx.Send(std::move(event));
     }
 }
 
-NActors::IEventBasePtr TDiskAgentZeroActor::MakeResponse(
-    NProto::TError error)
+NActors::IEventBasePtr TDiskAgentZeroActor::MakeResponse(NProto::TError error)
 {
     return std::make_unique<TEvService::TEvZeroBlocksResponse>(
         std::move(error));
@@ -264,8 +264,9 @@ void TNonreplicatedPartitionActor::HandleZeroBlocksCompleted(
 
     UpdateStats(msg->Stats);
 
-    const auto requestBytes = msg->Stats.GetUserWriteCounters().GetBlocksCount()
-        * PartConfig->GetBlockSize();
+    const auto requestBytes =
+        msg->Stats.GetUserWriteCounters().GetBlocksCount() *
+        PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);

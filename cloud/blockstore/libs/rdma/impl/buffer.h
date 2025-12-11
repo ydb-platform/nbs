@@ -34,7 +34,7 @@ public:
 
     void Init(NVerbs::IVerbsPtr verbs, ibv_pd* pd, int flags);
 
-    struct TBuffer : TBufferDesc
+    struct TBuffer: TBufferDesc
     {
         TChunk* Chunk;
 

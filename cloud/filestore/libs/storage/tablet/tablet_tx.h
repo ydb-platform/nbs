@@ -16,7 +16,6 @@
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
-
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/common/byte_range.h>
@@ -35,124 +34,124 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_VALIDATE_TX_SESSION(event, args)                             \
-    if (auto session =                                                         \
-            FindSession(args.ClientId, args.SessionId, args.SessionSeqNo);     \
-        !session)                                                              \
-    {                                                                          \
-        args.Error = ErrorInvalidSession(                                      \
-            args.ClientId,                                                     \
-            args.SessionId,                                                    \
-            args.SessionSeqNo);                                                \
-        return true;                                                           \
-    }                                                                          \
-// FILESTORE_VALIDATE_TX_SESSION
+#define FILESTORE_VALIDATE_TX_SESSION(event, args)                         \
+    if (auto session =                                                     \
+            FindSession(args.ClientId, args.SessionId, args.SessionSeqNo); \
+        !session)                                                          \
+    {                                                                      \
+        args.Error = ErrorInvalidSession(                                  \
+            args.ClientId,                                                 \
+            args.SessionId,                                                \
+            args.SessionSeqNo);                                            \
+        return true;                                                       \
+    }                                                                      \
+    // FILESTORE_VALIDATE_TX_SESSION
 
-#define FILESTORE_VALIDATE_DUPTX_SESSION(event, args)                          \
-    FILESTORE_VALIDATE_TX_SESSION(event, args)                                 \
-    else if (session->LookupDupEntry(args.RequestId)) {                        \
-        args.Error = ErrorDuplicate();                                         \
-        return true;                                                           \
-    }                                                                          \
-// FILESTORE_VALIDATE_TX_SESSION
+#define FILESTORE_VALIDATE_DUPTX_SESSION(event, args)   \
+    FILESTORE_VALIDATE_TX_SESSION(event, args)          \
+    else if (session->LookupDupEntry(args.RequestId)) { \
+        args.Error = ErrorDuplicate();                  \
+        return true;                                    \
+    }                                                   \
+    // FILESTORE_VALIDATE_TX_SESSION
 
-#define FILESTORE_VALIDATE_TX_ERROR(event, args)                               \
-    if (FAILED(args.Error.GetCode())) {                                        \
-        return;                                                                \
-    }                                                                          \
+#define FILESTORE_VALIDATE_TX_ERROR(event, args) \
+    if (FAILED(args.Error.GetCode())) {          \
+        return;                                  \
+    }                                            \
 // FILESTORE_VALIDATE_TX_ERROR
 
 ////////////////////////////////////////////////////////////////////////////////
 
 // read-only transactions can be executed atop of an in-memory cache
-#define FILESTORE_TABLET_INDEX_RO_TRANSACTIONS(xxx, ...)                       \
-    xxx(ResolvePath,                        __VA_ARGS__)                       \
-    xxx(AccessNode,                         __VA_ARGS__)                       \
-    xxx(ListNodes,                          __VA_ARGS__)                       \
-    xxx(ReadLink,                           __VA_ARGS__)                       \
-                                                                               \
-    xxx(GetNodeAttr,                        __VA_ARGS__)                       \
-    xxx(GetNodeAttrBatch,                   __VA_ARGS__)                       \
-    xxx(GetNodeXAttr,                       __VA_ARGS__)                       \
-    xxx(ListNodeXAttr,                      __VA_ARGS__)                       \
-                                                                               \
-    xxx(UnsafeGetNode,                      __VA_ARGS__)                       \
-                                                                               \
-    xxx(LoadNodeRefs,                       __VA_ARGS__)                       \
-    xxx(LoadNodes,                          __VA_ARGS__)                       \
-                                                                               \
-    xxx(ReadData,                           __VA_ARGS__)                       \
-                                                                               \
-    xxx(ReadNodeRefs,                       __VA_ARGS__)                       \
-// FILESTORE_TABLET_RO_TRANSACTIONS
+#define FILESTORE_TABLET_INDEX_RO_TRANSACTIONS(xxx, ...) \
+    xxx(ResolvePath, __VA_ARGS__)                        \
+    xxx(AccessNode, __VA_ARGS__)                         \
+    xxx(ListNodes, __VA_ARGS__)                          \
+    xxx(ReadLink, __VA_ARGS__)                           \
+                                                         \
+    xxx(GetNodeAttr, __VA_ARGS__)                        \
+    xxx(GetNodeAttrBatch, __VA_ARGS__)                   \
+    xxx(GetNodeXAttr, __VA_ARGS__)                       \
+    xxx(ListNodeXAttr, __VA_ARGS__)                      \
+                                                         \
+    xxx(UnsafeGetNode, __VA_ARGS__)                      \
+                                                         \
+    xxx(LoadNodeRefs, __VA_ARGS__)                       \
+    xxx(LoadNodes, __VA_ARGS__)                          \
+                                                         \
+    xxx(ReadData, __VA_ARGS__)                           \
+                                                         \
+    xxx(ReadNodeRefs, __VA_ARGS__)                       \
+    // FILESTORE_TABLET_RO_TRANSACTIONS
 
-#define FILESTORE_TABLET_RW_TRANSACTIONS(xxx, ...)                             \
-    xxx(InitSchema,                         __VA_ARGS__)                       \
-    xxx(LoadState,                          __VA_ARGS__)                       \
-    xxx(LoadCompactionMapChunk,             __VA_ARGS__)                       \
-    xxx(UpdateConfig,                       __VA_ARGS__)                       \
-    xxx(ConfigureShards,                    __VA_ARGS__)                       \
-    xxx(ConfigureAsShard,                   __VA_ARGS__)                       \
-                                                                               \
-    xxx(CreateSession,                      __VA_ARGS__)                       \
-    xxx(ResetSession,                       __VA_ARGS__)                       \
-    xxx(DestroySession,                     __VA_ARGS__)                       \
-                                                                               \
-    xxx(CreateCheckpoint,                   __VA_ARGS__)                       \
-    xxx(DeleteCheckpoint,                   __VA_ARGS__)                       \
-                                                                               \
-    xxx(CreateNode,                         __VA_ARGS__)                       \
-    xxx(UnlinkNode,                         __VA_ARGS__)                       \
-    xxx(CompleteUnlinkNode,                 __VA_ARGS__)                       \
-    xxx(RenameNode,                         __VA_ARGS__)                       \
-    xxx(PrepareRenameNodeInSource,          __VA_ARGS__)                       \
-    xxx(RenameNodeInDestination,            __VA_ARGS__)                       \
-    xxx(CommitRenameNodeInSource,           __VA_ARGS__)                       \
-                                                                               \
-    xxx(SetNodeAttr,                        __VA_ARGS__)                       \
-    xxx(SetNodeXAttr,                       __VA_ARGS__)                       \
-    xxx(RemoveNodeXAttr,                    __VA_ARGS__)                       \
-    xxx(SetHasXAttrs,                       __VA_ARGS__)                       \
-                                                                               \
-    xxx(CreateHandle,                       __VA_ARGS__)                       \
-    xxx(DestroyHandle,                      __VA_ARGS__)                       \
-                                                                               \
-    xxx(AcquireLock,                        __VA_ARGS__)                       \
-    xxx(ReleaseLock,                        __VA_ARGS__)                       \
-    xxx(TestLock,                           __VA_ARGS__)                       \
-                                                                               \
-    xxx(WriteData,                          __VA_ARGS__)                       \
-    xxx(AddData,                            __VA_ARGS__)                       \
-    xxx(WriteBatch,                         __VA_ARGS__)                       \
-    xxx(AllocateData,                       __VA_ARGS__)                       \
-                                                                               \
-    xxx(AddBlob,                            __VA_ARGS__)                       \
-    xxx(Cleanup,                            __VA_ARGS__)                       \
-    xxx(Compaction,                         __VA_ARGS__)                       \
-    xxx(DeleteZeroCompactionRanges,         __VA_ARGS__)                       \
-    xxx(WriteCompactionMap,                 __VA_ARGS__)                       \
-    xxx(DeleteGarbage,                      __VA_ARGS__)                       \
-    xxx(DumpCompactionRange,                __VA_ARGS__)                       \
-    xxx(FlushBytes,                         __VA_ARGS__)                       \
-    xxx(TrimBytes,                          __VA_ARGS__)                       \
-    xxx(TruncateCompleted,                  __VA_ARGS__)                       \
-    xxx(TruncateRange,                      __VA_ARGS__)                       \
-    xxx(ZeroRange,                          __VA_ARGS__)                       \
-                                                                               \
-    xxx(FilterAliveNodes,                   __VA_ARGS__)                       \
-    xxx(ChangeStorageConfig,                __VA_ARGS__)                       \
-                                                                               \
-    xxx(DeleteOpLogEntry,                   __VA_ARGS__)                       \
-    xxx(CommitNodeCreationInShard,          __VA_ARGS__)                       \
-                                                                               \
-    xxx(UnsafeDeleteNode,                   __VA_ARGS__)                       \
-    xxx(UnsafeUpdateNode,                   __VA_ARGS__)                       \
-// FILESTORE_TABLET_RW_TRANSACTIONS
+#define FILESTORE_TABLET_RW_TRANSACTIONS(xxx, ...) \
+    xxx(InitSchema, __VA_ARGS__)                   \
+    xxx(LoadState, __VA_ARGS__)                    \
+    xxx(LoadCompactionMapChunk, __VA_ARGS__)       \
+    xxx(UpdateConfig, __VA_ARGS__)                 \
+    xxx(ConfigureShards, __VA_ARGS__)              \
+    xxx(ConfigureAsShard, __VA_ARGS__)             \
+                                                   \
+    xxx(CreateSession, __VA_ARGS__)                \
+    xxx(ResetSession, __VA_ARGS__)                 \
+    xxx(DestroySession, __VA_ARGS__)               \
+                                                   \
+    xxx(CreateCheckpoint, __VA_ARGS__)             \
+    xxx(DeleteCheckpoint, __VA_ARGS__)             \
+                                                   \
+    xxx(CreateNode, __VA_ARGS__)                   \
+    xxx(UnlinkNode, __VA_ARGS__)                   \
+    xxx(CompleteUnlinkNode, __VA_ARGS__)           \
+    xxx(RenameNode, __VA_ARGS__)                   \
+    xxx(PrepareRenameNodeInSource, __VA_ARGS__)    \
+    xxx(RenameNodeInDestination, __VA_ARGS__)      \
+    xxx(CommitRenameNodeInSource, __VA_ARGS__)     \
+                                                   \
+    xxx(SetNodeAttr, __VA_ARGS__)                  \
+    xxx(SetNodeXAttr, __VA_ARGS__)                 \
+    xxx(RemoveNodeXAttr, __VA_ARGS__)              \
+    xxx(SetHasXAttrs, __VA_ARGS__)                 \
+                                                   \
+    xxx(CreateHandle, __VA_ARGS__)                 \
+    xxx(DestroyHandle, __VA_ARGS__)                \
+                                                   \
+    xxx(AcquireLock, __VA_ARGS__)                  \
+    xxx(ReleaseLock, __VA_ARGS__)                  \
+    xxx(TestLock, __VA_ARGS__)                     \
+                                                   \
+    xxx(WriteData, __VA_ARGS__)                    \
+    xxx(AddData, __VA_ARGS__)                      \
+    xxx(WriteBatch, __VA_ARGS__)                   \
+    xxx(AllocateData, __VA_ARGS__)                 \
+                                                   \
+    xxx(AddBlob, __VA_ARGS__)                      \
+    xxx(Cleanup, __VA_ARGS__)                      \
+    xxx(Compaction, __VA_ARGS__)                   \
+    xxx(DeleteZeroCompactionRanges, __VA_ARGS__)   \
+    xxx(WriteCompactionMap, __VA_ARGS__)           \
+    xxx(DeleteGarbage, __VA_ARGS__)                \
+    xxx(DumpCompactionRange, __VA_ARGS__)          \
+    xxx(FlushBytes, __VA_ARGS__)                   \
+    xxx(TrimBytes, __VA_ARGS__)                    \
+    xxx(TruncateCompleted, __VA_ARGS__)            \
+    xxx(TruncateRange, __VA_ARGS__)                \
+    xxx(ZeroRange, __VA_ARGS__)                    \
+                                                   \
+    xxx(FilterAliveNodes, __VA_ARGS__)             \
+    xxx(ChangeStorageConfig, __VA_ARGS__)          \
+                                                   \
+    xxx(DeleteOpLogEntry, __VA_ARGS__)             \
+    xxx(CommitNodeCreationInShard, __VA_ARGS__)    \
+                                                   \
+    xxx(UnsafeDeleteNode, __VA_ARGS__)             \
+    xxx(UnsafeUpdateNode, __VA_ARGS__)             \
+    // FILESTORE_TABLET_RW_TRANSACTIONS
 
-#define FILESTORE_TABLET_TRANSACTIONS(xxx, ...)                                \
-    FILESTORE_TABLET_INDEX_RO_TRANSACTIONS(xxx, __VA_ARGS__)                   \
-    FILESTORE_TABLET_RW_TRANSACTIONS(xxx, __VA_ARGS__)                         \
-// FILESTORE_TABLET_TRANSACTIONS
+#define FILESTORE_TABLET_TRANSACTIONS(xxx, ...)              \
+    FILESTORE_TABLET_INDEX_RO_TRANSACTIONS(xxx, __VA_ARGS__) \
+    FILESTORE_TABLET_RW_TRANSACTIONS(xxx, __VA_ARGS__)       \
+    // FILESTORE_TABLET_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -166,7 +165,7 @@ struct TSessionAware
 
     NProto::TError Error;
 
-    template<typename T>
+    template <typename T>
     explicit TSessionAware(const T& request) noexcept
         : ClientId(GetClientId(request))
         , FileSystemId(GetFileSystemId(request))
@@ -200,10 +199,10 @@ struct TProfileAware
         ProfileLogRequest.SetRequestType(static_cast<ui32>(requestType));
     }
 
-    explicit TProfileAware(NProto::TProfileLogRequestInfo profileLogRequest) noexcept
+    explicit TProfileAware(
+        NProto::TProfileLogRequestInfo profileLogRequest) noexcept
         : ProfileLogRequest(std::move(profileLogRequest))
-    {
-    }
+    {}
 
 protected:
     void Clear()
@@ -243,10 +242,10 @@ struct TWriteRequest
     ui64 NodeId = InvalidNodeId;
 
     TWriteRequest(
-            TRequestInfoPtr requestInfo,
-            const NProto::TWriteDataRequest& request,
-            TByteRange byteRange,
-            IBlockBufferPtr buffer)
+        TRequestInfoPtr requestInfo,
+        const NProto::TWriteDataRequest& request,
+        TByteRange byteRange,
+        IBlockBufferPtr buffer)
         : TSessionAware(request)
         , RequestInfo(std::move(requestInfo))
         , Handle(request.GetHandle())
@@ -275,7 +274,7 @@ struct TNodeOps
     struct TNodeSetHash
     {
         template <typename T>
-        size_t operator ()(const T& value) const noexcept
+        size_t operator()(const T& value) const noexcept
         {
             return IntHash(GetNodeId(value));
         }
@@ -284,7 +283,7 @@ struct TNodeOps
     struct TNodeSetEqual
     {
         template <typename T1, typename T2>
-        bool operator ()(const T1& lhs, const T2& rhs) const noexcept
+        bool operator()(const T1& lhs, const T2& rhs) const noexcept
         {
             return GetNodeId(lhs) == GetNodeId(rhs);
         }
@@ -391,14 +390,13 @@ struct TTxIndexTablet
         ui32 LastRangeId = 0;
 
         TLoadCompactionMapChunk(
-                TRequestInfoPtr requestInfo,
-                ui32 firstRangeId,
-                ui32 rangeCount)
+            TRequestInfoPtr requestInfo,
+            ui32 firstRangeId,
+            ui32 rangeCount)
             : RequestInfo(std::move(requestInfo))
             , FirstRangeId(firstRangeId)
             , RangeCount(rangeCount)
-        {
-        }
+        {}
 
         void Clear() override
         {
@@ -418,9 +416,9 @@ struct TTxIndexTablet
         const NProto::TFileSystem FileSystem;
 
         TUpdateConfig(
-                TRequestInfoPtr requestInfo,
-                ui64 txId,
-                NProto::TFileSystem fileSystem)
+            TRequestInfoPtr requestInfo,
+            ui64 txId,
+            NProto::TFileSystem fileSystem)
             : RequestInfo(std::move(requestInfo))
             , TxId(txId)
             , FileSystem(std::move(fileSystem))
@@ -442,8 +440,8 @@ struct TTxIndexTablet
         NProtoPrivate::TConfigureShardsRequest Request;
 
         TConfigureShards(
-                TRequestInfoPtr requestInfo,
-                NProtoPrivate::TConfigureShardsRequest request)
+            TRequestInfoPtr requestInfo,
+            NProtoPrivate::TConfigureShardsRequest request)
             : RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
         {}
@@ -464,8 +462,8 @@ struct TTxIndexTablet
         NProtoPrivate::TConfigureAsShardRequest Request;
 
         TConfigureAsShard(
-                TRequestInfoPtr requestInfo,
-                NProtoPrivate::TConfigureAsShardRequest request)
+            TRequestInfoPtr requestInfo,
+            NProtoPrivate::TConfigureAsShardRequest request)
             : RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
         {}
@@ -489,8 +487,8 @@ struct TTxIndexTablet
         TString SessionId;
 
         TCreateSession(
-                TRequestInfoPtr requestInfo,
-                NProtoPrivate::TCreateSessionRequest request)
+            TRequestInfoPtr requestInfo,
+            NProtoPrivate::TCreateSessionRequest request)
             : RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
         {}
@@ -518,10 +516,10 @@ struct TTxIndexTablet
         TNodeSet Nodes;
 
         TResetSession(
-                TRequestInfoPtr requestInfo,
-                TString sessionId,
-                ui64 sessionSeqNo,
-                NProto::TResetSessionRequest request)
+            TRequestInfoPtr requestInfo,
+            TString sessionId,
+            ui64 sessionSeqNo,
+            NProto::TResetSessionRequest request)
             : RequestInfo(std::move(requestInfo))
             , SessionId(std::move(sessionId))
             , SessionSeqNo(sessionSeqNo)
@@ -551,10 +549,10 @@ struct TTxIndexTablet
         TNodeSet Nodes;
 
         TDestroySession(
-                TRequestInfoPtr requestInfo,
-                TString sessionId,
-                ui64 sessionSeqNo,
-                NProtoPrivate::TDestroySessionRequest request)
+            TRequestInfoPtr requestInfo,
+            TString sessionId,
+            ui64 sessionSeqNo,
+            NProtoPrivate::TDestroySessionRequest request)
             : RequestInfo(std::move(requestInfo))
             , SessionId(std::move(sessionId))
             , SessionSeqNo(sessionSeqNo)
@@ -584,9 +582,9 @@ struct TTxIndexTablet
         ui64 CommitId = InvalidCommitId;
 
         TCreateCheckpoint(
-                TRequestInfoPtr requestInfo,
-                TString checkpointId,
-                ui64 nodeId)
+            TRequestInfoPtr requestInfo,
+            TString checkpointId,
+            ui64 nodeId)
             : RequestInfo(std::move(requestInfo))
             , CheckpointId(std::move(checkpointId))
             , NodeId(nodeId)
@@ -621,16 +619,17 @@ struct TTxIndexTablet
         TVector<IIndexTabletDatabase::TNodeRef> NodeRefs;
 
         TVector<TIndexTabletDatabase::TCheckpointBlob> Blobs;
-        TVector<TIndexTabletDatabase::IIndexTabletDatabase::TMixedBlob> MixedBlobs;
+        TVector<TIndexTabletDatabase::IIndexTabletDatabase::TMixedBlob>
+            MixedBlobs;
 
         // NOTE: should persist state across tx restarts
         TSet<ui32> MixedBlocksRanges;
 
         TDeleteCheckpoint(
-                TRequestInfoPtr requestInfo,
-                TString checkpointId,
-                EDeleteCheckpointMode mode,
-                ui64 collectBarrier)
+            TRequestInfoPtr requestInfo,
+            TString checkpointId,
+            EDeleteCheckpointMode mode,
+            ui64 collectBarrier)
             : RequestInfo(std::move(requestInfo))
             , CheckpointId(std::move(checkpointId))
             , Mode(mode)
@@ -668,8 +667,8 @@ struct TTxIndexTablet
         ui64 CommitId = InvalidCommitId;
 
         TResolvePath(
-                TRequestInfoPtr requestInfo,
-                const NProto::TResolvePathRequest& request)
+            TRequestInfoPtr requestInfo,
+            const NProto::TResolvePathRequest& request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(request)
@@ -712,11 +711,11 @@ struct TTxIndexTablet
         NProto::TCreateNodeResponse Response;
 
         TCreateNode(
-                TRequestInfoPtr requestInfo,
-                NProto::TCreateNodeRequest request,
-                ui64 parentNodeId,
-                ui64 targetNodeId,
-                NProto::TNode attrs)
+            TRequestInfoPtr requestInfo,
+            NProto::TCreateNodeRequest request,
+            ui64 parentNodeId,
+            ui64 targetNodeId,
+            NProto::TNode attrs)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , ParentNodeId(parentNodeId)
@@ -726,8 +725,7 @@ struct TTxIndexTablet
             , RequestShardId(request.GetShardFileSystemId())
             , ShardId(RequestShardId)
             , Request(std::move(request))
-        {
-        }
+        {}
 
         void Clear() override
         {
@@ -765,8 +763,8 @@ struct TTxIndexTablet
         NProto::TOpLogEntry OpLogEntry;
 
         TUnlinkNode(
-                TRequestInfoPtr requestInfo,
-                NProto::TUnlinkNodeRequest request)
+            TRequestInfoPtr requestInfo,
+            NProto::TUnlinkNodeRequest request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
@@ -809,10 +807,10 @@ struct TTxIndexTablet
         NProto::TOpLogEntry OpLogEntry;
 
         TCompleteUnlinkNode(
-                TRequestInfoPtr requestInfo,
-                NProto::TUnlinkNodeRequest request,
-                ui64 opLogEntryId,
-                NProto::TUnlinkNodeResponse response)
+            TRequestInfoPtr requestInfo,
+            NProto::TUnlinkNodeRequest request,
+            ui64 opLogEntryId,
+            NProto::TUnlinkNodeResponse response)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
@@ -867,8 +865,8 @@ struct TTxIndexTablet
         TString ShardNodeNameForUnlink;
 
         TRenameNode(
-                TRequestInfoPtr requestInfo,
-                NProto::TRenameNodeRequest request)
+            TRequestInfoPtr requestInfo,
+            NProto::TRenameNodeRequest request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , ParentNodeId(request.GetNodeId())
@@ -924,9 +922,9 @@ struct TTxIndexTablet
         NProto::TError Error;
 
         TPrepareRenameNodeInSource(
-                TRequestInfoPtr requestInfo,
-                NProto::TRenameNodeRequest request,
-                TString newParentShardId)
+            TRequestInfoPtr requestInfo,
+            NProto::TRenameNodeRequest request,
+            TString newParentShardId)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , ParentNodeId(request.GetNodeId())
@@ -974,8 +972,8 @@ struct TTxIndexTablet
         TString ShardNodeNameForUnlink;
 
         TRenameNodeInDestination(
-                TRequestInfoPtr requestInfo,
-                NProtoPrivate::TRenameNodeInDestinationRequest request)
+            TRequestInfoPtr requestInfo,
+            NProtoPrivate::TRenameNodeInDestinationRequest request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , NewParentNodeId(request.GetNewParentId())
@@ -1019,10 +1017,10 @@ struct TTxIndexTablet
         TMaybe<IIndexTabletDatabase::TNodeRef> ChildRef;
 
         TCommitRenameNodeInSource(
-                TRequestInfoPtr requestInfo,
-                NProto::TRenameNodeRequest request,
-                NProtoPrivate::TRenameNodeInDestinationResponse response,
-                ui64 opLogEntryId)
+            TRequestInfoPtr requestInfo,
+            NProto::TRenameNodeRequest request,
+            NProtoPrivate::TRenameNodeInDestinationResponse response,
+            ui64 opLogEntryId)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
@@ -1055,8 +1053,8 @@ struct TTxIndexTablet
         TMaybe<IIndexTabletDatabase::TNode> Node;
 
         TAccessNode(
-                TRequestInfoPtr requestInfo,
-                const NProto::TAccessNodeRequest& request)
+            TRequestInfoPtr requestInfo,
+            const NProto::TAccessNodeRequest& request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(request)
@@ -1088,8 +1086,8 @@ struct TTxIndexTablet
         TMaybe<IIndexTabletDatabase::TNode> Node;
 
         TReadLink(
-                TRequestInfoPtr requestInfo,
-                const NProto::TReadLinkRequest& request)
+            TRequestInfoPtr requestInfo,
+            const NProto::TReadLinkRequest& request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , NodeId(request.GetNodeId())
@@ -1128,10 +1126,10 @@ struct TTxIndexTablet
         ui32 BytesToPrecharge = 0;
 
         TListNodes(
-                TRequestInfoPtr requestInfo,
-                const NProto::TListNodesRequest& request,
-                ui32 maxBytes,
-                ui32 maxBytesMultiplier)
+            TRequestInfoPtr requestInfo,
+            const NProto::TListNodesRequest& request,
+            ui32 maxBytes,
+            ui32 maxBytesMultiplier)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(request)
@@ -1178,8 +1176,8 @@ struct TTxIndexTablet
         TMaybe<IIndexTabletDatabase::TNode> Node;
 
         TSetNodeAttr(
-                TRequestInfoPtr requestInfo,
-                const NProto::TSetNodeAttrRequest& request)
+            TRequestInfoPtr requestInfo,
+            const NProto::TSetNodeAttrRequest& request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(request)
@@ -1216,8 +1214,8 @@ struct TTxIndexTablet
         TString ShardNodeName;
 
         TGetNodeAttr(
-                TRequestInfoPtr requestInfo,
-                const NProto::TGetNodeAttrRequest& request)
+            TRequestInfoPtr requestInfo,
+            const NProto::TGetNodeAttrRequest& request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(request)
@@ -1255,9 +1253,9 @@ struct TTxIndexTablet
         TMaybe<IIndexTabletDatabase::TNode> ParentNode;
 
         TGetNodeAttrBatch(
-                TRequestInfoPtr requestInfo,
-                NProtoPrivate::TGetNodeAttrBatchRequest request,
-                NProtoPrivate::TGetNodeAttrBatchResponse response)
+            TRequestInfoPtr requestInfo,
+            NProtoPrivate::TGetNodeAttrBatchRequest request,
+            NProtoPrivate::TGetNodeAttrBatchResponse response)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
@@ -1293,8 +1291,8 @@ struct TTxIndexTablet
         TMaybe<TIndexTabletDatabase::TNodeAttr> Attr;
 
         TSetNodeXAttr(
-                TRequestInfoPtr requestInfo,
-                const NProto::TSetNodeXAttrRequest& request)
+            TRequestInfoPtr requestInfo,
+            const NProto::TSetNodeXAttrRequest& request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(request)
@@ -1332,8 +1330,8 @@ struct TTxIndexTablet
         TMaybe<TIndexTabletDatabase::TNodeAttr> Attr;
 
         TGetNodeXAttr(
-                TRequestInfoPtr requestInfo,
-                const NProto::TGetNodeXAttrRequest& request)
+            TRequestInfoPtr requestInfo,
+            const NProto::TGetNodeXAttrRequest& request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(request)
@@ -1368,8 +1366,8 @@ struct TTxIndexTablet
         TVector<TIndexTabletDatabase::TNodeAttr> Attrs;
 
         TListNodeXAttr(
-                TRequestInfoPtr requestInfo,
-                const NProto::TListNodeXAttrRequest& request)
+            TRequestInfoPtr requestInfo,
+            const NProto::TListNodeXAttrRequest& request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(request)
@@ -1404,8 +1402,8 @@ struct TTxIndexTablet
         TMaybe<TIndexTabletDatabase::TNodeAttr> Attr;
 
         TRemoveNodeXAttr(
-                TRequestInfoPtr requestInfo,
-                const NProto::TRemoveNodeXAttrRequest& request)
+            TRequestInfoPtr requestInfo,
+            const NProto::TRemoveNodeXAttrRequest& request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(request)
@@ -1436,8 +1434,8 @@ struct TTxIndexTablet
         bool IsToBeChanged = false;
 
         TSetHasXAttrs(
-                TRequestInfoPtr requestInfo,
-                NProtoPrivate::TSetHasXAttrsRequest request)
+            TRequestInfoPtr requestInfo,
+            NProtoPrivate::TSetHasXAttrsRequest request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
@@ -1483,8 +1481,8 @@ struct TTxIndexTablet
         NProto::TCreateHandleResponse Response;
 
         TCreateHandle(
-                TRequestInfoPtr requestInfo,
-                NProto::TCreateHandleRequest request)
+            TRequestInfoPtr requestInfo,
+            NProto::TCreateHandleRequest request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , NodeId(request.GetNodeId())
@@ -1495,8 +1493,7 @@ struct TTxIndexTablet
             , Gid(request.GetGid())
             , RequestShardId(request.GetShardFileSystemId())
             , Request(std::move(request))
-        {
-        }
+        {}
 
         void Clear() override
         {
@@ -1532,8 +1529,8 @@ struct TTxIndexTablet
         TMaybe<IIndexTabletDatabase::TNode> Node;
 
         TDestroyHandle(
-                TRequestInfoPtr requestInfo,
-                const NProto::TDestroyHandleRequest& request)
+            TRequestInfoPtr requestInfo,
+            const NProto::TDestroyHandleRequest& request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(request)
@@ -1558,8 +1555,8 @@ struct TTxIndexTablet
         const NProto::TAcquireLockRequest Request;
 
         TAcquireLock(
-                TRequestInfoPtr requestInfo,
-                const NProto::TAcquireLockRequest& request)
+            TRequestInfoPtr requestInfo,
+            const NProto::TAcquireLockRequest& request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(request)
@@ -1585,8 +1582,8 @@ struct TTxIndexTablet
         std::optional<NProto::ELockOrigin> IncompatibleLockOrigin;
 
         TReleaseLock(
-                TRequestInfoPtr requestInfo,
-                const NProto::TReleaseLockRequest& request)
+            TRequestInfoPtr requestInfo,
+            const NProto::TReleaseLockRequest& request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(request)
@@ -1612,8 +1609,8 @@ struct TTxIndexTablet
         std::optional<TLockIncompatibleInfo> Incompatible;
 
         TTestLock(
-                TRequestInfoPtr requestInfo,
-                const NProto::TTestLockRequest& request)
+            TRequestInfoPtr requestInfo,
+            const NProto::TTestLockRequest& request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(request)
@@ -1657,13 +1654,13 @@ struct TTxIndexTablet
 
         template <typename TReadRequest>
         TReadData(
-                TRequestInfoPtr requestInfo,
-                const TReadRequest& request,
-                TByteRange originByteRange,
-                TByteRange alignedByteRange,
-                IBlockBufferPtr buffer,
-                bool describeOnly,
-                NProto::TProfileLogRequestInfo profileLogRequest)
+            TRequestInfoPtr requestInfo,
+            const TReadRequest& request,
+            TByteRange originByteRange,
+            TByteRange alignedByteRange,
+            IBlockBufferPtr buffer,
+            bool describeOnly,
+            NProto::TProfileLogRequestInfo profileLogRequest)
             : TSessionAware(request)
             , TProfileAware(std::move(profileLogRequest))
             , RequestInfo(std::move(requestInfo))
@@ -1723,12 +1720,12 @@ struct TTxIndexTablet
         TMaybe<IIndexTabletDatabase::TNode> Node;
 
         TWriteData(
-                TRequestInfoPtr requestInfo,
-                const ui32 writeBlobThreshold,
-                const NProto::TWriteDataRequest& request,
-                TByteRange byteRange,
-                IBlockBufferPtr buffer,
-                NProto::TProfileLogRequestInfo profileLogRequest)
+            TRequestInfoPtr requestInfo,
+            const ui32 writeBlobThreshold,
+            const NProto::TWriteDataRequest& request,
+            TByteRange byteRange,
+            IBlockBufferPtr buffer,
+            NProto::TProfileLogRequestInfo profileLogRequest)
             : TSessionAware(request)
             , TProfileAware(std::move(profileLogRequest))
             , RequestInfo(std::move(requestInfo))
@@ -1752,8 +1749,8 @@ struct TTxIndexTablet
         bool ShouldWriteBlob() const
         {
             // skip fresh completely for large aligned writes
-            return ByteRange.IsAligned()
-                && ByteRange.Length >= WriteBlobThreshold;
+            return ByteRange.IsAligned() &&
+                   ByteRange.Length >= WriteBlobThreshold;
         }
     };
 
@@ -1780,13 +1777,13 @@ struct TTxIndexTablet
         TMaybe<IIndexTabletDatabase::TNode> Node;
 
         TAddData(
-                TRequestInfoPtr requestInfo,
-                const NProtoPrivate::TAddDataRequest& request,
-                TByteRange byteRange,
-                TVector<NKikimr::TLogoBlobID> blobIds,
-                TVector<TBlockBytesMeta> unalignedDataParts,
-                ui64 commitId,
-                NProto::TProfileLogRequestInfo profileLogRequest)
+            TRequestInfoPtr requestInfo,
+            const NProtoPrivate::TAddDataRequest& request,
+            TByteRange byteRange,
+            TVector<NKikimr::TLogoBlobID> blobIds,
+            TVector<TBlockBytesMeta> unalignedDataParts,
+            ui64 commitId,
+            NProto::TProfileLogRequestInfo profileLogRequest)
             : TSessionAware(request)
             , TProfileAware(std::move(profileLogRequest))
             , RequestInfo(std::move(requestInfo))
@@ -1826,9 +1823,9 @@ struct TTxIndexTablet
         NProto::TError Error;
 
         TWriteBatch(
-                TRequestInfoPtr requestInfo,
-                bool skipFresh,
-                TWriteRequestList writeBatch)
+            TRequestInfoPtr requestInfo,
+            bool skipFresh,
+            TWriteRequestList writeBatch)
             : RequestInfo(std::move(requestInfo))
             , SkipFresh(skipFresh)
             , WriteBatch(std::move(writeBatch))
@@ -1864,8 +1861,8 @@ struct TTxIndexTablet
         TMaybe<IIndexTabletDatabase::TNode> Node;
 
         TAllocateData(
-                TRequestInfoPtr requestInfo,
-                const NProto::TAllocateDataRequest& request)
+            TRequestInfoPtr requestInfo,
+            const NProto::TAllocateDataRequest& request)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Handle(request.GetHandle())
@@ -1906,14 +1903,14 @@ struct TTxIndexTablet
         NProto::TError Error;
 
         TAddBlob(
-                TRequestInfoPtr requestInfo,
-                EAddBlobMode mode,
-                TVector<TMixedBlobMeta> srcBlobs,
-                TVector<TBlock> srcBlocks,
-                TVector<TMixedBlobMeta> mixedBlobs,
-                TVector<TMergedBlobMeta> mergedBlobs,
-                TVector<TWriteRange> writeRanges,
-                TVector<TBlockBytesMeta> unalignedDataParts)
+            TRequestInfoPtr requestInfo,
+            EAddBlobMode mode,
+            TVector<TMixedBlobMeta> srcBlobs,
+            TVector<TBlock> srcBlocks,
+            TVector<TMixedBlobMeta> mixedBlobs,
+            TVector<TMergedBlobMeta> mergedBlobs,
+            TVector<TWriteRange> writeRanges,
+            TVector<TBlockBytesMeta> unalignedDataParts)
             : TProfileAware(EFileStoreSystemRequest::AddBlob)
             , RequestInfo(std::move(requestInfo))
             , Mode(mode)
@@ -1955,10 +1952,10 @@ struct TTxIndexTablet
         TSet<ui32> MixedBlocksRanges;
 
         TFlushBytes(
-                TRequestInfoPtr requestInfo,
-                ui64 readCommitId,
-                ui64 chunkId,
-                TVector<TBytes> bytes)
+            TRequestInfoPtr requestInfo,
+            ui64 readCommitId,
+            ui64 chunkId,
+            TVector<TBytes> bytes)
             : TProfileAware(EFileStoreSystemRequest::FlushBytes)
             , RequestInfo(std::move(requestInfo))
             , ReadCommitId(readCommitId)
@@ -2080,15 +2077,14 @@ struct TTxIndexTablet
         const ui32 StartIndex;
 
         TDeleteZeroCompactionRanges(
-                TRequestInfoPtr requestInfo,
-                ui32 startIndex)
+            TRequestInfoPtr requestInfo,
+            ui32 startIndex)
             : RequestInfo(std::move(requestInfo))
             , StartIndex(startIndex)
         {}
 
         void Clear() override
-        {
-        }
+        {}
     };
 
     //
@@ -2101,15 +2097,14 @@ struct TTxIndexTablet
         const TVector<NProtoPrivate::TCompactionRangeStats> Ranges;
 
         TWriteCompactionMap(
-                TRequestInfoPtr requestInfo,
-                TVector<NProtoPrivate::TCompactionRangeStats> ranges)
+            TRequestInfoPtr requestInfo,
+            TVector<NProtoPrivate::TCompactionRangeStats> ranges)
             : RequestInfo(std::move(requestInfo))
             , Ranges(std::move(ranges))
         {}
 
         void Clear() override
-        {
-        }
+        {}
     };
 
     //
@@ -2129,10 +2124,10 @@ struct TTxIndexTablet
         TVector<TPartialBlobId> RemainingGarbageBlobs;
 
         TDeleteGarbage(
-                TRequestInfoPtr requestInfo,
-                ui64 collectCommitId,
-                TVector<TPartialBlobId> newBlobs,
-                TVector<TPartialBlobId> garbageBlobs)
+            TRequestInfoPtr requestInfo,
+            ui64 collectCommitId,
+            TVector<TPartialBlobId> newBlobs,
+            TVector<TPartialBlobId> garbageBlobs)
             : TProfileAware(EFileStoreSystemRequest::DeleteGarbage)
             , RequestInfo(std::move(requestInfo))
             , CollectCommitId(collectCommitId)
@@ -2162,9 +2157,9 @@ struct TTxIndexTablet
         NProto::TError Error;
 
         TTruncateRange(
-                TRequestInfoPtr requestInfo,
-                ui64 nodeId,
-                TByteRange range)
+            TRequestInfoPtr requestInfo,
+            ui64 nodeId,
+            TByteRange range)
             : TProfileAware(EFileStoreSystemRequest::TruncateRange)
             , RequestInfo(std::move(requestInfo))
             , NodeId(nodeId)
@@ -2188,9 +2183,7 @@ struct TTxIndexTablet
         const TRequestInfoPtr RequestInfo;
         const ui64 NodeId;
 
-        TTruncateCompleted(
-                TRequestInfoPtr requestInfo,
-                ui64 nodeId)
+        TTruncateCompleted(TRequestInfoPtr requestInfo, ui64 nodeId)
             : RequestInfo(std::move(requestInfo))
             , NodeId(nodeId)
         {}
@@ -2215,10 +2208,7 @@ struct TTxIndexTablet
 
         NProto::TError Error;
 
-        TZeroRange(
-                TRequestInfoPtr requestInfo,
-                ui64 nodeId,
-                TByteRange range)
+        TZeroRange(TRequestInfoPtr requestInfo, ui64 nodeId, TByteRange range)
             : TProfileAware(EFileStoreSystemRequest::ZeroRange)
             , RequestInfo(std::move(requestInfo))
             , NodeId(nodeId)
@@ -2245,8 +2235,8 @@ struct TTxIndexTablet
         TSet<ui64> AliveNodes;
 
         TFilterAliveNodes(
-                TRequestInfoPtr requestInfo,
-                TStackVec<ui64, 16> nodes)
+            TRequestInfoPtr requestInfo,
+            TStackVec<ui64, 16> nodes)
             : RequestInfo(std::move(requestInfo))
             , Nodes(std::move(nodes))
         {}
@@ -2269,9 +2259,7 @@ struct TTxIndexTablet
         const ui32 RangeId = 0;
         TVector<TMixedBlobMeta> Blobs;
 
-        TDumpCompactionRange(
-                TRequestInfoPtr requestInfo,
-                ui32 rangeId)
+        TDumpCompactionRange(TRequestInfoPtr requestInfo, ui32 rangeId)
             : RequestInfo(std::move(requestInfo))
             , RangeId(rangeId)
         {}
@@ -2296,13 +2284,13 @@ struct TTxIndexTablet
         NProto::TStorageConfig ResultStorageConfig;
 
         TChangeStorageConfig(
-                TRequestInfoPtr requestInfo,
-                NProto::TStorageConfig storageConfig,
-                bool mergeWithStorageConfigFromTabletDB)
+            TRequestInfoPtr requestInfo,
+            NProto::TStorageConfig storageConfig,
+            bool mergeWithStorageConfigFromTabletDB)
             : RequestInfo(std::move(requestInfo))
             , StorageConfigNew(std::move(storageConfig))
             , MergeWithStorageConfigFromTabletDB(
-                mergeWithStorageConfigFromTabletDB)
+                  mergeWithStorageConfigFromTabletDB)
         {}
 
         void Clear() override
@@ -2328,8 +2316,7 @@ struct TTxIndexTablet
         {}
 
         void Clear() override
-        {
-        }
+        {}
     };
 
     //
@@ -2347,10 +2334,10 @@ struct TTxIndexTablet
         const ui64 EntryId;
 
         TCommitNodeCreationInShard(
-                TString sessionId,
-                ui64 requestId,
-                NProto::TCreateNodeResponse response,
-                ui64 entryId)
+            TString sessionId,
+            ui64 requestId,
+            NProto::TCreateNodeResponse response,
+            ui64 entryId)
             : SessionId(std::move(sessionId))
             , RequestId(requestId)
             , Response(std::move(response))
@@ -2358,8 +2345,7 @@ struct TTxIndexTablet
         {}
 
         void Clear() override
-        {
-        }
+        {}
     };
 
     //
@@ -2377,8 +2363,8 @@ struct TTxIndexTablet
         NProto::TError Error;
 
         TUnsafeDeleteNode(
-                TRequestInfoPtr requestInfo,
-                NProtoPrivate::TUnsafeDeleteNodeRequest request)
+            TRequestInfoPtr requestInfo,
+            NProtoPrivate::TUnsafeDeleteNodeRequest request)
             : RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
         {}
@@ -2401,8 +2387,8 @@ struct TTxIndexTablet
         TMaybe<IIndexTabletDatabase::TNode> Node;
 
         TUnsafeUpdateNode(
-                TRequestInfoPtr requestInfo,
-                NProtoPrivate::TUnsafeUpdateNodeRequest request)
+            TRequestInfoPtr requestInfo,
+            NProtoPrivate::TUnsafeUpdateNodeRequest request)
             : RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
         {}
@@ -2424,8 +2410,8 @@ struct TTxIndexTablet
         TMaybe<IIndexTabletDatabase::TNode> Node;
 
         TUnsafeGetNode(
-                TRequestInfoPtr requestInfo,
-                NProtoPrivate::TUnsafeGetNodeRequest request)
+            TRequestInfoPtr requestInfo,
+            NProtoPrivate::TUnsafeGetNodeRequest request)
             : RequestInfo(std::move(requestInfo))
             , Request(std::move(request))
         {}
@@ -2459,11 +2445,11 @@ struct TTxIndexTablet
         TString NextCookie;
 
         TLoadNodeRefs(
-                TRequestInfoPtr requestInfo,
-                ui64 nodeId,
-                TString cookie,
-                ui64 maxNodeRefs,
-                TDuration schedulePeriod)
+            TRequestInfoPtr requestInfo,
+            ui64 nodeId,
+            TString cookie,
+            ui64 maxNodeRefs,
+            TDuration schedulePeriod)
             : RequestInfo(std::move(requestInfo))
             , NodeId(nodeId)
             , Cookie(std::move(cookie))
@@ -2496,10 +2482,10 @@ struct TTxIndexTablet
         ui64 NextNodeId = 0;
 
         TLoadNodes(
-                TRequestInfoPtr requestInfo,
-                ui64 nodeId,
-                ui64 maxNodes,
-                TDuration schedulePeriod)
+            TRequestInfoPtr requestInfo,
+            ui64 nodeId,
+            ui64 maxNodes,
+            TDuration schedulePeriod)
             : RequestInfo(std::move(requestInfo))
             , NodeId(nodeId)
             , MaxNodes(maxNodes)
@@ -2532,8 +2518,8 @@ struct TTxIndexTablet
         TString NextCookie;
 
         TReadNodeRefs(
-                TRequestInfoPtr requestInfo,
-                const NProtoPrivate::TReadNodeRefsRequest& request)
+            TRequestInfoPtr requestInfo,
+            const NProtoPrivate::TReadNodeRefsRequest& request)
             : RequestInfo(std::move(requestInfo))
             , Request(request)
             , NodeId(request.GetNodeId())
@@ -2549,8 +2535,7 @@ struct TTxIndexTablet
             NextNodeId = 0;
             NextCookie.clear();
         }
-   };
-
+    };
 };
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -52,11 +52,10 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<TRequest> request)
     {
-        Requests.emplace_back(
-            TRequestInfo{
-                .Promise = NewPromise<TResponse>(),
-                .CallContext = std::move(callContext),
-                .Request = std::move(request)});
+        Requests.emplace_back(TRequestInfo{
+            .Promise = NewPromise<TResponse>(),
+            .CallContext = std::move(callContext),
+            .Request = std::move(request)});
         return Requests.back().Promise;
     }
 
@@ -182,8 +181,7 @@ public:
                 SwitchedToSecondary ? SecondaryClientInfo : PrimaryClientInfo;
 
             std::apply(
-                [currentClientInfo](auto&... deferredRequests)
-                {
+                [currentClientInfo](auto&... deferredRequests) {
                     (deferredRequests.ExecuteSavedRequests(currentClientInfo),
                      ...);
                 },

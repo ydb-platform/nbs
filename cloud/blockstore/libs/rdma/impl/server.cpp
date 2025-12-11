@@ -1,5 +1,6 @@
 #include "server.h"
 
+#include "adaptive_wait.h"
 #include "buffer.h"
 #include "event.h"
 #include "list.h"
@@ -9,11 +10,10 @@
 #include "utils.h"
 #include "verbs.h"
 #include "work_queue.h"
-#include "adaptive_wait.h"
 
-#include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/rdma/iface/probes.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
+#include <cloud/blockstore/libs/service/context.h>
 
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -76,8 +76,7 @@ enum class ERequestState
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRequest
-    : TListNode<TRequest>
+struct TRequest: TListNode<TRequest>
 {
     std::weak_ptr<TServerSession> Session;
 
@@ -88,11 +87,11 @@ struct TRequest
     ui32 Status = 0;
     ui32 ResponseBytes = 0;
 
-    TBufferDesc In {};
-    TBufferDesc Out {};
+    TBufferDesc In{};
+    TBufferDesc Out{};
 
-    TPooledBuffer InBuffer {};
-    TPooledBuffer OutBuffer {};
+    TPooledBuffer InBuffer{};
+    TPooledBuffer OutBuffer{};
 
     TRequest(std::weak_ptr<TServerSession> session)
         : Session(std::move(session))
@@ -104,7 +103,7 @@ struct TRequest
 void StoreRequest(TSendWr* send, TRequestPtr req)
 {
     Y_ABORT_UNLESS(send->context == nullptr);
-    send->context = req.release();  // ownership transferred
+    send->context = req.release();   // ownership transferred
 }
 
 TRequestPtr ExtractRequest(TSendWr* send)
@@ -268,7 +267,8 @@ private:
     TLog Log;
     size_t MaxInflightBytes;
 
-    struct {
+    struct
+    {
         TLogThrottler Inflight = TLogThrottler(LOG_THROTTLER_PERIOD);
     } LogThrottler;
 
@@ -278,8 +278,8 @@ private:
     TBufferPool SendBuffers;
     TBufferPool RecvBuffers;
 
-    TPooledBuffer SendBuffer {};
-    TPooledBuffer RecvBuffer {};
+    TPooledBuffer SendBuffer{};
+    TPooledBuffer RecvBuffer{};
 
     TVector<TSendWr> SendWrs;
     TVector<TRecvWr> RecvWrs;
@@ -289,7 +289,8 @@ private:
 
     union {
         const ui64 Id = RandomNumber(Max<ui64>());
-        struct {
+        struct
+        {
             const ui32 RecvMagic;
             const ui32 SendMagic;
         };
@@ -353,13 +354,13 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TServerSession::TServerSession(
-        NVerbs::IVerbsPtr verbs,
-        NVerbs::TConnectionPtr connection,
-        TCompletionPoller* completionPoller,
-        IServerHandlerPtr handler,
-        TServerConfigPtr config,
-        TEndpointCountersPtr stats,
-        TLog log)
+    NVerbs::IVerbsPtr verbs,
+    NVerbs::TConnectionPtr connection,
+    TCompletionPoller* completionPoller,
+    IServerHandlerPtr handler,
+    TServerConfigPtr config,
+    TEndpointCountersPtr stats,
+    TLog log)
     : Verbs(std::move(verbs))
     , Connection(std::move(connection))
     , CompletionPoller(completionPoller)
@@ -371,14 +372,17 @@ TServerSession::TServerSession(
 {
     Connection->context = this;
 
-    Log.SetFormatter([=, this](ELogPriority p, TStringBuf msg) {
-        Y_UNUSED(p);
-        return TStringBuilder() << "[" << Id << "] " << msg;
-    });
+    Log.SetFormatter(
+        [=, this](ELogPriority p, TStringBuf msg)
+        {
+            Y_UNUSED(p);
+            return TStringBuilder() << "[" << Id << "] " << msg;
+        });
 
-    RDMA_INFO("start session " << Verbs->GetPeer(Connection.get())
-        << " [send_magic=" << Hex(SendMagic, HF_FULL)
-        << " recv_magic=" << Hex(RecvMagic, HF_FULL) << "]");
+    RDMA_INFO(
+        "start session " << Verbs->GetPeer(Connection.get())
+                         << " [send_magic=" << Hex(SendMagic, HF_FULL)
+                         << " recv_magic=" << Hex(RecvMagic, HF_FULL) << "]");
 }
 
 void TServerSession::CreateQP()
@@ -391,19 +395,20 @@ void TServerSession::CreateQP()
         2 * Config->QueueSize,   // send + recv
         this,
         CompletionChannel.get(),
-        0);                      // comp_vector
+        0);   // comp_vector
 
     ibv_qp_init_attr qp_attrs = {
         .qp_context = nullptr,
         .send_cq = CompletionQueue.get(),
         .recv_cq = CompletionQueue.get(),
-        .cap = {
-            .max_send_wr = Config->QueueSize,
-            .max_recv_wr = Config->QueueSize,
-            .max_send_sge = RDMA_MAX_SEND_SGE,
-            .max_recv_sge = RDMA_MAX_RECV_SGE,
-            .max_inline_data = 16,
-        },
+        .cap =
+            {
+                .max_send_wr = Config->QueueSize,
+                .max_recv_wr = Config->QueueSize,
+                .max_send_sge = RDMA_MAX_SEND_SGE,
+                .max_recv_sge = RDMA_MAX_RECV_SGE,
+                .max_inline_data = 16,
+            },
         .qp_type = IBV_QPT_RC,
         .sq_sig_all = 1,
     };
@@ -499,7 +504,7 @@ void TServerSession::Stop() noexcept
     try {
         Verbs->Disconnect(Connection.get());
 
-    } catch (const TServiceError &e) {
+    } catch (const TServiceError& e) {
         RDMA_ERROR("unable to disconnect session");
     }
 }
@@ -594,9 +599,8 @@ void TServerSession::Flush()
 
 bool TServerSession::IsFlushed()
 {
-    return FlushStarted
-        && SendQueue.Size() == Config->QueueSize
-        && RecvQueue.Size() == Config->QueueSize;
+    return FlushStarted && SendQueue.Size() == Config->QueueSize &&
+           RecvQueue.Size() == Config->QueueSize;
 }
 
 int TServerSession::ValidateCompletion(ibv_wc* wc) noexcept
@@ -656,8 +660,10 @@ void TServerSession::HandleCompletionEvent(ibv_wc* wc)
 {
     auto id = TWorkRequestId(wc->wr_id);
 
-    RDMA_TRACE(NVerbs::GetOpcodeName(wc->opcode) << " " << id
-        << " completed with " << NVerbs::GetStatusString(wc->status));
+    RDMA_TRACE(
+        NVerbs::GetOpcodeName(wc->opcode)
+        << " " << id << " completed with "
+        << NVerbs::GetStatusString(wc->status));
 
     if (ValidateCompletion(wc)) {
         return;
@@ -722,11 +728,11 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv, ibv_wc_status status)
     if (version != RDMA_PROTO_VERSION) {
         RDMA_ERROR(
             "RECV " << TWorkRequestId(recv->wr.wr_id)
-            << "incompatible protocol version " << version
-            << " != " << static_cast<int>(RDMA_PROTO_VERSION));
+                    << "incompatible protocol version " << version
+                    << " != " << static_cast<int>(RDMA_PROTO_VERSION));
 
         Counters->RecvRequestError();
-        RecvRequest(recv);  // should always be posted
+        RecvRequest(recv);   // should always be posted
         return;
     }
 
@@ -739,21 +745,23 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv, ibv_wc_status status)
     req->Out = msg->Out;
 
     Counters->RecvRequestCompleted();
-    RecvRequest(recv);  // should always be posted
+    RecvRequest(recv);   // should always be posted
 
     if (req->In.Length > Config->MaxBufferSize) {
-        RDMA_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id)
-            << ": request exceeds maximum supported size "
-            << req->In.Length << " > " << Config->MaxBufferSize);
+        RDMA_ERROR(
+            "RECV " << TWorkRequestId(recv->wr.wr_id)
+                    << ": request exceeds maximum supported size "
+                    << req->In.Length << " > " << Config->MaxBufferSize);
 
         Counters->RecvRequestError();
         return;
     }
 
     if (req->Out.Length > Config->MaxBufferSize) {
-        RDMA_ERROR("RECV " << TWorkRequestId(recv->wr.wr_id)
-            << ": request exceeds maximum supported size "
-            << req->Out.Length << " > " << Config->MaxBufferSize);
+        RDMA_ERROR(
+            "RECV " << TWorkRequestId(recv->wr.wr_id)
+                    << ": request exceeds maximum supported size "
+                    << req->Out.Length << " > " << Config->MaxBufferSize);
 
         Counters->RecvRequestError();
         return;
@@ -765,12 +773,14 @@ void TServerSession::RecvRequestCompleted(TRecvWr* recv, ibv_wc_status status)
         req->CallContext->RequestId);
 
     if (MaxInflightBytes < req->In.Length + req->Out.Length) {
-        RDMA_INFO(LogThrottler.Inflight, Log, "reached inflight limit, "
-            << MaxInflightBytes << "/" << Config->MaxInflightBytes
-            << " bytes available");
+        RDMA_INFO(
+            LogThrottler.Inflight,
+            Log,
+            "reached inflight limit, " << MaxInflightBytes << "/"
+                                       << Config->MaxInflightBytes
+                                       << " bytes available");
 
-        return RejectRequest(std::move(req), RDMA_PROTO_THROTTLED,
-            "throttled");
+        return RejectRequest(std::move(req), RDMA_PROTO_THROTTLED, "throttled");
     }
 
     MaxInflightBytes -= req->In.Length + req->Out.Length;
@@ -859,8 +869,8 @@ void TServerSession::ReadRequestDataCompleted(
     auto req = ExtractRequest(send);
 
     if (req == nullptr) {
-        RDMA_WARN("READ " << TWorkRequestId(send->wr.wr_id)
-            << ": request is empty");
+        RDMA_WARN(
+            "READ " << TWorkRequestId(send->wr.wr_id) << ": request is empty");
         return;
     }
 
@@ -908,7 +918,7 @@ void TServerSession::ExecuteRequest(TRequestPtr req)
 
     Handler->HandleRequest(req.get(), req->CallContext, in, out);
 
-    req.release();  // ownership transferred
+    req.release();   // ownership transferred
 }
 
 void TServerSession::WriteResponseData(TRequestPtr req, TSendWr* send)
@@ -950,8 +960,8 @@ void TServerSession::WriteResponseDataCompleted(
     auto req = ExtractRequest(send);
 
     if (req == nullptr) {
-        RDMA_WARN("WRITE " << TWorkRequestId(send->wr.wr_id)
-            << ": request is empty");
+        RDMA_WARN(
+            "WRITE " << TWorkRequestId(send->wr.wr_id) << ": request is empty");
         return;
     }
 
@@ -1007,8 +1017,8 @@ void TServerSession::SendResponseCompleted(TSendWr* send, ibv_wc_status status)
     auto req = ExtractRequest(send);
 
     if (req == nullptr) {
-        RDMA_WARN("SEND " << TWorkRequestId(send->wr.wr_id)
-            << ": request is empty");
+        RDMA_WARN(
+            "SEND " << TWorkRequestId(send->wr.wr_id) << ": request is empty");
         return;
     }
 
@@ -1040,8 +1050,7 @@ void TServerSession::SendResponseCompleted(TSendWr* send, ibv_wc_status status)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TServerEndpoint final
-    : public IServerEndpoint
+class TServerEndpoint final: public IServerEndpoint
 {
     // TODO
     friend class TServer;
@@ -1056,11 +1065,11 @@ private:
 
 public:
     TServerEndpoint(
-            NVerbs::IVerbsPtr verbs,
-            NVerbs::TConnectionPtr connection,
-            TString host,
-            ui32 port,
-            IServerHandlerPtr handler)
+        NVerbs::IVerbsPtr verbs,
+        NVerbs::TConnectionPtr connection,
+        TString host,
+        ui32 port,
+        IServerHandlerPtr handler)
         : Verbs(std::move(verbs))
         , Connection(std::move(connection))
         , Host(std::move(host))
@@ -1131,9 +1140,9 @@ private:
 
 public:
     TConnectionPoller(
-            NVerbs::IVerbsPtr verbs,
-            IConnectionEventHandler* eventHandler,
-            TLog log)
+        NVerbs::IVerbsPtr verbs,
+        IConnectionEventHandler* eventHandler,
+        TLog log)
         : Verbs(std::move(verbs))
         , EventHandler(eventHandler)
         , Log(log)
@@ -1198,7 +1207,7 @@ private:
         try {
             return Verbs->GetConnectionEvent(EventChannel.get());
 
-        } catch (const TServiceError &e) {
+        } catch (const TServiceError& e) {
             RDMA_ERROR(e.what());
             return NVerbs::NullPtr;
         }
@@ -1239,9 +1248,9 @@ private:
 
 public:
     TCompletionPoller(
-            NVerbs::IVerbsPtr verbs,
-            TServerConfigPtr config,
-            TLog log)
+        NVerbs::IVerbsPtr verbs,
+        TServerConfigPtr config,
+        TLog log)
         : Verbs(std::move(verbs))
         , Config(std::move(config))
         , Log(log)
@@ -1280,9 +1289,7 @@ public:
             PollHandle.Detach(session->CompletionChannel->fd);
         }
 
-        Sessions.Delete([=](auto other) {
-            return session == other.get();
-        });
+        Sessions.Delete([=](auto other) { return session == other.get(); });
     }
 
     // start polling session events
@@ -1303,7 +1310,8 @@ public:
         }
     }
 
-    auto GetSessions() {
+    auto GetSessions()
+    {
         return Sessions.Get();
     }
 
@@ -1371,7 +1379,7 @@ private:
     bool HandleEvents()
     {
         bool hasWork = false;
-        auto sessions= Sessions.Get();
+        auto sessions = Sessions.Get();
 
         for (const auto& session: *sessions) {
             try {
@@ -1459,10 +1467,8 @@ public:
     // called from external thread
     void Start() override;
     void Stop() override;
-    IServerEndpointPtr StartEndpoint(
-        TString host,
-        ui32 port,
-        IServerHandlerPtr handler) override;
+    IServerEndpointPtr
+    StartEndpoint(TString host, ui32 port, IServerHandlerPtr handler) override;
     void DumpHtml(IOutputStream& out) const override;
 
 private:
@@ -1472,7 +1478,8 @@ private:
     // called from CM thread
     void HandleConnectionEvent(rdma_cm_event* event) noexcept override;
     void HandleConnectRequest(
-        TServerEndpoint* endpoint, rdma_cm_event* event) noexcept;
+        TServerEndpoint* endpoint,
+        rdma_cm_event* event) noexcept;
     void Accept(TServerEndpoint* endpoint, rdma_cm_event* event) noexcept;
     void HandleConnected(TServerSession* session) noexcept;
     void HandleDisconnected(TServerSession* session) noexcept;
@@ -1483,10 +1490,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TServer::TServer(
-        NVerbs::IVerbsPtr verbs,
-        ILoggingServicePtr logging,
-        IMonitoringServicePtr monitoring,
-        TServerConfigPtr config)
+    NVerbs::IVerbsPtr verbs,
+    ILoggingServicePtr logging,
+    IMonitoringServicePtr monitoring,
+    TServerConfigPtr config)
     : Verbs(std::move(verbs))
     , Logging(std::move(logging))
     , Monitoring(std::move(monitoring))
@@ -1510,18 +1517,17 @@ void TServer::Start()
 
     CompletionPollers.resize(Config->PollerThreads);
     for (size_t i = 0; i < CompletionPollers.size(); ++i) {
-        CompletionPollers[i] = std::make_unique<TCompletionPoller>(
-            Verbs,
-            Config,
-            Log);
+        CompletionPollers[i] =
+            std::make_unique<TCompletionPoller>(Verbs, Config, Log);
         CompletionPollers[i]->Start();
     }
 
     try {
-        ConnectionPoller = std::make_unique<TConnectionPoller>(Verbs, this, Log);
+        ConnectionPoller =
+            std::make_unique<TConnectionPoller>(Verbs, this, Log);
         ConnectionPoller->Start();
 
-    } catch (const TServiceError &e) {
+    } catch (const TServiceError& e) {
         RDMA_ERROR("unable to start server: " << e.what());
         Stop();
     }
@@ -1544,10 +1550,8 @@ void TServer::Stop()
 }
 
 // implements IServer
-IServerEndpointPtr TServer::StartEndpoint(
-    TString host,
-    ui32 port,
-    IServerHandlerPtr handler)
+IServerEndpointPtr
+TServer::StartEndpoint(TString host, ui32 port, IServerHandlerPtr handler)
 {
     if (ConnectionPoller == nullptr) {
         RDMA_ERROR("unable to start endpoint: connection poller is down");
@@ -1597,13 +1601,12 @@ void TServer::Listen(TServerEndpoint* endpoint)
         .ai_port_space = RDMA_PS_TCP,
     };
 
-    auto addrinfo = Verbs->GetAddressInfo(
-        endpoint->Host,
-        endpoint->Port,
-        &hints);
+    auto addrinfo =
+        Verbs->GetAddressInfo(endpoint->Host, endpoint->Port, &hints);
 
-    RDMA_INFO("listen on "
-        << NAddr::PrintHostAndPort(NAddr::TOpaqueAddr(addrinfo->ai_src_addr)));
+    RDMA_INFO(
+        "listen on " << NAddr::PrintHostAndPort(
+            NAddr::TOpaqueAddr(addrinfo->ai_src_addr)));
 
     Verbs->BindAddress(endpoint->Connection.get(), addrinfo->ai_src_addr);
     Verbs->Listen(endpoint->Connection.get(), Config->Backlog);
@@ -1612,60 +1615,126 @@ void TServer::Listen(TServerEndpoint* endpoint)
 // implements IServer
 void TServer::DumpHtml(IOutputStream& out) const
 {
-    HTML(out) {
-        TAG(TH4) { out << "Config"; }
+    HTML (out) {
+        TAG (TH4) {
+            out << "Config";
+        }
         Config->DumpHtml(out);
 
-        TAG(TH4) { out << "Counters"; }
-        TABLE_CLASS("table table-bordered") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "QueuedRequests"; }
-                    TABLEH() { out << "ActiveRequests"; }
-                    TABLEH() { out << "CompletedRequests"; }
-                    TABLEH() { out << "ThrottledRequests"; }
-                    TABLEH() { out << "ActiveSend"; }
-                    TABLEH() { out << "ActiveRecv"; }
-                    TABLEH() { out << "ActiveRead"; }
-                    TABLEH() { out << "ActiveWrite"; }
-                    TABLEH() { out << "SendErrors"; }
-                    TABLEH() { out << "RecvErrors"; }
-                    TABLEH() { out << "ReadErrors"; }
-                    TABLEH() { out << "WriteErrors"; }
-                    TABLEH() { out << "CompletionErrors"; }
+        TAG (TH4) {
+            out << "Counters";
+        }
+        TABLE_CLASS ("table table-bordered") {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "QueuedRequests";
+                    }
+                    TABLEH () {
+                        out << "ActiveRequests";
+                    }
+                    TABLEH () {
+                        out << "CompletedRequests";
+                    }
+                    TABLEH () {
+                        out << "ThrottledRequests";
+                    }
+                    TABLEH () {
+                        out << "ActiveSend";
+                    }
+                    TABLEH () {
+                        out << "ActiveRecv";
+                    }
+                    TABLEH () {
+                        out << "ActiveRead";
+                    }
+                    TABLEH () {
+                        out << "ActiveWrite";
+                    }
+                    TABLEH () {
+                        out << "SendErrors";
+                    }
+                    TABLEH () {
+                        out << "RecvErrors";
+                    }
+                    TABLEH () {
+                        out << "ReadErrors";
+                    }
+                    TABLEH () {
+                        out << "WriteErrors";
+                    }
+                    TABLEH () {
+                        out << "CompletionErrors";
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << Counters->QueuedRequests->Val(); }
-                    TABLED() { out << Counters->ActiveRequests->Val(); }
-                    TABLED() { out << Counters->CompletedRequests->Val(); }
-                    TABLED() { out << Counters->ThrottledRequests->Val(); }
-                    TABLED() { out << Counters->ActiveSend->Val(); }
-                    TABLED() { out << Counters->ActiveRecv->Val(); }
-                    TABLED() { out << Counters->ActiveRead->Val(); }
-                    TABLED() { out << Counters->ActiveWrite->Val(); }
-                    TABLED() { out << Counters->SendErrors->Val(); }
-                    TABLED() { out << Counters->RecvErrors->Val(); }
-                    TABLED() { out << Counters->ReadErrors->Val(); }
-                    TABLED() { out << Counters->WriteErrors->Val(); }
-                    TABLED() { out << Counters->CompletionErrors->Val(); }
+                TABLER () {
+                    TABLED () {
+                        out << Counters->QueuedRequests->Val();
+                    }
+                    TABLED () {
+                        out << Counters->ActiveRequests->Val();
+                    }
+                    TABLED () {
+                        out << Counters->CompletedRequests->Val();
+                    }
+                    TABLED () {
+                        out << Counters->ThrottledRequests->Val();
+                    }
+                    TABLED () {
+                        out << Counters->ActiveSend->Val();
+                    }
+                    TABLED () {
+                        out << Counters->ActiveRecv->Val();
+                    }
+                    TABLED () {
+                        out << Counters->ActiveRead->Val();
+                    }
+                    TABLED () {
+                        out << Counters->ActiveWrite->Val();
+                    }
+                    TABLED () {
+                        out << Counters->SendErrors->Val();
+                    }
+                    TABLED () {
+                        out << Counters->RecvErrors->Val();
+                    }
+                    TABLED () {
+                        out << Counters->ReadErrors->Val();
+                    }
+                    TABLED () {
+                        out << Counters->WriteErrors->Val();
+                    }
+                    TABLED () {
+                        out << Counters->CompletionErrors->Val();
+                    }
                 }
             }
         }
 
-        TAG(TH4) { out << "Endpoints"; }
-        TABLE_CLASS("table table-bordered") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "Host"; }
-                    TABLEH() { out << "Port"; }
+        TAG (TH4) {
+            out << "Endpoints";
+        }
+        TABLE_CLASS ("table table-bordered") {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLEH () {
+                        out << "Host";
+                    }
+                    TABLEH () {
+                        out << "Port";
+                    }
                 }
             }
 
             with_lock (EndpointsLock) {
-                for (auto& ep : Endpoints) {
-                    TABLER() {
-                        TABLED() { out << ep->Host; }
-                        TABLED() { out << ep->Port; }
+                for (auto& ep: Endpoints) {
+                    TABLER () {
+                        TABLED () {
+                            out << ep->Host;
+                        }
+                        TABLED () {
+                            out << ep->Port;
+                        }
                     }
                 }
             }
@@ -1679,27 +1748,37 @@ void TServer::DumpHtml(IOutputStream& out) const
                 continue;
             }
 
-            TAG(TH4) {
+            TAG (TH4) {
                 out << "Poller-" << i << " ServerSessions"
                     << " <font color=gray>" << sessions->size() << "</font>";
             }
 
-            TABLE_SORTABLE_CLASS("table table-bordered") {
-                TABLEHEAD() {
-                    TABLER() {
-                        TABLEH() { out << "Id"; }
-                        TABLEH() { out << "Address"; }
-                        TABLEH() { out << "Magic"; }
+            TABLE_SORTABLE_CLASS("table table-bordered")
+            {
+                TABLEHEAD () {
+                    TABLER () {
+                        TABLEH () {
+                            out << "Id";
+                        }
+                        TABLEH () {
+                            out << "Address";
+                        }
+                        TABLEH () {
+                            out << "Magic";
+                        }
                     }
                 }
 
                 for (auto& session: *sessions) {
-                    TABLER() {
-                        TABLED() { out << session->Id; }
-                        TABLED() {
-                            out << Verbs->GetPeer(session->Connection.get());;
+                    TABLER () {
+                        TABLED () {
+                            out << session->Id;
                         }
-                        TABLED() {
+                        TABLED () {
+                            out << Verbs->GetPeer(session->Connection.get());
+                            ;
+                        }
+                        TABLED () {
                             Printf(
                                 out,
                                 "%08X:%08X",
@@ -1766,8 +1845,9 @@ void TServer::HandleConnectRequest(
 {
     const rdma_conn_param* connectParams = &event->param.conn;
 
-    RDMA_DEBUG("validate " << Verbs->GetPeer(event->id) << " "
-        << NVerbs::PrintConnectionParams(connectParams));
+    RDMA_DEBUG(
+        "validate " << Verbs->GetPeer(event->id) << " "
+                    << NVerbs::PrintConnectionParams(connectParams));
 
     if (connectParams->private_data == nullptr ||
         connectParams->private_data_len < sizeof(TConnectMessage) ||
@@ -1776,8 +1856,8 @@ void TServer::HandleConnectRequest(
         return Reject(event->id, RDMA_PROTO_INVALID_REQUEST);
     }
 
-    const auto* connectMsg = static_cast<const TConnectMessage*>(
-        connectParams->private_data);
+    const auto* connectMsg =
+        static_cast<const TConnectMessage*>(connectParams->private_data);
 
     if (Config->StrictValidation) {
         if (connectMsg->QueueSize > Config->QueueSize ||
@@ -1805,7 +1885,8 @@ void TServer::Accept(TServerEndpoint* endpoint, rdma_cm_event* event) noexcept
         session->CreateQP();
 
         TAcceptMessage acceptMsg = {
-            .KeepAliveTimeout = SafeCast<ui16>(Config->KeepAliveTimeout.MilliSeconds()),
+            .KeepAliveTimeout =
+                SafeCast<ui16>(Config->KeepAliveTimeout.MilliSeconds()),
         };
         InitMessageHeader(&acceptMsg, RDMA_PROTO_VERSION);
 
@@ -1819,8 +1900,9 @@ void TServer::Accept(TServerEndpoint* endpoint, rdma_cm_event* event) noexcept
             .rnr_retry_count = 7,
         };
 
-        RDMA_INFO(session->Log, "accept "
-            << NVerbs::PrintConnectionParams(&acceptParams));
+        RDMA_INFO(
+            session->Log,
+            "accept " << NVerbs::PrintConnectionParams(&acceptParams));
 
         Verbs->Accept(event->id, &acceptParams);
 

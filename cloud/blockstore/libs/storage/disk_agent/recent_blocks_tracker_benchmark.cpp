@@ -15,7 +15,7 @@ static void BenchmarkSequence(benchmark::State& state)
     TCompositeId id = TCompositeId::FromGeneration(1);
 
     // Sequence of incremented ids
-    for (const auto _ : state) {
+    for (const auto _: state) {
         auto range = TBlockRange64::WithLength(0, 1024);
         TString overlapReason;
         auto result =
@@ -37,7 +37,7 @@ static void BenchmarkSlightlyFromPastNotOverlapped(benchmark::State& state)
     const ui32 stepCount = 10;
     ui32 step = stepCount;
     ui32 sequenceIdStart = 0;
-    for (const auto _ : state) {
+    for (const auto _: state) {
         if (step == 0) {
             step = stepCount - 1;
             sequenceIdStart += stepCount;

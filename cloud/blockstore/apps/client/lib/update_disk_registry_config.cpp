@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/public/api/protos/disk.pb.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -15,14 +16,12 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TUpdateDiskRegistryConfigCommand final
-    : public TCommand
+class TUpdateDiskRegistryConfigCommand final: public TCommand
 {
 public:
     explicit TUpdateDiskRegistryConfigCommand(IBlockStorePtr client)
         : TCommand(std::move(client))
-    {
-    }
+    {}
 
 protected:
     bool DoExecute() override
@@ -35,7 +34,8 @@ protected:
         auto& output = GetOutputStream();
 
         STORAGE_DEBUG("Reading UpdateDiskRegistryConfig request");
-        auto request = std::make_shared<NProto::TUpdateDiskRegistryConfigRequest>();
+        auto request =
+            std::make_shared<NProto::TUpdateDiskRegistryConfigRequest>();
 
         ParseFromTextFormat(input, *request);
 

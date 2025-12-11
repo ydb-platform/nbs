@@ -6,6 +6,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
@@ -15,9 +16,9 @@
 
 #include <library/cpp/threading/future/future.h>
 
+#include <util/datetime/base.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
-#include <util/datetime/base.h>
 
 #include <optional>
 #include <utility>
@@ -54,20 +55,19 @@ struct TDescribeTableResponse
     {}
 
     TDescribeTableResponse(
-            TVector<NYdb::TColumn> columns,
-            TVector<TString> keyColumns,
-            TMaybe<NYdb::NTable::TTtlSettings> ttlSettings )
+        TVector<NYdb::TColumn> columns,
+        TVector<TString> keyColumns,
+        TMaybe<NYdb::NTable::TTtlSettings> ttlSettings)
         : TableScheme(
-            std::move(columns),
-            std::move(keyColumns),
-            std::move(ttlSettings))
+              std::move(columns),
+              std::move(keyColumns),
+              std::move(ttlSettings))
     {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IYdbStorage
-    : public IStartable
+struct IYdbStorage: public IStartable
 {
     virtual ~IYdbStorage() = default;
 
@@ -79,13 +79,15 @@ struct IYdbStorage
         const TString& table,
         const NYdb::NTable::TAlterTableSettings& settings) = 0;
 
-    virtual NThreading::TFuture<NProto::TError> DropTable(const TString& table) = 0;
+    virtual NThreading::TFuture<NProto::TError> DropTable(
+        const TString& table) = 0;
 
     virtual NThreading::TFuture<NProto::TError> ExecuteUploadQuery(
         TString tableName,
         NYdb::TValue data) = 0;
 
-    virtual NThreading::TFuture<TDescribeTableResponse> DescribeTable(const TString& table) = 0;
+    virtual NThreading::TFuture<TDescribeTableResponse> DescribeTable(
+        const TString& table) = 0;
 
     virtual NThreading::TFuture<TGetTablesResponse> GetHistoryTables() = 0;
 };

@@ -14,8 +14,7 @@ class IUserCounter
 public:
     virtual ~IUserCounter() = default;
 
-    virtual void GetType(
-        NMonitoring::IMetricConsumer* consumer) const = 0;
+    virtual void GetType(NMonitoring::IMetricConsumer* consumer) const = 0;
     virtual void GetValue(
         TInstant time,
         NMonitoring::IMetricConsumer* consumer) const = 0;
@@ -37,8 +36,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class IUserCounterSupplier
-    : public NMonitoring::IMetricSupplier
+class IUserCounterSupplier: public NMonitoring::IMetricSupplier
 {
 public:
     ~IUserCounterSupplier() override = default;

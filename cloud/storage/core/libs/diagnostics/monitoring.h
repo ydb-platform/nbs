@@ -10,8 +10,7 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IMonitoringService
-    : public virtual IStartable
+struct IMonitoringService: public virtual IStartable
 {
     virtual NMonitoring::IMonPagePtr RegisterIndexPage(
         const TString& path,

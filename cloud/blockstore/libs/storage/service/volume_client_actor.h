@@ -2,8 +2,8 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/libs/endpoints/public.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
+#include <cloud/blockstore/libs/endpoints/public.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>

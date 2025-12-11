@@ -2,9 +2,9 @@
 
 #include <cloud/storage/core/libs/diagnostics/max_calculator.h>
 
+#include <library/cpp/deprecated/atomic/atomic.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
-#include <library/cpp/deprecated/atomic/atomic.h>
 #include <util/system/mutex.h>
 
 namespace NCloud::NBlockStore {

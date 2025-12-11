@@ -50,10 +50,8 @@ public:
     }
 
 private:
-    void AddBlock(
-        const TBlock& block,
-        const TPartialBlobId& blobId,
-        ui16 blobOffset)
+    void
+    AddBlock(const TBlock& block, const TPartialBlobId& blobId, ui16 blobOffset)
     {
         Y_ABORT_UNLESS(Args.BlockRange.Contains(block.BlockIndex));
         Args.Blocks.emplace_back(block, blobId, blobOffset);
@@ -62,8 +60,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDescribeBlobVisitor final
-    : public IMergedBlockVisitor
+class TDescribeBlobVisitor final: public IMergedBlockVisitor
 {
 private:
     TTxPartition::TDescribeBlob& Args;
@@ -121,44 +118,70 @@ void TPartitionActor::CompleteDescribeRange(
     const TActorContext& ctx,
     TTxPartition::TDescribeRange& args)
 {
-    Sort(args.Blocks, [] (const auto& l, const auto& r) {
-        // order by (BlockIndex ASC, MinCommitId DESC, BlobOffset ASC)
-        return l.Block.BlockIndex < r.Block.BlockIndex
-            || (l.Block.BlockIndex == r.Block.BlockIndex
-            && (l.Block.MinCommitId > r.Block.MinCommitId
-            || (l.Block.MinCommitId == r.Block.MinCommitId
-            && l.BlobOffset < r.BlobOffset)));
-    });
+    Sort(
+        args.Blocks,
+        [](const auto& l, const auto& r)
+        {
+            // order by (BlockIndex ASC, MinCommitId DESC, BlobOffset ASC)
+            return l.Block.BlockIndex < r.Block.BlockIndex ||
+                   (l.Block.BlockIndex == r.Block.BlockIndex &&
+                    (l.Block.MinCommitId > r.Block.MinCommitId ||
+                     (l.Block.MinCommitId == r.Block.MinCommitId &&
+                      l.BlobOffset < r.BlobOffset)));
+        });
 
     TStringStream out;
     DumpDefaultHeader(out, *Info(), SelfId().NodeId(), *DiagnosticsConfig);
     DumpDescribeHeader(out, *Info());
 
-    HTML(out) {
-        TABLE_SORTABLE() {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLED() { out << "# Block"; }
-                    TABLED() { out << "MinCommitId"; }
-                    TABLED() { out << "MaxCommitId"; }
-                    TABLED() { out << "BlobId"; }
-                    TABLED() { out << "Offset"; }
+    HTML (out) {
+        TABLE_SORTABLE()
+        {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLED () {
+                        out << "# Block";
+                    }
+                    TABLED () {
+                        out << "MinCommitId";
+                    }
+                    TABLED () {
+                        out << "MaxCommitId";
+                    }
+                    TABLED () {
+                        out << "BlobId";
+                    }
+                    TABLED () {
+                        out << "Offset";
+                    }
                 }
             }
-            TABLEBODY() {
-                auto dump = [&] (const auto& ref) {
-                    TABLER() {
-                        TABLED_CLASS("view") {
+            TABLEBODY()
+            {
+                auto dump = [&](const auto& ref)
+                {
+                    TABLER () {
+                        TABLED_CLASS("view")
+                        {
                             DumpBlockIndex(
                                 out,
                                 *Info(),
                                 ref.Block.BlockIndex,
                                 ref.Block.MinCommitId);
                         }
-                        TABLED() { DumpCommitId(out, ref.Block.MinCommitId); }
-                        TABLED() { DumpCommitId(out, ref.Block.MaxCommitId); }
-                        TABLED_CLASS("view") { DumpBlobId(out, *Info(), ref.BlobId); }
-                        TABLED() { DumpBlobOffset(out, ref.BlobOffset); }
+                        TABLED () {
+                            DumpCommitId(out, ref.Block.MinCommitId);
+                        }
+                        TABLED () {
+                            DumpCommitId(out, ref.Block.MaxCommitId);
+                        }
+                        TABLED_CLASS("view")
+                        {
+                            DumpBlobId(out, *Info(), ref.BlobId);
+                        }
+                        TABLED () {
+                            DumpBlobOffset(out, ref.BlobOffset);
+                        }
                     }
                 };
 
@@ -230,27 +253,47 @@ void TPartitionActor::CompleteDescribeBlob(
     DumpDefaultHeader(out, *Info(), SelfId().NodeId(), *DiagnosticsConfig);
     DumpDescribeHeader(out, *Info());
 
-    HTML(out) {
-        TABLE_SORTABLE() {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLED() { out << "# Block"; }
-                    TABLED() { out << "MinCommitId"; }
-                    TABLED() { out << "MaxCommitId"; }
-                    TABLED() { out << "Offset"; }
+    HTML (out) {
+        TABLE_SORTABLE()
+        {
+            TABLEHEAD () {
+                TABLER () {
+                    TABLED () {
+                        out << "# Block";
+                    }
+                    TABLED () {
+                        out << "MinCommitId";
+                    }
+                    TABLED () {
+                        out << "MaxCommitId";
+                    }
+                    TABLED () {
+                        out << "Offset";
+                    }
                 }
             }
-            TABLEBODY() {
-                auto dump = [&] (const auto& ref) {
-                    TABLER() {
-                        TABLED_CLASS("view") { DumpBlockIndex(
-                            out,
-                            *Info(),
-                            ref.Block.BlockIndex,
-                            ref.Block.MinCommitId); }
-                        TABLED() { DumpCommitId(out, ref.Block.MinCommitId); }
-                        TABLED() { DumpCommitId(out, ref.Block.MaxCommitId); }
-                        TABLED() { DumpBlobOffset(out, ref.BlobOffset); }
+            TABLEBODY()
+            {
+                auto dump = [&](const auto& ref)
+                {
+                    TABLER () {
+                        TABLED_CLASS("view")
+                        {
+                            DumpBlockIndex(
+                                out,
+                                *Info(),
+                                ref.Block.BlockIndex,
+                                ref.Block.MinCommitId);
+                        }
+                        TABLED () {
+                            DumpCommitId(out, ref.Block.MinCommitId);
+                        }
+                        TABLED () {
+                            DumpCommitId(out, ref.Block.MaxCommitId);
+                        }
+                        TABLED () {
+                            DumpBlobOffset(out, ref.BlobOffset);
+                        }
                     }
                 };
 
@@ -279,16 +322,10 @@ void TPartitionActor::HandleHttpInfo_Describe(
     if (const auto& range = params.Get("range")) {
         TBlockRange32 blockRange;
         if (TBlockRange32::TryParse(range, blockRange)) {
-            ExecuteTx<TDescribeRange>(
-                ctx,
-                std::move(requestInfo),
-                blockRange);
+            ExecuteTx<TDescribeRange>(ctx, std::move(requestInfo), blockRange);
         } else {
             TString message = "invalid range specified: " + range.Quote();
-            RejectHttpRequest(
-                ctx,
-                *requestInfo,
-                std::move(message));
+            RejectHttpRequest(ctx, *requestInfo, std::move(message));
         }
         return;
     }
@@ -303,12 +340,9 @@ void TPartitionActor::HandleHttpInfo_Describe(
                 MakePartialBlobId(blobId));
         } else {
             TStringStream out;
-            out << "invalid blob specified: " << blob.Quote() <<
-                "(" + errorExplanation + ")";
-            RejectHttpRequest(
-                ctx,
-                *requestInfo,
-                std::move(out.Str()));
+            out << "invalid blob specified: " << blob.Quote()
+                << "(" + errorExplanation + ")";
+            RejectHttpRequest(ctx, *requestInfo, std::move(out.Str()));
         }
         return;
     }

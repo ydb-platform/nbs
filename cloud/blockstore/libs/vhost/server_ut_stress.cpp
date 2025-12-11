@@ -51,18 +51,18 @@ public:
     void Add(F f)
     {
         Workers.push_back(SystemThreadFactory()->Run(
-            [this, f = std::move(f)]() {
-                while (!ShouldStart.test()) {}
+            [this, f = std::move(f)]()
+            {
+                while (!ShouldStart.test()) {
+                }
                 f();
-            }
-        ));
+            }));
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TStressStorage final
-    : public IStorage
+class TStressStorage final: public IStorage
 {
 private:
     TLockFreeQueue<TPromise<NProto::TError>> Requests;
@@ -122,18 +122,20 @@ public:
     }
 
 private:
-    template<typename T>
+    template <typename T>
     TFuture<T> RegisterRequest()
     {
         auto promise = NewPromise<NProto::TError>();
         auto future = promise.GetFuture();
         Requests.Enqueue(std::move(promise));
 
-        return future.Apply([] (const auto& f) {
-            T response;
-            *response.MutableError() = f.GetValue();
-            return response;
-        });
+        return future.Apply(
+            [](const auto& f)
+            {
+                T response;
+                *response.MutableError() = f.GetValue();
+                return response;
+            });
     }
 };
 
@@ -173,13 +175,15 @@ void SendRandomRequest(ITestVhostDevice& device)
     ui64 length = dist3(eng) * 1024;
 
     TString buffer(length, '0');
-    auto sglist = TSgList{ TBlockDataRef(buffer.data(), buffer.size()) };
+    auto sglist = TSgList{TBlockDataRef(buffer.data(), buffer.size())};
 
     auto future = device.SendTestRequest(type, from, length, std::move(sglist));
-    future.Apply([holder = std::move(buffer)] (const auto& f) {
-        Y_UNUSED(holder);
-        return f.GetValue();
-    });
+    future.Apply(
+        [holder = std::move(buffer)](const auto& f)
+        {
+            Y_UNUSED(holder);
+            return f.GetValue();
+        });
 }
 
 NProto::TError GetRandomError()
@@ -210,13 +214,13 @@ Y_UNIT_TEST_SUITE(TServerStressTest)
         std::atomic<int> completed = 0;
 
         auto serverStats = std::make_shared<TTestServerStats>();
-        serverStats->RequestStartedHandler = [&] (
-            TLog&, TMetricRequest&, TCallContext&, const TString&)
+        serverStats->RequestStartedHandler =
+            [&](TLog&, TMetricRequest&, TCallContext&, const TString&)
         {
             inflight.fetch_add(1);
         };
-        serverStats->RequestCompletedHandler = [&] (
-            TLog&, TMetricRequest&, TCallContext&, const NProto::TError&)
+        serverStats->RequestCompletedHandler =
+            [&](TLog&, TMetricRequest&, TCallContext&, const NProto::TError&)
         {
             inflight.fetch_sub(1);
             completed.fetch_add(1);
@@ -268,25 +272,29 @@ Y_UNIT_TEST_SUITE(TServerStressTest)
 
         // Providers
         for (ui32 i = 0; i < providerCount; ++i) {
-            tasks.Add([&, index = i] {
-                auto device = Devices[index % Devices.size()];
-                while (!shouldStop.test()) {
-                    if (inflight.load() < 256) {
-                        SendRandomRequest(*device);
-                    }
-                };
-            });
+            tasks.Add(
+                [&, index = i]
+                {
+                    auto device = Devices[index % Devices.size()];
+                    while (!shouldStop.test()) {
+                        if (inflight.load() < 256) {
+                            SendRandomRequest(*device);
+                        }
+                    };
+                });
         }
 
         // Consumers
         for (ui32 i = 0; i < consumerCount; ++i) {
-            tasks.Add([&, index = i] {
-                auto storage = Storages[index % Storages.size()];
-                while (completed.load() < 5000) {
-                    storage->CompleteRequest(GetRandomError());
-                }
-                shouldStop.test_and_set();
-            });
+            tasks.Add(
+                [&, index = i]
+                {
+                    auto storage = Storages[index % Storages.size()];
+                    while (completed.load() < 5000) {
+                        storage->CompleteRequest(GetRandomError());
+                    }
+                    shouldStop.test_and_set();
+                });
         }
 
         tasks.Start();

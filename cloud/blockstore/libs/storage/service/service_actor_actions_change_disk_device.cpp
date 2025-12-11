@@ -9,9 +9,9 @@
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
-#include <google/protobuf/util/json_util.h>
-
 #include <util/string/printf.h>
+
+#include <google/protobuf/util/json_util.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -33,9 +33,7 @@ private:
     TString Input;
 
 public:
-    TChangeDiskDeviceActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TChangeDiskDeviceActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -53,20 +51,19 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TChangeDiskDeviceActor::TChangeDiskDeviceActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
 
 void TChangeDiskDeviceActor::Bootstrap(const TActorContext& ctx)
 {
-    auto request = std::make_unique<
-        TEvDiskRegistry::TEvChangeDiskDeviceRequest>();
+    auto request =
+        std::make_unique<TEvDiskRegistry::TEvChangeDiskDeviceRequest>();
 
-    if (!google::protobuf::util::JsonStringToMessage(
-        Input,
-        &request->Record).ok())
+    if (!google::protobuf::util::JsonStringToMessage(Input, &request->Record)
+             .ok())
     {
         ReplyAndDie(ctx, MakeError(E_ARGUMENT, "Failed to parse input"));
         return;
@@ -81,12 +78,11 @@ void TChangeDiskDeviceActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TError error)
 {
-    auto response = std::make_unique<
-        TEvService::TEvExecuteActionResponse>(std::move(error));
+    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(
+        std::move(error));
     google::protobuf::util::MessageToJsonString(
         NProto::TChangeDiskDeviceResponse(),
-        response->Record.MutableOutput()
-    );
+        response->Record.MutableOutput());
 
     LWTRACK(
         ResponseSent_Service,

@@ -5,7 +5,8 @@
 #include <time.h>
 #include <unistd.h>
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[])
+{
     int n = 0;
     int opt;
 
@@ -21,7 +22,9 @@ int main(int argc, char *argv[]) {
     }
 
     if (n <= 0) {
-        fprintf(stderr, "Please specify a number of files using the -n option.\n");
+        fprintf(
+            stderr,
+            "Please specify a number of files using the -n option.\n");
         exit(EXIT_FAILURE);
     }
 

@@ -1,5 +1,6 @@
-#include "monitoring.h"
 #include "solomon_counters.h"
+
+#include "monitoring.h"
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -20,7 +21,7 @@ bool FindSensor(NMonitoring::TDynamicCountersPtr subgroup, const TString& name)
     return false;
 }
 
-}    // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -29,13 +30,12 @@ Y_UNIT_TEST_SUITE(TCountersExpirationPolicyTest)
     Y_UNIT_TEST(ShouldNotCreateExpiringCounterWithZeroValue)
     {
         auto monitoring = CreateMonitoringServiceStub();
-        auto group = monitoring->GetCounters()
-            ->GetSubgroup("counters", "blockstore");
+        auto group =
+            monitoring->GetCounters()->GetSubgroup("counters", "blockstore");
 
         TSimpleCounter counter{
             TSimpleCounter::ECounterType::Generic,
-            ECounterExpirationPolicy::Expiring
-        };
+            ECounterExpirationPolicy::Expiring};
         counter.Register(group, "test");
 
         counter.Set(0);
@@ -48,13 +48,12 @@ Y_UNIT_TEST_SUITE(TCountersExpirationPolicyTest)
     Y_UNIT_TEST(ShouldNotRemovePermanentCounterWithZeroValue)
     {
         auto monitoring = CreateMonitoringServiceStub();
-        auto group = monitoring->GetCounters()
-            ->GetSubgroup("counters", "blockstore");
+        auto group =
+            monitoring->GetCounters()->GetSubgroup("counters", "blockstore");
 
         TSimpleCounter counter{
             TSimpleCounter::ECounterType::Generic,
-            ECounterExpirationPolicy::Permanent
-        };
+            ECounterExpirationPolicy::Permanent};
         counter.Register(group, "test");
 
         TInstant now = TInstant::Hours(1);
@@ -77,13 +76,12 @@ Y_UNIT_TEST_SUITE(TCountersExpirationPolicyTest)
     Y_UNIT_TEST(ShouldRemoveExpiringCounterWithZeroValue)
     {
         auto monitoring = CreateMonitoringServiceStub();
-        auto group = monitoring->GetCounters()
-            ->GetSubgroup("counters", "blockstore");
+        auto group =
+            monitoring->GetCounters()->GetSubgroup("counters", "blockstore");
 
         TSimpleCounter counter{
             TSimpleCounter::ECounterType::Generic,
-            ECounterExpirationPolicy::Expiring
-        };
+            ECounterExpirationPolicy::Expiring};
         counter.Register(group, "test");
 
         TInstant now = TInstant::Hours(1);
@@ -104,13 +102,12 @@ Y_UNIT_TEST_SUITE(TCountersExpirationPolicyTest)
     Y_UNIT_TEST(ShouldNotRemoveExpiringCounter)
     {
         auto monitoring = CreateMonitoringServiceStub();
-        auto group = monitoring->GetCounters()
-            ->GetSubgroup("counters", "blockstore");
+        auto group =
+            monitoring->GetCounters()->GetSubgroup("counters", "blockstore");
 
         TSimpleCounter counter{
             TSimpleCounter::ECounterType::Generic,
-            ECounterExpirationPolicy::Expiring
-        };
+            ECounterExpirationPolicy::Expiring};
         counter.Register(group, "test");
 
         TInstant now = TInstant::Hours(1);
@@ -135,4 +132,4 @@ Y_UNIT_TEST_SUITE(TCountersExpirationPolicyTest)
     }
 }
 
-}    // namespace NCloud
+}   // namespace NCloud

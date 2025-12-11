@@ -11,8 +11,8 @@ namespace NCloud::NBlockStore::NStorage {
 template <
     ui32 channel = 1,
     NKikimr::NTable::NPage::ECache cache = NKikimr::NTable::NPage::ECache::None,
-    NKikimr::NTable::NPage::ECodec codec = NKikimr::NTable::NPage::ECodec::Plain
->
+    NKikimr::NTable::NPage::ECodec codec =
+        NKikimr::NTable::NPage::ECodec::Plain>
 struct TStoragePolicy
 {
     static constexpr ui32 Room = 0;
@@ -46,8 +46,7 @@ void InitCompactionPolicy(
 ////////////////////////////////////////////////////////////////////////////////
 
 template <NKikimr::NIceDb::TTableId tableId>
-struct TTableSchema
-    : public NKikimr::NIceDb::Schema::Table<tableId>
+struct TTableSchema: public NKikimr::NIceDb::Schema::Table<tableId>
 {
     using StoragePolicy = TStoragePolicy<>;
     using CompactionPolicy = TCompactionPolicy<>;
@@ -83,13 +82,15 @@ struct TSchemaInitializer<NKikimr::NIceDb::Schema::SchemaTables<Type>>
     }
 };
 
-template <typename Type, typename ...Types>
+template <typename Type, typename... Types>
 struct TSchemaInitializer<NKikimr::NIceDb::Schema::SchemaTables<Type, Types...>>
 {
     static void InitStorage(NKikimr::NTable::TAlter& alter)
     {
-        TSchemaInitializer<NKikimr::NIceDb::Schema::SchemaTables<Type>>::InitStorage(alter);
-        TSchemaInitializer<NKikimr::NIceDb::Schema::SchemaTables<Types...>>::InitStorage(alter);
+        TSchemaInitializer<
+            NKikimr::NIceDb::Schema::SchemaTables<Type>>::InitStorage(alter);
+        TSchemaInitializer<NKikimr::NIceDb::Schema::SchemaTables<Types...>>::
+            InitStorage(alter);
     }
 };
 

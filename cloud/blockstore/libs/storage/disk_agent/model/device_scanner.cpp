@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/algorithm.h>
@@ -22,17 +23,19 @@ namespace {
 
 ui32 GetBlockSize(const std::string& path)
 {
-    struct stat s {};
+    struct stat s
+    {
+    };
 
     if (::stat(path.c_str(), &s)) {
         const int ec = errno;
-        ythrow TServiceError {MAKE_SYSTEM_ERROR(ec)}
+        ythrow TServiceError{MAKE_SYSTEM_ERROR(ec)}
             << "can't get information about a file " << path << ": "
             << ::strerror(ec);
     }
 
     if (!s.st_blksize) {
-        ythrow TServiceError {E_FAIL} << "zero block size: " << path;
+        ythrow TServiceError{E_FAIL} << "zero block size: " << path;
     }
 
     return s.st_blksize;
@@ -40,9 +43,9 @@ ui32 GetBlockSize(const std::string& path)
 
 ui64 GetFileLength(const std::string& path)
 {
-    TFileHandle file(path.c_str(),
-          EOpenModeFlag::RdOnly
-        | EOpenModeFlag::OpenExisting);
+    TFileHandle file(
+        path.c_str(),
+        EOpenModeFlag::RdOnly | EOpenModeFlag::OpenExisting);
 
     if (!file.IsOpen()) {
         const int ec = errno;
@@ -59,7 +62,7 @@ ui64 GetFileLength(const std::string& path)
     }
 
     if (!size) {
-        ythrow TServiceError {E_FAIL} << "zero file size: " << path;
+        ythrow TServiceError{E_FAIL} << "zero file size: " << path;
     }
 
     return size;
@@ -78,16 +81,17 @@ NProto::TError FindDevices(
 
     try {
         for (const auto& p: config.GetPathConfigs()) {
-            const NFs::path pathRegExp = std::string {p.GetPathRegExp()};
+            const NFs::path pathRegExp = std::string{p.GetPathRegExp()};
 
-            const std::regex re {
+            const std::regex re{
                 pathRegExp.filename().string(),
-                std::regex_constants::ECMAScript
-            };
+                std::regex_constants::ECMAScript};
 
             const ui32 defaultBlockSize = p.GetBlockSize();
 
-            for (const auto& entry: NFs::directory_iterator {pathRegExp.parent_path()}) {
+            for (const auto& entry:
+                 NFs::directory_iterator{pathRegExp.parent_path()})
+            {
                 const auto& path = entry.path();
                 if (allowedPaths && !allowedPaths.contains(path.c_str())) {
                     continue;
@@ -100,59 +104,68 @@ NProto::TError FindDevices(
                 }
 
                 if (!entry.is_regular_file() && !entry.is_block_file()) {
-                    return MakeError(E_ARGUMENT, TStringBuilder()
-                        << path << " is not a file or a block device ");
+                    return MakeError(
+                        E_ARGUMENT,
+                        TStringBuilder()
+                            << path << " is not a file or a block device ");
                 }
 
                 if (match.size() < 2) {
-                    return MakeError(E_ARGUMENT, TStringBuilder()
-                        << "path " << path << " accepted but regexp "
-                        << p.GetPathRegExp() << " doesn't contain any group of digits");
+                    return MakeError(
+                        E_ARGUMENT,
+                        TStringBuilder()
+                            << "path " << path << " accepted but regexp "
+                            << p.GetPathRegExp()
+                            << " doesn't contain any group of digits");
                 }
 
                 const ui32 deviceNumber = std::stoul(match[1].str());
                 if (!deviceNumber) {
-                    return MakeError(E_ARGUMENT, TStringBuilder()
-                        << path << ": the device number can't be zero");
+                    return MakeError(
+                        E_ARGUMENT,
+                        TStringBuilder()
+                            << path << ": the device number can't be zero");
                 }
 
                 const ui64 size = GetFileLength(path);
-                auto* pool = FindIfPtr(p.GetPoolConfigs(), [&] (const auto& pool) {
-                    ui64 minSize = pool.GetMinSize();
+                auto* pool = FindIfPtr(
+                    p.GetPoolConfigs(),
+                    [&](const auto& pool)
+                    {
+                        ui64 minSize = pool.GetMinSize();
 
-                    if (!minSize && pool.HasLayout()) {
-                        minSize =
-                            pool.GetLayout().GetHeaderSize() +
-                            pool.GetLayout().GetDeviceSize();
-                    }
+                        if (!minSize && pool.HasLayout()) {
+                            minSize = pool.GetLayout().GetHeaderSize() +
+                                      pool.GetLayout().GetDeviceSize();
+                        }
 
-                    const ui64 maxSize = pool.GetMaxSize()
-                        ? pool.GetMaxSize()
-                        : size;
+                        const ui64 maxSize =
+                            pool.GetMaxSize() ? pool.GetMaxSize() : size;
 
-                    return minSize <= size && size <= maxSize;
-                });
+                        return minSize <= size && size <= maxSize;
+                    });
 
                 if (!pool) {
-                    return MakeError(E_NOT_FOUND, TStringBuilder()
-                        << "unable to find the appropriate pool for " << path);
+                    return MakeError(
+                        E_NOT_FOUND,
+                        TStringBuilder()
+                            << "unable to find the appropriate pool for "
+                            << path);
                 }
 
                 const ui32 blockSize = pool->GetBlockSize()
-                    ? pool->GetBlockSize()
-                    : defaultBlockSize
-                        ? defaultBlockSize
-                        : GetBlockSize(path);
+                                           ? pool->GetBlockSize()
+                                       : defaultBlockSize ? defaultBlockSize
+                                                          : GetBlockSize(path);
 
-                auto error = cb(
-                    TString {path.string()},
-                    *pool,
-                    deviceNumber,
-                    pool->GetMaxDeviceCount()
-                        ? pool->GetMaxDeviceCount()
-                        : p.GetMaxDeviceCount(),
-                    blockSize,
-                    size);
+                auto error =
+                    cb(TString{path.string()},
+                       *pool,
+                       deviceNumber,
+                       pool->GetMaxDeviceCount() ? pool->GetMaxDeviceCount()
+                                                 : p.GetMaxDeviceCount(),
+                       blockSize,
+                       size);
                 if (HasError(error)) {
                     return error;
                 }

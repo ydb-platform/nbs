@@ -95,8 +95,8 @@ struct TFollowerDiskInfo
     {
         None = 0,
 
-        Created = 10,     // Persisted on leader side.
-                          // Need to persist on follower side.
+        Created = 10,   // Persisted on leader side.
+                        // Need to persist on follower side.
 
         Preparing = 30,   // Persisted on follower side.
                           // Preparing in progress.

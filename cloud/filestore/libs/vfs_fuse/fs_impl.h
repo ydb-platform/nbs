@@ -360,21 +360,19 @@ private:
         request.SetGid(ctx->gid);
     }
 
-    template<typename T>
+    template <typename T>
     static bool CheckResponse(
         std::shared_ptr<TFileSystem> self,
         TCallContext& callContext,
         fuse_req_t req,
-        const T& response
-    ) {
+        const T& response)
+    {
         return self && self->CheckResponse(callContext, req, response);
     }
 
     template <typename T>
-    bool CheckResponse(
-        TCallContext& callContext,
-        fuse_req_t req,
-        const T& response)
+    bool
+    CheckResponse(TCallContext& callContext, fuse_req_t req, const T& response)
     {
         return CheckError(callContext, req, response.GetError());
     }
@@ -384,10 +382,8 @@ private:
         fuse_req_t req,
         const NProto::TError& error);
 
-    bool ValidateNodeId(
-        TCallContext& callContext,
-        fuse_req_t req,
-        fuse_ino_t ino);
+    bool
+    ValidateNodeId(TCallContext& callContext, fuse_req_t req, fuse_ino_t ino);
 
     bool ValidateDirectoryHandle(
         TCallContext& callContext,
@@ -450,26 +446,29 @@ private:
     void ScheduleProcessHandleOpsQueue();
     void ProcessHandleOpsQueue();
 
-#define FILESYSTEM_REPLY_IMPL(name, ...)                                       \
-    template<typename... TArgs>                                                \
-    int Reply##name(                                                           \
-        TCallContext& callContext,                                             \
-        const NCloud::NProto::TError& error,                                   \
-        fuse_req_t req,                                                        \
-        TArgs&&... args)                                                       \
-    {                                                                          \
-        Y_ABORT_UNLESS(RequestStats);                                          \
-        Y_ABORT_UNLESS(CompletionQueue);                                       \
-        return CompletionQueue->Complete(req, [&] (fuse_req_t r) {             \
-            return NFuse::Reply##name(                                         \
-                Log,                                                           \
-                *RequestStats,                                                 \
-                callContext,                                                   \
-                error,                                                         \
-                r,                                                             \
-                std::forward<TArgs>(args)...);                                 \
-        });                                                                    \
-    }                                                                          \
+#define FILESYSTEM_REPLY_IMPL(name, ...)           \
+    template <typename... TArgs>                   \
+    int Reply##name(                               \
+        TCallContext& callContext,                 \
+        const NCloud::NProto::TError& error,       \
+        fuse_req_t req,                            \
+        TArgs&&... args)                           \
+    {                                              \
+        Y_ABORT_UNLESS(RequestStats);              \
+        Y_ABORT_UNLESS(CompletionQueue);           \
+        return CompletionQueue->Complete(          \
+            req,                                   \
+            [&](fuse_req_t r)                      \
+            {                                      \
+                return NFuse::Reply##name(         \
+                    Log,                           \
+                    *RequestStats,                 \
+                    callContext,                   \
+                    error,                         \
+                    r,                             \
+                    std::forward<TArgs>(args)...); \
+            });                                    \
+    }
 
     FILESYSTEM_REPLY_METHOD(FILESYSTEM_REPLY_IMPL)
 

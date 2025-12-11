@@ -55,41 +55,37 @@ void TDiskAgentActor::InitAgent(const TActorContext& ctx)
     auto* actorSystem = TActivationContext::ActorSystem();
     auto replyTo = ctx.SelfID;
 
-    State->Initialize().Subscribe([=] (auto future) {
-        using TCompletionEvent = TEvDiskAgentPrivate::TEvInitAgentCompleted;
+    State->Initialize().Subscribe(
+        [=](auto future)
+        {
+            using TCompletionEvent = TEvDiskAgentPrivate::TEvInitAgentCompleted;
 
-        NProto::TError error;
+            NProto::TError error;
 
-        try {
-            TDiskAgentState::TInitializeResult r = future.ExtractValue();
+            try {
+                TDiskAgentState::TInitializeResult r = future.ExtractValue();
 
-            auto response = std::make_unique<TCompletionEvent>(
-                std::move(r.Configs),
-                std::move(r.Errors),
-                std::move(r.ConfigMismatchErrors),
-                std::move(r.DevicesWithSuspendedIO));
+                auto response = std::make_unique<TCompletionEvent>(
+                    std::move(r.Configs),
+                    std::move(r.Errors),
+                    std::move(r.ConfigMismatchErrors),
+                    std::move(r.DevicesWithSuspendedIO));
 
-            actorSystem->Send(
-                new IEventHandle(
-                    replyTo,
-                    replyTo,
-                    response.release()));
-        } catch (const TServiceError& e) {
-            error = MakeError(e.GetCode(), TString(e.GetMessage()));
-        } catch (...) {
-            error = MakeError(E_FAIL, CurrentExceptionMessage());
-        }
+                actorSystem->Send(
+                    new IEventHandle(replyTo, replyTo, response.release()));
+            } catch (const TServiceError& e) {
+                error = MakeError(e.GetCode(), TString(e.GetMessage()));
+            } catch (...) {
+                error = MakeError(E_FAIL, CurrentExceptionMessage());
+            }
 
-        if (error.GetCode()) {
-            auto response = std::make_unique<TCompletionEvent>(error);
+            if (error.GetCode()) {
+                auto response = std::make_unique<TCompletionEvent>(error);
 
-            actorSystem->Send(
-                new IEventHandle(
-                    replyTo,
-                    replyTo,
-                    response.release()));
-        }
-    });
+                actorSystem->Send(
+                    new IEventHandle(replyTo, replyTo, response.release()));
+            }
+        });
 }
 
 void TDiskAgentActor::HandleInitAgentCompleted(
@@ -114,17 +110,23 @@ void TDiskAgentActor::HandleInitAgentCompleted(
     }
 
     if (const auto& error = msg->GetError(); HasError(error)) {
-        LOG_ERROR_S(ctx, TBlockStoreComponents::DISK_AGENT,
-            "DiskAgent initialization failed. Error: " << FormatError(error).data());
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::DISK_AGENT,
+            "DiskAgent initialization failed. Error: "
+                << FormatError(error).data());
     } else {
         TStringStream out;
         for (const auto& config: msg->Configs) {
-            out << config.GetDeviceName()
-                << "(" << FormatByteSize(config.GetBlocksCount() * config.GetBlockSize())
+            out << config.GetDeviceName() << "("
+                << FormatByteSize(
+                       config.GetBlocksCount() * config.GetBlockSize())
                 << "); ";
         }
 
-        LOG_INFO_S(ctx, TBlockStoreComponents::DISK_AGENT,
+        LOG_INFO_S(
+            ctx,
+            TBlockStoreComponents::DISK_AGENT,
             "Initialization completed. Devices found: " << out.Str());
     }
 

@@ -58,9 +58,12 @@ enum class EOperation
 TStringBuf GetOperationString(EOperation op)
 {
     switch (op) {
-        case EOperation::Read:  return "read";
-        case EOperation::Write: return "write";
-        case EOperation::Zero:  return "zero";
+        case EOperation::Read:
+            return "read";
+        case EOperation::Write:
+            return "write";
+        case EOperation::Zero:
+            return "zero";
     }
 }
 
@@ -82,7 +85,7 @@ struct TOperationRange
         return Begin <= other.End && other.Begin <= End;
     }
 
-    bool operator ==(const TOperationRange& other) const
+    bool operator==(const TOperationRange& other) const
     {
         return Begin == other.Begin && End == other.End && Op == other.Op;
     }
@@ -252,19 +255,15 @@ private:
     TMaybe<NProto::TVolume> GetVolumeInfo(const TString& diskId) const;
     TString GetSessionId(const TString& diskId) const;
 
-    TMaybe<TOperationRange> CreateRange(
-        ui64 startIndex,
-        ui32 blocksCount,
-        EOperation op);
+    TMaybe<TOperationRange>
+    CreateRange(ui64 startIndex, ui32 blocksCount, EOperation op);
 
     void EnterRange(TVolume& volume, const TOperationRange& range);
     void LeaveRange(TVolume& volume, const TOperationRange& range);
 
     void OnError(TVolume& volume, const TOperationRange& range);
 
-    TVector<ui64> PrepareRead(
-        TVolume& volume,
-        const TOperationRange& range);
+    TVector<ui64> PrepareRead(TVolume& volume, const TOperationRange& range);
 
     void CompleteRead(
         TVolume& volume,
@@ -272,22 +271,16 @@ private:
         const TVector<ui64>& blocksWritten,
         const TVector<ui64>& blocksRead);
 
-    void PrepareWrite(
-        TVolume& volume,
-        const TOperationRange& range);
+    void PrepareWrite(TVolume& volume, const TOperationRange& range);
 
     void CompleteWrite(
         TVolume& volume,
         const TOperationRange& range,
         const TVector<ui64>& blocks);
 
-    void PrepareZero(
-        TVolume& volume,
-        const TOperationRange& range);
+    void PrepareZero(TVolume& volume, const TOperationRange& range);
 
-    void CompleteZero(
-        TVolume& volume,
-        const TOperationRange& range);
+    void CompleteZero(TVolume& volume, const TOperationRange& range);
 
     bool HandleRequest(
         TCallContextPtr callContext,
@@ -339,8 +332,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TValidationClient::TMonPage final
-    : public THtmlMonPage
+class TValidationClient::TMonPage final: public THtmlMonPage
 {
 private:
     TValidationClient& Client;
@@ -360,13 +352,13 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 TValidationClient::TValidationClient(
-        ILoggingServicePtr logging,
-        IMonitoringServicePtr monitoring,
-        IBlockStorePtr client,
-        IBlockDigestCalculatorPtr digestCalculator,
-        IValidationCallbackPtr callback,
-        TString loggingTag,
-        const TBlockRange64& validationRange)
+    ILoggingServicePtr logging,
+    IMonitoringServicePtr monitoring,
+    IBlockStorePtr client,
+    IBlockDigestCalculatorPtr digestCalculator,
+    IValidationCallbackPtr callback,
+    TString loggingTag,
+    const TBlockRange64& validationRange)
     : Log(logging->CreateLog("BLOCKSTORE_CLIENT"))
     , Client(std::move(client))
     , DigestCalculator(std::move(digestCalculator))
@@ -383,16 +375,15 @@ TValidationClient::TValidationClient(
     static_cast<TIndexMonPage&>(*rootPage).Register(new TMonPage(*this));
 }
 
-void TValidationClient::InitializeBlockChecksums(
-    const TString& volumeName)
+void TValidationClient::InitializeBlockChecksums(const TString& volumeName)
 {
     TVolumePtr volume = GetVolume(volumeName);
 
     if (!volume) {
         ReportError(
             TStringBuilder()
-                << "InitializeBlockChecksums attempt of unknown volume: "
-                << volumeName);
+            << "InitializeBlockChecksums attempt of unknown volume: "
+            << volumeName);
         return;
     }
 
@@ -414,8 +405,7 @@ void TValidationClient::SetBlockChecksums(
     if (!volume) {
         ReportError(
             TStringBuilder()
-                << "SetBlockChecksums attempt of unknown volume: "
-                << volumeName);
+            << "SetBlockChecksums attempt of unknown volume: " << volumeName);
         return;
     }
 
@@ -434,14 +424,13 @@ void TValidationClient::EnsureZeroBlockDigestInitialized(TVolume& volume)
         with_lock (volume.Lock) {
             if (AtomicGet(volume.ZeroBlockDigest) == InvalidDigest) {
                 TVector<char> buffer(volume.Info.GetBlockSize());
-                AtomicSet(volume.ZeroBlockDigest, DigestCalculator->Calculate(
-                    InvalidBlockIndex,
-                    {
-                        buffer.data(),
-                        buffer.size()
-                    }
-                ));
-                Y_ABORT_UNLESS(AtomicGet(volume.ZeroBlockDigest) != InvalidDigest);
+                AtomicSet(
+                    volume.ZeroBlockDigest,
+                    DigestCalculator->Calculate(
+                        InvalidBlockIndex,
+                        {buffer.data(), buffer.size()}));
+                Y_ABORT_UNLESS(
+                    AtomicGet(volume.ZeroBlockDigest) != InvalidDigest);
             }
         }
     }
@@ -453,8 +442,10 @@ void TValidationClient::OutputHtml(
 {
     Y_UNUSED(request);
 
-    HTML(out) {
-        TAG(TH3) { out << "Counters"; }
+    HTML (out) {
+        TAG (TH3) {
+            out << "Counters";
+        }
         Counters->OutputHtml(out);
     }
 }
@@ -475,10 +466,10 @@ void TValidationClient::ReportIncompleteRead(
     ui32 requestedCount,
     ui32 reportedCount) const
 {
-    ReportError(TStringBuilder()
-        << "[" << volume.GetDiskId() << "] "
-        << "read " << requestedCount << " blocks but "
-        << reportedCount << " returned");
+    ReportError(
+        TStringBuilder() << "[" << volume.GetDiskId() << "] " << "read "
+                         << requestedCount << " blocks but " << reportedCount
+                         << " returned");
 }
 
 void TValidationClient::ReportInconsistentRead(
@@ -490,10 +481,11 @@ void TValidationClient::ReportInconsistentRead(
 {
     RequestCounters.InconsistentRead->Inc();
 
-    ReportError(TStringBuilder()
-        << "[" << volume.GetDiskId() << "] "
-        << "read inconsistency for range " << range << " in block " << blockIndex
-        << " written " << prevHash << " read " << newHash);
+    ReportError(
+        TStringBuilder() << "[" << volume.GetDiskId() << "] "
+                         << "read inconsistency for range " << range
+                         << " in block " << blockIndex << " written "
+                         << prevHash << " read " << newHash);
 }
 
 void TValidationClient::ReportRace(
@@ -507,9 +499,9 @@ void TValidationClient::ReportRace(
         RequestCounters.WriteWriteRace->Inc();
     }
 
-    ReportError(TStringBuilder()
-        << "[" << volume.GetDiskId() << "] "
-        << newRange << " overlaps with " << oldRange);
+    ReportError(
+        TStringBuilder() << "[" << volume.GetDiskId() << "] " << newRange
+                         << " overlaps with " << oldRange);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -546,8 +538,7 @@ void TValidationClient::DoUnmountVolume(const TString& diskId)
             Volumes.erase(it);
             RequestCounters.MountedVolumes->Dec();
         } else {
-            ReportError(TStringBuilder()
-                << "unknown volume: " << diskId);
+            ReportError(TStringBuilder() << "unknown volume: " << diskId);
         }
     }
 }
@@ -557,8 +548,7 @@ TVolumePtr TValidationClient::GetVolume(const TString& diskId) const
     with_lock (Lock) {
         auto it = Volumes.find(diskId);
         if (it == Volumes.end()) {
-            ReportError(TStringBuilder()
-                << "unknown volume: " << diskId);
+            ReportError(TStringBuilder() << "unknown volume: " << diskId);
             return {};
         }
 
@@ -572,8 +562,7 @@ TMaybe<NProto::TVolume> TValidationClient::GetVolumeInfo(
     with_lock (Lock) {
         auto it = Volumes.find(diskId);
         if (it == Volumes.end()) {
-            ReportError(TStringBuilder()
-                << "unknown volume: " << diskId);
+            ReportError(TStringBuilder() << "unknown volume: " << diskId);
             return {};
         }
 
@@ -586,8 +575,7 @@ TString TValidationClient::GetSessionId(const TString& diskId) const
     with_lock (Lock) {
         auto it = Volumes.find(diskId);
         if (it == Volumes.end()) {
-            ReportError(TStringBuilder()
-                << "unknown volume: " << diskId);
+            ReportError(TStringBuilder() << "unknown volume: " << diskId);
             return {};
         }
 
@@ -597,10 +585,8 @@ TString TValidationClient::GetSessionId(const TString& diskId) const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TMaybe<TOperationRange> TValidationClient::CreateRange(
-    ui64 startIndex,
-    ui32 blocksCount,
-    EOperation op)
+TMaybe<TOperationRange>
+TValidationClient::CreateRange(ui64 startIndex, ui32 blocksCount, EOperation op)
 {
     const auto blockRange = TBlockRange64::WithLength(startIndex, blocksCount);
 
@@ -611,11 +597,7 @@ TMaybe<TOperationRange> TValidationClient::CreateRange(
 
     const auto intersection = blockRange.Intersect(ValidationRange);
 
-    return TOperationRange {
-        intersection.Start,
-        intersection.End,
-        op
-    };
+    return TOperationRange{intersection.Start, intersection.End, op};
 }
 
 void TValidationClient::EnterRange(
@@ -645,9 +627,7 @@ void TValidationClient::LeaveRange(
     volume.Requests.erase(it);
 }
 
-void TValidationClient::OnError(
-    TVolume& volume,
-    const TOperationRange& range)
+void TValidationClient::OnError(TVolume& volume, const TOperationRange& range)
 {
     with_lock (volume.Lock) {
         LeaveRange(volume, range);
@@ -689,7 +669,8 @@ void TValidationClient::CompleteRead(
                 blocksRead.size());
         }
 
-        for (ui32 i = 0; i < Min(blocksWritten.size(), blocksRead.size()); ++i) {
+        for (ui32 i = 0; i < Min(blocksWritten.size(), blocksRead.size()); ++i)
+        {
             if (blocksWritten[i] == InvalidDigest) {
                 // we did not see this block before -> initialize its digest
                 volume.Blocks[range.Begin + i] = blocksRead[i];
@@ -770,16 +751,17 @@ bool TValidationClient::HandleRequest(
 {
     RequestCounters.MountRequests->Inc();
 
-    response = Client->MountVolume(
-        std::move(callContext), std::move(request)
-    ).Subscribe([this] (const auto& future) {
-        if (!IsRequestFailed(future)) {
-            const auto& response = future.GetValue();
-            DoMountVolume(
-                response.GetVolume(),
-                response.GetSessionId());
-        }
-    });
+    response = Client->MountVolume(std::move(callContext), std::move(request))
+                   .Subscribe(
+                       [this](const auto& future)
+                       {
+                           if (!IsRequestFailed(future)) {
+                               const auto& response = future.GetValue();
+                               DoMountVolume(
+                                   response.GetVolume(),
+                                   response.GetSessionId());
+                           }
+                       });
     return true;
 }
 
@@ -791,13 +773,14 @@ bool TValidationClient::HandleRequest(
     RequestCounters.UnmountRequests->Inc();
 
     auto diskId = request->GetDiskId();
-    response = Client->UnmountVolume(
-        std::move(callContext), std::move(request)
-    ).Subscribe([=, this] (const auto& future) {
-        if (!IsRequestFailed(future)) {
-            DoUnmountVolume(diskId);
-        }
-    });
+    response = Client->UnmountVolume(std::move(callContext), std::move(request))
+                   .Subscribe(
+                       [=, this](const auto& future)
+                       {
+                           if (!IsRequestFailed(future)) {
+                               DoUnmountVolume(diskId);
+                           }
+                       });
     return true;
 }
 
@@ -831,35 +814,35 @@ bool TValidationClient::HandleRequest(
 
     const auto zeroBlockDigest = AtomicGet(volume->ZeroBlockDigest);
 
-    auto f = Client->ReadBlocks(
-        std::move(callContext), std::move(request)
-    );
+    auto f = Client->ReadBlocks(std::move(callContext), std::move(request));
 
-    response = f.Subscribe([=, this, blocks_ = std::move(blocks)] (const auto& future) {
-        if (!IsRequestFailed(future)) {
-            const auto& response = future.GetValue();
+    response = f.Subscribe(
+        [=, this, blocks_ = std::move(blocks)](const auto& future)
+        {
+            if (!IsRequestFailed(future)) {
+                const auto& response = future.GetValue();
 
-            auto sgListOrError = GetSgList(response, volume->Info.GetBlockSize());
-            if (HasError(sgListOrError)) {
+                auto sgListOrError =
+                    GetSgList(response, volume->Info.GetBlockSize());
+                if (HasError(sgListOrError)) {
+                    OnError(*volume, *range);
+                    return;
+                }
+
+                auto blocksRead = CalculateBlocksDigest(
+                    sgListOrError.GetResult(),
+                    *DigestCalculator,
+                    volume->Info.GetBlockSize(),
+                    range->Begin,
+                    range->Size(),
+                    zeroBlockDigest);
+
+                CompleteRead(*volume, *range, blocks_, blocksRead);
+            } else {
                 OnError(*volume, *range);
-                return;
             }
-
-            auto blocksRead = CalculateBlocksDigest(
-                sgListOrError.GetResult(),
-                *DigestCalculator,
-                volume->Info.GetBlockSize(),
-                range->Begin,
-                range->Size(),
-                zeroBlockDigest
-            );
-
-            CompleteRead(*volume, *range, blocks_, blocksRead);
-        } else {
-            OnError(*volume, *range);
-        }
-        return;
-    });
+            return;
+        });
 
     return true;
 }
@@ -897,27 +880,28 @@ bool TValidationClient::HandleRequest(
 
     auto f = Client->ReadBlocksLocal(std::move(callContext), request);
 
-    response = f.Subscribe([=, this, blocks = std::move(blocks)] (const auto& future) {
-        if (!IsRequestFailed(future)) {
-            auto guard = sgList.Acquire();
+    response = f.Subscribe(
+        [=, this, blocks = std::move(blocks)](const auto& future)
+        {
+            if (!IsRequestFailed(future)) {
+                auto guard = sgList.Acquire();
 
-            if (guard) {
-                auto blocksRead = CalculateBlocksDigest(
-                    guard.Get(),
-                    *DigestCalculator,
-                    volume->Info.GetBlockSize(),
-                    range->Begin,
-                    range->Size(),
-                    zeroBlockDigest
-                );
+                if (guard) {
+                    auto blocksRead = CalculateBlocksDigest(
+                        guard.Get(),
+                        *DigestCalculator,
+                        volume->Info.GetBlockSize(),
+                        range->Begin,
+                        range->Size(),
+                        zeroBlockDigest);
 
-                CompleteRead(*volume, *range, blocks, blocksRead);
-                return;
+                    CompleteRead(*volume, *range, blocks, blocksRead);
+                    return;
+                }
             }
-        }
 
-        OnError(*volume, *range);
-    });
+            OnError(*volume, *range);
+        });
 
     return true;
 }
@@ -937,9 +921,8 @@ bool TValidationClient::HandleRequest(
 
     EnsureZeroBlockDigestInitialized(*volume);
 
-    auto sgListOrError = SgListNormalize(
-        GetSgList(*request),
-        volume->Info.GetBlockSize());
+    auto sgListOrError =
+        SgListNormalize(GetSgList(*request), volume->Info.GetBlockSize());
 
     if (HasError(sgListOrError)) {
         // ignore invalid buffer
@@ -948,10 +931,8 @@ bool TValidationClient::HandleRequest(
 
     const auto& sglist = sgListOrError.GetResult();
 
-    auto range = CreateRange(
-        request->GetStartIndex(),
-        sglist.size(),
-        EOperation::Write);
+    auto range =
+        CreateRange(request->GetStartIndex(), sglist.size(), EOperation::Write);
 
     if (!range) {
         // ignore invalid range
@@ -964,20 +945,21 @@ bool TValidationClient::HandleRequest(
         volume->Info.GetBlockSize(),
         range->Begin,
         range->Size(),
-        AtomicGet(volume->ZeroBlockDigest)
-    );
+        AtomicGet(volume->ZeroBlockDigest));
 
     PrepareWrite(*volume, *range);
 
-    response = Client->WriteBlocks(
-        std::move(callContext), std::move(request)
-    ).Subscribe([=, this, blocks_ = std::move(blocks)] (const auto& future) {
-        if (!IsRequestFailed(future)) {
-            CompleteWrite(*volume, *range, blocks_);
-        } else {
-            OnError(*volume, *range);
-        }
-    });
+    response =
+        Client->WriteBlocks(std::move(callContext), std::move(request))
+            .Subscribe(
+                [=, this, blocks_ = std::move(blocks)](const auto& future)
+                {
+                    if (!IsRequestFailed(future)) {
+                        CompleteWrite(*volume, *range, blocks_);
+                    } else {
+                        OnError(*volume, *range);
+                    }
+                });
 
     return true;
 }
@@ -1015,20 +997,21 @@ bool TValidationClient::HandleRequest(
             volume->Info.GetBlockSize(),
             range->Begin,
             range->Size(),
-            AtomicGet(volume->ZeroBlockDigest)
-        );
+            AtomicGet(volume->ZeroBlockDigest));
 
         PrepareWrite(*volume, *range);
 
-        response = Client->WriteBlocksLocal(
-            std::move(callContext), std::move(request)
-        ).Subscribe([=, this, blocks_ = std::move(blocks)] (const auto& future) {
-            if (!IsRequestFailed(future)) {
-                CompleteWrite(*volume, *range, blocks_);
-            } else {
-                OnError(*volume, *range);
-            }
-        });
+        response =
+            Client->WriteBlocksLocal(std::move(callContext), std::move(request))
+                .Subscribe(
+                    [=, this, blocks_ = std::move(blocks)](const auto& future)
+                    {
+                        if (!IsRequestFailed(future)) {
+                            CompleteWrite(*volume, *range, blocks_);
+                        } else {
+                            OnError(*volume, *range);
+                        }
+                    });
     } else {
         NProto::TWriteBlocksLocalResponse record;
         *record.MutableError() = MakeError(
@@ -1068,15 +1051,16 @@ bool TValidationClient::HandleRequest(
 
     PrepareZero(*volume, *range);
 
-    response = Client->ZeroBlocks(
-        std::move(callContext), std::move(request)
-    ).Subscribe([=, this] (const auto& future) {
-        if (!IsRequestFailed(future)) {
-            CompleteZero(*volume, *range);
-        } else {
-            OnError(*volume, *range);
-        }
-    });
+    response = Client->ZeroBlocks(std::move(callContext), std::move(request))
+                   .Subscribe(
+                       [=, this](const auto& future)
+                       {
+                           if (!IsRequestFailed(future)) {
+                               CompleteZero(*volume, *range);
+                           } else {
+                               OnError(*volume, *range);
+                           }
+                       });
     return true;
 }
 
@@ -1112,6 +1096,6 @@ void Out<NCloud::NBlockStore::NClient::TOperationRange>(
     IOutputStream& out,
     const NCloud::NBlockStore::NClient::TOperationRange& range)
 {
-    out << NCloud::NBlockStore::NClient::GetOperationString(range.Op)
-        << "[" << range.Begin << ".." << range.End << "]";
+    out << NCloud::NBlockStore::NClient::GetOperationString(range.Op) << "["
+        << range.Begin << ".." << range.End << "]";
 }

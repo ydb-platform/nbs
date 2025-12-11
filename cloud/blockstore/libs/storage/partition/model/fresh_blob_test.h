@@ -12,11 +12,9 @@ TVector<TVector<TString>> GetBuffers(ui32 bs)
 {
     return {
         // [0; 0]
-        TVector<TString> {
-            TString(bs, 'A')
-        },
+        TVector<TString>{TString(bs, 'A')},
         // [1000, 1000 + 7]
-        TVector<TString> {
+        TVector<TString>{
             TString(bs, 'B'),
             TString(bs, 'C'),
             TString(bs, 'D'),
@@ -27,12 +25,12 @@ TVector<TVector<TString>> GetBuffers(ui32 bs)
             TString(bs, 'I'),
         },
         // [2000, 2000 + 1]
-        TVector<TString> {
+        TVector<TString>{
             TString(bs, 'J'),
             TString(bs, 'K'),
         },
         // [3000, 3000 + 3]
-        TVector<TString> {
+        TVector<TString>{
             TString(bs, 'L'),
             TString(bs, 'M'),
             TString(bs, 'N'),
@@ -72,7 +70,7 @@ TVector<TGuardHolder> GetHolders(const TVector<TVector<TString>>& buffers)
             sgList.emplace_back(buf.data(), buf.size());
         }
 
-        holders.emplace_back(TGuardedSgList{ std::move(sgList) });
+        holders.emplace_back(TGuardedSgList{std::move(sgList)});
     }
 
     return holders;

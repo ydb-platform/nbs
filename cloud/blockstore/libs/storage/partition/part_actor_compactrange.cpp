@@ -76,10 +76,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TForcedCompactionActor::TForcedCompactionActor(
-        const TActorId& tablet,
-        TVector<ui32> rangesToCompact,
-        TDuration retryTimeout,
-        ui32 rangeCountPerRun)
+    const TActorId& tablet,
+    TVector<ui32> rangesToCompact,
+    TDuration retryTimeout,
+    ui32 rangeCountPerRun)
     : Tablet(tablet)
     , RangesToCompact(std::move(rangesToCompact))
     , RetryTimeout(retryTimeout)
@@ -103,9 +103,9 @@ void TForcedCompactionActor::SendCompactionRequest(const TActorContext& ctx)
     auto request = std::make_unique<TEvPartitionPrivate::TEvCompactionRequest>(
         MakeIntrusive<TCallContext>(),
         std::move(ranges),
-        TCompactionOptions().
-            set(ToBit(ECompactionOption::Forced)).
-            set(ToBit(ECompactionOption::Full)));
+        TCompactionOptions()
+            .set(ToBit(ECompactionOption::Forced))
+            .set(ToBit(ECompactionOption::Full)));
 
     NCloud::Send(ctx, Tablet, std::move(request));
 }
@@ -115,7 +115,9 @@ void TForcedCompactionActor::ReplyAndDie(
     const NProto::TError& error)
 {
     {
-        auto response = std::make_unique<TEvPartitionPrivate::TEvForcedCompactionCompleted>(error);
+        auto response =
+            std::make_unique<TEvPartitionPrivate::TEvForcedCompactionCompleted>(
+                error);
         NCloud::Send(ctx, Tablet, std::move(response));
     }
 
@@ -130,7 +132,9 @@ STFUNC(TForcedCompactionActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvents::TEvWakeup, HandleWakeup);
 
-        HFunc(TEvPartitionPrivate::TEvCompactionResponse, HandleCompactionResponse);
+        HFunc(
+            TEvPartitionPrivate::TEvCompactionResponse,
+            HandleCompactionResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -206,7 +210,9 @@ void TPartitionActor::HandleGetCompactionStatus(
     if (operationId == stateRunning.OperationId) {
         progress = stateRunning.Progress;
         total = stateRunning.RangesCount;
-    }  else if (GetCompletedForcedCompactionRanges(operationId, ctx.Now(), total)) {
+    } else if (
+        GetCompletedForcedCompactionRanges(operationId, ctx.Now(), total))
+    {
         progress = total;
         isCompleted = true;
     } else if (IsCompactRangePending(operationId, total)) {
@@ -215,7 +221,8 @@ void TPartitionActor::HandleGetCompactionStatus(
         result = MakeError(E_NOT_FOUND, "Compact operation not found");
     }
 
-    auto response = std::make_unique<TEvVolume::TEvGetCompactionStatusResponse>(result);
+    auto response =
+        std::make_unique<TEvVolume::TEvGetCompactionStatusResponse>(result);
     response->Record.SetProgress(progress);
     response->Record.SetTotal(total);
     response->Record.SetIsCompleted(isCompleted);
@@ -249,11 +256,10 @@ void TPartitionActor::HandleCompactRange(
         ev->Cookie,
         msg->CallContext);
 
-    auto replyError = [=] (
-        const TActorContext& ctx,
-        TRequestInfo& requestInfo,
-        ui32 errorCode,
-        TString errorReason)
+    auto replyError = [=](const TActorContext& ctx,
+                          TRequestInfo& requestInfo,
+                          ui32 errorCode,
+                          TString errorReason)
     {
         auto response = std::make_unique<TEvVolume::TEvCompactRangeResponse>(
             MakeError(errorCode, std::move(errorReason)));
@@ -264,20 +270,18 @@ void TPartitionActor::HandleCompactRange(
 
     TVector<ui32> rangesToCompact;
     if (msg->Record.GetStartIndex() || msg->Record.GetBlocksCount()) {
-        auto startIndex = Min(
-            State->GetBlocksCount(),
-            msg->Record.GetStartIndex());
+        auto startIndex =
+            Min(State->GetBlocksCount(), msg->Record.GetStartIndex());
 
-        auto endIndex = Min(
-            State->GetBlocksCount(),
-            msg->Record.GetStartIndex() + msg->Record.GetBlocksCount());
+        auto endIndex =
+            Min(State->GetBlocksCount(),
+                msg->Record.GetStartIndex() + msg->Record.GetBlocksCount());
 
-        rangesToCompact = TVector<ui32>(
-            ::xrange(
-                compactionMap.GetRangeStart(startIndex),
-                compactionMap.GetRangeStart(endIndex) + compactionMap.GetRangeSize(),
-                compactionMap.GetRangeSize())
-        );
+        rangesToCompact = TVector<ui32>(::xrange(
+            compactionMap.GetRangeStart(startIndex),
+            compactionMap.GetRangeStart(endIndex) +
+                compactionMap.GetRangeSize(),
+            compactionMap.GetRangeSize()));
     } else {
         rangesToCompact = compactionMap.GetNonEmptyRanges();
     }
@@ -311,7 +315,7 @@ void TPartitionActor::AddForcedCompaction(
         std::move(operationId));
 
     for (auto i = CompletedForcedCompactionRequests.begin();
-        i != CompletedForcedCompactionRequests.end();)
+         i != CompletedForcedCompactionRequests.end();)
     {
         auto prev = i++;
         if (prev->second.CompleteTs < ctx.Now() - CompactOpHistoryDuration) {
@@ -348,17 +352,15 @@ void TPartitionActor::EnqueueForcedCompaction(const TActorContext& ctx)
             PartitionConfig.GetFolderId(),
             PartitionConfig.GetDiskId());
     const bool batchCompactionEnabled =
-        Config->GetBatchCompactionEnabled() ||
-        batchCompactionEnabledForCloud;
+        Config->GetBatchCompactionEnabled() || batchCompactionEnabledForCloud;
 
     auto actorId = NCloud::Register<TForcedCompactionActor>(
         ctx,
         SelfId(),
         std::move(compactInfo.RangesToCompact),
         Config->GetCompactionRetryTimeout(),
-        batchCompactionEnabled
-            ? Config->GetForcedCompactionRangeCountPerRun()
-            : 1);
+        batchCompactionEnabled ? Config->GetForcedCompactionRangeCountPerRun()
+                               : 1);
 
     PendingForcedCompactionRequests.pop_front();
 
@@ -386,10 +388,10 @@ bool TPartitionActor::GetCompletedForcedCompactionRanges(
 }
 
 bool TPartitionActor::IsCompactRangePending(
-        const TString& operationId,
-        ui32& ranges) const
+    const TString& operationId,
+    ui32& ranges) const
 {
-    for (const auto& r : PendingForcedCompactionRequests) {
+    for (const auto& r: PendingForcedCompactionRequests) {
         if (r.OperationId == operationId) {
             ranges = r.RangesToCompact.size();
             return true;

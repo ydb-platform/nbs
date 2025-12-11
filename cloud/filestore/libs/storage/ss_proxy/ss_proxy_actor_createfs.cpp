@@ -6,7 +6,6 @@
 #include <cloud/filestore/libs/storage/core/config.h>
 
 #include <contrib/ydb/core/base/path.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/generic/vector.h>
@@ -67,10 +66,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TCreateFileStoreActor::TCreateFileStoreActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
-        TActorId storageSSProxy,
-        NKikimrFileStore::TConfig fileStoreConfig)
+    TRequestInfoPtr requestInfo,
+    TStorageConfigPtr config,
+    TActorId storageSSProxy,
+    NKikimrFileStore::TConfig fileStoreConfig)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , StorageSSProxy(std::move(storageSSProxy))
@@ -107,7 +106,9 @@ void TCreateFileStoreActor::CreateFileStore(const TActorContext& ctx)
     op->SetName(name);
     op->MutableConfig()->CopyFrom(FileStoreConfig);
 
-    LOG_DEBUG(ctx, TFileStoreComponents::SS_PROXY,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SS_PROXY,
         "FileStore %s: send create request (dir: %s, name: %s)",
         FileStoreConfig.GetFileSystemId().Quote().c_str(),
         workingDir.Quote().c_str(),
@@ -139,7 +140,9 @@ void TCreateFileStoreActor::HandleCreateFileStoreResponse(
     }
 
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TFileStoreComponents::SS_PROXY,
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::SS_PROXY,
             "FileStore %s: create failed - %s",
             FileStoreConfig.GetFileSystemId().Quote().c_str(),
             FormatError(error).c_str());
@@ -148,7 +151,9 @@ void TCreateFileStoreActor::HandleCreateFileStoreResponse(
         return;
     }
 
-    LOG_INFO(ctx, TFileStoreComponents::SS_PROXY,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::SS_PROXY,
         "FileStore %s: created successfully",
         FileStoreConfig.GetFileSystemId().Quote().c_str());
 
@@ -174,7 +179,9 @@ void TCreateFileStoreActor::CreateDir(const TActorContext& ctx)
         FileStorePathItems.begin(),
         FileStorePathItems.begin() + NextItemToCreate);
 
-    LOG_DEBUG(ctx, TFileStoreComponents::SS_PROXY,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SS_PROXY,
         "FileStore %s: send mkdir request (dir: %s, name: %s)",
         FileStoreConfig.GetFileSystemId().Quote().c_str(),
         workingDir.Quote().c_str(),
@@ -201,7 +208,9 @@ void TCreateFileStoreActor::HandleCreateDirResponse(
     const auto& error = msg->GetError();
 
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TFileStoreComponents::SS_PROXY,
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::SS_PROXY,
             "FileStore %s: mkdir failed - ",
             FileStoreConfig.GetFileSystemId().Quote().c_str(),
             FormatError(error).c_str());
@@ -218,7 +227,8 @@ void TCreateFileStoreActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvSSProxy::TEvCreateFileStoreResponse>(error);
+    auto response =
+        std::make_unique<TEvSSProxy::TEvCreateFileStoreResponse>(error);
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
     Die(ctx);
@@ -227,7 +237,9 @@ void TCreateFileStoreActor::ReplyAndDie(
 STFUNC(TCreateFileStoreActor::StateCreateFileStore)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvStorageSSProxy::TEvModifySchemeResponse, HandleCreateFileStoreResponse);
+        HFunc(
+            TEvStorageSSProxy::TEvModifySchemeResponse,
+            HandleCreateFileStoreResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -241,7 +253,9 @@ STFUNC(TCreateFileStoreActor::StateCreateFileStore)
 STFUNC(TCreateFileStoreActor::StateCreateDir)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvStorageSSProxy::TEvModifySchemeResponse, HandleCreateDirResponse);
+        HFunc(
+            TEvStorageSSProxy::TEvModifySchemeResponse,
+            HandleCreateDirResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -262,10 +276,8 @@ void TSSProxyActor::HandleCreateFileStore(
 {
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     auto actor = std::make_unique<TCreateFileStoreActor>(
         std::move(requestInfo),

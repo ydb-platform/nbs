@@ -56,13 +56,16 @@ struct TCreateExternalEndpoint
 };
 
 struct TPrepareStartExternalEndpoint
-{};
+{
+};
 
 struct TStartExternalEndpoint
-{};
+{
+};
 
 struct TStopExternalEndpoint
-{};
+{
+};
 
 using TEntry = std::variant<
     TStartEndpoint,
@@ -78,13 +81,12 @@ using THistory = TVector<TEntry>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestEndpointListener
-    : public IEndpointListener
+struct TTestEndpointListener: public IEndpointListener
 {
     THistory& History;
 
     explicit TTestEndpointListener(THistory& history)
-        : History {history}
+        : History{history}
     {}
 
     TFuture<NProto::TError> StartEndpoint(
@@ -94,7 +96,7 @@ struct TTestEndpointListener
     {
         Y_UNUSED(session);
 
-        History.push_back(TStartEndpoint {request, volume});
+        History.push_back(TStartEndpoint{request, volume});
 
         return MakeFuture<NProto::TError>();
     }
@@ -106,15 +108,14 @@ struct TTestEndpointListener
     {
         Y_UNUSED(session);
 
-        History.push_back(TAlterEndpoint {request, volume});
+        History.push_back(TAlterEndpoint{request, volume});
 
         return MakeFuture<NProto::TError>();
     }
 
-    TFuture<NProto::TError> StopEndpoint(
-        const TString& socketPath) override
+    TFuture<NProto::TError> StopEndpoint(const TString& socketPath) override
     {
-        History.push_back(TStopEndpoint {socketPath});
+        History.push_back(TStopEndpoint{socketPath});
 
         return MakeFuture<NProto::TError>();
     }
@@ -123,7 +124,7 @@ struct TTestEndpointListener
         const TString& socketPath,
         const NProto::TVolume& volume) override
     {
-        History.push_back(TRefreshEndpoint {socketPath, volume});
+        History.push_back(TRefreshEndpoint{socketPath, volume});
 
         return {};
     }
@@ -142,13 +143,12 @@ struct TTestEndpointListener
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestExternalEndpoint
-    : public IExternalEndpoint
+struct TTestExternalEndpoint: public IExternalEndpoint
 {
     THistory& History;
 
     explicit TTestExternalEndpoint(THistory& history)
-        : History {history}
+        : History{history}
     {}
 
     void PrepareToStart() override
@@ -171,16 +171,17 @@ struct TTestExternalEndpoint
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFixture
-    : public NUnitTest::TBaseFixture
+struct TFixture: public NUnitTest::TBaseFixture
 {
     const ILoggingServicePtr Logging = CreateLoggingService("console");
     const IServerStatsPtr ServerStats = CreateServerStatsStub();
     const TExecutorPtr Executor = TExecutor::Create("TestService");
     const TString LocalAgentId = "localhost";
     const TString SocketPath = "/tmp/socket.vhost";
-    const NClient::ISessionPtr Session = std::make_shared<NClient::TTestSession>();
-    const NProto::TVolume Volume = [] {
+    const NClient::ISessionPtr Session =
+        std::make_shared<NClient::TTestSession>();
+    const NProto::TVolume Volume = []
+    {
         NProto::TVolume volume;
 
         volume.SetDiskId("vol0");
@@ -190,7 +191,8 @@ struct TFixture
 
         {
             auto* device = volume.AddDevices();
-            device->SetDeviceName("/dev/disk/by-path/pci-0000:00:16.0-sas-phy2-lun-0");
+            device->SetDeviceName(
+                "/dev/disk/by-path/pci-0000:00:16.0-sas-phy2-lun-0");
             device->SetDeviceUUID("uuid1");
             device->SetAgentId("localhost");
             device->SetBlockCount(4'000);
@@ -199,7 +201,8 @@ struct TFixture
 
         {
             auto* device = volume.AddDevices();
-            device->SetDeviceName("/dev/disk/by-path/pci-0000:00:16.0-sas-phy2-lun-0");
+            device->SetDeviceName(
+                "/dev/disk/by-path/pci-0000:00:16.0-sas-phy2-lun-0");
             device->SetDeviceUUID("uuid2");
             device->SetAgentId("localhost");
             device->SetBlockCount(6'000);
@@ -207,9 +210,10 @@ struct TFixture
         }
 
         return volume;
-    } ();
+    }();
 
-    const NProto::TVolume RemoteVolume = [&] {
+    const NProto::TVolume RemoteVolume = [&]
+    {
         NProto::TVolume volume = Volume;
 
         volume.SetDiskId("vol1");
@@ -220,9 +224,10 @@ struct TFixture
         device->SetAgentId("remote");
 
         return volume;
-    } ();
+    }();
 
-    const NProto::TVolume FastPathVolume = [&] {
+    const NProto::TVolume FastPathVolume = [&]
+    {
         NProto::TVolume volume;
 
         volume.SetDiskId("vol0");
@@ -233,30 +238,32 @@ struct TFixture
 
         {
             auto* device = volume.AddDevices();
-            device->SetDeviceName("/dev/disk/by-path/pci-0000:00:16.0-sas-phy2-lun-0");
+            device->SetDeviceName(
+                "/dev/disk/by-path/pci-0000:00:16.0-sas-phy2-lun-0");
             device->SetDeviceUUID("uuid1");
             device->SetAgentId("host1");
             device->SetBlockCount(4'000);
             device->SetPhysicalOffset(32'000);
-            auto *rdma = device->MutableRdmaEndpoint();
+            auto* rdma = device->MutableRdmaEndpoint();
             rdma->SetHost("host1");
             rdma->SetPort(1111);
         }
 
         {
             auto* device = volume.AddDevices();
-            device->SetDeviceName("/dev/disk/by-path/pci-0000:00:16.0-sas-phy2-lun-0");
+            device->SetDeviceName(
+                "/dev/disk/by-path/pci-0000:00:16.0-sas-phy2-lun-0");
             device->SetDeviceUUID("uuid2");
             device->SetAgentId("host2");
             device->SetBlockCount(6'000);
             device->SetPhysicalOffset(0);
-            auto *rdma = device->MutableRdmaEndpoint();
+            auto* rdma = device->MutableRdmaEndpoint();
             rdma->SetHost("host2");
             rdma->SetPort(2222);
         }
 
         return volume;
-    } ();
+    }();
 
     THistory History;
 
@@ -315,8 +322,9 @@ private:
 
     TExternalEndpointFactory CreateExternalEndpointFactory()
     {
-        return [this] (auto ... args) {
-            History.push_back(TCreateExternalEndpoint {args...});
+        return [this](auto... args)
+        {
+            History.push_back(TCreateExternalEndpoint{args...});
 
             return std::make_shared<TTestExternalEndpoint>(History);
         };
@@ -327,11 +335,11 @@ private:
 
 bool Equal(const NProto::TDevice& lhs, const NProto::TDevice& rhs)
 {
-    return lhs.GetBlockCount() == rhs.GetBlockCount()
-        && lhs.GetBaseName() == rhs.GetBaseName()
-        && lhs.GetAgentId() == rhs.GetAgentId()
-        && lhs.GetDeviceUUID() == rhs.GetDeviceUUID()
-        && lhs.GetDeviceName() == rhs.GetDeviceName();
+    return lhs.GetBlockCount() == rhs.GetBlockCount() &&
+           lhs.GetBaseName() == rhs.GetBaseName() &&
+           lhs.GetAgentId() == rhs.GetAgentId() &&
+           lhs.GetDeviceUUID() == rhs.GetDeviceUUID() &&
+           lhs.GetDeviceName() == rhs.GetDeviceName();
 }
 
 template <typename T>
@@ -344,39 +352,37 @@ bool Equal(
         lhs.end(),
         rhs.begin(),
         rhs.end(),
-        [] (const auto& x, const auto& y) {
-            return Equal(x, y);
-        });
+        [](const auto& x, const auto& y) { return Equal(x, y); });
 }
 
 bool Equal(
     const NProto::TStartEndpointRequest& lhs,
     const NProto::TStartEndpointRequest& rhs)
 {
-    return lhs.GetUnixSocketPath() == rhs.GetUnixSocketPath()
-        && lhs.GetDiskId() == rhs.GetDiskId()
-        && lhs.GetInstanceId() == rhs.GetInstanceId()
-        && lhs.GetVolumeAccessMode() == rhs.GetVolumeAccessMode()
-        && lhs.GetVolumeMountMode() == rhs.GetVolumeMountMode()
-        && lhs.GetIpcType() == rhs.GetIpcType()
-        && lhs.GetMountSeqNumber() == rhs.GetMountSeqNumber()
-        && lhs.GetClientId() == rhs.GetClientId()
-        && lhs.GetVhostQueuesCount() == rhs.GetVhostQueuesCount()
-        && lhs.GetDeviceName() == rhs.GetDeviceName()
-        && std::equal(
-            lhs.GetClientCGroups().begin(),
-            lhs.GetClientCGroups().end(),
-            rhs.GetClientCGroups().begin(),
-            rhs.GetClientCGroups().end());
+    return lhs.GetUnixSocketPath() == rhs.GetUnixSocketPath() &&
+           lhs.GetDiskId() == rhs.GetDiskId() &&
+           lhs.GetInstanceId() == rhs.GetInstanceId() &&
+           lhs.GetVolumeAccessMode() == rhs.GetVolumeAccessMode() &&
+           lhs.GetVolumeMountMode() == rhs.GetVolumeMountMode() &&
+           lhs.GetIpcType() == rhs.GetIpcType() &&
+           lhs.GetMountSeqNumber() == rhs.GetMountSeqNumber() &&
+           lhs.GetClientId() == rhs.GetClientId() &&
+           lhs.GetVhostQueuesCount() == rhs.GetVhostQueuesCount() &&
+           lhs.GetDeviceName() == rhs.GetDeviceName() &&
+           std::equal(
+               lhs.GetClientCGroups().begin(),
+               lhs.GetClientCGroups().end(),
+               rhs.GetClientCGroups().begin(),
+               rhs.GetClientCGroups().end());
 }
 
 bool Equal(const NProto::TVolume& lhs, const NProto::TVolume& rhs)
 {
-    return lhs.GetDiskId() == rhs.GetDiskId()
-        && lhs.GetBlocksCount() == rhs.GetBlocksCount()
-        && lhs.GetBlockSize() == rhs.GetBlockSize()
-        && lhs.GetStorageMediaKind() == rhs.GetStorageMediaKind()
-        && Equal(lhs.GetDevices(), rhs.GetDevices());
+    return lhs.GetDiskId() == rhs.GetDiskId() &&
+           lhs.GetBlocksCount() == rhs.GetBlocksCount() &&
+           lhs.GetBlockSize() == rhs.GetBlockSize() &&
+           lhs.GetStorageMediaKind() == rhs.GetStorageMediaKind() &&
+           Equal(lhs.GetDevices(), rhs.GetDevices());
 }
 
 TString GetArg(const TVector<TString>& args, TStringBuf name)
@@ -418,7 +424,7 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
             auto request = CreateDefaultStartEndpointRequest();
 
             auto error = Listener->StartEndpoint(request, Volume, Session)
-                .GetValueSync();
+                             .GetValueSync();
             UNIT_ASSERT_C(!HasError(error), error);
 
             UNIT_ASSERT_VALUES_EQUAL(3, History.size());
@@ -446,7 +452,9 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
                 19,
                 create->CmdArgs.size(),
                 JoinStrings(create->CmdArgs, " "));
-            UNIT_ASSERT_VALUES_EQUAL("local0", GetArg(create->CmdArgs, "--serial"));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "local0",
+                GetArg(create->CmdArgs, "--serial"));
             UNIT_ASSERT_VALUES_EQUAL(
                 "vol0",
                 GetArg(create->CmdArgs, "--disk-id"));
@@ -468,16 +476,16 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
 
             UNIT_ASSERT_VALUES_EQUAL(2, devices.size());
 
-            UNIT_ASSERT_VALUES_EQUAL(TStringBuilder()
+            UNIT_ASSERT_VALUES_EQUAL(
+                TStringBuilder()
                     << "/dev/disk/by-path/pci-0000:00:16.0-sas-phy2-lun-0:"
-                    << (4'000 * 512_B)
-                    << ":32000",
+                    << (4'000 * 512_B) << ":32000",
                 devices[0]);
 
-            UNIT_ASSERT_VALUES_EQUAL(TStringBuilder()
+            UNIT_ASSERT_VALUES_EQUAL(
+                TStringBuilder()
                     << "/dev/disk/by-path/pci-0000:00:16.0-sas-phy2-lun-0:"
-                    << (6'000 * 512_B)
-                    << ":0",
+                    << (6'000 * 512_B) << ":0",
                 devices[1]);
 
             UNIT_ASSERT_VALUES_EQUAL(request.GetClientId(), create->ClientId);
@@ -598,8 +606,9 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
         {
             auto request = CreateDefaultStartEndpointRequest();
 
-            auto error = Listener->StartEndpoint(request, FastPathVolume, Session)
-                .GetValueSync();
+            auto error =
+                Listener->StartEndpoint(request, FastPathVolume, Session)
+                    .GetValueSync();
             UNIT_ASSERT_C(!HasError(error), error);
 
             UNIT_ASSERT_VALUES_EQUAL(3, History.size());
@@ -630,7 +639,9 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
                 23,
                 create->CmdArgs.size(),
                 JoinStrings(create->CmdArgs, " "));
-            UNIT_ASSERT_VALUES_EQUAL("local0", GetArg(create->CmdArgs, "--serial"));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "local0",
+                GetArg(create->CmdArgs, "--serial"));
 
             UNIT_ASSERT_VALUES_EQUAL(
                 "/tmp/socket.vhost",
@@ -638,16 +649,24 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
 
             UNIT_ASSERT_VALUES_EQUAL("2", GetArg(create->CmdArgs, "-q"));
 
-            UNIT_ASSERT_VALUES_EQUAL("client", GetArg(create->CmdArgs, "--client-id"));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "client",
+                GetArg(create->CmdArgs, "--client-id"));
 
-            UNIT_ASSERT_VALUES_EQUAL("vol0", GetArg(create->CmdArgs, "--disk-id"));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "vol0",
+                GetArg(create->CmdArgs, "--disk-id"));
             UNIT_ASSERT_VALUES_EQUAL(
                 "30",
                 GetArg(create->CmdArgs, "--wait-after-parent-exit"));
 
-            UNIT_ASSERT_VALUES_EQUAL("rdma", GetArg(create->CmdArgs, "--device-backend"));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "rdma",
+                GetArg(create->CmdArgs, "--device-backend"));
 
-            UNIT_ASSERT_VALUES_EQUAL("4096", GetArg(create->CmdArgs, "--block-size"));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "4096",
+                GetArg(create->CmdArgs, "--block-size"));
 
             UNIT_ASSERT(FindPtr(create->CmdArgs, "--read-only"));
 
@@ -655,16 +674,14 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
 
             UNIT_ASSERT_VALUES_EQUAL(2, devices.size());
 
-            UNIT_ASSERT_VALUES_EQUAL(TStringBuilder()
-                    << "rdma://host1:1111/uuid1:"
-                    << (4'000 * 4_KB)
-                    << ":0",
+            UNIT_ASSERT_VALUES_EQUAL(
+                TStringBuilder()
+                    << "rdma://host1:1111/uuid1:" << (4'000 * 4_KB) << ":0",
                 devices[0]);
 
-            UNIT_ASSERT_VALUES_EQUAL(TStringBuilder()
-                    << "rdma://host2:2222/uuid2:"
-                    << (6'000 * 4_KB)
-                    << ":0",
+            UNIT_ASSERT_VALUES_EQUAL(
+                TStringBuilder()
+                    << "rdma://host2:2222/uuid2:" << (6'000 * 4_KB) << ":0",
                 devices[1]);
 
             UNIT_ASSERT_VALUES_EQUAL(request.GetClientId(), create->ClientId);
@@ -725,7 +742,7 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
             request.SetDiskId(RemoteVolume.GetDiskId());
 
             auto error = Listener->StartEndpoint(request, RemoteVolume, Session)
-                .GetValueSync();
+                             .GetValueSync();
             UNIT_ASSERT_C(!HasError(error), error);
 
             UNIT_ASSERT_VALUES_EQUAL(1, History.size());
@@ -758,7 +775,7 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
             request.SetVolumeMountMode(NProto::VOLUME_MOUNT_REMOTE);
 
             auto error = Listener->StartEndpoint(request, Volume, Session)
-                .GetValueSync();
+                             .GetValueSync();
             UNIT_ASSERT_C(!HasError(error), error);
 
             UNIT_ASSERT_VALUES_EQUAL(1, History.size());
@@ -774,7 +791,7 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
             request.SetVolumeMountMode(NProto::VOLUME_MOUNT_LOCAL);
 
             auto error = Listener->AlterEndpoint(request, Volume, Session)
-                .GetValueSync();
+                             .GetValueSync();
             UNIT_ASSERT_C(!HasError(error), error);
 
             UNIT_ASSERT_VALUES_EQUAL(4, History.size());
@@ -801,7 +818,7 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
             request.SetVolumeMountMode(NProto::VOLUME_MOUNT_LOCAL);
 
             auto error = Listener->AlterEndpoint(request, Volume, Session)
-                .GetValueSync();
+                             .GetValueSync();
             UNIT_ASSERT_C(!HasError(error), error);
 
             UNIT_ASSERT_VALUES_EQUAL(4, History.size());
@@ -828,7 +845,7 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
             request.SetVolumeMountMode(NProto::VOLUME_MOUNT_REMOTE);
 
             auto error = Listener->AlterEndpoint(request, Volume, Session)
-                .GetValueSync();
+                             .GetValueSync();
             UNIT_ASSERT_C(!HasError(error), error);
 
             UNIT_ASSERT_VALUES_EQUAL(2, History.size());
@@ -848,7 +865,7 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
             request.SetVolumeMountMode(NProto::VOLUME_MOUNT_REMOTE);
 
             auto error = Listener->AlterEndpoint(request, Volume, Session)
-                .GetValueSync();
+                             .GetValueSync();
             UNIT_ASSERT_C(!HasError(error), error);
 
             UNIT_ASSERT_VALUES_EQUAL(1, History.size());
@@ -881,7 +898,7 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
             auto request = CreateDefaultStartEndpointRequest();
 
             auto error = Listener->StartEndpoint(request, Volume, Session)
-                .GetValueSync();
+                             .GetValueSync();
             UNIT_ASSERT_C(!HasError(error), error);
 
             UNIT_ASSERT_VALUES_EQUAL(3, History.size());
@@ -910,7 +927,9 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
                 21,
                 create->CmdArgs.size(),
                 JoinStrings(create->CmdArgs, " "));
-            UNIT_ASSERT_VALUES_EQUAL("local0", GetArg(create->CmdArgs, "--serial"));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "local0",
+                GetArg(create->CmdArgs, "--serial"));
             UNIT_ASSERT_VALUES_EQUAL(
                 "vol0",
                 GetArg(create->CmdArgs, "--disk-id"));

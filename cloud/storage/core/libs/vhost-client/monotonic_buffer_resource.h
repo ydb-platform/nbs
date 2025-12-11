@@ -1,14 +1,14 @@
 #pragma once
 
 #include <memory>
-
 #include <span>
 
 namespace NVHost {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// TODO: replace with std::pmr::monotonic_buffer_resource + std::pmr::polymorphic_allocator
+// TODO: replace with std::pmr::monotonic_buffer_resource +
+// std::pmr::polymorphic_allocator
 struct TMonotonicBufferResource
 {
 private:
@@ -25,10 +25,10 @@ public:
     TMonotonicBufferResource(const TMonotonicBufferResource& other) = delete;
     TMonotonicBufferResource(TMonotonicBufferResource&& other);
 
-    TMonotonicBufferResource& operator = (
+    TMonotonicBufferResource& operator=(
         const TMonotonicBufferResource& other) = delete;
 
-    TMonotonicBufferResource& operator = (TMonotonicBufferResource&& other);
+    TMonotonicBufferResource& operator=(TMonotonicBufferResource&& other);
 
     std::span<char> Allocate(size_t bytes, size_t alignment = 1);
 

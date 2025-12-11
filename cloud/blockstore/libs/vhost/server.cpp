@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/service/device_handler.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/storage.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -79,7 +80,6 @@ struct TZeroBlocksMethod
     }
 };
 
-
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TRequest
@@ -118,8 +118,7 @@ struct TAppContext
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TEndpoint final
-    : public std::enable_shared_from_this<TEndpoint>
+class TEndpoint final: public std::enable_shared_from_this<TEndpoint>
 {
 private:
     TAppContext& AppCtx;
@@ -136,11 +135,11 @@ private:
 
 public:
     TEndpoint(
-            TAppContext& appCtx,
-            IDeviceHandlerPtr deviceHandler,
-            TString socketPath,
-            const TStorageOptions& options,
-            ui32 socketAccessMode)
+        TAppContext& appCtx,
+        IDeviceHandlerPtr deviceHandler,
+        TString socketPath,
+        const TStorageOptions& options,
+        ui32 socketAccessMode)
         : AppCtx(appCtx)
         , DeviceHandler(std::move(deviceHandler))
         , SocketPath(std::move(socketPath))
@@ -163,9 +162,9 @@ public:
         if (!started) {
             NProto::TError error;
             error.SetCode(E_FAIL);
-            error.SetMessage(TStringBuilder()
-                << "could not register block device "
-                << SocketPath.Quote());
+            error.SetMessage(
+                TStringBuilder()
+                << "could not register block device " << SocketPath.Quote());
             return error;
         }
 
@@ -174,9 +173,9 @@ public:
         if (err != 0) {
             NProto::TError error;
             error.SetCode(MAKE_SYSTEM_ERROR(err));
-            error.SetMessage(TStringBuilder()
-                << "failed to chmod socket "
-                << SocketPath.Quote());
+            error.SetMessage(
+                TStringBuilder()
+                << "failed to chmod socket " << SocketPath.Quote());
             return error;
         }
 
@@ -194,13 +193,17 @@ public:
         auto cancelError = MakeError(E_CANCELLED, "Vhost endpoint is stopping");
         with_lock (RequestsLock) {
             TLog& Log = AppCtx.Log;
-            STORAGE_INFO("Stop endpoint " << SocketPath.Quote()
-                << " with " << RequestsInFlight.Size() << " inflight requests");
+            STORAGE_INFO(
+                "Stop endpoint " << SocketPath.Quote() << " with "
+                                 << RequestsInFlight.Size()
+                                 << " inflight requests");
 
-            RequestsInFlight.ForEach([&] (TRequest* request) {
-                CompleteRequest(*request, cancelError);
-                request->Unlink();
-            });
+            RequestsInFlight.ForEach(
+                [&](TRequest* request)
+                {
+                    CompleteRequest(*request, cancelError);
+                    request->Unlink();
+                });
         }
 
         if (deleteSocket) {
@@ -222,8 +225,9 @@ public:
     void Update(ui64 blocksCount)
     {
         TLog& Log = AppCtx.Log;
-        STORAGE_INFO("Update vhost endpoint " << SocketPath.Quote()
-            << " with blocks count = " << blocksCount);
+        STORAGE_INFO(
+            "Update vhost endpoint " << SocketPath.Quote()
+                                     << " with blocks count = " << blocksCount);
         VhostDevice->Update(blocksCount);
     }
 
@@ -273,7 +277,8 @@ public:
                 ProcessRequest<TZeroBlocksMethod>(std::move(request));
                 break;
             default:
-                Y_ABORT("Unexpected request type: %d",
+                Y_ABORT(
+                    "Unexpected request type: %d",
                     static_cast<int>(requestType));
                 break;
         }
@@ -289,30 +294,34 @@ private:
             *request->VhostRequest);
 
         auto weakPtr = weak_from_this();
-        future.Apply([weakPtr, req = std::move(request)] (const auto& f) {
-            const auto& response = f.GetValue();
-            if (auto p = weakPtr.lock()) {
-                p->CompleteRequest(*req, response.GetError());
-                p->UnregisterRequest(*req);
-            }
-            return f.GetValue();
-        });
+        future.Apply(
+            [weakPtr, req = std::move(request)](const auto& f)
+            {
+                const auto& response = f.GetValue();
+                if (auto p = weakPtr.lock()) {
+                    p->CompleteRequest(*req, response.GetError());
+                    p->UnregisterRequest(*req);
+                }
+                return f.GetValue();
+            });
     }
 
     TRequestPtr RegisterRequest(TVhostRequestPtr vhostRequest)
     {
         auto startIndex = vhostRequest->From / Options.BlockSize;
-        auto endIndex = (vhostRequest->From + vhostRequest->Length) / Options.BlockSize;
-        if (endIndex * Options.BlockSize < vhostRequest->From + vhostRequest->Length) {
+        auto endIndex =
+            (vhostRequest->From + vhostRequest->Length) / Options.BlockSize;
+        if (endIndex * Options.BlockSize <
+            vhostRequest->From + vhostRequest->Length)
+        {
             ++endIndex;
         }
-        bool unaligned =
-            startIndex * Options.BlockSize != vhostRequest->From ||
-            endIndex * Options.BlockSize != vhostRequest->From + vhostRequest->Length;
+        bool unaligned = startIndex * Options.BlockSize != vhostRequest->From ||
+                         endIndex * Options.BlockSize !=
+                             vhostRequest->From + vhostRequest->Length;
 
-        auto request = MakeIntrusive<TRequest>(
-            CreateRequestId(),
-            std::move(vhostRequest));
+        auto request =
+            MakeIntrusive<TRequest>(CreateRequestId(), std::move(vhostRequest));
 
         const ui32 blockSize = AppCtx.ServerStats->GetBlockSize(Options.DiskId);
 
@@ -374,13 +383,10 @@ private:
 
         // Keep the logic synchronized with
         // TAlignedDeviceHandler::ReportCriticalError().
-        bool cancelError =
-            error.GetCode() == E_CANCELLED ||
-            GetErrorKind(error) == EErrorKind::ErrorRetriable;
+        bool cancelError = error.GetCode() == E_CANCELLED ||
+                           GetErrorKind(error) == EErrorKind::ErrorRetriable;
 
-        bool stopEndpoint =
-            AppCtx.ShouldStop.test() ||
-            Stopped.test();
+        bool stopEndpoint = AppCtx.ShouldStop.test() || Stopped.test();
 
         if (stopEndpoint && cancelError) {
             auto flags = error.GetFlags();
@@ -397,8 +403,7 @@ using TEndpointPtr = std::shared_ptr<TEndpoint>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TExecutor final
-    : public ISimpleThread
+class TExecutor final: public ISimpleThread
 {
 private:
     TAppContext& AppCtx;
@@ -412,11 +417,11 @@ private:
 
 public:
     TExecutor(
-            TAppContext& appCtx,
-            TString name,
-            IVhostQueuePtr vhostQueue,
-            ui32 socketAccessMode,
-            const TAffinity& affinity)
+        TAppContext& appCtx,
+        TString name,
+        IVhostQueuePtr vhostQueue,
+        ui32 socketAccessMode,
+        const TAffinity& affinity)
         : AppCtx(appCtx)
         , Name(std::move(name))
         , ExecutorScope(AppCtx.ServerStats->StartExecutor())
@@ -483,9 +488,8 @@ public:
 
     void AddEndpoint(const TString& socketPath, TEndpointPtr endpoint)
     {
-        auto [it, inserted] = Endpoints.emplace(
-            socketPath,
-            std::move(endpoint));
+        auto [it, inserted] =
+            Endpoints.emplace(socketPath, std::move(endpoint));
         Y_ABORT_UNLESS(inserted);
     }
 
@@ -699,9 +703,9 @@ TFuture<NProto::TError> TServer::StartEndpoint(
         if (it != EndpointMap.end()) {
             NProto::TError error;
             error.SetCode(S_ALREADY);
-            error.SetMessage(TStringBuilder()
-                << "endpoint " << socketPath.Quote()
-                << " has already been started");
+            error.SetMessage(
+                TStringBuilder() << "endpoint " << socketPath.Quote()
+                                 << " has already been started");
             return MakeFuture(error);
         }
 
@@ -709,14 +713,10 @@ TFuture<NProto::TError> TServer::StartEndpoint(
         Y_ABORT_UNLESS(executor);
     }
 
-    auto endpoint = executor->CreateEndpoint(
-        socketPath,
-        options,
-        std::move(storage));
+    auto endpoint =
+        executor->CreateEndpoint(socketPath, options, std::move(storage));
 
-    auto error = SafeExecute<NProto::TError>([&] {
-        return endpoint->Start();
-    });
+    auto error = SafeExecute<NProto::TError>([&] { return endpoint->Start(); });
     if (HasError(error)) {
         return MakeFuture(error);
     }
@@ -724,9 +724,8 @@ TFuture<NProto::TError> TServer::StartEndpoint(
     with_lock (Lock) {
         executor->AddEndpoint(socketPath, std::move(endpoint));
 
-        auto [it, inserted] = EndpointMap.emplace(
-            std::move(socketPath),
-            executor);
+        auto [it, inserted] =
+            EndpointMap.emplace(std::move(socketPath), executor);
         Y_ABORT_UNLESS(inserted);
     }
 
@@ -749,9 +748,9 @@ TFuture<NProto::TError> TServer::StopEndpoint(const TString& socketPath)
         if (it == EndpointMap.end()) {
             NProto::TError error;
             error.SetCode(S_ALREADY);
-            error.SetMessage(TStringBuilder()
-                << "endpoint " << socketPath.Quote()
-                << " has already been stopped");
+            error.SetMessage(
+                TStringBuilder() << "endpoint " << socketPath.Quote()
+                                 << " has already been stopped");
             return MakeFuture(error);
         }
 
@@ -764,7 +763,8 @@ TFuture<NProto::TError> TServer::StopEndpoint(const TString& socketPath)
 
     auto ptr = shared_from_this();
     return endpoint->Stop(true).Apply(
-        [ptr = std::move(ptr), socketPath] (const auto& future) {
+        [ptr = std::move(ptr), socketPath](const auto& future)
+        {
             const auto& error = future.GetValue();
             ptr->HandleStoppedEndpoint(socketPath, error);
             return error;
@@ -789,9 +789,9 @@ NProto::TError TServer::UpdateEndpoint(
         if (it == EndpointMap.end()) {
             NProto::TError error;
             error.SetCode(S_FALSE);
-            error.SetMessage(TStringBuilder()
-                << "endpoint " << socketPath.Quote()
-                << " not started");
+            error.SetMessage(
+                TStringBuilder()
+                << "endpoint " << socketPath.Quote() << " not started");
             return error;
         }
 
@@ -840,9 +840,9 @@ void TServer::HandleStoppedEndpoint(
     const NProto::TError& error)
 {
     if (HasError(error)) {
-        STORAGE_ERROR("Failed to stop endpoint: "
-            << socketPath.Quote()
-            << ". Error: " << error);
+        STORAGE_ERROR(
+            "Failed to stop endpoint: " << socketPath.Quote()
+                                        << ". Error: " << error);
     }
 
     with_lock (Lock) {

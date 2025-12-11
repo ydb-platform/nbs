@@ -6,8 +6,7 @@ namespace NVHostUser {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSetProtocolFeature
-    : public IMessage
+class TSetProtocolFeature: public IMessage
 {
 private:
     uint64_t Features = 0;
@@ -43,4 +42,4 @@ public:
     }
 };
 
-} // namespace NVHostUser
+}   // namespace NVHostUser

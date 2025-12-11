@@ -8,8 +8,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TWallClockTimer final
-    : public ITimer
+class TWallClockTimer final: public ITimer
 {
 public:
     TInstant Now() override
@@ -28,12 +27,12 @@ public:
 TInstant InitTime = TInstant::Now();
 ui64 InitCycleCount = GetCycleCount();
 
-class TCpuCycleTimer final
-    : public ITimer
+class TCpuCycleTimer final: public ITimer
 {
     TInstant Now() override
     {
-        return InitTime + CyclesToDurationSafe(GetCycleCount() - InitCycleCount);
+        return InitTime +
+               CyclesToDurationSafe(GetCycleCount() - InitCycleCount);
     }
 
     void Sleep(TDuration duration) override

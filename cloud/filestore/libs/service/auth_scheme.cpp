@@ -1,7 +1,7 @@
 #include "auth_scheme.h"
 
-#include <util/generic/string.h>
 #include <util/generic/hash.h>
+#include <util/generic/string.h>
 
 namespace NCloud::NFileStore {
 
@@ -68,13 +68,11 @@ TPermissionList GetRequestPermissions(EFileStoreRequest requestType)
         case EFileStoreRequest::StatFileStore:
             return CreatePermissionList({EPermission::Get});
         case EFileStoreRequest::CreateCheckpoint:
-            return CreatePermissionList({
-                EPermission::Read,
-                EPermission::Write});
+            return CreatePermissionList(
+                {EPermission::Read, EPermission::Write});
         case EFileStoreRequest::DestroyCheckpoint:
-            return CreatePermissionList({
-                EPermission::Read,
-                EPermission::Write});
+            return CreatePermissionList(
+                {EPermission::Read, EPermission::Write});
         case EFileStoreRequest::DescribeFileStoreModel:
             return CreatePermissionList({EPermission::Get});
         case EFileStoreRequest::ListFileStores:
@@ -85,9 +83,8 @@ TPermissionList GetRequestPermissions(EFileStoreRequest requestType)
         case EFileStoreRequest::StartEndpoint:
         case EFileStoreRequest::StopEndpoint:
         case EFileStoreRequest::KickEndpoint:
-            return CreatePermissionList({
-                EPermission::Read,
-                EPermission::Write});
+            return CreatePermissionList(
+                {EPermission::Read, EPermission::Write});
 
         case EFileStoreRequest::ExecuteAction:
             Y_ABORT("ExecuteAction must have been handled separately");
@@ -107,8 +104,9 @@ TPermissionList GetRequestPermissions(
     TString action = request.GetAction();
     action.to_lower();
 
-    auto perms = [] (TString name, TPermissionList lst) {
-        return std::pair {name, std::move(lst)};
+    auto perms = [](TString name, TPermissionList lst)
+    {
+        return std::pair{name, std::move(lst)};
     };
 
     if (!!FindPtr(actionsNoAuth, action)) {
@@ -117,7 +115,9 @@ TPermissionList GetRequestPermissions(
 
     static const THashMap<TString, TPermissionList> actions = {
         // Get
-        perms("getstorageconfigfields", CreatePermissionList({EPermission::Get})),
+        perms(
+            "getstorageconfigfields",
+            CreatePermissionList({EPermission::Get})),
         perms("listlocalfilestores", CreatePermissionList({EPermission::Get})),
 
         // Update
@@ -125,8 +125,7 @@ TPermissionList GetRequestPermissions(
 
         // Admin
         perms("changestorageconfig", TPermissionList().Flip()),
-        perms("restarttablet", TPermissionList().Flip())
-    };
+        perms("restarttablet", TPermissionList().Flip())};
 
     auto it = actions.find(action);
     if (it != actions.end()) {
@@ -136,4 +135,4 @@ TPermissionList GetRequestPermissions(
     return TPermissionList().Flip();
 }
 
-}  // namespace NCloud::NBlockStore
+}   // namespace NCloud::NFileStore

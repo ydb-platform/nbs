@@ -1,4 +1,5 @@
 #include "config_initializer.h"
+
 #include "options.h"
 
 #include <cloud/storage/core/libs/common/affinity.h>
@@ -27,7 +28,8 @@ void AdjustActorSystemThreadsAccordingToAvailableCpus(
 
     using TExecutor = NKikimrConfig::TActorSystemConfig::TExecutor;
 
-    const auto findPool = [&] (const auto& poolName) -> TExecutor* {
+    const auto findPool = [&](const auto& poolName) -> TExecutor*
+    {
         for (auto& executor: *config.MutableExecutor()) {
             if (executor.GetName() == poolName) {
                 return &executor;
@@ -40,8 +42,7 @@ void AdjustActorSystemThreadsAccordingToAvailableCpus(
     const TVector<TExecutor*> executors = {
         findPool("System"),
         findPool("User"),
-        findPool("IC")
-    };
+        findPool("IC")};
     for (auto* executor: executors) {
         if (!executor) {
             // each pool should be set in actor system config
@@ -75,23 +76,23 @@ void TConfigInitializerYdbBase::ApplyCMSConfigs(
     NKikimrConfig::TAppConfig cmsConfig)
 {
     if (cmsConfig.HasBlobStorageConfig()) {
-        KikimrConfig->MutableBlobStorageConfig()
-            ->Swap(cmsConfig.MutableBlobStorageConfig());
+        KikimrConfig->MutableBlobStorageConfig()->Swap(
+            cmsConfig.MutableBlobStorageConfig());
     }
 
     if (cmsConfig.HasDomainsConfig()) {
-        KikimrConfig->MutableDomainsConfig()
-            ->Swap(cmsConfig.MutableDomainsConfig());
+        KikimrConfig->MutableDomainsConfig()->Swap(
+            cmsConfig.MutableDomainsConfig());
     }
 
     if (cmsConfig.HasNameserviceConfig()) {
-        KikimrConfig->MutableNameserviceConfig()
-            ->Swap(cmsConfig.MutableNameserviceConfig());
+        KikimrConfig->MutableNameserviceConfig()->Swap(
+            cmsConfig.MutableNameserviceConfig());
     }
 
     if (cmsConfig.HasDynamicNameserviceConfig()) {
-        KikimrConfig->MutableDynamicNameserviceConfig()
-            ->Swap(cmsConfig.MutableDynamicNameserviceConfig());
+        KikimrConfig->MutableDynamicNameserviceConfig()->Swap(
+            cmsConfig.MutableDynamicNameserviceConfig());
     }
 
     ApplyCustomCMSConfigs(cmsConfig);
@@ -113,9 +114,7 @@ void TConfigInitializerYdbBase::InitKikimrConfig()
 
     auto& interconnectConfig = *KikimrConfig->MutableInterconnectConfig();
     if (Options->InterconnectConfig) {
-        ParseProtoTextFromFile(
-            Options->InterconnectConfig,
-            interconnectConfig);
+        ParseProtoTextFromFile(Options->InterconnectConfig, interconnectConfig);
     }
     interconnectConfig.SetStartTcp(true);
 
@@ -137,10 +136,7 @@ void TConfigInitializerYdbBase::InitKikimrConfig()
 
     auto& nameServiceConfig = *KikimrConfig->MutableNameserviceConfig();
     if (Options->NameServiceConfig) {
-        ParseProtoTextFromFile(
-            Options->NameServiceConfig,
-            nameServiceConfig
-        );
+        ParseProtoTextFromFile(Options->NameServiceConfig, nameServiceConfig);
     }
 
     if (Options->SuppressVersionCheck) {
@@ -152,8 +148,7 @@ void TConfigInitializerYdbBase::InitKikimrConfig()
     if (Options->DynamicNameServiceConfig) {
         ParseProtoTextFromFile(
             Options->DynamicNameServiceConfig,
-            dynamicNameServiceConfig
-        );
+            dynamicNameServiceConfig);
     }
 
     if (Options->AuthConfig) {
@@ -168,8 +163,7 @@ void TConfigInitializerYdbBase::InitKikimrConfig()
     if (Options->KikimrFeaturesConfig) {
         ParseProtoTextFromFile(
             Options->KikimrFeaturesConfig,
-            kikimrFeaturesConfig
-        );
+            kikimrFeaturesConfig);
     } else {
         // we want to use VPatch by default for EvPatch
         kikimrFeaturesConfig.SetEnableVPatch(true);
@@ -177,9 +171,7 @@ void TConfigInitializerYdbBase::InitKikimrConfig()
 
     if (Options->SharedCacheConfig) {
         auto& sharedCacheConfig = *KikimrConfig->MutableSharedCacheConfig();
-        ParseProtoTextFromFile(
-            Options->SharedCacheConfig,
-            sharedCacheConfig);
+        ParseProtoTextFromFile(Options->SharedCacheConfig, sharedCacheConfig);
     }
 }
 
@@ -195,7 +187,8 @@ NKikimrConfig::TLogConfig TConfigInitializerYdbBase::GetLogConfig() const
     return logConfig;
 }
 
-NKikimrConfig::TMonitoringConfig TConfigInitializerYdbBase::GetMonitoringConfig() const
+NKikimrConfig::TMonitoringConfig
+TConfigInitializerYdbBase::GetMonitoringConfig() const
 {
     NKikimrConfig::TMonitoringConfig monConfig;
     if (Options->MonitoringConfig) {
@@ -206,7 +199,8 @@ NKikimrConfig::TMonitoringConfig TConfigInitializerYdbBase::GetMonitoringConfig(
     return monConfig;
 }
 
-void TConfigInitializerYdbBase::SetupLogLevel(NKikimrConfig::TLogConfig& logConfig) const
+void TConfigInitializerYdbBase::SetupLogLevel(
+    NKikimrConfig::TLogConfig& logConfig) const
 {
     if (Options->VerboseLevel) {
         auto level = GetLogLevel(Options->VerboseLevel);
@@ -216,7 +210,8 @@ void TConfigInitializerYdbBase::SetupLogLevel(NKikimrConfig::TLogConfig& logConf
     }
 }
 
-void TConfigInitializerYdbBase::SetupMonitoringConfig(NKikimrConfig::TMonitoringConfig& monConfig) const
+void TConfigInitializerYdbBase::SetupMonitoringConfig(
+    NKikimrConfig::TMonitoringConfig& monConfig) const
 {
     if (Options->MonitoringAddress) {
         monConfig.SetMonitoringAddress(Options->MonitoringAddress);
@@ -228,7 +223,7 @@ void TConfigInitializerYdbBase::SetupMonitoringConfig(NKikimrConfig::TMonitoring
         monConfig.SetMonitoringThreads(Options->MonitoringThreads);
     }
     if (!monConfig.HasMonitoringThreads()) {
-        monConfig.SetMonitoringThreads(1);  // reasonable defaults
+        monConfig.SetMonitoringThreads(1);   // reasonable defaults
     }
 }
 

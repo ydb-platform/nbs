@@ -100,8 +100,7 @@ void DoBenchmarkRdmaTarget(
             const auto blockRange =
                 TBlockRange64::WithLength(blockIndex % N, requestSize / 4_KB);
             auto zeroFuture = env.Run(env.MakeZeroRequest(blockRange));
-            auto oldZeroRequest =
-                zeroRequests.PushBack(std::move(zeroFuture));
+            auto oldZeroRequest = zeroRequests.PushBack(std::move(zeroFuture));
             if (oldZeroRequest) {
                 finishZeroRequest(*oldZeroRequest);
             }
@@ -110,8 +109,7 @@ void DoBenchmarkRdmaTarget(
                 (blockIndex + 1) % N,
                 requestSize / 4_KB);
             auto readFuture = env.Run(env.MakeReadRequest(blockRange));
-            auto oldReadRequest =
-                readRequests.PushBack(std::move(readFuture));
+            auto oldReadRequest = readRequests.PushBack(std::move(readFuture));
             if (oldReadRequest) {
                 finishReadRequest(*oldReadRequest);
             }

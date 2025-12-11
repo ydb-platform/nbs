@@ -16,7 +16,7 @@ using namespace NKikimr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template<typename TMethod>
+template <typename TMethod>
 void TStorageServiceActor::CompleteRequest(
     const TActorContext& ctx,
     const typename TMethod::TResponse::TPtr& ev)
@@ -25,14 +25,18 @@ void TStorageServiceActor::CompleteRequest(
 
     auto request = FindInFlightRequest(ev->Cookie);
     if (!request) {
-        LOG_CRIT(ctx, TFileStoreComponents::SERVICE,
+        LOG_CRIT(
+            ctx,
+            TFileStoreComponents::SERVICE,
             "failed to complete %s: invalid cookie (%d)",
             TMethod::Name,
             ev->Cookie);
         return;
     }
 
-    LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE,
         "#%lu completed %s (%s)",
         request->CallContext->RequestId,
         TMethod::Name,
@@ -63,17 +67,16 @@ void TStorageServiceActor::CompleteRequest(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_IMPLEMENT_RESPONSE(name, ns)                                 \
-    void TStorageServiceActor::Handle##name(                                   \
-        const ns::TEv##name##Response::TPtr& ev,                               \
-        const TActorContext& ctx)                                              \
-    {                                                                          \
-        CompleteRequest<ns::T##name##Method>(ctx, ev);                         \
+#define FILESTORE_IMPLEMENT_RESPONSE(name, ns)         \
+    void TStorageServiceActor::Handle##name(           \
+        const ns::TEv##name##Response::TPtr& ev,       \
+        const TActorContext& ctx)                      \
+    {                                                  \
+        CompleteRequest<ns::T##name##Method>(ctx, ev); \
     }
 
-    FILESTORE_REMOTE_SERVICE(FILESTORE_IMPLEMENT_RESPONSE, TEvService)
+FILESTORE_REMOTE_SERVICE(FILESTORE_IMPLEMENT_RESPONSE, TEvService)
 
 #undef FILESTORE_IMPLEMENT_RESPONSE
-
 
 }   // namespace NCloud::NFileStore::NStorage

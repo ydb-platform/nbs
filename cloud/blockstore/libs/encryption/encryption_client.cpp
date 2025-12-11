@@ -40,9 +40,7 @@ TFuture<TResponse> MakeFutureErrorResponse(NProto::TError error)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TStorageBuffer AllocateStorageBuffer(
-    IBlockStore& client,
-    size_t bytesCount)
+TStorageBuffer AllocateStorageBuffer(IBlockStore& client, size_t bytesCount)
 {
     auto buffer = client.AllocateBuffer(bytesCount);
 
@@ -152,11 +150,11 @@ private:
 
 public:
     TEncryptionClient(
-            IBlockStorePtr client,
-            ILoggingServicePtr logging,
-            IEncryptorPtr encryptor,
-            NProto::TEncryptionDesc encryptionDesc,
-            NProto::EEncryptZeroPolicy encryptZeroPolicy)
+        IBlockStorePtr client,
+        ILoggingServicePtr logging,
+        IEncryptorPtr encryptor,
+        NProto::TEncryptionDesc encryptionDesc,
+        NProto::EEncryptZeroPolicy encryptZeroPolicy)
         : TClientWrapper(std::move(client))
         , Encryptor(std::move(encryptor))
         , EncryptionDesc(std::move(encryptionDesc))
@@ -165,11 +163,11 @@ public:
     {}
 
     TEncryptionClient(
-            IBlockStorePtr client,
-            ILoggingServicePtr logging,
-            IEncryptorPtr encryptor,
-            const NProto::TVolume& volume,
-            NProto::EEncryptZeroPolicy encryptZeroPolicy)
+        IBlockStorePtr client,
+        ILoggingServicePtr logging,
+        IEncryptorPtr encryptor,
+        const NProto::TVolume& volume,
+        NProto::EEncryptZeroPolicy encryptZeroPolicy)
         : TClientWrapper(std::move(client))
         , Encryptor(std::move(encryptor))
         , EncryptZeroPolicy(encryptZeroPolicy)
@@ -204,10 +202,8 @@ public:
         std::shared_ptr<NProto::TZeroBlocksRequest> request) override;
 
 private:
-    NProto::TError Encrypt(
-        const TSgList& src,
-        const TSgList& dst,
-        ui64 startIndex);
+    NProto::TError
+    Encrypt(const TSgList& src, const TSgList& dst, ui64 startIndex);
 
     NProto::TError Decrypt(
         const TSgList& src,
@@ -245,28 +241,29 @@ TFuture<NProto::TMountVolumeResponse> TEncryptionClient::MountVolume(
     encryption.SetMode(EncryptionDesc.GetMode());
     encryption.SetKeyHash(EncryptionDesc.GetKeyHash());
 
-    auto future = Client->MountVolume(
-        std::move(callContext),
-        std::move(request));
+    auto future =
+        Client->MountVolume(std::move(callContext), std::move(request));
 
     auto weakPtr = weak_from_this();
 
-    return future.Apply([weakPtr = std::move(weakPtr)] (const auto& f) {
-        const auto& response = f.GetValue();
-        if (HasError(response)) {
+    return future.Apply(
+        [weakPtr = std::move(weakPtr)](const auto& f)
+        {
+            const auto& response = f.GetValue();
+            if (HasError(response)) {
+                return response;
+            }
+
+            auto ptr = weakPtr.lock();
+            if (!ptr) {
+                return static_cast<NProto::TMountVolumeResponse>(TErrorResponse(
+                    E_REJECTED,
+                    "Encryption client is destroyed after MountVolume"));
+            }
+
+            ptr->HandleMountVolumeResponse(response);
             return response;
-        }
-
-        auto ptr = weakPtr.lock();
-        if (!ptr) {
-            return static_cast<NProto::TMountVolumeResponse>(TErrorResponse(
-                E_REJECTED,
-                "Encryption client is destroyed after MountVolume"));
-        }
-
-        ptr->HandleMountVolumeResponse(response);
-        return response;
-    });
+        });
 }
 
 void TEncryptionClient::HandleMountVolumeResponse(
@@ -292,34 +289,31 @@ TFuture<NProto::TReadBlocksResponse> TEncryptionClient::ReadBlocks(
     auto startIndex = request->GetStartIndex();
     auto blocksCount = request->GetBlocksCount();
 
-    auto future = Client->ReadBlocks(
-        std::move(callContext),
-        std::move(request));
+    auto future =
+        Client->ReadBlocks(std::move(callContext), std::move(request));
 
     auto weakPtr = weak_from_this();
 
-    return future.Apply([
-        weakPtr = std::move(weakPtr),
-        startIndex,
-        blocksCount] (auto f)
-    {
-        auto response = f.ExtractValue();
-        if (HasError(response)) {
-            return response;
-        }
+    return future.Apply(
+        [weakPtr = std::move(weakPtr), startIndex, blocksCount](auto f)
+        {
+            auto response = f.ExtractValue();
+            if (HasError(response)) {
+                return response;
+            }
 
-        auto ptr = weakPtr.lock();
-        if (!ptr) {
-            return static_cast<NProto::TReadBlocksResponse>(TErrorResponse(
-                E_REJECTED,
-                "Encryption client is destroyed after ReadBlocks"));
-        }
+            auto ptr = weakPtr.lock();
+            if (!ptr) {
+                return static_cast<NProto::TReadBlocksResponse>(TErrorResponse(
+                    E_REJECTED,
+                    "Encryption client is destroyed after ReadBlocks"));
+            }
 
-        return ptr->HandleReadBlocksResponse(
-            response,
-            startIndex,
-            blocksCount);
-    });
+            return ptr->HandleReadBlocksResponse(
+                response,
+                startIndex,
+                blocksCount);
+        });
 }
 
 NProto::TReadBlocksResponse TEncryptionClient::HandleReadBlocksResponse(
@@ -385,10 +379,7 @@ TFuture<NProto::TWriteBlocksResponse> TEncryptionClient::WriteBlocks(
         sglist.size(),
         BlockSize);
 
-    auto err = Encrypt(
-        sglist,
-        encryptedSglist,
-        request->GetStartIndex());
+    auto err = Encrypt(sglist, encryptedSglist, request->GetStartIndex());
 
     if (HasError(err)) {
         return MakeFutureErrorResponse<NProto::TWriteBlocksResponse>(
@@ -413,12 +404,11 @@ TFuture<NProto::TReadBlocksLocalResponse> TEncryptionClient::ReadBlocksLocal(
             "Request size should not be zero");
     }
 
-    ui64 bufferSize = static_cast<ui64>(request->GetBlocksCount()) *
-        request->BlockSize;
+    ui64 bufferSize =
+        static_cast<ui64>(request->GetBlocksCount()) * request->BlockSize;
     auto buffer = AllocateStorageBuffer(*Client, bufferSize);
-    auto sgListOrError = SgListNormalize(
-        { buffer.get(), bufferSize },
-        request->BlockSize);
+    auto sgListOrError =
+        SgListNormalize({buffer.get(), bufferSize}, request->BlockSize);
 
     if (HasError(sgListOrError)) {
         return MakeFuture<NProto::TReadBlocksLocalResponse>(
@@ -437,36 +427,37 @@ TFuture<NProto::TReadBlocksLocalResponse> TEncryptionClient::ReadBlocksLocal(
 
     auto weakPtr = weak_from_this();
 
-    return future.Apply([
-        weakPtr = std::move(weakPtr),
-        request = std::move(request),
-        sgList = std::move(guardedSgList),
-        buf = std::move(buffer)] (const auto& f) mutable
-    {
-        auto encryptedSglist = sgList.Acquire().Get();
-        sgList.Close();
+    return future.Apply(
+        [weakPtr = std::move(weakPtr),
+         request = std::move(request),
+         sgList = std::move(guardedSgList),
+         buf = std::move(buffer)](const auto& f) mutable
+        {
+            auto encryptedSglist = sgList.Acquire().Get();
+            sgList.Close();
 
-        auto response = f.GetValue();
-        if (HasError(response)) {
-            return response;
-        }
+            auto response = f.GetValue();
+            if (HasError(response)) {
+                return response;
+            }
 
-        auto ptr = weakPtr.lock();
-        if (!ptr) {
-            return NProto::TReadBlocksLocalResponse(TErrorResponse(
-                E_REJECTED,
-                "Encryption client is destroyed after ReadBlocksLocal"));
-        }
+            auto ptr = weakPtr.lock();
+            if (!ptr) {
+                return NProto::TReadBlocksLocalResponse(TErrorResponse(
+                    E_REJECTED,
+                    "Encryption client is destroyed after ReadBlocksLocal"));
+            }
 
-        Y_UNUSED(buf);
-        return ptr->HandleReadBlocksLocalResponse(
-            std::move(response),
-            encryptedSglist,
-            *request);
-    });
+            Y_UNUSED(buf);
+            return ptr->HandleReadBlocksLocalResponse(
+                std::move(response),
+                encryptedSglist,
+                *request);
+        });
 }
 
-NProto::TReadBlocksLocalResponse TEncryptionClient::HandleReadBlocksLocalResponse(
+NProto::TReadBlocksLocalResponse
+TEncryptionClient::HandleReadBlocksLocalResponse(
     NProto::TReadBlocksLocalResponse response,
     const TSgList& encryptedSglist,
     const NProto::TReadBlocksLocalRequest& request)
@@ -521,15 +512,14 @@ TFuture<NProto::TWriteBlocksLocalResponse> TEncryptionClient::WriteBlocksLocal(
             "failed to acquire sglist in EncryptionClient");
     }
 
-    ui64 bufferSize = static_cast<ui64>(request->BlocksCount) *
-        request->BlockSize;
+    ui64 bufferSize =
+        static_cast<ui64>(request->BlocksCount) * request->BlockSize;
     auto buffer = AllocateStorageBuffer(*Client, bufferSize);
 
     TSgList encryptedSglist;
     {
-        auto sgListOrError = SgListNormalize(
-            { buffer.get(), bufferSize },
-            request->BlockSize);
+        auto sgListOrError =
+            SgListNormalize({buffer.get(), bufferSize}, request->BlockSize);
 
         if (HasError(sgListOrError)) {
             return MakeFuture<NProto::TWriteBlocksLocalResponse>(
@@ -548,10 +538,7 @@ TFuture<NProto::TWriteBlocksLocalResponse> TEncryptionClient::WriteBlocksLocal(
         srcSglist = sgListOrError.ExtractResult();
     }
 
-    auto err = Encrypt(
-        srcSglist,
-        encryptedSglist,
-        request->GetStartIndex());
+    auto err = Encrypt(srcSglist, encryptedSglist, request->GetStartIndex());
 
     if (HasError(err)) {
         return MakeFutureErrorResponse<NProto::TWriteBlocksLocalResponse>(
@@ -560,7 +547,8 @@ TFuture<NProto::TWriteBlocksLocalResponse> TEncryptionClient::WriteBlocksLocal(
 
     TGuardedSgList guardedSgList(std::move(encryptedSglist));
 
-    auto encryptedRequest = std::make_shared<NProto::TWriteBlocksLocalRequest>();
+    auto encryptedRequest =
+        std::make_shared<NProto::TWriteBlocksLocalRequest>();
     *encryptedRequest = *request;
     encryptedRequest->Sglist = guardedSgList;
 
@@ -568,14 +556,14 @@ TFuture<NProto::TWriteBlocksLocalResponse> TEncryptionClient::WriteBlocksLocal(
         std::move(callContext),
         std::move(encryptedRequest));
 
-    return future.Apply([
-        sgList = std::move(guardedSgList),
-        buf = std::move(buffer)] (const auto& f) mutable
-    {
-        sgList.Close();
-        buf.reset();
-        return f;
-    });
+    return future.Apply(
+        [sgList = std::move(guardedSgList),
+         buf = std::move(buffer)](const auto& f) mutable
+        {
+            sgList.Close();
+            buf.reset();
+            return f;
+        });
 }
 
 TFuture<NProto::TZeroBlocksResponse> TEncryptionClient::ZeroBlocks(
@@ -610,23 +598,22 @@ TFuture<NProto::TZeroBlocksResponse> TEncryptionClient::ZeroBlocks(
     writeRequest->BlockSize = BlockSize;
     writeRequest->Sglist = guardedSgList;
 
-    auto future = WriteBlocksLocal(
-        std::move(callContext),
-        std::move(writeRequest));
+    auto future =
+        WriteBlocksLocal(std::move(callContext), std::move(writeRequest));
 
-    return future.Apply([
-        sgList = std::move(guardedSgList)] (const auto& f) mutable
-    {
-        sgList.Close();
+    return future.Apply(
+        [sgList = std::move(guardedSgList)](const auto& f) mutable
+        {
+            sgList.Close();
 
-        const auto& response = f.GetValue();
+            const auto& response = f.GetValue();
 
-        NProto::TZeroBlocksResponse zeroResponse;
-        zeroResponse.MutableError()->CopyFrom(response.GetError());
-        zeroResponse.MutableTrace()->CopyFrom(response.GetTrace());
-        zeroResponse.SetThrottlerDelay(response.GetThrottlerDelay());
-        return zeroResponse;
-    });
+            NProto::TZeroBlocksResponse zeroResponse;
+            zeroResponse.MutableError()->CopyFrom(response.GetError());
+            zeroResponse.MutableTrace()->CopyFrom(response.GetTrace());
+            zeroResponse.SetThrottlerDelay(response.GetThrottlerDelay());
+            return zeroResponse;
+        });
 }
 
 NProto::TError TEncryptionClient::Encrypt(
@@ -717,10 +704,10 @@ private:
 
 public:
     TVolumeEncryptionClient(
-            IBlockStorePtr client,
-            IEncryptionKeyProviderPtr keyProvider,
-            ILoggingServicePtr logging,
-            NProto::EEncryptZeroPolicy encryptZeroPolicy)
+        IBlockStorePtr client,
+        IEncryptionKeyProviderPtr keyProvider,
+        ILoggingServicePtr logging,
+        NProto::EEncryptZeroPolicy encryptZeroPolicy)
         : TClientWrapper(std::move(client))
         , Logging(std::move(logging))
         , KeyProvider(std::move(keyProvider))
@@ -740,26 +727,28 @@ public:
                 "More than one encryption layer on data path");
         }
 
-        auto future = Client->MountVolume(
-            std::move(callContext),
-            std::move(request));
+        auto future =
+            Client->MountVolume(std::move(callContext), std::move(request));
 
-        return future.Apply([weakPtr = weak_from_this()] (const auto& f) {
-            const auto& response = f.GetValue();
+        return future.Apply(
+            [weakPtr = weak_from_this()](const auto& f)
+            {
+                const auto& response = f.GetValue();
 
-            if (HasError(response)) {
-                return MakeFuture(response);
-            }
+                if (HasError(response)) {
+                    return MakeFuture(response);
+                }
 
-            auto ptr = weakPtr.lock();
-            if (!ptr) {
-                return MakeFutureErrorResponse<NProto::TMountVolumeResponse>(
-                    E_REJECTED,
-                    "Encryption client is destroyed after MountVolume");
-            }
+                auto ptr = weakPtr.lock();
+                if (!ptr) {
+                    return MakeFutureErrorResponse<
+                        NProto::TMountVolumeResponse>(
+                        E_REJECTED,
+                        "Encryption client is destroyed after MountVolume");
+                }
 
-            return ptr->HandleMountVolumeResponse(response);
-        });
+                return ptr->HandleMountVolumeResponse(response);
+            });
     }
 
 private:
@@ -773,7 +762,8 @@ private:
         auto future = CreateEncryptionClient(response.GetVolume());
 
         return future.Apply(
-            [weakPtr = weak_from_this(), response = response](const auto& f) mutable
+            [weakPtr = weak_from_this(),
+             response = response](const auto& f) mutable
             {
                 auto [client, error] = f.GetValue();
                 if (HasError(error)) {
@@ -822,9 +812,8 @@ private:
 
         const auto& encodedDEK = desc.GetEncryptionKey().GetEncryptedDEK();
 
-        auto [dek, error] = SafeExecute<TResultOrError<TString>>([&] {
-            return Base64Decode(encodedDEK);
-        });
+        auto [dek, error] = SafeExecute<TResultOrError<TString>>(
+            [&] { return Base64Decode(encodedDEK); });
 
         if (HasError(error)) {
             return MakeFuture<TResultOrError<IBlockStorePtr>>(MakeError(
@@ -845,8 +834,8 @@ private:
                 [client = Client,
                  volume = volume,
                  encryptZeroPolicy = EncryptZeroPolicy,
-                 logging = Logging](auto future) mutable
-                -> TResultOrError<IBlockStorePtr>
+                 logging = Logging](
+                    auto future) mutable -> TResultOrError<IBlockStorePtr>
                 {
                     auto [key, error] = future.ExtractValue();
 
@@ -867,8 +856,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSnapshotEncryptionClient final
-    : public TClientWrapper
+class TSnapshotEncryptionClient final: public TClientWrapper
 {
 private:
     const NProto::TEncryptionDesc EncryptionDesc;
@@ -877,9 +865,9 @@ private:
 
 public:
     TSnapshotEncryptionClient(
-            IBlockStorePtr client,
-            ILoggingServicePtr logging,
-            NProto::TEncryptionDesc encryptionDesc)
+        IBlockStorePtr client,
+        ILoggingServicePtr logging,
+        NProto::TEncryptionDesc encryptionDesc)
         : TClientWrapper(std::move(client))
         , EncryptionDesc(std::move(encryptionDesc))
         , Log(logging->CreateLog("BLOCKSTORE_CLIENT"))
@@ -924,30 +912,29 @@ TFuture<NProto::TMountVolumeResponse> TSnapshotEncryptionClient::MountVolume(
         return MakeFutureErrorResponse<NProto::TMountVolumeResponse>(
             E_INVALID_STATE,
             TStringBuilder() << "Invalid mount encryption key hash"
-                << ", actual " << encryption.GetKeyHash()
-                << ", expected " << EncryptionDesc.GetKeyHash());
+                             << ", actual " << encryption.GetKeyHash()
+                             << ", expected " << EncryptionDesc.GetKeyHash());
     }
 
     encryption.SetMode(EncryptionDesc.GetMode());
     encryption.SetKeyHash(EncryptionDesc.GetKeyHash());
 
-    return Client->MountVolume(
-        std::move(callContext),
-        std::move(request));
+    return Client->MountVolume(std::move(callContext), std::move(request));
 }
 
 TFuture<NProto::TReadBlocksResponse> TSnapshotEncryptionClient::ReadBlocks(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TReadBlocksRequest> request)
 {
-    auto future = Client->ReadBlocks(
-        std::move(callContext),
-        std::move(request));
+    auto future =
+        Client->ReadBlocks(std::move(callContext), std::move(request));
 
-    return future.Apply([] (auto f) {
-        auto response = ExtractResponse(f);
-        return HandleReadBlocksResponse(std::move(response));
-    });
+    return future.Apply(
+        [](auto f)
+        {
+            auto response = ExtractResponse(f);
+            return HandleReadBlocksResponse(std::move(response));
+        });
 }
 
 NProto::TReadBlocksResponse TSnapshotEncryptionClient::HandleReadBlocksResponse(
@@ -961,28 +948,30 @@ NProto::TReadBlocksResponse TSnapshotEncryptionClient::HandleReadBlocksResponse(
     return response;
 }
 
-TFuture<NProto::TReadBlocksLocalResponse> TSnapshotEncryptionClient::ReadBlocksLocal(
+TFuture<NProto::TReadBlocksLocalResponse>
+TSnapshotEncryptionClient::ReadBlocksLocal(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
 {
     auto requestSglist = request->Sglist;
     auto blockSize = request->BlockSize;
 
-    auto future = Client->ReadBlocksLocal(
-        std::move(callContext),
-        std::move(request));
+    auto future =
+        Client->ReadBlocksLocal(std::move(callContext), std::move(request));
 
-    return future.Apply([sgList = std::move(requestSglist), blockSize] (auto f)
-    {
-        auto response = ExtractResponse(f);
-        return HandleReadBlocksLocalResponse(
-            std::move(response),
-            sgList,
-            blockSize);
-    });
+    return future.Apply(
+        [sgList = std::move(requestSglist), blockSize](auto f)
+        {
+            auto response = ExtractResponse(f);
+            return HandleReadBlocksLocalResponse(
+                std::move(response),
+                sgList,
+                blockSize);
+        });
 }
 
-NProto::TReadBlocksLocalResponse TSnapshotEncryptionClient::HandleReadBlocksLocalResponse(
+NProto::TReadBlocksLocalResponse
+TSnapshotEncryptionClient::HandleReadBlocksLocalResponse(
     NProto::TReadBlocksLocalResponse response,
     const TGuardedSgList& sgList,
     ui32 blockSize)
@@ -1024,8 +1013,7 @@ TFuture<NProto::TZeroBlocksResponse> TSnapshotEncryptionClient::ZeroBlocks(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TEncryptionClientFactory
-    : public IEncryptionClientFactory
+class TEncryptionClientFactory: public IEncryptionClientFactory
 {
 private:
     const ILoggingServicePtr Logging;
@@ -1034,9 +1022,9 @@ private:
 
 public:
     TEncryptionClientFactory(
-            ILoggingServicePtr logging,
-            IEncryptionKeyProviderPtr encryptionKeyProvider,
-            NProto::EEncryptZeroPolicy encryptZeroPolicy)
+        ILoggingServicePtr logging,
+        IEncryptionKeyProviderPtr encryptionKeyProvider,
+        NProto::EEncryptZeroPolicy encryptZeroPolicy)
         : Logging(std::move(logging))
         , EncryptionKeyProvider(std::move(encryptionKeyProvider))
         , EncryptZeroPolicy(encryptZeroPolicy)
@@ -1059,11 +1047,10 @@ public:
             NProto::TEncryptionDesc encryptionDesc;
             encryptionDesc.SetMode(encryptionSpec.GetMode());
             encryptionDesc.SetKeyHash(encryptionSpec.GetKeyHash());
-            return MakeFuture<TResponse>(
-                CreateSnapshotEncryptionClient(
-                    std::move(client),
-                    Logging,
-                    encryptionDesc));
+            return MakeFuture<TResponse>(CreateSnapshotEncryptionClient(
+                std::move(client),
+                Logging,
+                encryptionDesc));
         }
 
         auto future = EncryptionKeyProvider->GetKey(encryptionSpec, diskId);

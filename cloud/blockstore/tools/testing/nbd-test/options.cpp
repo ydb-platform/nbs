@@ -18,13 +18,12 @@ void TOptions::Parse(int argc, char** argv)
     opts.AddLongOption("test")
         .RequiredArgument("{" + GetEnumAllNames<ETestMode>() + "}")
         .DefaultValue(ToString(ETestMode::Target))
-        .Handler1T<TString>([this] (const auto& s) {
-            TestMode = FromString<ETestMode>(s);
-        });
+        .Handler1T<TString>([this](const auto& s)
+                            { TestMode = FromString<ETestMode>(s); });
 
-    const auto& verbose = opts.AddLongOption("verbose")
-        .OptionalArgument("STR")
-        .StoreResult(&VerboseLevel);
+    const auto& verbose =
+        opts.AddLongOption("verbose").OptionalArgument("STR").StoreResult(
+            &VerboseLevel);
 
     opts.AddLongOption("socket-path")
         .Required()

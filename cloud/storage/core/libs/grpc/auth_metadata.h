@@ -23,8 +23,7 @@ using TRequestSourceKinds = TVector<TRequestSourceKind>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAuthMetadataProcessor final
-    : public grpc::AuthMetadataProcessor
+class TAuthMetadataProcessor final: public grpc::AuthMetadataProcessor
 {
 private:
     const NProto::ERequestSource RequestSource;
@@ -52,11 +51,10 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 TMaybe<NProto::ERequestSource> GetRequestSource(
-        const grpc::AuthContext& context,
-        const TRequestSourceKinds& kinds);
+    const grpc::AuthContext& context,
+    const TRequestSourceKinds& kinds);
 
 TString GetAuthToken(
-    const std::multimap<grpc::string_ref,
-    grpc::string_ref>& metadata);
+    const std::multimap<grpc::string_ref, grpc::string_ref>& metadata);
 
 }   // namespace NCloud

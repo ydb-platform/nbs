@@ -222,7 +222,8 @@ Y_UNIT_TEST_SUITE(TQuotaMetricsTest)
                             metrics.UpdateMaxQuota();
                             break;
                         }
-                        default: break;
+                        default:
+                            break;
                     }
                 }));
         }
@@ -296,8 +297,7 @@ Y_UNIT_TEST_SUITE(TQuotaMetricsTest)
         usedQuotaMetrics.UpdateMaxQuota();
 
         {
-            auto usedQuotaCounter =
-                totalCounters->FindCounter("UsedQuota");
+            auto usedQuotaCounter = totalCounters->FindCounter("UsedQuota");
             auto maxUsedQuotaCounter =
                 totalCounters->FindCounter("MaxUsedQuota");
 
@@ -315,8 +315,7 @@ Y_UNIT_TEST_SUITE(TQuotaMetricsTest)
         usedQuotaMetrics.Unregister();
 
         {
-            auto usedQuotaCounter =
-                totalCounters->FindCounter("UsedQuota");
+            auto usedQuotaCounter = totalCounters->FindCounter("UsedQuota");
             auto maxUsedQuotaCounter =
                 totalCounters->FindCounter("MaxUsedQuota");
 
@@ -331,8 +330,7 @@ Y_UNIT_TEST_SUITE(TQuotaMetricsTest)
         totalCounters->ReadSnapshot();
 
         {
-            auto usedQuotaCounter =
-                totalCounters->FindCounter("UsedQuota");
+            auto usedQuotaCounter = totalCounters->FindCounter("UsedQuota");
             auto maxUsedQuotaCounter =
                 totalCounters->FindCounter("MaxUsedQuota");
 

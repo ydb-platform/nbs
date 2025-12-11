@@ -24,9 +24,9 @@ private:
 
 public:
     TRemoveClientActor(
-            TRequestInfoPtr requestInfo,
-            TString clientId,
-            TString diskId)
+        TRequestInfoPtr requestInfo,
+        TString clientId,
+        TString diskId)
         : RequestInfo(std::move(requestInfo))
         , ClientId(std::move(clientId))
         , DiskId(std::move(diskId))
@@ -67,7 +67,8 @@ void TRemoveClientActor::HandleRemoveClientResponse(
             FormatError(msg->GetError()).c_str());
     }
 
-    auto response = std::make_unique<TEvService::TEvRemoveVolumeClientResponse>();
+    auto response =
+        std::make_unique<TEvService::TEvRemoveVolumeClientResponse>();
     *response->Record.MutableError() = msg->GetError();
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));

@@ -123,7 +123,7 @@ struct TNetlinkFamilyIdRequest
     }
 };
 
-template<size_t FamilyNameLength>
+template <size_t FamilyNameLength>
 struct TNetlinkFamilyIdResponse
 {
     TNetlinkHeader Headers;

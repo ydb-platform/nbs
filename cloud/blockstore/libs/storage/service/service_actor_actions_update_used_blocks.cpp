@@ -34,9 +34,7 @@ private:
     NProto::TUpdateUsedBlocksRequest Request;
 
 public:
-    TUpdateUsedBlocksActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TUpdateUsedBlocksActionActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -61,8 +59,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TUpdateUsedBlocksActionActor::TUpdateUsedBlocksActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -86,7 +84,9 @@ void TUpdateUsedBlocksActionActor::UpdateUsedBlocks(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Sending update used blocks request for volume %s",
         Request.GetDiskId().Quote().c_str());
 
@@ -95,8 +95,7 @@ void TUpdateUsedBlocksActionActor::UpdateUsedBlocks(const TActorContext& ctx)
         MakeVolumeProxyServiceId(),
         std::make_unique<TEvVolume::TEvUpdateUsedBlocksRequest>(
             MakeIntrusive<TCallContext>(),
-            std::move(Request))
-    );
+            std::move(Request)));
 }
 
 void TUpdateUsedBlocksActionActor::ReplyAndDie(
@@ -126,7 +125,8 @@ void TUpdateUsedBlocksActionActor::HandleError(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(error);
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(error);
     ReplyAndDie(ctx, std::move(response));
 }
 

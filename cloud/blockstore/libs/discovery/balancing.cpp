@@ -10,14 +10,13 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TBalancingPolicy final
-    : public IBalancingPolicy
+class TBalancingPolicy final: public IBalancingPolicy
 {
 public:
     void Reorder(TInstanceList& instances) override
     {
         with_lock (instances.Lock) {
-            for (auto& ii : instances.Instances) {
+            for (auto& ii: instances.Instances) {
                 if (ii.Status == TInstanceInfo::EStatus::Unreachable) {
                     ii.BalancingScore = 0;
                     continue;
@@ -25,12 +24,12 @@ public:
 
                 if (ii.LastStat) {
                     if (ii.PrevStat) {
-                        const auto diff = Max(
-                            1.,
-                            double(ii.LastStat.Bytes) - ii.PrevStat.Bytes
-                        );
+                        const auto diff =
+                            Max(1.,
+                                double(ii.LastStat.Bytes) - ii.PrevStat.Bytes);
                         const auto timeDiff = ii.LastStat.Ts - ii.PrevStat.Ts;
-                        ii.BalancingScore = timeDiff.MicroSeconds() / (diff * 1e6);
+                        ii.BalancingScore =
+                            timeDiff.MicroSeconds() / (diff * 1e6);
                     } else {
                         ii.BalancingScore = 1;
                     }
@@ -41,10 +40,7 @@ public:
             StableSortBy(
                 instances.Instances.begin(),
                 instances.Instances.end(),
-                [] (const auto& ii) {
-                    return -ii.BalancingScore;
-                }
-            );
+                [](const auto& ii) { return -ii.BalancingScore; });
         }
     }
 };

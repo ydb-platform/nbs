@@ -45,13 +45,14 @@ size_t ReadStructuredReplyDataImpl(
             in.ReadOrFail(reply.Error.Error);
             in.ReadOrFail(reply.Error.MessageLength);
 
-            Y_ENSURE(reply.Error.MessageLength == reply.Length - sizeof(TStructuredError));
+            Y_ENSURE(
+                reply.Error.MessageLength ==
+                reply.Length - sizeof(TStructuredError));
             replyDataSize = reply.Error.MessageLength;
             break;
 
         default:
-            ythrow yexception()
-                << "unsupported reply type: " << reply.Type;
+            ythrow yexception() << "unsupported reply type: " << reply.Type;
     }
 
     in.ReadOrFail(replyData, replyDataSize);

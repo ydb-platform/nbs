@@ -2,8 +2,9 @@
 
 #include "backend.h"
 
-#include <cloud/contrib/vhost/include/vhost/server.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+
+#include <cloud/contrib/vhost/include/vhost/server.h>
 
 namespace NCloud::NBlockStore::NVHostServer {
 

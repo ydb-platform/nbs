@@ -16,7 +16,7 @@ namespace {
 NProto::TError MakeOpenSSLError(TStringBuf func)
 {
     const ui32 err = ERR_get_error();
-    char message[256] {};
+    char message[256]{};
     ERR_error_string_n(err, message, sizeof(message));
 
     return MakeError(
@@ -52,8 +52,7 @@ NProto::TError MakeWrongTotalLengthError(int totalLen, int srcLen)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAesXtsEncryptor final
-    : public IEncryptor
+class TAesXtsEncryptor final: public IEncryptor
 {
     using TEvpCipherCtxPtr =
         std::unique_ptr<EVP_CIPHER_CTX, decltype(&::EVP_CIPHER_CTX_free)>;
@@ -93,13 +92,14 @@ public:
         const auto* src = reinterpret_cast<const unsigned char*>(srcRef.Data());
         auto* dst =
             reinterpret_cast<unsigned char*>(const_cast<char*>(dstRef.Data()));
-        unsigned char iv[EVP_MAX_IV_LENGTH] {};
+        unsigned char iv[EVP_MAX_IV_LENGTH]{};
 
         memcpy(iv, &blockIndex, sizeof(blockIndex));
 
         TEvpCipherCtxPtr ctx(EVP_CIPHER_CTX_new(), ::EVP_CIPHER_CTX_free);
 
-        if (!EVP_EncryptInit_ex(ctx.get(), EVP_aes_128_xts(), nullptr, Key, iv)) {
+        if (!EVP_EncryptInit_ex(ctx.get(), EVP_aes_128_xts(), nullptr, Key, iv))
+        {
             return MakeOpenSSLError("EVP_EncryptInit_ex");
         }
 
@@ -145,13 +145,14 @@ public:
         auto src = reinterpret_cast<const unsigned char*>(srcRef.Data());
         auto dst =
             reinterpret_cast<unsigned char*>(const_cast<char*>(dstRef.Data()));
-        unsigned char iv[EVP_MAX_IV_LENGTH] {};
+        unsigned char iv[EVP_MAX_IV_LENGTH]{};
 
         memcpy(iv, &blockIndex, sizeof(blockIndex));
 
         TEvpCipherCtxPtr ctx(EVP_CIPHER_CTX_new(), ::EVP_CIPHER_CTX_free);
 
-        if (!EVP_DecryptInit_ex(ctx.get(), EVP_aes_128_xts(), nullptr, Key, iv)) {
+        if (!EVP_DecryptInit_ex(ctx.get(), EVP_aes_128_xts(), nullptr, Key, iv))
+        {
             return MakeOpenSSLError("EVP_DecryptInit_ex");
         }
 
@@ -178,8 +179,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCaesarEncryptor final
-    : public IEncryptor
+class TCaesarEncryptor final: public IEncryptor
 {
 private:
     const size_t Shift;

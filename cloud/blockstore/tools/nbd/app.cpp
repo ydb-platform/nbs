@@ -1,7 +1,8 @@
 #include "app.h"
 
-#include <util/generic/singleton.h>
 #include <library/cpp/deprecated/atomic/atomic.h>
+
+#include <util/generic/singleton.h>
 #include <util/system/condvar.h>
 #include <util/system/mutex.h>
 

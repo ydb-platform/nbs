@@ -1,5 +1,5 @@
 #pragma once
-//https://stefanha.github.io/virtio/vhost-user-slave.html
+// https://stefanha.github.io/virtio/vhost-user-slave.html
 
 #include "sglist.h"
 #include "vhost-user-protocol/message.h"
@@ -59,8 +59,8 @@ public:
 
     ~TClient();
 
-    TClient& operator = (const TClient&) = delete;
-    TClient& operator = (TClient&& other) = delete;
+    TClient& operator=(const TClient&) = delete;
+    TClient& operator=(TClient&& other) = delete;
 
     std::span<char> GetMemory();
 
@@ -87,4 +87,4 @@ private:
     uint64_t TotalQueuesMemory() const;
 };
 
-} // namespace NVHost
+}   // namespace NVHost

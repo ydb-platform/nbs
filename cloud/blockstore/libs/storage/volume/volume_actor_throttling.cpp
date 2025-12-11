@@ -1,7 +1,6 @@
 #include "volume_actor.h"
 
 #include <cloud/blockstore/libs/service/request_helpers.h>
-
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -20,8 +19,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-TThrottlingRequestInfo BuildThrottlingRequestInfo(
-    ui32, const T&, const ui32)
+TThrottlingRequestInfo BuildThrottlingRequestInfo(ui32, const T&, const ui32)
 {
     return {};
 }
@@ -184,9 +182,8 @@ NProto::TError TVolumeActor::Throttle(
     static const auto ok = MakeError(S_OK);
     static const auto err = MakeError(E_BS_THROTTLED, "Throttled");
 
-    if (!RequiresThrottling<TMethod>
-            || throttlingDisabled
-            || !GetThrottlingEnabled<TMethod>(*Config, State->GetConfig()))
+    if (!RequiresThrottling<TMethod> || throttlingDisabled ||
+        !GetThrottlingEnabled<TMethod>(*Config, State->GetConfig()))
     {
         return ok;
     }
@@ -197,8 +194,7 @@ NProto::TError TVolumeActor::Throttle(
     const auto requestInfo = BuildThrottlingRequestInfo(
         State->GetConfig().GetBlockSize(),
         *msg,
-        tp.GetVersion()
-    );
+        tp.GetVersion());
 
     if (static_cast<TVolumeThrottlingPolicy::EOpType>(requestInfo.OpType) ==
             TVolumeThrottlingPolicy::EOpType::Describe &&
@@ -218,12 +214,14 @@ NProto::TError TVolumeActor::Throttle(
 
     switch (status) {
         case ETabletThrottlerStatus::POSTPONED:
-            VolumeSelfCounters->Cumulative.ThrottlerPostponedRequests.Increment(1);
+            VolumeSelfCounters->Cumulative.ThrottlerPostponedRequests.Increment(
+                1);
             break;
         case ETabletThrottlerStatus::ADVANCED:
             break;
         case ETabletThrottlerStatus::REJECTED:
-            VolumeSelfCounters->Cumulative.ThrottlerRejectedRequests.Increment(1);
+            VolumeSelfCounters->Cumulative.ThrottlerRejectedRequests.Increment(
+                1);
             return err;
         default:
             Y_DEBUG_ABORT_UNLESS(false);
@@ -234,34 +232,33 @@ NProto::TError TVolumeActor::Throttle(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define GENERATE_IMPL(name, ns)                                                \
-template NProto::TError TVolumeActor::Throttle<                                \
-    ns::T##name##Method>(                                                      \
-        const TActorContext& ctx,                                              \
-        const ns::TEv##name##Request::TPtr& ev,                                \
-        bool throttlingDisabled);                                              \
-// GENERATE_IMPL
+#define GENERATE_IMPL(name, ns)                                          \
+    template NProto::TError TVolumeActor::Throttle<ns::T##name##Method>( \
+        const TActorContext& ctx,                                        \
+        const ns::TEv##name##Request::TPtr& ev,                          \
+        bool throttlingDisabled);                                        \
+    // GENERATE_IMPL
 
-GENERATE_IMPL(ReadBlocks,            TEvService)
-GENERATE_IMPL(WriteBlocks,           TEvService)
-GENERATE_IMPL(ZeroBlocks,            TEvService)
-GENERATE_IMPL(CreateCheckpoint,      TEvService)
-GENERATE_IMPL(DeleteCheckpoint,      TEvService)
-GENERATE_IMPL(GetChangedBlocks,      TEvService)
-GENERATE_IMPL(GetCheckpointStatus,   TEvService)
-GENERATE_IMPL(ReadBlocksLocal,       TEvService)
-GENERATE_IMPL(WriteBlocksLocal,      TEvService)
+GENERATE_IMPL(ReadBlocks, TEvService)
+GENERATE_IMPL(WriteBlocks, TEvService)
+GENERATE_IMPL(ZeroBlocks, TEvService)
+GENERATE_IMPL(CreateCheckpoint, TEvService)
+GENERATE_IMPL(DeleteCheckpoint, TEvService)
+GENERATE_IMPL(GetChangedBlocks, TEvService)
+GENERATE_IMPL(GetCheckpointStatus, TEvService)
+GENERATE_IMPL(ReadBlocksLocal, TEvService)
+GENERATE_IMPL(WriteBlocksLocal, TEvService)
 
-GENERATE_IMPL(DescribeBlocks,           TEvVolume)
-GENERATE_IMPL(GetUsedBlocks,            TEvVolume)
-GENERATE_IMPL(GetPartitionInfo,         TEvVolume)
-GENERATE_IMPL(CompactRange,             TEvVolume)
-GENERATE_IMPL(GetCompactionStatus,      TEvVolume)
-GENERATE_IMPL(DeleteCheckpointData,     TEvVolume)
-GENERATE_IMPL(RebuildMetadata,          TEvVolume)
+GENERATE_IMPL(DescribeBlocks, TEvVolume)
+GENERATE_IMPL(GetUsedBlocks, TEvVolume)
+GENERATE_IMPL(GetPartitionInfo, TEvVolume)
+GENERATE_IMPL(CompactRange, TEvVolume)
+GENERATE_IMPL(GetCompactionStatus, TEvVolume)
+GENERATE_IMPL(DeleteCheckpointData, TEvVolume)
+GENERATE_IMPL(RebuildMetadata, TEvVolume)
 GENERATE_IMPL(GetRebuildMetadataStatus, TEvVolume)
-GENERATE_IMPL(ScanDisk,                 TEvVolume)
-GENERATE_IMPL(GetScanDiskStatus,        TEvVolume)
-GENERATE_IMPL(CheckRange,               TEvVolume)
+GENERATE_IMPL(ScanDisk, TEvVolume)
+GENERATE_IMPL(GetScanDiskStatus, TEvVolume)
+GENERATE_IMPL(CheckRange, TEvVolume)
 
 }   // namespace NCloud::NBlockStore::NStorage

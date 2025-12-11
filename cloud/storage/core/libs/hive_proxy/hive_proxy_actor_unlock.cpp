@@ -32,8 +32,8 @@ void THiveProxyActor::HandleUnlockTablet(
 
     if (state->Phase == PHASE_LOCKING) {
         // It is an error to unlock before the lock reply is received
-        auto error = MakeError(
-            E_ARGUMENT, "Cannot unlock while lock is in progress");
+        auto error =
+            MakeError(E_ARGUMENT, "Cannot unlock while lock is in progress");
         auto response =
             std::make_unique<TEvHiveProxy::TEvUnlockTabletResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
@@ -42,8 +42,8 @@ void THiveProxyActor::HandleUnlockTablet(
 
     if (state->Phase == PHASE_UNLOCKING) {
         // It is an error to make multiple unlock requests
-        auto error = MakeError(
-            E_ARGUMENT, "Concurrent unlock requests detected");
+        auto error =
+            MakeError(E_ARGUMENT, "Concurrent unlock requests detected");
         auto response =
             std::make_unique<TEvHiveProxy::TEvUnlockTabletResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
@@ -72,9 +72,11 @@ void THiveProxyActor::HandleUnlockTabletExecutionResult(
     auto* state = states ? states->LockStates.FindPtr(tabletId) : nullptr;
     if (!state || state->Phase != PHASE_UNLOCKING) {
         // Unexpected unlock reply, ignore
-        LOG_WARN_S(ctx, LogComponent,
-            "Unexpected unlock reply from hive " << hive
-                << " for tablet " << tabletId);
+        LOG_WARN_S(
+            ctx,
+            LogComponent,
+            "Unexpected unlock reply from hive " << hive << " for tablet "
+                                                 << tabletId);
         return;
     }
 

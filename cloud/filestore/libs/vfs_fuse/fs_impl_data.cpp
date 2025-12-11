@@ -51,11 +51,11 @@ void TFileSystem::Create(
     fuse_file_info* fi)
 {
     const auto [flags, unsupported] = SystemFlagsToHandle(fi->flags);
-    STORAGE_DEBUG("Create #" << parent
-        << " " << name.Quote()
-        << " flags: " << HandleFlagsToString(flags)
-        << " unsupported flags: " << unsupported
-        << " mode: " << mode);
+    STORAGE_DEBUG(
+        "Create #" << parent << " " << name.Quote()
+                   << " flags: " << HandleFlagsToString(flags)
+                   << " unsupported flags: " << unsupported
+                   << " mode: " << mode);
 
     if (!ValidateNodeId(*callContext, req, parent)) {
         return;
@@ -77,28 +77,30 @@ void TFileSystem::Create(
     }
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue->Enqueue(reqId, TNodeId {parent});
+    FSyncQueue->Enqueue(reqId, TNodeId{parent});
 
     Session->CreateHandle(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                auto self = ptr.lock();
+                if (!self) {
+                    return;
+                }
 
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
+                const auto& response = future.GetValue();
+                const auto& error = response.GetError();
+                self->FSyncQueue->Dequeue(reqId, error, TNodeId{parent});
 
-            if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyCreate(
-                    *callContext,
-                    error,
-                    req,
-                    response.GetHandle(),
-                    response.GetNodeAttr());
-            }
-        });
+                if (CheckResponse(self, *callContext, req, response)) {
+                    self->ReplyCreate(
+                        *callContext,
+                        error,
+                        req,
+                        response.GetHandle(),
+                        response.GetNodeAttr());
+                }
+            });
 }
 
 void TFileSystem::Open(
@@ -108,9 +110,9 @@ void TFileSystem::Open(
     fuse_file_info* fi)
 {
     const auto [flags, unsupported] = SystemFlagsToHandle(fi->flags);
-    STORAGE_DEBUG("Open #" << ino
-        << " flags: " << HandleFlagsToString(flags)
-        << " unsupported flags: " << unsupported);
+    STORAGE_DEBUG(
+        "Open #" << ino << " flags: " << HandleFlagsToString(flags)
+                 << " unsupported flags: " << unsupported);
 
     if (!ValidateNodeId(*callContext, req, ino)) {
         return;
@@ -127,25 +129,33 @@ void TFileSystem::Open(
     request->SetFlags(flags | overrideRead);
 
     Session->CreateHandle(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            const auto& response = future.GetValue();
-            if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
                 const auto& response = future.GetValue();
-
-                fuse_file_info fi = {};
-                fi.fh = response.GetHandle();
-                if (self->Config->GetGuestPageCacheDisabled()) {
-                    fi.direct_io = 1;
-                }
-                if (response.GetGuestKeepCache() &&
-                    self->Config->GetGuestKeepCacheAllowed())
+                if (auto self = ptr.lock();
+                    CheckResponse(self, *callContext, req, response))
                 {
-                    fi.keep_cache = 1;
-                }
+                    const auto& response = future.GetValue();
 
-                self->ReplyOpen(*callContext, response.GetError(), req, &fi);
-            }
-        });
+                    fuse_file_info fi = {};
+                    fi.fh = response.GetHandle();
+                    if (self->Config->GetGuestPageCacheDisabled()) {
+                        fi.direct_io = 1;
+                    }
+                    if (response.GetGuestKeepCache() &&
+                        self->Config->GetGuestKeepCacheAllowed())
+                    {
+                        fi.keep_cache = 1;
+                    }
+
+                    self->ReplyOpen(
+                        *callContext,
+                        response.GetError(),
+                        req,
+                        &fi);
+                }
+            });
 }
 
 bool TFileSystem::ProcessAsyncRelease(
@@ -200,17 +210,19 @@ void TFileSystem::ReleaseImpl(
     auto request = StartRequest<NProto::TDestroyHandleRequest>(ino);
     request->SetHandle(handle);
     Session->DestroyHandle(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                auto self = ptr.lock();
+                if (!self) {
+                    return;
+                }
 
-            const auto& response = future.GetValue();
-            if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyError(*callContext, response.GetError(), req, 0);
-            }
-        });
+                const auto& response = future.GetValue();
+                if (CheckResponse(self, *callContext, req, response)) {
+                    self->ReplyError(*callContext, response.GetError(), req, 0);
+                }
+            });
 }
 
 void TFileSystem::Release(
@@ -229,7 +241,7 @@ void TFileSystem::Release(
 
     if (WriteBackCache) {
         WriteBackCache.FlushNodeData(ino).Subscribe(
-            [=, ptr = weak_from_this()] (const auto&)
+            [=, ptr = weak_from_this()](const auto&)
             {
                 if (auto self = ptr.lock()) {
                     self->ReleaseImpl(callContext, req, ino, handle);
@@ -249,18 +261,18 @@ void TFileSystem::ReadLocal(
     off_t offset,
     fuse_file_info* fi)
 {
-    callContext->Unaligned = !IsAligned(offset, Config->GetBlockSize())
-        || !IsAligned(size, Config->GetBlockSize());
+    callContext->Unaligned = !IsAligned(offset, Config->GetBlockSize()) ||
+                             !IsAligned(size, Config->GetBlockSize());
 
     auto request = StartRequest<NProto::TReadDataLocalRequest>(ino);
     request->SetHandle(fi->fh);
     request->SetOffset(offset);
     request->SetLength(size);
 
-    struct iovec *iov = NULL;
+    struct iovec* iov = NULL;
     int count = 0;
     int ret = fuse_out_buf(req, &iov, &count);
-    if (ret == -1  || count <= 1) {
+    if (ret == -1 || count <= 1) {
         STORAGE_ERROR("Invalid fuse out buffers, ret=%d, count=%d", ret, count);
         ReplyError(
             *callContext,
@@ -299,17 +311,21 @@ void TFileSystem::ReadLocal(
     }
 
     Session->ReadDataLocal(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            const auto& response = future.GetValue();
-            if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
-                self->ReplyBuf(
-                    *callContext,
-                    response.GetError(),
-                    req,
-                    nullptr,
-                    response.BytesRead);
-            }
-        });
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                const auto& response = future.GetValue();
+                if (auto self = ptr.lock();
+                    CheckResponse(self, *callContext, req, response))
+                {
+                    self->ReplyBuf(
+                        *callContext,
+                        response.GetError(),
+                        req,
+                        nullptr,
+                        response.BytesRead);
+                }
+            });
 }
 
 void TFileSystem::Read(
@@ -320,9 +336,9 @@ void TFileSystem::Read(
     off_t offset,
     fuse_file_info* fi)
 {
-    STORAGE_DEBUG("Read #" << ino << " @" << fi->fh
-        << " offset:" << offset
-        << " size:" << size);
+    STORAGE_DEBUG(
+        "Read #" << ino << " @" << fi->fh << " offset:" << offset
+                 << " size:" << size);
 
     if (size > Config->GetMaxBufferSize()) {
         ReplyError(
@@ -330,7 +346,8 @@ void TFileSystem::Read(
             MakeError(
                 E_FS_INVAL,
                 TStringBuilder() << "Read size " << size
-                    << " is greater than max buffer size " << Config->GetMaxBufferSize()),
+                                 << " is greater than max buffer size "
+                                 << Config->GetMaxBufferSize()),
             req,
             EINVAL);
         return;
@@ -345,8 +362,8 @@ void TFileSystem::Read(
         return;
     }
 
-    callContext->Unaligned = !IsAligned(offset, Config->GetBlockSize())
-        || !IsAligned(size, Config->GetBlockSize());
+    callContext->Unaligned = !IsAligned(offset, Config->GetBlockSize()) ||
+                             !IsAligned(size, Config->GetBlockSize());
 
     auto request = StartRequest<NProto::TReadDataRequest>(ino);
     request->SetHandle(fi->fh);
@@ -410,36 +427,38 @@ void TFileSystem::Read(
         future = Session->ReadData(callContext, std::move(request));
     }
 
-    future.Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-        auto self = ptr.lock();
-        if (!self) {
-            return;
-        }
-
-        const auto& response = future.GetValue();
-        if (CheckResponse(self, *callContext, req, response)) {
-            // Depending on the configuration of the filestore, data may still
-            // be returned as a Buffer even when I/O vectors are provided in the
-            // request.
-            const auto& buffer = response.GetBuffer();
-            if (buffer.empty()) {
-                self->ReplyBuf(
-                    *callContext,
-                    response.GetError(),
-                    req,
-                    nullptr,
-                    response.GetLength());
-            } else {
-                ui32 bufferOffset = response.GetBufferOffset();
-                self->ReplyBuf(
-                    *callContext,
-                    response.GetError(),
-                    req,
-                    buffer.data() + bufferOffset,
-                    buffer.size() - bufferOffset);
+    future.Subscribe(
+        [=, ptr = weak_from_this()](const auto& future)
+        {
+            auto self = ptr.lock();
+            if (!self) {
+                return;
             }
-        }
-    });
+
+            const auto& response = future.GetValue();
+            if (CheckResponse(self, *callContext, req, response)) {
+                // Depending on the configuration of the filestore, data may
+                // still be returned as a Buffer even when I/O vectors are
+                // provided in the request.
+                const auto& buffer = response.GetBuffer();
+                if (buffer.empty()) {
+                    self->ReplyBuf(
+                        *callContext,
+                        response.GetError(),
+                        req,
+                        nullptr,
+                        response.GetLength());
+                } else {
+                    ui32 bufferOffset = response.GetBufferOffset();
+                    self->ReplyBuf(
+                        *callContext,
+                        response.GetError(),
+                        req,
+                        buffer.data() + bufferOffset,
+                        buffer.size() - bufferOffset);
+                }
+            }
+        });
 }
 
 void TFileSystem::Write(
@@ -450,23 +469,20 @@ void TFileSystem::Write(
     off_t offset,
     fuse_file_info* fi)
 {
-    STORAGE_DEBUG("Write #" << ino << " @" << fi->fh
-        << " offset:" << offset
-        << " size:" << buffer.size());
+    STORAGE_DEBUG(
+        "Write #" << ino << " @" << fi->fh << " offset:" << offset
+                  << " size:" << buffer.size());
 
     if (!ValidateNodeId(*callContext, req, ino)) {
         return;
     }
 
-    callContext->Unaligned = !IsAligned(offset, Config->GetBlockSize())
-        || !IsAligned(buffer.size(), Config->GetBlockSize());
+    callContext->Unaligned = !IsAligned(offset, Config->GetBlockSize()) ||
+                             !IsAligned(buffer.size(), Config->GetBlockSize());
 
     auto align = Config->GetDirectIoEnabled() ? Config->GetDirectIoAlign() : 0;
     TAlignedBuffer alignedBuffer(buffer.size(), align);
-    memcpy(
-        (void*)(alignedBuffer.Begin()),
-        (void*)buffer.data(),
-        buffer.size());
+    memcpy((void*)(alignedBuffer.Begin()), (void*)buffer.data(), buffer.size());
 
     auto request = StartRequest<NProto::TWriteDataRequest>(ino);
     request->SetHandle(fi->fh);
@@ -479,8 +495,7 @@ void TFileSystem::Write(
     if (ShouldUseServerWriteBackCache(fi)) {
         WriteBackCache.WriteData(callContext, std::move(request))
             .Subscribe(
-                [=,
-                 ptr = weak_from_this()] (const auto& future)
+                [=, ptr = weak_from_this()](const auto& future)
                 {
                     auto self = ptr.lock();
                     if (!self) {
@@ -499,23 +514,26 @@ void TFileSystem::Write(
 
     const auto handle = fi->fh;
     const auto reqId = callContext->RequestId;
-    FSyncQueue->Enqueue(reqId, TNodeId {ino}, THandle {handle});
+    FSyncQueue->Enqueue(reqId, TNodeId{ino}, THandle{handle});
 
     Session->WriteData(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                auto self = ptr.lock();
+                if (!self) {
+                    return;
+                }
 
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino}, THandle {handle});
+                const auto& response = future.GetValue();
+                const auto& error = response.GetError();
+                self->FSyncQueue
+                    ->Dequeue(reqId, error, TNodeId{ino}, THandle{handle});
 
-            if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyWrite(*callContext, error, req, size);
-            }
-        });
+                if (CheckResponse(self, *callContext, req, response)) {
+                    self->ReplyWrite(*callContext, error, req, size);
+                }
+            });
 }
 
 void TFileSystem::WriteBufLocal(
@@ -528,9 +546,9 @@ void TFileSystem::WriteBufLocal(
 {
     size_t size = fuse_buf_size(bufv);
 
-    STORAGE_DEBUG("WriteBufLocal #" << ino << " @" << fi->fh
-        << " offset:" << offset
-        << " size:" << size);
+    STORAGE_DEBUG(
+        "WriteBufLocal #" << ino << " @" << fi->fh << " offset:" << offset
+                          << " size:" << size);
 
     auto request = StartRequest<NProto::TWriteDataLocalRequest>(ino);
     request->SetHandle(fi->fh);
@@ -539,7 +557,7 @@ void TFileSystem::WriteBufLocal(
     request->Buffers.reserve(bufv->count);
 
     for (size_t index = 0; index < bufv->count; ++index) {
-        const auto *srcFuseBuf = &bufv->buf[index];
+        const auto* srcFuseBuf = &bufv->buf[index];
         if (srcFuseBuf->size == 0) {
             continue;
         }
@@ -549,28 +567,31 @@ void TFileSystem::WriteBufLocal(
             srcFuseBuf->size);
     }
 
-    callContext->Unaligned = !IsAligned(offset, Config->GetBlockSize())
-        || !IsAligned(size, Config->GetBlockSize());
+    callContext->Unaligned = !IsAligned(offset, Config->GetBlockSize()) ||
+                             !IsAligned(size, Config->GetBlockSize());
 
     const auto handle = fi->fh;
     const auto reqId = callContext->RequestId;
-    FSyncQueue->Enqueue(reqId, TNodeId {ino}, THandle {handle});
+    FSyncQueue->Enqueue(reqId, TNodeId{ino}, THandle{handle});
 
     Session->WriteDataLocal(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                auto self = ptr.lock();
+                if (!self) {
+                    return;
+                }
 
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino}, THandle {handle});
+                const auto& response = future.GetValue();
+                const auto& error = response.GetError();
+                self->FSyncQueue
+                    ->Dequeue(reqId, error, TNodeId{ino}, THandle{handle});
 
-            if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyWrite(*callContext, error, req, size);
-            }
-        });
+                if (CheckResponse(self, *callContext, req, response)) {
+                    self->ReplyWrite(*callContext, error, req, size);
+                }
+            });
 }
 
 void TFileSystem::WriteBuf(
@@ -592,13 +613,13 @@ void TFileSystem::WriteBuf(
     }
 
     size_t size = fuse_buf_size(bufv);
-    STORAGE_DEBUG("WriteBuf #" << ino << " @" << fi->fh
-        << " offset:" << offset
-        << " size:" << size);
+    STORAGE_DEBUG(
+        "WriteBuf #" << ino << " @" << fi->fh << " offset:" << offset
+                     << " size:" << size);
 
     auto align = Config->GetDirectIoEnabled() ? Config->GetDirectIoAlign() : 0;
-    callContext->Unaligned = !IsAligned(offset, Config->GetBlockSize())
-        || !IsAligned(size, Config->GetBlockSize());
+    callContext->Unaligned = !IsAligned(offset, Config->GetBlockSize()) ||
+                             !IsAligned(size, Config->GetBlockSize());
     auto request = StartRequest<NProto::TWriteDataRequest>(ino);
 
     const bool isZeroCopyWrite = Config->GetZeroCopyWriteEnabled();
@@ -642,7 +663,7 @@ void TFileSystem::WriteBuf(
     if (ShouldUseServerWriteBackCache(fi)) {
         WriteBackCache.WriteData(callContext, std::move(request))
             .Subscribe(
-                [=, ptr = weak_from_this()] (const auto& future)
+                [=, ptr = weak_from_this()](const auto& future)
                 {
                     auto self = ptr.lock();
                     if (!self) {
@@ -661,23 +682,26 @@ void TFileSystem::WriteBuf(
 
     const auto handle = fi->fh;
     const auto reqId = callContext->RequestId;
-    FSyncQueue->Enqueue(reqId, TNodeId {ino}, THandle {handle});
+    FSyncQueue->Enqueue(reqId, TNodeId{ino}, THandle{handle});
 
     Session->WriteData(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                auto self = ptr.lock();
+                if (!self) {
+                    return;
+                }
 
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino}, THandle {handle});
+                const auto& response = future.GetValue();
+                const auto& error = response.GetError();
+                self->FSyncQueue
+                    ->Dequeue(reqId, error, TNodeId{ino}, THandle{handle});
 
-            if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyWrite(*callContext, error, req, size);
-            }
-        });
+                if (CheckResponse(self, *callContext, req, response)) {
+                    self->ReplyWrite(*callContext, error, req, size);
+                }
+            });
 }
 
 void TFileSystem::FAllocate(
@@ -691,10 +715,10 @@ void TFileSystem::FAllocate(
 {
     const ui32 protoFlags = SystemFlagsToFallocate(mode);
 
-    STORAGE_DEBUG("FAllocate #" << ino << " @" << fi->fh
-        << " offset:" << offset
-        << " size:" << length
-        << " mode:" << FallocateFlagsToString(protoFlags));
+    STORAGE_DEBUG(
+        "FAllocate #" << ino << " @" << fi->fh << " offset:" << offset
+                      << " size:" << length
+                      << " mode:" << FallocateFlagsToString(protoFlags));
 
     if (offset < 0) {
         ReplyError(
@@ -730,23 +754,26 @@ void TFileSystem::FAllocate(
 
     const auto handle = fi->fh;
     const auto reqId = callContext->RequestId;
-    FSyncQueue->Enqueue(reqId, TNodeId {ino}, THandle {handle});
+    FSyncQueue->Enqueue(reqId, TNodeId{ino}, THandle{handle});
 
     Session->AllocateData(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                auto self = ptr.lock();
+                if (!self) {
+                    return;
+                }
 
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino}, THandle {handle});
+                const auto& response = future.GetValue();
+                const auto& error = response.GetError();
+                self->FSyncQueue
+                    ->Dequeue(reqId, error, TNodeId{ino}, THandle{handle});
 
-            if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyError(*callContext, error, req, 0);
-            }
-        });
+                if (CheckResponse(self, *callContext, req, response)) {
+                    self->ReplyError(*callContext, error, req, 0);
+                }
+            });
 }
 
 void TFileSystem::Flush(
@@ -767,40 +794,42 @@ void TFileSystem::Flush(
     InitProfileLogRequestInfo(requestInfo, EFileStoreFuseRequest::Flush, Now());
     InitNodeInfo(requestInfo, true, TNodeId{ino}, THandle{fi->fh});
 
-    auto callback = [=, ptr = weak_from_this(), requestInfo = std::move(requestInfo)]
-        (const auto& future) mutable {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+    auto callback =
+        [=, ptr = weak_from_this(), requestInfo = std::move(requestInfo)](
+            const auto& future) mutable
+    {
+        auto self = ptr.lock();
+        if (!self) {
+            return;
+        }
 
-            const auto& error = future.GetValue();
+        const auto& error = future.GetValue();
 
-            FinalizeProfileLogRequestInfo(
-                std::move(requestInfo),
-                Now(),
-                self->Config->GetFileSystemId(),
-                error,
-                self->ProfileLog);
+        FinalizeProfileLogRequestInfo(
+            std::move(requestInfo),
+            Now(),
+            self->Config->GetFileSystemId(),
+            error,
+            self->ProfileLog);
 
-            if (self->CheckError(*callContext, req, error)) {
-                self->ReplyError(*callContext, error, req, 0);
-            }
-        };
+        if (self->CheckError(*callContext, req, error)) {
+            self->ReplyError(*callContext, error, req, 0);
+        }
+    };
 
-    auto fsyncQueueFuture = FSyncQueue->WaitForDataRequests(
-        reqId,
-        TNodeId {ino},
-        THandle {fi->fh});
+    auto fsyncQueueFuture =
+        FSyncQueue->WaitForDataRequests(reqId, TNodeId{ino}, THandle{fi->fh});
 
     auto future = fsyncQueueFuture;
 
     if (WriteBackCache) {
-        auto writeBackCacheFlushFuture = WriteBackCache.FlushNodeData(ino)
-            .Apply([] (const auto&) { return MakeError(S_OK); });
+        auto writeBackCacheFlushFuture =
+            WriteBackCache.FlushNodeData(ino).Apply(
+                [](const auto&) { return MakeError(S_OK); });
 
         future = NWait::WaitAll(fsyncQueueFuture, writeBackCacheFlushFuture)
-            .Apply([=] (const auto&) { return fsyncQueueFuture.GetValue(); });
+                     .Apply([=](const auto&)
+                            { return fsyncQueueFuture.GetValue(); });
     }
 
     future.Subscribe(std::move(callback));
@@ -829,27 +858,28 @@ void TFileSystem::FSync(
         TNodeId{fi ? ino : InvalidNodeId},
         THandle{fi ? fi->fh : InvalidHandle});
 
-    std::function<void(const TFuture<NProto::TError>&)>
-    callback = [=, ptr = weak_from_this(), requestInfo = std::move(requestInfo)]
-        (const auto& future) mutable {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+    std::function<void(const TFuture<NProto::TError>&)> callback =
+        [=, ptr = weak_from_this(), requestInfo = std::move(requestInfo)](
+            const auto& future) mutable
+    {
+        auto self = ptr.lock();
+        if (!self) {
+            return;
+        }
 
-            const auto& response = future.GetValue();
+        const auto& response = future.GetValue();
 
-            FinalizeProfileLogRequestInfo(
-                std::move(requestInfo),
-                Now(),
-                self->Config->GetFileSystemId(),
-                response,
-                self->ProfileLog);
+        FinalizeProfileLogRequestInfo(
+            std::move(requestInfo),
+            Now(),
+            self->Config->GetFileSystemId(),
+            response,
+            self->ProfileLog);
 
-            if (self->CheckError(*callContext, req, response)) {
-                self->ReplyError(*callContext, response, req, 0);
-            }
-        };
+        if (self->CheckError(*callContext, req, response)) {
+            self->ReplyError(*callContext, response, req, 0);
+        }
+    };
 
     if (fi) {
         callback = [ptr = weak_from_this(),
@@ -885,12 +915,10 @@ void TFileSystem::FSync(
         if (datasync) {
             fsyncQueueFuture = FSyncQueue->WaitForDataRequests(
                 reqId,
-                TNodeId {ino},
-                THandle {fi->fh});
+                TNodeId{ino},
+                THandle{fi->fh});
         } else {
-            fsyncQueueFuture = FSyncQueue->WaitForRequests(
-                reqId,
-                TNodeId {ino});
+            fsyncQueueFuture = FSyncQueue->WaitForRequests(reqId, TNodeId{ino});
         }
     } else {
         if (datasync) {
@@ -903,19 +931,23 @@ void TFileSystem::FSync(
     auto future = fsyncQueueFuture;
 
     if (WriteBackCache) {
-        auto convertOK = [] (const auto&) { return MakeError(S_OK); };
+        auto convertOK = [](const auto&)
+        {
+            return MakeError(S_OK);
+        };
 
         TFuture<NProto::TError> writeBackCacheFlushFuture;
         if (fi) {
-            writeBackCacheFlushFuture = WriteBackCache.FlushNodeData(ino)
-                .Apply(convertOK);
+            writeBackCacheFlushFuture =
+                WriteBackCache.FlushNodeData(ino).Apply(convertOK);
         } else {
-            writeBackCacheFlushFuture = WriteBackCache.FlushAllData()
-                .Apply(convertOK);
+            writeBackCacheFlushFuture =
+                WriteBackCache.FlushAllData().Apply(convertOK);
         }
 
         future = NWait::WaitAll(fsyncQueueFuture, writeBackCacheFlushFuture)
-            .Apply([=] (const auto&) { return fsyncQueueFuture.GetValue(); });
+                     .Apply([=](const auto&)
+                            { return fsyncQueueFuture.GetValue(); });
     }
 
     future.Subscribe(std::move(callback));
@@ -947,39 +979,37 @@ void TFileSystem::FSyncDir(
         requestInfo,
         EFileStoreFuseRequest::FsyncDir,
         Now());
-    InitNodeInfo(
-        requestInfo,
-        datasync,
-        TNodeId{ino},
-        THandle{fi->fh});
+    InitNodeInfo(requestInfo, datasync, TNodeId{ino}, THandle{fi->fh});
 
-    auto callback = [=, ptr = weak_from_this(), requestInfo = std::move(requestInfo)]
-        (const auto& future) mutable {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+    auto callback =
+        [=, ptr = weak_from_this(), requestInfo = std::move(requestInfo)](
+            const auto& future) mutable
+    {
+        auto self = ptr.lock();
+        if (!self) {
+            return;
+        }
 
-            const auto& error = future.GetValue();
+        const auto& error = future.GetValue();
 
-            FinalizeProfileLogRequestInfo(
-                std::move(requestInfo),
-                Now(),
-                self->Config->GetFileSystemId(),
-                error,
-                self->ProfileLog);
+        FinalizeProfileLogRequestInfo(
+            std::move(requestInfo),
+            Now(),
+            self->Config->GetFileSystemId(),
+            error,
+            self->ProfileLog);
 
-            if (self->CheckError(*callContext, req, error)) {
-                self->ReplyError(*callContext, error, req, 0);
-            }
-        };
+        if (self->CheckError(*callContext, req, error)) {
+            self->ReplyError(*callContext, error, req, 0);
+        }
+    };
 
     auto waitCallback =
         [ptr = weak_from_this(),
          callContext,
          ino,
          datasync,
-         callback = std::move(callback)] (const auto& future) mutable
+         callback = std::move(callback)](const auto& future) mutable
     {
         auto self = ptr.lock();
         if (!self) {
@@ -1010,11 +1040,12 @@ void TFileSystem::FSyncDir(
     auto future = fsyncQueueFuture;
 
     if (WriteBackCache) {
-        auto writeBackCacheFlushFuture = WriteBackCache.FlushAllData()
-            .Apply([] (const auto&) { return MakeError(S_OK); });
+        auto writeBackCacheFlushFuture = WriteBackCache.FlushAllData().Apply(
+            [](const auto&) { return MakeError(S_OK); });
 
         future = NWait::WaitAll(fsyncQueueFuture, writeBackCacheFlushFuture)
-            .Apply([=] (const auto&) { return fsyncQueueFuture.GetValue(); });
+                     .Apply([=](const auto&)
+                            { return fsyncQueueFuture.GetValue(); });
     }
 
     future.Subscribe(std::move(waitCallback));

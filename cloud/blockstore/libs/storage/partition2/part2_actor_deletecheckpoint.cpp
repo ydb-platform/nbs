@@ -21,10 +21,8 @@ void TPartitionActor::HandleDeleteCheckpoint(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -34,14 +32,14 @@ void TPartitionActor::HandleDeleteCheckpoint(
         "DeleteCheckpoint",
         requestInfo->CallContext->RequestId);
 
-    auto replyError = [=] (
-        const TActorContext& ctx,
-        TRequestInfo& requestInfo,
-        ui32 errorCode,
-        TString errorReason)
+    auto replyError = [=](const TActorContext& ctx,
+                          TRequestInfo& requestInfo,
+                          ui32 errorCode,
+                          TString errorReason)
     {
-        auto response = std::make_unique<TEvService::TEvDeleteCheckpointResponse>(
-            MakeError(errorCode, std::move(errorReason)));
+        auto response =
+            std::make_unique<TEvService::TEvDeleteCheckpointResponse>(
+                MakeError(errorCode, std::move(errorReason)));
 
         LWTRACK(
             ResponseSent_Partition,
@@ -54,27 +52,32 @@ void TPartitionActor::HandleDeleteCheckpoint(
 
     const auto& checkpointId = msg->Record.GetCheckpointId();
     if (!checkpointId) {
-        replyError(ctx, *requestInfo, E_ARGUMENT, "missing checkpoint identifier");
+        replyError(
+            ctx,
+            *requestInfo,
+            E_ARGUMENT,
+            "missing checkpoint identifier");
         return;
     }
 
     ui64 commitId = State->GetCheckpoints().GetCommitId(checkpointId);
     if (!commitId) {
-        replyError(ctx, *requestInfo, S_ALREADY, TStringBuilder()
-            << "checkpoint not found: " << checkpointId.Quote());
+        replyError(
+            ctx,
+            *requestInfo,
+            S_ALREADY,
+            TStringBuilder()
+                << "checkpoint not found: " << checkpointId.Quote());
         return;
     }
 
     AddTransaction<TEvService::TDeleteCheckpointMethod>(*requestInfo);
 
-    auto tx = CreateTx<TDeleteCheckpoint>(
-        requestInfo,
-        commitId,
-        checkpointId);
+    auto tx = CreateTx<TDeleteCheckpoint>(requestInfo, commitId, checkpointId);
 
     auto& queue = State->GetCCCRequestQueue();
     // shouldn't wait for inflight fresh blocks to complete (commitID == 0)
-    queue.push_back({ 0, std::move(tx) });
+    queue.push_back({0, std::move(tx)});
 
     ProcessCCCRequestQueue(ctx);
 }
@@ -109,12 +112,13 @@ void TPartitionActor::ExecuteDeleteCheckpoint(
         ctx.Now(),
         args.CommitId,
         args.CheckpointId,
-        std::move(args.BlobIds)
-    );
+        std::move(args.BlobIds));
 
     if (!marked) {
-        args.Error = MakeError(S_ALREADY, TStringBuilder()
-            << "checkpoint not found: " << args.CheckpointId.Quote());
+        args.Error = MakeError(
+            S_ALREADY,
+            TStringBuilder()
+                << "checkpoint not found: " << args.CheckpointId.Quote());
         return;
     }
 }
@@ -128,13 +132,16 @@ void TPartitionActor::CompleteDeleteCheckpoint(
 
     State->StopProcessingCCCRequest();
 
-    LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%lu] Checkpoint %s deletion scheduled (commit: %lu)",
         TabletID(),
         args.CheckpointId.Quote().data(),
         args.CommitId);
 
-    auto response = std::make_unique<TEvService::TEvDeleteCheckpointResponse>(args.Error);
+    auto response =
+        std::make_unique<TEvService::TEvDeleteCheckpointResponse>(args.Error);
 
     LWTRACK(
         ResponseSent_Partition,
@@ -159,14 +166,16 @@ void TPartitionActor::HandleDeleteCheckpointData(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo<TEvVolume::TDeleteCheckpointDataMethod>(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo<TEvVolume::TDeleteCheckpointDataMethod>(
+            ev->Sender,
+            ev->Cookie,
+            msg->CallContext);
 
     // TODO(NBS-2382) - support DeleteCheckpointData for partition v2
-    auto response = std::make_unique<TEvVolume::TEvDeleteCheckpointDataResponse>(
-        MakeError(S_FALSE, "nothing to delete"));
+    auto response =
+        std::make_unique<TEvVolume::TEvDeleteCheckpointDataResponse>(
+            MakeError(S_FALSE, "nothing to delete"));
 
     NCloud::Reply(ctx, *requestInfo, std::move(response));
 }

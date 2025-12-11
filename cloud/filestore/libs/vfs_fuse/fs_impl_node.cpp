@@ -26,30 +26,32 @@ void TFileSystem::Lookup(
     request->SetName(std::move(name));
 
     Session->GetNodeAttr(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            if (auto self = ptr.lock()) {
-                const auto& response = future.GetValue();
-                const auto& error = response.GetError();
-                if (!HasError(response)) {
-                    self->ReplyEntry(
-                        *callContext,
-                        error,
-                        req,
-                        response.GetNode());
-                } else if (error.GetCode() == E_FS_NAMETOOLONG) {
-                    self->ReplyError(*callContext, error, req, ENAMETOOLONG);
-                } else {
-                    fuse_entry_param entry = {};
-                    entry.entry_timeout =
-                        Config->GetNegativeEntryTimeout().SecondsFloat();
-                    self->ReplyEntry(
-                        *callContext,
-                        error,
-                        req,
-                        &entry);
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                if (auto self = ptr.lock()) {
+                    const auto& response = future.GetValue();
+                    const auto& error = response.GetError();
+                    if (!HasError(response)) {
+                        self->ReplyEntry(
+                            *callContext,
+                            error,
+                            req,
+                            response.GetNode());
+                    } else if (error.GetCode() == E_FS_NAMETOOLONG) {
+                        self->ReplyError(
+                            *callContext,
+                            error,
+                            req,
+                            ENAMETOOLONG);
+                    } else {
+                        fuse_entry_param entry = {};
+                        entry.entry_timeout =
+                            Config->GetNegativeEntryTimeout().SecondsFloat();
+                        self->ReplyEntry(*callContext, error, req, &entry);
+                    }
                 }
-            }
-        });
+            });
 }
 
 void TFileSystem::Forget(
@@ -101,23 +103,29 @@ void TFileSystem::MkDir(
     dir->SetMode(mode & ~(S_IFMT));
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue->Enqueue(reqId, TNodeId {parent});
+    FSyncQueue->Enqueue(reqId, TNodeId{parent});
 
     Session->CreateNode(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                auto self = ptr.lock();
+                if (!self) {
+                    return;
+                }
 
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
+                const auto& response = future.GetValue();
+                const auto& error = response.GetError();
+                self->FSyncQueue->Dequeue(reqId, error, TNodeId{parent});
 
-            if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyEntry(*callContext, error, req, response.GetNode());
-            }
-        });
+                if (CheckResponse(self, *callContext, req, response)) {
+                    self->ReplyEntry(
+                        *callContext,
+                        error,
+                        req,
+                        response.GetNode());
+                }
+            });
 }
 
 void TFileSystem::RmDir(
@@ -137,23 +145,25 @@ void TFileSystem::RmDir(
     request->SetUnlinkDirectory(true);
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue->Enqueue(reqId, TNodeId {parent});
+    FSyncQueue->Enqueue(reqId, TNodeId{parent});
 
     Session->UnlinkNode(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                auto self = ptr.lock();
+                if (!self) {
+                    return;
+                }
 
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
+                const auto& response = future.GetValue();
+                const auto& error = response.GetError();
+                self->FSyncQueue->Dequeue(reqId, error, TNodeId{parent});
 
-            if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyError(*callContext, error, req, 0);
-            }
-        });
+                if (CheckResponse(self, *callContext, req, response)) {
+                    self->ReplyError(*callContext, error, req, 0);
+                }
+            });
 }
 
 void TFileSystem::MkNode(
@@ -164,8 +174,9 @@ void TFileSystem::MkNode(
     mode_t mode,
     dev_t rdev)
 {
-    STORAGE_DEBUG("MkNode #" << parent << " " << name.Quote()
-        << " mode: " << mode << " rdev: " << rdev);
+    STORAGE_DEBUG(
+        "MkNode #" << parent << " " << name.Quote() << " mode: " << mode
+                   << " rdev: " << rdev);
 
     if (!ValidateNodeId(*callContext, req, parent)) {
         return;
@@ -200,23 +211,29 @@ void TFileSystem::MkNode(
     }
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue->Enqueue(reqId, TNodeId {parent});
+    FSyncQueue->Enqueue(reqId, TNodeId{parent});
 
     Session->CreateNode(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                auto self = ptr.lock();
+                if (!self) {
+                    return;
+                }
 
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
+                const auto& response = future.GetValue();
+                const auto& error = response.GetError();
+                self->FSyncQueue->Dequeue(reqId, error, TNodeId{parent});
 
-            if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyEntry(*callContext, error, req, response.GetNode());
-            }
-        });
+                if (CheckResponse(self, *callContext, req, response)) {
+                    self->ReplyEntry(
+                        *callContext,
+                        error,
+                        req,
+                        response.GetNode());
+                }
+            });
 }
 
 void TFileSystem::Unlink(
@@ -236,23 +253,25 @@ void TFileSystem::Unlink(
     request->SetUnlinkDirectory(false);
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue->Enqueue(reqId, TNodeId {parent});
+    FSyncQueue->Enqueue(reqId, TNodeId{parent});
 
     Session->UnlinkNode(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                auto self = ptr.lock();
+                if (!self) {
+                    return;
+                }
 
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
+                const auto& response = future.GetValue();
+                const auto& error = response.GetError();
+                self->FSyncQueue->Dequeue(reqId, error, TNodeId{parent});
 
-            if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyError(*callContext, error, req, 0);
-            }
-        });
+                if (CheckResponse(self, *callContext, req, response)) {
+                    self->ReplyError(*callContext, error, req, 0);
+                }
+            });
 }
 
 void TFileSystem::Rename(
@@ -266,8 +285,10 @@ void TFileSystem::Rename(
 {
     ui32 protoFlags = SystemFlagsToRename(flags);
 
-    STORAGE_DEBUG("Rename #" << parent << " " << name.Quote() << " -> #"
-        << newparent << " " << newname.Quote() << " " << RenameFlagsToString(protoFlags));
+    STORAGE_DEBUG(
+        "Rename #" << parent << " " << name.Quote() << " -> #" << newparent
+                   << " " << newname.Quote() << " "
+                   << RenameFlagsToString(protoFlags));
 
     if (!ValidateNodeId(*callContext, req, parent)) {
         return;
@@ -280,24 +301,26 @@ void TFileSystem::Rename(
     request->SetFlags(protoFlags);
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue->Enqueue(reqId, TNodeId {parent});
+    FSyncQueue->Enqueue(reqId, TNodeId{parent});
 
     Session->RenameNode(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                auto self = ptr.lock();
+                if (!self) {
+                    return;
+                }
 
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
+                const auto& response = future.GetValue();
+                const auto& error = response.GetError();
+                self->FSyncQueue->Dequeue(reqId, error, TNodeId{parent});
 
-            if (CheckResponse(self, *callContext, req, response)) {
-                // TODO: update tree
-                self->ReplyError(*callContext, error, req, 0);
-            }
-        });
+                if (CheckResponse(self, *callContext, req, response)) {
+                    // TODO: update tree
+                    self->ReplyError(*callContext, error, req, 0);
+                }
+            });
 }
 
 void TFileSystem::SymLink(
@@ -307,7 +330,9 @@ void TFileSystem::SymLink(
     fuse_ino_t parent,
     TString name)
 {
-    STORAGE_DEBUG("SymLink #" << parent << " " <<  name.Quote() << " -> " << target.Quote());
+    STORAGE_DEBUG(
+        "SymLink #" << parent << " " << name.Quote() << " -> "
+                    << target.Quote());
 
     if (!ValidateNodeId(*callContext, req, parent)) {
         return;
@@ -321,23 +346,29 @@ void TFileSystem::SymLink(
     link->SetTargetPath(std::move(target));
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue->Enqueue(reqId, TNodeId {parent});
+    FSyncQueue->Enqueue(reqId, TNodeId{parent});
 
     Session->CreateNode(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                auto self = ptr.lock();
+                if (!self) {
+                    return;
+                }
 
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
+                const auto& response = future.GetValue();
+                const auto& error = response.GetError();
+                self->FSyncQueue->Dequeue(reqId, error, TNodeId{parent});
 
-            if (CheckResponse(self, *callContext, req, response)) {
-                self->ReplyEntry(*callContext, error, req, response.GetNode());
-            }
-        });
+                if (CheckResponse(self, *callContext, req, response)) {
+                    self->ReplyEntry(
+                        *callContext,
+                        error,
+                        req,
+                        response.GetNode());
+                }
+            });
 }
 
 void TFileSystem::Link(
@@ -347,7 +378,8 @@ void TFileSystem::Link(
     fuse_ino_t newparent,
     TString newname)
 {
-    STORAGE_DEBUG("Link #" << ino << " -> #" << newparent << " " << newname.Quote());
+    STORAGE_DEBUG(
+        "Link #" << ino << " -> #" << newparent << " " << newname.Quote());
 
     if (!ValidateNodeId(*callContext, req, ino)) {
         return;
@@ -360,23 +392,31 @@ void TFileSystem::Link(
     link->SetTargetNode(ino);
 
     const auto reqId = callContext->RequestId;
-    FSyncQueue->Enqueue(reqId, TNodeId {ino});
+    FSyncQueue->Enqueue(reqId, TNodeId{ino});
 
     Session->CreateNode(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            auto self = ptr.lock();
-            if (!self) {
-                return;
-            }
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                auto self = ptr.lock();
+                if (!self) {
+                    return;
+                }
 
-            const auto& response = future.GetValue();
-            const auto& error = response.GetError();
-            self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino});
+                const auto& response = future.GetValue();
+                const auto& error = response.GetError();
+                self->FSyncQueue->Dequeue(reqId, error, TNodeId{ino});
 
-            if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
-                self->ReplyEntry(*callContext, error, req, response.GetNode());
-            }
-        });
+                if (auto self = ptr.lock();
+                    CheckResponse(self, *callContext, req, response))
+                {
+                    self->ReplyEntry(
+                        *callContext,
+                        error,
+                        req,
+                        response.GetNode());
+                }
+            });
 }
 
 void TFileSystem::ReadLink(
@@ -393,16 +433,20 @@ void TFileSystem::ReadLink(
     auto request = StartRequest<NProto::TReadLinkRequest>(ino);
 
     Session->ReadLink(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            const auto& response = future.GetValue();
-            if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
-                self->ReplyReadLink(
-                    *callContext,
-                    response.GetError(),
-                    req,
-                    response.GetSymLink().data());
-            }
-        });
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                const auto& response = future.GetValue();
+                if (auto self = ptr.lock();
+                    CheckResponse(self, *callContext, req, response))
+                {
+                    self->ReplyReadLink(
+                        *callContext,
+                        response.GetError(),
+                        req,
+                        response.GetSymLink().data());
+                }
+            });
 }
 
 void TFileSystem::Access(
@@ -421,12 +465,16 @@ void TFileSystem::Access(
     request->SetMask(mask);
 
     Session->AccessNode(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            const auto& response = future.GetValue();
-            if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
-                self->ReplyError(*callContext, response.GetError(), req, 0);
-            }
-        });
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                const auto& response = future.GetValue();
+                if (auto self = ptr.lock();
+                    CheckResponse(self, *callContext, req, response))
+                {
+                    self->ReplyError(*callContext, response.GetError(), req, 0);
+                }
+            });
 }
 
 }   // namespace NCloud::NFileStore::NFuse

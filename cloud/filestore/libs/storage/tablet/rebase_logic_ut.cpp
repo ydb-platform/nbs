@@ -11,7 +11,7 @@ Y_UNIT_TEST_SUITE(TRebaseLogicTest)
     Y_UNIT_TEST(TestRebaseBlocks)
     {
         const ui64 defaultNodeId = 111;
-        const auto b = [=] (ui32 blockIndex, ui64 minCommitId, ui64 maxCommitId)
+        const auto b = [=](ui32 blockIndex, ui64 minCommitId, ui64 maxCommitId)
         {
             return TBlock(defaultNodeId, blockIndex, minCommitId, maxCommitId);
         };
@@ -29,7 +29,8 @@ Y_UNIT_TEST_SUITE(TRebaseLogicTest)
         const ui64 c3 = 10;
         const ui64 lastCommitId = 40;
 
-        const auto findCheckpoint = [&] (ui64 nodeId, ui64 commitId) {
+        const auto findCheckpoint = [&](ui64 nodeId, ui64 commitId)
+        {
             UNIT_ASSERT_VALUES_EQUAL(defaultNodeId, nodeId);
 
             if (commitId < c1) {
@@ -48,17 +49,15 @@ Y_UNIT_TEST_SUITE(TRebaseLogicTest)
         };
 
         const THashSet<ui32> freshBlocks = {11, 14};
-        const auto findBlock = [&] (ui64 nodeId, ui32 blockIndex) {
+        const auto findBlock = [&](ui64 nodeId, ui32 blockIndex)
+        {
             UNIT_ASSERT_VALUES_EQUAL(defaultNodeId, nodeId);
 
             return freshBlocks.contains(blockIndex);
         };
 
-        const auto rebaseResult = RebaseBlocks(
-            blocks,
-            lastCommitId,
-            findCheckpoint,
-            findBlock);
+        const auto rebaseResult =
+            RebaseBlocks(blocks, lastCommitId, findCheckpoint, findBlock);
 
         UNIT_ASSERT_VALUES_EQUAL(5, rebaseResult.LiveBlocksCount);
         UNIT_ASSERT_VALUES_EQUAL(1, rebaseResult.GarbageBlocksCount);

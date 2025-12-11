@@ -7,9 +7,10 @@ namespace NCloud::NFileStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 TInMemoryIndexState::TInMemoryIndexState(IAllocator* allocator)
-    : Nodes(0), NodeAttrs(0), NodeRefs(allocator)
-{
-}
+    : Nodes(0)
+    , NodeAttrs(0)
+    , NodeRefs(allocator)
+{}
 
 void TInMemoryIndexState::Reset(
     ui64 nodesCapacity,
@@ -184,7 +185,12 @@ void TInMemoryIndexState::WriteNodeAttr(
     ui64 version)
 {
     const auto key = TNodeAttrsKey(nodeId, name);
-    NodeAttrs.Update(key, TNodeAttrsRow{.CommitId = commitId, .Value = value, .Version = version});
+    NodeAttrs.Update(
+        key,
+        TNodeAttrsRow{
+            .CommitId = commitId,
+            .Value = value,
+            .Version = version});
 }
 
 void TInMemoryIndexState::DeleteNodeAttr(ui64 nodeId, const TString& name)

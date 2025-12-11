@@ -43,15 +43,13 @@ ui32 GetExpectedKeyLength(NProto::EEncryptionMode mode)
             return 32;
         default:
             ythrow TServiceError(E_ARGUMENT)
-                << "Unknown encryption mode: "
-                << static_cast<int>(mode);
+                << "Unknown encryption mode: " << static_cast<int>(mode);
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TEncryptionKeyProvider final
-    : public IEncryptionKeyProvider
+class TEncryptionKeyProvider final: public IEncryptionKeyProvider
 {
 private:
     const IKmsKeyProviderPtr KmsKeyProvider;
@@ -59,8 +57,8 @@ private:
 
 public:
     TEncryptionKeyProvider(
-            IKmsKeyProviderPtr kmsKeyProvider,
-            IRootKmsKeyProviderPtr rootKmsKeyProvider)
+        IKmsKeyProviderPtr kmsKeyProvider,
+        IRootKmsKeyProviderPtr rootKmsKeyProvider)
         : KmsKeyProvider(std::move(kmsKeyProvider))
         , RootKmsKeyProvider(std::move(rootKmsKeyProvider))
     {}
@@ -97,42 +95,52 @@ public:
 private:
     TResponse ReadKeyFromKeyring(ui32 keyringId, ui32 expectedLen)
     {
-        return SafeExecute<TResponse>([&] () -> TResponse {
-            auto keyring = TKeyring::Create(keyringId);
+        return SafeExecute<TResponse>(
+            [&]() -> TResponse
+            {
+                auto keyring = TKeyring::Create(keyringId);
 
-            if (keyring.GetValueSize() != expectedLen) {
-                return MakeError(E_ARGUMENT, TStringBuilder()
-                    << "Key from keyring " << keyringId
-                    << " should has size " << expectedLen);
-            }
+                if (keyring.GetValueSize() != expectedLen) {
+                    return MakeError(
+                        E_ARGUMENT,
+                        TStringBuilder() << "Key from keyring " << keyringId
+                                         << " should has size " << expectedLen);
+                }
 
-            return TEncryptionKey(keyring.GetValue());
-        });
+                return TEncryptionKey(keyring.GetValue());
+            });
     }
 
     TResponse ReadKeyFromFile(TString filePath, ui32 expectedLen)
     {
-        return SafeExecute<TResponse>([&] () -> TResponse {
-            TFile file(
-                filePath,
-                EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
+        return SafeExecute<TResponse>(
+            [&]() -> TResponse
+            {
+                TFile file(
+                    filePath,
+                    EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
 
-            if (file.GetLength() != expectedLen) {
-                return MakeError(E_ARGUMENT, TStringBuilder()
-                    << "Key file " << filePath.Quote()
-                    << " size " << file.GetLength() << " != " << expectedLen);
-            }
+                if (file.GetLength() != expectedLen) {
+                    return MakeError(
+                        E_ARGUMENT,
+                        TStringBuilder()
+                            << "Key file " << filePath.Quote() << " size "
+                            << file.GetLength() << " != " << expectedLen);
+                }
 
-            TString key = TString::TUninitialized(expectedLen);
-            auto size = file.Read(key.begin(), expectedLen);
-            if (size != expectedLen) {
-                return MakeError(E_ARGUMENT, TStringBuilder()
-                    << "Read " << size << " bytes from key file "
-                    << filePath.Quote() << ", expected " << expectedLen);
-            }
+                TString key = TString::TUninitialized(expectedLen);
+                auto size = file.Read(key.begin(), expectedLen);
+                if (size != expectedLen) {
+                    return MakeError(
+                        E_ARGUMENT,
+                        TStringBuilder()
+                            << "Read " << size << " bytes from key file "
+                            << filePath.Quote() << ", expected "
+                            << expectedLen);
+                }
 
-            return TEncryptionKey(std::move(key));
-        });
+                return TEncryptionKey(std::move(key));
+            });
     }
 
     TFuture<TResponse> ReadKeyFromKMS(
@@ -141,21 +149,24 @@ private:
         ui32 expectedLen)
     {
         auto future = KmsKeyProvider->GetKey(kmsKey, diskId);
-        return future.Apply([diskId, expectedLen] (auto f) -> TResponse {
-            auto response = f.ExtractValue();
-            if (HasError(response)) {
-                return response.GetError();
-            }
+        return future.Apply(
+            [diskId, expectedLen](auto f) -> TResponse
+            {
+                auto response = f.ExtractValue();
+                if (HasError(response)) {
+                    return response.GetError();
+                }
 
-            auto key = response.ExtractResult();
-            if (key.GetKey().size() != expectedLen) {
-                return MakeError(E_INVALID_STATE, TStringBuilder()
-                    << "Key from KMS for disk " << diskId
-                    << " should has size " << expectedLen);
-            }
+                auto key = response.ExtractResult();
+                if (key.GetKey().size() != expectedLen) {
+                    return MakeError(
+                        E_INVALID_STATE,
+                        TStringBuilder() << "Key from KMS for disk " << diskId
+                                         << " should has size " << expectedLen);
+                }
 
-            return std::move(key);
-        });
+                return std::move(key);
+            });
     }
 
     TFuture<TResponse> ReadKeyFromRootKMS(
@@ -164,28 +175,31 @@ private:
         ui32 expectedLen)
     {
         auto future = RootKmsKeyProvider->GetKey(kmsKey, diskId);
-        return future.Apply([diskId, expectedLen] (auto f) -> TResponse {
-            auto response = f.ExtractValue();
-            if (HasError(response)) {
-                return response.GetError();
-            }
+        return future.Apply(
+            [diskId, expectedLen](auto f) -> TResponse
+            {
+                auto response = f.ExtractValue();
+                if (HasError(response)) {
+                    return response.GetError();
+                }
 
-            auto key = response.ExtractResult();
-            if (key.GetKey().size() != expectedLen) {
-                return MakeError(E_INVALID_STATE, TStringBuilder()
-                    << "Key from Root KMS for disk " << diskId
-                    << " should has size " << expectedLen);
-            }
+                auto key = response.ExtractResult();
+                if (key.GetKey().size() != expectedLen) {
+                    return MakeError(
+                        E_INVALID_STATE,
+                        TStringBuilder()
+                            << "Key from Root KMS for disk " << diskId
+                            << " should has size " << expectedLen);
+                }
 
-            return std::move(key);
-        });
+                return std::move(key);
+            });
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TKmsKeyProviderStub
-    : public IKmsKeyProvider
+class TKmsKeyProviderStub: public IKmsKeyProvider
 {
 public:
     TFuture<TResponse> GetKey(
@@ -201,8 +215,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRootKmsKeyProviderStub final
-    : public IRootKmsKeyProvider
+class TRootKmsKeyProviderStub final: public IRootKmsKeyProvider
 {
 public:
     auto GetKey(const NProto::TKmsKey& kmsKey, const TString& diskId)

@@ -45,9 +45,10 @@ NProto::TError ValidateTabletStorageInfoUpdate(
     const ui32 newInfoVersion = newInfo.GetVersion();
 
     if (oldInfoVersion > newInfoVersion) {
-        return MakeError(E_FAIL, TStringBuilder()
-            << "version mismatch (old: " << oldInfoVersion
-            << ", new: " << newInfoVersion << ")");
+        return MakeError(
+            E_FAIL,
+            TStringBuilder() << "version mismatch (old: " << oldInfoVersion
+                             << ", new: " << newInfoVersion << ")");
     }
 
     if (oldInfoVersion == newInfoVersion) {
@@ -59,21 +60,28 @@ NProto::TError ValidateTabletStorageInfoUpdate(
             return MakeError(S_ALREADY, "nothing to update");
         }
 
-        return MakeError(E_FAIL, TStringBuilder()
-            << "content has changed without version increment, diff: " << diff);
+        return MakeError(
+            E_FAIL,
+            TStringBuilder()
+                << "content has changed without version increment, diff: "
+                << diff);
     }
 
-    TABLET_VERIFY_C(oldInfoVersion < newInfoVersion,
-        TStringBuilder() << "config version mismatch: old "
-            << oldInfoVersion << " , new: " << newInfoVersion);
+    TABLET_VERIFY_C(
+        oldInfoVersion < newInfoVersion,
+        TStringBuilder() << "config version mismatch: old " << oldInfoVersion
+                         << " , new: " << newInfoVersion);
 
     const ui32 oldChannelCount = oldInfo.ChannelsSize();
-    const ui32 newChannelCount = newInfo.ChannelsSize();;
+    const ui32 newChannelCount = newInfo.ChannelsSize();
+    ;
 
     if (oldChannelCount > newChannelCount) {
-        return MakeError(E_FAIL, TStringBuilder()
-            << "channel count has been decreased (old: " << oldChannelCount
-            << ", new: " << newChannelCount << ")");
+        return MakeError(
+            E_FAIL,
+            TStringBuilder()
+                << "channel count has been decreased (old: " << oldChannelCount
+                << ", new: " << newChannelCount << ")");
     }
 
     return {};
@@ -88,7 +96,9 @@ bool TIndexTabletActor::PrepareTx_LoadState(
     TTransactionContext& tx,
     TTxIndexTablet::TLoadState& args)
 {
-    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO_S(
+        ctx,
+        TFileStoreComponents::TABLET,
         LogTag << " Loading tablet state data");
 
     TIndexTabletDatabase db(tx.DB);
@@ -119,12 +129,13 @@ bool TIndexTabletActor::PrepareTx_LoadState(
         results.begin(),
         results.end(),
         true,
-        std::logical_and<>()
-    );
+        std::logical_and<>());
 
-    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO_S(
+        ctx,
+        TFileStoreComponents::TABLET,
         LogTag << " Loading tablet state data "
-            << (ready ? "finished" : "restarted"));
+               << (ready ? "finished" : "restarted"));
 
     return ready;
 }
@@ -134,7 +145,9 @@ void TIndexTabletActor::ExecuteTx_LoadState(
     TTransactionContext& tx,
     TTxIndexTablet::TLoadState& args)
 {
-    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO_S(
+        ctx,
+        TFileStoreComponents::TABLET,
         LogTag << " Preparing tablet state");
 
     TIndexTabletDatabase db(tx.DB);
@@ -150,7 +163,9 @@ void TIndexTabletActor::ExecuteTx_LoadState(
 
     if (!oldTabletStorageInfo.GetTabletId()) {
         // First TxLoadState on tablet creation
-        LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+        LOG_INFO_S(
+            ctx,
+            TFileStoreComponents::TABLET,
             LogTag << " Initializing tablet storage info");
 
         TABLET_VERIFY(newTabletStorageInfo.GetTabletId());
@@ -184,14 +199,18 @@ void TIndexTabletActor::ExecuteTx_LoadState(
     }
 
     if (error.GetCode() != S_ALREADY) {
-        LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+        LOG_INFO_S(
+            ctx,
+            TFileStoreComponents::TABLET,
             LogTag << " Updating tablet storage info");
 
         args.TabletStorageInfo.CopyFrom(newTabletStorageInfo);
         db.WriteTabletStorageInfo(newTabletStorageInfo);
     }
 
-    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO_S(
+        ctx,
+        TFileStoreComponents::TABLET,
         LogTag << " Completed preparing tablet state");
 }
 
@@ -203,15 +222,19 @@ void TIndexTabletActor::CompleteTx_LoadState(
         StorageConfigOverride = *args.StorageConfig;
         Config = std::make_shared<TStorageConfig>(*Config);
         Config->Merge(*args.StorageConfig.Get());
-        LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+        LOG_INFO_S(
+            ctx,
+            TFileStoreComponents::TABLET,
             LogTag << " Merge StorageConfig with config from tablet database");
     }
 
     if (HasError(args.Error)) {
-        LOG_ERROR_S(ctx, TFileStoreComponents::TABLET,
-            LogTag
-            << "Switching tablet to BROKEN state due to the failed TxLoadState: "
-            << FormatError(args.Error));
+        LOG_ERROR_S(
+            ctx,
+            TFileStoreComponents::TABLET,
+            LogTag << "Switching tablet to BROKEN state due to the failed "
+                      "TxLoadState: "
+                   << FormatError(args.Error));
 
         BecomeAux(ctx, STATE_BROKEN);
 
@@ -228,7 +251,9 @@ void TIndexTabletActor::CompleteTx_LoadState(
     }
 
     BecomeAux(ctx, STATE_WORK);
-    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO_S(
+        ctx,
+        TFileStoreComponents::TABLET,
         LogTag << " Activating tablet");
 
     // allow pipes to connect
@@ -243,17 +268,22 @@ void TIndexTabletActor::CompleteTx_LoadState(
     TThrottlerConfig config;
     Convert(args.FileSystem.GetPerformanceProfile(), config);
 
-    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO_S(
+        ctx,
+        TFileStoreComponents::TABLET,
         LogTag << " Initializing tablet state");
     if (args.LargeDeletionMarkers) {
-        LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+        LOG_INFO_S(
+            ctx,
+            TFileStoreComponents::TABLET,
             LogTag << " Read " << args.LargeDeletionMarkers.size()
-            << " large deletion markers");
+                   << " large deletion markers");
     }
     if (args.OrphanNodeIds) {
-        LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
-            LogTag << " Read " << args.OrphanNodeIds.size()
-            << " orphan nodes");
+        LOG_INFO_S(
+            ctx,
+            TFileStoreComponents::TABLET,
+            LogTag << " Read " << args.OrphanNodeIds.size() << " orphan nodes");
     }
 
     LoadState(
@@ -267,7 +297,9 @@ void TIndexTabletActor::CompleteTx_LoadState(
         config);
     UpdateLogTag();
 
-    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO_S(
+        ctx,
+        TFileStoreComponents::TABLET,
         LogTag << " Loading tablet sessions");
     auto idleSessionDeadline = ctx.Now() + Config->GetIdleSessionTimeout();
 
@@ -286,9 +318,11 @@ void TIndexTabletActor::CompleteTx_LoadState(
         SetStartupGcExecuted();
     }
 
-    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO_S(
+        ctx,
+        TFileStoreComponents::TABLET,
         LogTag << " Enqueueing truncate operations: "
-            << args.TruncateQueue.size());
+               << args.TruncateQueue.size());
     for (const auto& entry: args.TruncateQueue) {
         EnqueueTruncateOp(
             entry.GetNodeId(),
@@ -296,33 +330,37 @@ void TIndexTabletActor::CompleteTx_LoadState(
     }
 
     // checkpoints should be loaded before data
-    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
-        LogTag << " Loading tablet checkpoints: "
-            << args.Checkpoints.size());
+    LOG_INFO_S(
+        ctx,
+        TFileStoreComponents::TABLET,
+        LogTag << " Loading tablet checkpoints: " << args.Checkpoints.size());
     LoadCheckpoints(args.Checkpoints);
 
-    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
-        LogTag << " Loading fresh bytes: "
-            << args.FreshBytes.size());
+    LOG_INFO_S(
+        ctx,
+        TFileStoreComponents::TABLET,
+        LogTag << " Loading fresh bytes: " << args.FreshBytes.size());
     LoadFreshBytes(args.FreshBytes);
 
-    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
-        LogTag << " Loading fresh blocks: "
-            << args.FreshBlocks.size());
+    LOG_INFO_S(
+        ctx,
+        TFileStoreComponents::TABLET,
+        LogTag << " Loading fresh blocks: " << args.FreshBlocks.size());
     LoadFreshBlocks(args.FreshBlocks);
 
-    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
-        LogTag << " Loading garbage blobs: "
-            << args.GarbageBlobs.size());
+    LOG_INFO_S(
+        ctx,
+        TFileStoreComponents::TABLET,
+        LogTag << " Loading garbage blobs: " << args.GarbageBlobs.size());
     LoadGarbage(args.NewBlobs, args.GarbageBlobs);
 
-    CompactionStateLoadStatus.LoadQueue.push_back({
-        0,
-        Config->GetLoadedCompactionRangesPerTx(),
-        false});
+    CompactionStateLoadStatus.LoadQueue.push_back(
+        {0, Config->GetLoadedCompactionRangesPerTx(), false});
     LoadNextCompactionMapChunkIfNeeded(ctx);
 
-    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO_S(
+        ctx,
+        TFileStoreComponents::TABLET,
         LogTag << " Scheduling startup events");
 
     if (Config->GetInMemoryIndexCacheEnabled() &&
@@ -380,13 +418,17 @@ void TIndexTabletActor::CompleteTx_LoadState(
     RegisterStatCounters(ctx.Now());
     ResetThrottlingPolicy();
 
-    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO_S(
+        ctx,
+        TFileStoreComponents::TABLET,
         LogTag << " Scheduling OpLog ops");
     ReplayOpLog(ctx, args.OpLog);
 
     CompleteStateLoad();
 
-    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO_S(
+        ctx,
+        TFileStoreComponents::TABLET,
         LogTag << " Load state completed");
 }
 
@@ -398,16 +440,16 @@ void TIndexTabletActor::HandleLoadCompactionMapChunk(
 {
     auto* msg = ev->Get();
 
-    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s LoadCompactionMapChunk started (first range: #%u, count: %u)",
         LogTag.c_str(),
         msg->FirstRangeId,
         msg->RangeCount);
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     ExecuteTx<TLoadCompactionMapChunk>(
@@ -422,14 +464,13 @@ void TIndexTabletActor::HandleLoadCompactionMapChunk(
 void TIndexTabletActor::LoadNextCompactionMapChunkIfNeeded(
     const TActorContext& ctx)
 {
-    if (!CompactionStateLoadStatus.LoadChunkInProgress
-            && CompactionStateLoadStatus.LoadQueue)
+    if (!CompactionStateLoadStatus.LoadChunkInProgress &&
+        CompactionStateLoadStatus.LoadQueue)
     {
         ctx.Send(
             SelfId(),
             new TEvIndexTabletPrivate::TEvLoadCompactionMapChunkRequest(
-                CompactionStateLoadStatus.LoadQueue.front())
-        );
+                CompactionStateLoadStatus.LoadQueue.front()));
 
         CompactionStateLoadStatus.LoadChunkInProgress = true;
     }
@@ -443,7 +484,9 @@ void TIndexTabletActor::HandleLoadCompactionMapChunkResponse(
 {
     const auto* msg = ev->Get();
 
-    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s LoadCompactionMapChunk completed (%s)",
         LogTag.c_str(),
         FormatError(msg->GetError()).c_str());
@@ -476,7 +519,9 @@ void TIndexTabletActor::HandleLoadCompactionMapChunkResponse(
             EnqueueFlushIfNeeded(ctx);
             EnqueueBlobIndexOpIfNeeded(ctx);
 
-            LOG_INFO(ctx, TFileStoreComponents::TABLET,
+            LOG_INFO(
+                ctx,
+                TFileStoreComponents::TABLET,
                 "%s Compaction state loaded, MaxLoadedInOrderRangeId: %u, "
                 "RangesWithEmptyScore: %u",
                 LogTag.c_str(),
@@ -484,12 +529,14 @@ void TIndexTabletActor::HandleLoadCompactionMapChunkResponse(
                 RangesWithEmptyCompactionScore.size());
         } else {
             // Triggering the next in-order load request
-            s.LoadQueue.push_back({
-                msg->LastRangeId + 1,
-                Config->GetLoadedCompactionRangesPerTx(),
-                false});
+            s.LoadQueue.push_back(
+                {msg->LastRangeId + 1,
+                 Config->GetLoadedCompactionRangesPerTx(),
+                 false});
 
-            LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::TABLET,
                 "%s Compaction map chunk loaded, LastRangeId: %u",
                 LogTag.c_str(),
                 msg->LastRangeId);
@@ -510,9 +557,11 @@ bool TIndexTabletActor::PrepareTx_LoadCompactionMapChunk(
     TTransactionContext& tx,
     TTxIndexTablet::TLoadCompactionMapChunk& args)
 {
-    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
-        LogTag << " Loading compaction map chunk "
-            << args.FirstRangeId << ", " << args.RangeCount);
+    LOG_INFO_S(
+        ctx,
+        TFileStoreComponents::TABLET,
+        LogTag << " Loading compaction map chunk " << args.FirstRangeId << ", "
+               << args.RangeCount);
 
     TIndexTabletDatabase db(tx.DB);
 
@@ -522,9 +571,11 @@ bool TIndexTabletActor::PrepareTx_LoadCompactionMapChunk(
         args.RangeCount,
         true);
 
-    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO_S(
+        ctx,
+        TFileStoreComponents::TABLET,
         LogTag << " Loading compaction map chunk "
-            << (ready ? "finished" : "restarted"));
+               << (ready ? "finished" : "restarted"));
 
     return ready;
 }
@@ -553,9 +604,8 @@ void TIndexTabletActor::CompleteTx_LoadCompactionMapChunk(
 
     using TNotification =
         TEvIndexTabletPrivate::TEvLoadCompactionMapChunkResponse;
-    auto notification = std::make_unique<TNotification>(
-        args.FirstRangeId,
-        args.LastRangeId);
+    auto notification =
+        std::make_unique<TNotification>(args.FirstRangeId, args.LastRangeId);
     NCloud::Send(ctx, SelfId(), std::move(notification));
 }
 

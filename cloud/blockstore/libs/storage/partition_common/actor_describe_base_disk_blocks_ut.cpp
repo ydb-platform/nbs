@@ -2,9 +2,9 @@
 
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
-#include <library/cpp/testing/unittest/registar.h>
-
 #include <contrib/ydb/library/actors/testlib/test_runtime.h>
+
+#include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -23,8 +23,7 @@ using namespace NBlobMarkers;
 
 Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
 {
-    struct TActorSystem
-        : NActors::TTestActorRuntimeBase
+    struct TActorSystem: NActors::TTestActorRuntimeBase
     {
         void Start()
         {
@@ -37,8 +36,7 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
         }
     };
 
-    struct TSetupEnvironment
-        : public TCurrentTestCase
+    struct TSetupEnvironment: public TCurrentTestCase
     {
         TActorSystem ActorSystem;
 
@@ -60,27 +58,28 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
             TEmptyMark{},
             TFreshMark{}};
 
-        auto readActor = ActorSystem.Register(
-            new TDescribeBaseDiskBlocksActor(
-                MakeIntrusive<TRequestInfo>(
-                    EdgeActor,
-                    0ull,
-                    MakeIntrusive<TCallContext>()),
-                "BaseDiskId",
-                "BaseDiskCheckpointId",
-                TBlockRange64::WithLength(0, 5),
-                TBlockRange64::WithLength(0, 4),
-                std::move(blockMarks),
-                blockSize));
+        auto readActor = ActorSystem.Register(new TDescribeBaseDiskBlocksActor(
+            MakeIntrusive<TRequestInfo>(
+                EdgeActor,
+                0ull,
+                MakeIntrusive<TCallContext>()),
+            "BaseDiskId",
+            "BaseDiskCheckpointId",
+            TBlockRange64::WithLength(0, 5),
+            TBlockRange64::WithLength(0, 4),
+            std::move(blockMarks),
+            blockSize));
 
-        auto describeRequest = ActorSystem.GrabEdgeEvent<
-            TEvVolume::TEvDescribeBlocksRequest>();
+        auto describeRequest =
+            ActorSystem.GrabEdgeEvent<TEvVolume::TEvDescribeBlocksRequest>();
 
         auto& describeRecord = describeRequest->Record;
         UNIT_ASSERT_EQUAL(describeRecord.GetDiskId(), TString("BaseDiskId"));
         UNIT_ASSERT_EQUAL(describeRecord.GetStartIndex(), 0);
         UNIT_ASSERT_EQUAL(describeRecord.GetBlocksCount(), 4);
-        UNIT_ASSERT_EQUAL(describeRecord.GetCheckpointId(), TString("BaseDiskCheckpointId"));
+        UNIT_ASSERT_EQUAL(
+            describeRecord.GetCheckpointId(),
+            TString("BaseDiskCheckpointId"));
         UNIT_ASSERT_EQUAL(describeRecord.GetBlocksCountToRead(), 3);
         UNIT_ASSERT_EQUAL(describeRecord.GetFlags(), 0);
 
@@ -92,7 +91,7 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
         NKikimrProto::TLogoBlobID protoLogoBlobID;
         protoLogoBlobID.SetRawX1(142);
         protoLogoBlobID.SetRawX2(143);
-        protoLogoBlobID.SetRawX3(0x8000); //blob size 2028
+        protoLogoBlobID.SetRawX3(0x8000);   // blob size 2028
 
         NKikimr::TLogoBlobID logoBlobID(
             protoLogoBlobID.GetRawX1(),
@@ -115,10 +114,8 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
         describeResponse->Record.MutableBlobPieces()->Add(
             std::move(TBlobPiece));
 
-        ActorSystem.Send(new NActors::IEventHandle(
-            readActor,
-            EdgeActor,
-            describeResponse));
+        ActorSystem.Send(
+            new NActors::IEventHandle(readActor, EdgeActor, describeResponse));
 
         auto fullResponse = ActorSystem.GrabEdgeEvent<
             TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted>();
@@ -126,21 +123,22 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
 
         auto newBlockMarks = std::move(fullResponse->BlockMarks);
         UNIT_ASSERT_EQUAL(newBlockMarks.size(), 5);
-        UNIT_ASSERT(std::holds_alternative<TFreshMarkOnBaseDisk>(
-            newBlockMarks[0]));
+        UNIT_ASSERT(
+            std::holds_alternative<TFreshMarkOnBaseDisk>(newBlockMarks[0]));
         {
             auto& value = std::get<TFreshMarkOnBaseDisk>(newBlockMarks[0]);
             UNIT_ASSERT_EQUAL(value.BlockIndex, 0);
             UNIT_ASSERT_EQUAL(value.RefToData.Size(), blockSize);
-            UNIT_ASSERT_EQUAL(memcmp(
-                value.RefToData.Data(),
-                TString(blockSize, 1).data(),
-                blockSize), 0);
+            UNIT_ASSERT_EQUAL(
+                memcmp(
+                    value.RefToData.Data(),
+                    TString(blockSize, 1).data(),
+                    blockSize),
+                0);
         }
-        UNIT_ASSERT(std::holds_alternative<TFreshMark>(
-            newBlockMarks[1]));
-        UNIT_ASSERT(std::holds_alternative<TBlobMarkOnBaseDisk>(
-            newBlockMarks[2]));
+        UNIT_ASSERT(std::holds_alternative<TFreshMark>(newBlockMarks[1]));
+        UNIT_ASSERT(
+            std::holds_alternative<TBlobMarkOnBaseDisk>(newBlockMarks[2]));
         {
             auto& value = std::get<TBlobMarkOnBaseDisk>(newBlockMarks[2]);
             UNIT_ASSERT_EQUAL(value.BlobId, logoBlobID);
@@ -148,8 +146,8 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
             UNIT_ASSERT_EQUAL(value.BlockIndex, 2);
             UNIT_ASSERT_EQUAL(value.BSGroupId, 42);
         }
-        UNIT_ASSERT(std::holds_alternative<TBlobMarkOnBaseDisk>(
-            newBlockMarks[3]));
+        UNIT_ASSERT(
+            std::holds_alternative<TBlobMarkOnBaseDisk>(newBlockMarks[3]));
         {
             auto& value = std::get<TBlobMarkOnBaseDisk>(newBlockMarks[3]);
             UNIT_ASSERT_EQUAL(value.BlobId, logoBlobID);
@@ -157,8 +155,7 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
             UNIT_ASSERT_EQUAL(value.BlockIndex, 3);
             UNIT_ASSERT_EQUAL(value.BSGroupId, 42);
         }
-        UNIT_ASSERT(std::holds_alternative<TFreshMark>(
-            newBlockMarks[4]));
+        UNIT_ASSERT(std::holds_alternative<TFreshMark>(newBlockMarks[4]));
     }
 
     Y_UNIT_TEST_F(ShouldReadFromOverlayDiskFile, TSetupEnvironment)
@@ -172,37 +169,36 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
             TEmptyMark{},
             TFreshMark{}};
 
-        auto readActor = ActorSystem.Register(
-            new TDescribeBaseDiskBlocksActor(
-                MakeIntrusive<TRequestInfo>(
-                    EdgeActor,
-                    0ull,
-                    MakeIntrusive<TCallContext>()),
-                "BaseDiskId",
-                "BaseDiskCheckpointId",
-                TBlockRange64::WithLength(0, 5),
-                TBlockRange64::WithLength(0, 4),
-                std::move(blockMarks),
-                blockSize));
+        auto readActor = ActorSystem.Register(new TDescribeBaseDiskBlocksActor(
+            MakeIntrusive<TRequestInfo>(
+                EdgeActor,
+                0ull,
+                MakeIntrusive<TCallContext>()),
+            "BaseDiskId",
+            "BaseDiskCheckpointId",
+            TBlockRange64::WithLength(0, 5),
+            TBlockRange64::WithLength(0, 4),
+            std::move(blockMarks),
+            blockSize));
 
-        auto describeRequest = ActorSystem.GrabEdgeEvent<
-            TEvVolume::TEvDescribeBlocksRequest>();
+        auto describeRequest =
+            ActorSystem.GrabEdgeEvent<TEvVolume::TEvDescribeBlocksRequest>();
 
         auto& describeRecord = describeRequest->Record;
         UNIT_ASSERT_EQUAL(describeRecord.GetDiskId(), TString("BaseDiskId"));
         UNIT_ASSERT_EQUAL(describeRecord.GetStartIndex(), 0);
         UNIT_ASSERT_EQUAL(describeRecord.GetBlocksCount(), 4);
-        UNIT_ASSERT_EQUAL(describeRecord.GetCheckpointId(), TString("BaseDiskCheckpointId"));
+        UNIT_ASSERT_EQUAL(
+            describeRecord.GetCheckpointId(),
+            TString("BaseDiskCheckpointId"));
         UNIT_ASSERT_EQUAL(describeRecord.GetBlocksCountToRead(), 3);
         UNIT_ASSERT_EQUAL(describeRecord.GetFlags(), 0);
 
-        auto describeResponse = new TEvVolume::TEvDescribeBlocksResponse(
-            MakeError(E_NOT_FOUND));
+        auto describeResponse =
+            new TEvVolume::TEvDescribeBlocksResponse(MakeError(E_NOT_FOUND));
 
-        ActorSystem.Send(new NActors::IEventHandle(
-            readActor,
-            EdgeActor,
-            describeResponse));
+        ActorSystem.Send(
+            new NActors::IEventHandle(readActor, EdgeActor, describeResponse));
 
         auto fullResponse = ActorSystem.GrabEdgeEvent<
             TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted>();
@@ -220,27 +216,24 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
             TEmptyMark{},
             TFreshMark{}};
 
-        auto readActor = ActorSystem.Register(
-            new TDescribeBaseDiskBlocksActor(
-                MakeIntrusive<TRequestInfo>(),
-                "BaseDiskId",
-                "BaseDiskCheckpointId",
-                TBlockRange64::WithLength(0, 5),
-                TBlockRange64::WithLength(0, 4),
-                std::move(blockMarks),
-                blockSize,
-                EdgeActor));
+        auto readActor = ActorSystem.Register(new TDescribeBaseDiskBlocksActor(
+            MakeIntrusive<TRequestInfo>(),
+            "BaseDiskId",
+            "BaseDiskCheckpointId",
+            TBlockRange64::WithLength(0, 5),
+            TBlockRange64::WithLength(0, 4),
+            std::move(blockMarks),
+            blockSize,
+            EdgeActor));
 
-        auto describeRequest = ActorSystem.GrabEdgeEvent<
-            TEvVolume::TEvDescribeBlocksRequest>();
+        auto describeRequest =
+            ActorSystem.GrabEdgeEvent<TEvVolume::TEvDescribeBlocksRequest>();
 
-        auto describeResponse = new TEvVolume::TEvDescribeBlocksResponse(
-            MakeError(E_NOT_FOUND));
+        auto describeResponse =
+            new TEvVolume::TEvDescribeBlocksResponse(MakeError(E_NOT_FOUND));
 
-        ActorSystem.Send(new NActors::IEventHandle(
-            readActor,
-            EdgeActor,
-            describeResponse));
+        ActorSystem.Send(
+            new NActors::IEventHandle(readActor, EdgeActor, describeResponse));
 
         auto fullResponse = ActorSystem.GrabEdgeEvent<
             TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted>();

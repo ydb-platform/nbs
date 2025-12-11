@@ -14,37 +14,37 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_TABLET_STATS(xxx, ...)                                       \
-    xxx(UsedNodesCount,         __VA_ARGS__)                                   \
-    xxx(UsedSessionsCount,      __VA_ARGS__)                                   \
-    xxx(UsedHandlesCount,       __VA_ARGS__)                                   \
-    xxx(UsedLocksCount,         __VA_ARGS__)                                   \
-    xxx(UsedBlocksCount,        __VA_ARGS__)                                   \
-                                                                               \
-    xxx(FreshBlocksCount,           __VA_ARGS__)                               \
-    xxx(MixedBlocksCount,           __VA_ARGS__)                               \
-    xxx(MixedBlobsCount,            __VA_ARGS__)                               \
-    xxx(DeletionMarkersCount,       __VA_ARGS__)                               \
-    xxx(GarbageQueueSize,           __VA_ARGS__)                               \
-    xxx(GarbageBlocksCount,         __VA_ARGS__)                               \
-    xxx(CheckpointNodesCount,       __VA_ARGS__)                               \
-    xxx(CheckpointBlocksCount,      __VA_ARGS__)                               \
-    xxx(CheckpointBlobsCount,       __VA_ARGS__)                               \
-    xxx(FreshBytesCount,            __VA_ARGS__)                               \
-    xxx(DeletedFreshBytesCount,     __VA_ARGS__)                               \
-    xxx(LastCollectCommitId,        __VA_ARGS__)                               \
-    xxx(LargeDeletionMarkersCount,  __VA_ARGS__)                               \
-// FILESTORE_TABLET_STATS
+#define FILESTORE_TABLET_STATS(xxx, ...)        \
+    xxx(UsedNodesCount, __VA_ARGS__)            \
+    xxx(UsedSessionsCount, __VA_ARGS__)         \
+    xxx(UsedHandlesCount, __VA_ARGS__)          \
+    xxx(UsedLocksCount, __VA_ARGS__)            \
+    xxx(UsedBlocksCount, __VA_ARGS__)           \
+                                                \
+    xxx(FreshBlocksCount, __VA_ARGS__)          \
+    xxx(MixedBlocksCount, __VA_ARGS__)          \
+    xxx(MixedBlobsCount, __VA_ARGS__)           \
+    xxx(DeletionMarkersCount, __VA_ARGS__)      \
+    xxx(GarbageQueueSize, __VA_ARGS__)          \
+    xxx(GarbageBlocksCount, __VA_ARGS__)        \
+    xxx(CheckpointNodesCount, __VA_ARGS__)      \
+    xxx(CheckpointBlocksCount, __VA_ARGS__)     \
+    xxx(CheckpointBlobsCount, __VA_ARGS__)      \
+    xxx(FreshBytesCount, __VA_ARGS__)           \
+    xxx(DeletedFreshBytesCount, __VA_ARGS__)    \
+    xxx(LastCollectCommitId, __VA_ARGS__)       \
+    xxx(LargeDeletionMarkersCount, __VA_ARGS__) \
+    // FILESTORE_TABLET_STATS
 
-#define FILESTORE_TABLET_SIMPLE_COUNTERS(xxx)                                  \
-    FILESTORE_TABLET_STATS(xxx, Stats)                                         \
-// FILESTORE_TABLET_SIMPLE_COUNTERS
+#define FILESTORE_TABLET_SIMPLE_COUNTERS(xxx) \
+    FILESTORE_TABLET_STATS(xxx, Stats)        \
+    // FILESTORE_TABLET_SIMPLE_COUNTERS
 
-#define FILESTORE_TABLET_CUMULATIVE_COUNTERS(xxx)                              \
-// FILESTORE_TABLET_CUMULATIVE_COUNTERS
+#define FILESTORE_TABLET_CUMULATIVE_COUNTERS(xxx) \
+    // FILESTORE_TABLET_CUMULATIVE_COUNTERS
 
-#define FILESTORE_TABLET_PERCENTILE_COUNTERS(xxx)                              \
-// FILESTORE_TABLET_PERCENTILE_COUNTERS
+#define FILESTORE_TABLET_PERCENTILE_COUNTERS(xxx) \
+    // FILESTORE_TABLET_PERCENTILE_COUNTERS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -88,10 +88,9 @@ struct TIndexTabletCounters
 
     enum ETransactionType
     {
-#define FILESTORE_TRANSACTION_TYPE(name, ...)      TX_##name,
+#define FILESTORE_TRANSACTION_TYPE(name, ...) TX_##name,
 
-        FILESTORE_TABLET_TRANSACTIONS(FILESTORE_TRANSACTION_TYPE)
-        TX_SIZE
+        FILESTORE_TABLET_TRANSACTIONS(FILESTORE_TRANSACTION_TYPE) TX_SIZE
 
 #undef FILESTORE_TRANSACTION_TYPE
     };
@@ -100,6 +99,7 @@ struct TIndexTabletCounters
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::unique_ptr<NKikimr::TTabletCountersWithTxTypes> CreateIndexTabletCounters();
+std::unique_ptr<NKikimr::TTabletCountersWithTxTypes>
+CreateIndexTabletCounters();
 
 }   // namespace NCloud::NFileStore::NStorage

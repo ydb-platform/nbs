@@ -14,11 +14,14 @@ void TIndexTabletActor::HandleGenerateCommitId(
     const TEvIndexTabletPrivate::TEvGenerateCommitIdRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s GenerateCommitId",
         LogTag.c_str());
 
-    auto response = std::make_unique<TEvIndexTabletPrivate::TEvGenerateCommitIdResponse>();
+    auto response =
+        std::make_unique<TEvIndexTabletPrivate::TEvGenerateCommitIdResponse>();
     response->CommitId = GenerateCommitId();
     if (response->CommitId == InvalidCommitId) {
         return RebootTabletOnCommitOverflow(ctx, "GenerateCommitId");

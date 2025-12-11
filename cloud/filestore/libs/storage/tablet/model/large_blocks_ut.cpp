@@ -92,15 +92,11 @@ Y_UNIT_TEST_SUITE(TLargeBlocksTest)
         lb.FindBlocks(visitor, nodeId1, commitId + 1, visitIndex, blobBlocks);
         UNIT_ASSERT_VALUES_EQUAL(blobBlocks, visitor.Deletions.size());
         for (ui32 i = 0; i < blobBlocks; ++i) {
-            UNIT_ASSERT_VALUES_EQUAL(
-                nodeId1,
-                visitor.Deletions[i].NodeId);
+            UNIT_ASSERT_VALUES_EQUAL(nodeId1, visitor.Deletions[i].NodeId);
             UNIT_ASSERT_VALUES_EQUAL(
                 visitIndex + i,
                 visitor.Deletions[i].BlockIndex);
-            UNIT_ASSERT_VALUES_EQUAL(
-                commitId,
-                visitor.Deletions[i].CommitId);
+            UNIT_ASSERT_VALUES_EQUAL(commitId, visitor.Deletions[i].CommitId);
         }
 
         visitor.Deletions.clear();
@@ -108,15 +104,11 @@ Y_UNIT_TEST_SUITE(TLargeBlocksTest)
         lb.FindBlocks(visitor, nodeId1, commitId + 1, visitIndex, blobBlocks);
         UNIT_ASSERT_VALUES_EQUAL(blobBlocks / 2, visitor.Deletions.size());
         for (ui32 i = 0; i < blobBlocks / 2; ++i) {
-            UNIT_ASSERT_VALUES_EQUAL(
-                nodeId1,
-                visitor.Deletions[i].NodeId);
+            UNIT_ASSERT_VALUES_EQUAL(nodeId1, visitor.Deletions[i].NodeId);
             UNIT_ASSERT_VALUES_EQUAL(
                 visitIndex + i,
                 visitor.Deletions[i].BlockIndex);
-            UNIT_ASSERT_VALUES_EQUAL(
-                commitId,
-                visitor.Deletions[i].CommitId);
+            UNIT_ASSERT_VALUES_EQUAL(commitId, visitor.Deletions[i].CommitId);
         }
 
         processed = lb.ExtractProcessedDeletionMarkers();

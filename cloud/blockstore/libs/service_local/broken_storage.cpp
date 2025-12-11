@@ -1,4 +1,5 @@
 #include <cloud/blockstore/libs/service/storage.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -7,15 +8,14 @@ using namespace NThreading;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TBrokenStorage final
-    : public IStorage
+class TBrokenStorage final: public IStorage
 {
 private:
     template <typename T>
     auto MakeResponse() const
     {
-        return MakeErrorFuture<T>(std::make_exception_ptr(
-            TServiceError(E_IO) << "device is broken"));
+        return MakeErrorFuture<T>(
+            std::make_exception_ptr(TServiceError(E_IO) << "device is broken"));
     }
 
 public:

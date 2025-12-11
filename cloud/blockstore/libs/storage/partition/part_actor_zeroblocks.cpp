@@ -22,8 +22,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TZeroBlocksActor final
-    : public TActorBootstrapped<TZeroBlocksActor>
+class TZeroBlocksActor final: public TActorBootstrapped<TZeroBlocksActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
@@ -70,10 +69,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TZeroBlocksActor::TZeroBlocksActor(
-        TRequestInfoPtr requestInfo,
-        const TActorId& tablet,
-        ui64 commitId,
-        TVector<TAddMergedBlob> mergedBlobs)
+    TRequestInfoPtr requestInfo,
+    const TActorId& tablet,
+    ui64 commitId,
+    TVector<TAddMergedBlob> mergedBlobs)
     : RequestInfo(std::move(requestInfo))
     , Tablet(tablet)
     , CommitId(commitId)
@@ -107,22 +106,19 @@ void TZeroBlocksActor::AddBlobs(const TActorContext& ctx)
         TVector<TAddMixedBlob>(),
         std::move(MergedBlobs),
         TVector<TAddFreshBlob>(),
-        ADD_WRITE_RESULT
-    );
+        ADD_WRITE_RESULT);
 
     SafeToUseOrbit = false;
 
-    NCloud::Send(
-        ctx,
-        Tablet,
-        std::move(request));
+    NCloud::Send(ctx, Tablet, std::move(request));
 }
 
 void TZeroBlocksActor::NotifyCompleted(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto request = std::make_unique<TEvPartitionPrivate::TEvZeroBlocksCompleted>(error);
+    auto request =
+        std::make_unique<TEvPartitionPrivate::TEvZeroBlocksCompleted>(error);
 
     request->ExecCycles = RequestInfo->GetExecCycles();
     request->TotalCycles = RequestInfo->GetTotalCycles();
@@ -231,10 +227,8 @@ void TPartitionActor::HandleZeroBlocks(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -249,16 +243,15 @@ void TPartitionActor::HandleZeroBlocks(
     auto ok = InitReadWriteBlockRange(
         msg->Record.GetStartIndex(),
         msg->Record.GetBlocksCount(),
-        &writeRange
-    );
+        &writeRange);
 
     if (!ok) {
-        auto response = std::make_unique<TEvService::TEvZeroBlocksResponse>(
-            MakeError(E_ARGUMENT, TStringBuilder()
-                << "invalid block range ["
-                << "index: " << msg->Record.GetStartIndex()
-                << ", count: " << msg->Record.GetBlocksCount()
-                << "]"));
+        auto response =
+            std::make_unique<TEvService::TEvZeroBlocksResponse>(MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "invalid block range [" << "index: "
+                                 << msg->Record.GetStartIndex() << ", count: "
+                                 << msg->Record.GetBlocksCount() << "]"));
 
         LWTRACK(
             ResponseSent_Partition,
@@ -320,13 +313,13 @@ void TPartitionActor::HandleZeroBlocks(
                 EChannelDataKind::Merged,
                 EChannelPermission::UserWritesAllowed,
                 commitId,
-                0,  // deletion marker
+                0,   // deletion marker
                 blobIndex++);
 
             requests.emplace_back(
                 blobId,
                 range,
-                TBlockMask(), // skipMask
+                TBlockMask(),   // skipMask
                 TVector<ui32>() /* checksums */);
         }
 
@@ -453,11 +446,13 @@ void TPartitionActor::CompleteZeroBlocks(
     }
     UpdateStats(stats);
 
-    ui64 requestBytes = static_cast<ui64>(args.WriteRange.Size()) * State->GetBlockSize();
+    ui64 requestBytes =
+        static_cast<ui64>(args.WriteRange.Size()) * State->GetBlockSize();
 
     UpdateCPUUsageStat(ctx.Now(), args.RequestInfo->GetExecCycles());
 
-    auto time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
+    auto time =
+        CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
 
     State->GetCommitQueue().ReleaseBarrier(args.CommitId);

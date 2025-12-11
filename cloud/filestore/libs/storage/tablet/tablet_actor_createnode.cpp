@@ -19,8 +19,8 @@ namespace {
 NProto::TError ValidateRequest(const NProto::TCreateNodeRequest& request)
 {
     if (request.GetNodeId() == InvalidNodeId ||
-        (request.HasLink()
-         && request.GetLink().GetTargetNode() == InvalidNodeId) ||
+        (request.HasLink() &&
+         request.GetLink().GetTargetNode() == InvalidNodeId) ||
         (request.HasSymLink() && request.GetSymLink().GetTargetPath().empty()))
     {
         return ErrorInvalidArgument();
@@ -68,10 +68,8 @@ void InitAttrs(NProto::TNode& attrs, const NProto::TCreateNodeRequest& request)
             request.GetGid());
     } else if (request.HasFifo()) {
         const auto& fifo = request.GetFifo();
-        attrs = CreateFifoAttrs(
-            fifo.GetMode(),
-            request.GetUid(),
-            request.GetGid());
+        attrs =
+            CreateFifoAttrs(fifo.GetMode(), request.GetUid(), request.GetGid());
     } else if (request.HasCharDevice()) {
         const auto& cdev = request.GetCharDevice();
         attrs = CreateCharDeviceAttrs(
@@ -148,13 +146,13 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TCreateNodeInShardActor::TCreateNodeInShardActor(
-        TString logTag,
-        TRequestInfoPtr requestInfo,
-        const TActorId& parentId,
-        NProto::TCreateNodeRequest request,
-        ui64 requestId,
-        ui64 opLogEntryId,
-        TCreateNodeInShardResult result)
+    TString logTag,
+    TRequestInfoPtr requestInfo,
+    const TActorId& parentId,
+    NProto::TCreateNodeRequest request,
+    ui64 requestId,
+    ui64 opLogEntryId,
+    TCreateNodeInShardResult result)
     : LogTag(std::move(logTag))
     , RequestInfo(std::move(requestInfo))
     , ParentId(parentId)
@@ -184,9 +182,7 @@ void TCreateNodeInShardActor::SendRequest(const TActorContext& ctx)
         Request.GetFileSystemId().c_str(),
         Request.GetName().c_str());
 
-    ctx.Send(
-        MakeIndexTabletProxyServiceId(),
-        request.release());
+    ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
 }
 
 void TCreateNodeInShardActor::GetNodeAttr(const TActorContext& ctx)
@@ -205,9 +201,7 @@ void TCreateNodeInShardActor::GetNodeAttr(const TActorContext& ctx)
         Request.GetFileSystemId().c_str(),
         Request.GetName().c_str());
 
-    ctx.Send(
-        MakeIndexTabletProxyServiceId(),
-        request.release());
+    ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
 }
 
 void TCreateNodeInShardActor::ProcessNodeAttr(NProto::TNodeAttr attr)
@@ -226,10 +220,10 @@ void TCreateNodeInShardActor::ProcessNodeAttr(NProto::TNodeAttr attr)
              requestAttrs.GetMTime()) ||
         attr.GetType() != requestAttrs.GetType())
     {
-        ReportCreateNodeRequestResponseMismatchInShard(TStringBuilder()
-            << "filesystem: " << LogTag
-            << ", shard: " << Request.GetFileSystemId()
-            << ", name: " << Request.GetName()
+        ReportCreateNodeRequestResponseMismatchInShard(
+            TStringBuilder()
+            << "filesystem: " << LogTag << ", shard: "
+            << Request.GetFileSystemId() << ", name: " << Request.GetName()
             << ", created node: " << attr.ShortUtf8DebugString()
             << ", request attrs: " << requestAttrs.ShortUtf8DebugString());
     }
@@ -430,8 +424,8 @@ void TCreateNodeInShardActor::ReplyAndDie(
     if (HasError(error)) {
         if (auto* x = std::get_if<NProto::TCreateNodeResponse>(&Result)) {
             *x->MutableError() = std::move(error);
-        } else if (auto* x =
-                std::get_if<NProto::TCreateHandleResponse>(&Result))
+        } else if (
+            auto* x = std::get_if<NProto::TCreateHandleResponse>(&Result))
         {
             *x->MutableError() = std::move(error);
         } else {
@@ -442,13 +436,15 @@ void TCreateNodeInShardActor::ReplyAndDie(
     }
 
     using TResponse = TEvIndexTabletPrivate::TEvNodeCreatedInShard;
-    ctx.Send(ParentId, std::make_unique<TResponse>(
-        std::move(RequestInfo),
-        Request.GetHeaders().GetSessionId(),
-        RequestId,
-        OpLogEntryId,
-        std::move(*Request.MutableName()),
-        std::move(Result)));
+    ctx.Send(
+        ParentId,
+        std::make_unique<TResponse>(
+            std::move(RequestInfo),
+            Request.GetHeaders().GetSessionId(),
+            RequestId,
+            OpLogEntryId,
+            std::move(*Request.MutableName()),
+            std::move(Result)));
 
     Die(ctx);
 }
@@ -503,9 +499,8 @@ void TIndexTabletActor::HandleCreateNode(
                     // it's an external node which is not yet created in
                     // shard
                     // this check is needed for the case of leader reboot
-                    *response->Record.MutableError() = MakeError(
-                        E_REJECTED,
-                        "node not yet created in shard");
+                    *response->Record.MutableError() =
+                        MakeError(E_REJECTED, "node not yet created in shard");
                 }
 
                 return NCloud::Reply(ctx, *ev, std::move(response));
@@ -524,10 +519,8 @@ void TIndexTabletActor::HandleCreateNode(
     NProto::TNode attrs;
     InitAttrs(attrs, msg->Record);
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TCreateNodeMethod>(*requestInfo);
@@ -553,14 +546,14 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
     const bool isMainWithLocalNodes =
         IsMainTablet() && GetLastNodeId() > RootNodeId;
 
-    if (!BehaveAsShard(args.Request.GetHeaders())
-            && Config->GetShardIdSelectionInLeaderEnabled()
-            && !GetFileSystem().GetShardFileSystemIds().empty()
-            && (args.Attrs.GetType() == NProto::E_REGULAR_NODE
-                || GetFileSystem().GetDirectoryCreationInShardsEnabled()
-                // otherwise there might be some local nodes which breaks
-                // current cross-shard RenameNode implementation
-                && !isMainWithLocalNodes))
+    if (!BehaveAsShard(args.Request.GetHeaders()) &&
+        Config->GetShardIdSelectionInLeaderEnabled() &&
+        !GetFileSystem().GetShardFileSystemIds().empty() &&
+        (args.Attrs.GetType() == NProto::E_REGULAR_NODE ||
+         GetFileSystem().GetDirectoryCreationInShardsEnabled()
+             // otherwise there might be some local nodes which breaks
+             // current cross-shard RenameNode implementation
+             && !isMainWithLocalNodes))
     {
         args.Error = SelectShard(args.Attrs.GetSize(), &args.ShardId);
         if (HasError(args.Error)) {
@@ -578,7 +571,9 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
     }
 
     if (args.ShardNodeName) {
-        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s Selected shard %s, name %s upon CreateNode: %lu, %s",
             LogTag.c_str(),
             args.ShardId.c_str(),
@@ -642,7 +637,8 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
     }
 
     if (args.ChildNode) {
-        auto message = ReportChildNodeWithoutRef(TStringBuilder()
+        auto message = ReportChildNodeWithoutRef(
+            TStringBuilder()
             << "CreateNode: " << args.Request.ShortDebugString());
         args.Error = MakeError(E_INVALID_STATE, std::move(message));
         return true;
@@ -695,7 +691,8 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
     if (!BehaveAsShard(args.Request.GetHeaders())) {
         session = FindSession(args.SessionId);
         if (!session) {
-            auto message = ReportSessionNotFoundInTx(TStringBuilder()
+            auto message = ReportSessionNotFoundInTx(
+                TStringBuilder()
                 << "CreateNode: " << args.Request.ShortDebugString());
             args.Error = MakeError(E_INVALID_STATE, std::move(message));
             return;
@@ -711,20 +708,17 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
 
     if (args.TargetNodeId == InvalidNodeId) {
         if (args.ShardId.empty()) {
-            args.ChildNodeId = CreateNode(
-                db,
-                args.CommitId,
-                args.Attrs);
+            args.ChildNodeId = CreateNode(db, args.CommitId, args.Attrs);
 
-            args.ChildNode = IIndexTabletDatabase::TNode {
+            args.ChildNode = IIndexTabletDatabase::TNode{
                 args.ChildNodeId,
                 args.Attrs,
                 args.CommitId,
-                InvalidCommitId
-            };
+                InvalidCommitId};
         } else {
-            // OpLogEntryId doesn't have to be a CommitId - it's just convenient to
-            // use CommitId here in order not to generate some other unique ui64
+            // OpLogEntryId doesn't have to be a CommitId - it's just convenient
+            // to use CommitId here in order not to generate some other unique
+            // ui64
             args.OpLogEntry.SetEntryId(args.CommitId);
             args.OpLogEntry.SetSessionId(args.SessionId);
             args.OpLogEntry.SetRequestId(args.RequestId);
@@ -780,7 +774,8 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
 
     if (args.ShardId.empty()) {
         if (args.ChildNodeId == InvalidNodeId) {
-            auto message = ReportInvalidNodeIdForLocalNode(TStringBuilder()
+            auto message = ReportInvalidNodeIdForLocalNode(
+                TStringBuilder()
                 << "CreateNode: " << args.Request.ShortDebugString());
             args.Error = MakeError(E_INVALID_STATE, std::move(message));
             return;
@@ -817,7 +812,9 @@ void TIndexTabletActor::CompleteTx_CreateNode(
     }
 
     if (args.OpLogEntry.HasCreateNodeRequest() && !HasError(args.Error)) {
-        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s Creating node in shard upon CreateNode: %s, %s",
             LogTag.c_str(),
             args.ShardId.c_str(),
@@ -852,7 +849,8 @@ void TIndexTabletActor::CompleteTx_CreateNode(
             // node, and this is a valid case
             !(args.ShardId && args.TargetNodeId != InvalidNodeId))
         {
-            auto message = ReportChildNodeIsNull(TStringBuilder()
+            auto message = ReportChildNodeIsNull(
+                TStringBuilder()
                 << "CreateNode: " << args.Request.ShortDebugString());
             *args.Response.MutableError() =
                 MakeError(E_INVALID_STATE, std::move(message));
@@ -875,10 +873,7 @@ void TIndexTabletActor::CompleteTx_CreateNode(
         args.RequestInfo->CallContext,
         ctx);
 
-    Metrics.CreateNode.Update(
-        1,
-        0,
-        ctx.Now() - args.RequestInfo->StartedTs);
+    Metrics.CreateNode.Update(1, 0, ctx.Now() - args.RequestInfo->StartedTs);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
@@ -992,7 +987,9 @@ void TIndexTabletActor::CompleteTx_CommitNodeCreationInShard(
 {
     CommitDupCacheEntry(args.SessionId, args.RequestId);
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s CommitNodeCreationInShard completed (%lu): %s, %lu",
         LogTag.c_str(),
         args.EntryId,

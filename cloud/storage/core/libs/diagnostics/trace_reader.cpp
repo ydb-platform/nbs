@@ -91,12 +91,12 @@ private:
 
 public:
     TTraceLogger(
-            TString id,
-            ITraceReaderPtr consumer,
-            TString tag,
-            ILoggingServicePtr logging,
-            const TString& componentName,
-            ELogPriority priority)
+        TString id,
+        ITraceReaderPtr consumer,
+        TString tag,
+        ILoggingServicePtr logging,
+        const TString& componentName,
+        ELogPriority priority)
         : ITraceReader(std::move(id))
         , Consumer(std::move(consumer))
         , Tag(std::move(tag))
@@ -143,11 +143,11 @@ private:
 
 public:
     TSlowRequestsFilter(
-            TString id,
-            ITraceReaderPtr consumer,
-            ILoggingServicePtr logging,
-            const TString& componentName,
-            TRequestThresholds requestThresholds)
+        TString id,
+        ITraceReaderPtr consumer,
+        ILoggingServicePtr logging,
+        const TString& componentName,
+        TRequestThresholds requestThresholds)
         : ITraceReader(std::move(id))
         , Consumer(std::move(consumer))
         , RequestThresholds(std::move(requestThresholds))

@@ -43,10 +43,14 @@ NYdbStats::TCumulativeCounterField CreateCumulativeCounterField(
 {
     auto min = counter.MinValue / updateInterval.Seconds();
     auto max = counter.MaxValue / updateInterval.Seconds();
-    return {max , (min <= max) ? min : 0, counter.Sum / uploadInterval.Seconds()};
+    return {
+        max,
+        (min <= max) ? min : 0,
+        counter.Sum / uploadInterval.Seconds()};
 }
 
-NYdbStats::TPercentileCounterField CreatePercentileCounterField(const TVector<double>& source)
+NYdbStats::TPercentileCounterField CreatePercentileCounterField(
+    const TVector<double>& source)
 {
     NYdbStats::TPercentileCounterField out;
     out.P50 = source[PERCENTILE_50];
@@ -78,9 +82,9 @@ NYdbStats::TYdbStatsRow BuildStatsForUpload(
 
     const auto& disk = volume.PerfCounters;
 
-#define BLOCKSTORE_SIMPLE_COUNTER(counter)                                     \
-        out.counter = disk.YdbDiskCounters.Simple.counter.Value;               \
-//  BLOCKSTORE_SIMPLE_COUNTER
+#define BLOCKSTORE_SIMPLE_COUNTER(counter)                   \
+    out.counter = disk.YdbDiskCounters.Simple.counter.Value; \
+    //  BLOCKSTORE_SIMPLE_COUNTER
 
     BLOCKSTORE_SIMPLE_COUNTER(MixedBytesCount);
     BLOCKSTORE_SIMPLE_COUNTER(MergedBytesCount);
@@ -101,10 +105,9 @@ NYdbStats::TYdbStatsRow BuildStatsForUpload(
     BLOCKSTORE_SIMPLE_COUNTER(GarbageQueueBytes);
 #undef BLOCKSTORE_SIMPLE_COUNTER
 
-
-#define BLOCKSTORE_SIMPLE_COUNTER(counter)                                     \
-        out.counter = disk.VolumeSelfCounters.Simple.counter.Value;            \
-//  BLOCKSTORE_SIMPLE_COUNTER
+#define BLOCKSTORE_SIMPLE_COUNTER(counter)                      \
+    out.counter = disk.VolumeSelfCounters.Simple.counter.Value; \
+    //  BLOCKSTORE_SIMPLE_COUNTER
 
     BLOCKSTORE_SIMPLE_COUNTER(MaxReadBandwidth);
     BLOCKSTORE_SIMPLE_COUNTER(MaxWriteBandwidth);
@@ -120,19 +123,21 @@ NYdbStats::TYdbStatsRow BuildStatsForUpload(
 
 #undef BLOCKSTORE_SIMPLE_COUNTER
 
-#define BLOCKSTORE_CUMULATIVE_COUNTER(counter)                                 \
-    CreateCumulativeCounterField(                                              \
-        disk.YdbDiskCounters.Cumulative.counter,                               \
-        updateInterval,                                                        \
-        uploadInterval);                                                       \
-//  BLOCKSTORE_CUMULATIVE_COUNTER
+#define BLOCKSTORE_CUMULATIVE_COUNTER(counter)   \
+    CreateCumulativeCounterField(                \
+        disk.YdbDiskCounters.Cumulative.counter, \
+        updateInterval,                          \
+        uploadInterval);                         \
+    //  BLOCKSTORE_CUMULATIVE_COUNTER
 
     out.Write_Throughput = BLOCKSTORE_CUMULATIVE_COUNTER(BytesWritten);
     out.Read_Throughput = BLOCKSTORE_CUMULATIVE_COUNTER(BytesRead);
     out.SysWrite_Throughput = BLOCKSTORE_CUMULATIVE_COUNTER(SysBytesWritten);
     out.SysRead_Throughput = BLOCKSTORE_CUMULATIVE_COUNTER(SysBytesRead);
-    out.RealSysWrite_Throughput = BLOCKSTORE_CUMULATIVE_COUNTER(RealSysBytesWritten);
-    out.RealSysRead_Throughput = BLOCKSTORE_CUMULATIVE_COUNTER(RealSysBytesRead);
+    out.RealSysWrite_Throughput =
+        BLOCKSTORE_CUMULATIVE_COUNTER(RealSysBytesWritten);
+    out.RealSysRead_Throughput =
+        BLOCKSTORE_CUMULATIVE_COUNTER(RealSysBytesRead);
     out.UncompressedWrite_Throughput =
         BLOCKSTORE_CUMULATIVE_COUNTER(UncompressedBytesWritten);
     out.CompressedWrite_Throughput =
@@ -150,28 +155,28 @@ NYdbStats::TYdbStatsRow BuildStatsForUpload(
 
 #undef BLOCKSTORE_CUMULATIVE_COUNTER
 
-#define BLOCKSTORE_CUMULATIVE_COUNTER(counter)                                 \
-    CreateCumulativeCounterField(                                              \
-        disk.YdbVolumeSelfCounters.Cumulative.counter,                         \
-        updateInterval,                                                        \
-        uploadInterval);                                                       \
-//  BLOCKSTORE_CUMULATIVE_COUNTER
+#define BLOCKSTORE_CUMULATIVE_COUNTER(counter)         \
+    CreateCumulativeCounterField(                      \
+        disk.YdbVolumeSelfCounters.Cumulative.counter, \
+        updateInterval,                                \
+        uploadInterval);                               \
+    //  BLOCKSTORE_CUMULATIVE_COUNTER
 
     out.ThrottlerRejectedRequests =
-    BLOCKSTORE_CUMULATIVE_COUNTER(ThrottlerRejectedRequests);
+        BLOCKSTORE_CUMULATIVE_COUNTER(ThrottlerRejectedRequests);
     out.ThrottlerPostponedRequests =
-    BLOCKSTORE_CUMULATIVE_COUNTER(ThrottlerPostponedRequests);
+        BLOCKSTORE_CUMULATIVE_COUNTER(ThrottlerPostponedRequests);
     out.ThrottlerSkippedRequests =
-    BLOCKSTORE_CUMULATIVE_COUNTER(ThrottlerSkippedRequests);
+        BLOCKSTORE_CUMULATIVE_COUNTER(ThrottlerSkippedRequests);
 
 #undef BLOCKSTORE_CUMULATIVE_COUNTER
 
     auto& r = disk.YdbDiskCounters.RequestCounters;
 
-#define BLOCKSTORE_PERCENTILE_COUNTER(counter)                                 \
-    out.counter = CreatePercentileCounterField(                                \
-            r.counter.GetTotal().CalculatePercentiles());                      \
-//  BLOCKSTORE_PERCENTILE_COUNTER_WITH_SIZE
+#define BLOCKSTORE_PERCENTILE_COUNTER(counter)        \
+    out.counter = CreatePercentileCounterField(       \
+        r.counter.GetTotal().CalculatePercentiles()); \
+    //  BLOCKSTORE_PERCENTILE_COUNTER_WITH_SIZE
 
     BLOCKSTORE_PERCENTILE_COUNTER(Flush);
     BLOCKSTORE_PERCENTILE_COUNTER(AddBlobs);
@@ -183,10 +188,10 @@ NYdbStats::TYdbStatsRow BuildStatsForUpload(
 
     auto& h = disk.YdbVolumeSelfCounters.ThrottlerDelayRequestCounters;
 
-#define BLOCKSTORE_PERCENTILE_COUNTER(counter)                                 \
-    out.counter##ThrottlerDelay = CreatePercentileCounterField(                \
-            h.counter.CalculatePercentiles());                                 \
-//  BLOCKSTORE_PERCENTILE_COUNTER
+#define BLOCKSTORE_PERCENTILE_COUNTER(counter)                          \
+    out.counter##ThrottlerDelay =                                       \
+        CreatePercentileCounterField(h.counter.CalculatePercentiles()); \
+    //  BLOCKSTORE_PERCENTILE_COUNTER
 
     BLOCKSTORE_PERCENTILE_COUNTER(ReadBlocks);
     BLOCKSTORE_PERCENTILE_COUNTER(WriteBlocks);
@@ -214,8 +219,10 @@ NYdbStats::TYdbBlobLoadMetricRow BuildBlobLoadMetricsForUpload(
     result.EndList();
 
     for (const auto& kind: metrics.PoolKind2TabletOps) {
-        THashMap<NBlobMetrics::TBlobLoadMetrics::TGroupId,
-                 NBlobMetrics::TBlobLoadMetrics::TTabletMetric> agregate;
+        THashMap<
+            NBlobMetrics::TBlobLoadMetrics::TGroupId,
+            NBlobMetrics::TBlobLoadMetrics::TTabletMetric>
+            agregate;
         for (const auto& operation: kind.second) {
             agregate[operation.first.second] += operation.second;
         }
@@ -273,7 +280,7 @@ void BuildPartitionsInfoForUpload(
     }
 }
 
-}    // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -315,8 +322,11 @@ void TStatsServiceActor::ScheduleStatsUpload(const TActorContext& ctx)
             time *= factor;
         }
 
-        LOG_DEBUG(ctx, TBlockStoreComponents::STATS_SERVICE,
-            "Stats uploading scheduled in %u seconds", time.Seconds());
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::STATS_SERVICE,
+            "Stats uploading scheduled in %u seconds",
+            time.Seconds());
         ctx.Schedule(time, new TEvStatsServicePrivate::TEvUploadDisksStats());
     }
 }
@@ -340,7 +350,9 @@ void TStatsServiceActor::HandleUploadDisksStatsCompleted(
     State.SetStatsUploadingCompleted(true);
 
     if (FAILED(status)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::STATS_SERVICE,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::STATS_SERVICE,
             "Stats upload failed with code (%u) and message: %s",
             status,
             msg->GetErrorReason().data());
@@ -377,29 +389,35 @@ void TStatsServiceActor::PushYdbStats(const NActors::TActorContext& ctx)
 
         State.SetStatsUploadingCompleted(false);
 
-        LOG_DEBUG_S(ctx, TBlockStoreComponents::STATS_SERVICE,
-            "Send volumes stats for " <<
-            YdbStatsRequests.front().first.Stats.size() <<
-            " disks");
+        LOG_DEBUG_S(
+            ctx,
+            TBlockStoreComponents::STATS_SERVICE,
+            "Send volumes stats for "
+                << YdbStatsRequests.front().first.Stats.size() << " disks");
 
         YdbStatsRequestSentTs = ctx.Now();
 
-        StatsUploader->UploadStats(YdbStatsRequests.front().first).Subscribe(
-            [=] (const auto& future) {
-                if (auto p = weak.lock()) {
-                    NProto::TError result;
-                    try {
-                        result = future.GetValue();
-                    } catch (...) {
-                        result = MakeError(E_FAIL, TStringBuilder()
-                            << "Ydb request failed with error: "
-                            << CurrentExceptionMessage());
-                    }
+        StatsUploader->UploadStats(YdbStatsRequests.front().first)
+            .Subscribe(
+                [=](const auto& future)
+                {
+                    if (auto p = weak.lock()) {
+                        NProto::TError result;
+                        try {
+                            result = future.GetValue();
+                        } catch (...) {
+                            result = MakeError(
+                                E_FAIL,
+                                TStringBuilder()
+                                    << "Ydb request failed with error: "
+                                    << CurrentExceptionMessage());
+                        }
 
-                    using TMsg = TEvStatsServicePrivate::TEvUploadDisksStatsCompleted;
-                    p->Send(replyTo, std::make_unique<TMsg>(result));
-                }
-        });
+                        using TMsg = TEvStatsServicePrivate::
+                            TEvUploadDisksStatsCompleted;
+                        p->Send(replyTo, std::make_unique<TMsg>(result));
+                    }
+                });
     } else if (YdbStatsRequestSentTs.GetValue()) {
         const auto deadline =
             YdbStatsRequestSentTs + Config->GetStatsUploadInterval();
@@ -475,8 +493,8 @@ void TStatsServiceActor::HandleUploadDisksStats(
     NYdbStats::TYdbRowData rows;
     ui32 volumeCnt = 0;
 
-    while (VolumeIdQueueForYdbStatsUpload
-            && volumeCnt < Config->GetStatsUploadDiskCount())
+    while (VolumeIdQueueForYdbStatsUpload &&
+           volumeCnt < Config->GetStatsUploadDiskCount())
     {
         auto volumeInfoPtr =
             State.GetVolume(VolumeIdQueueForYdbStatsUpload.front());
@@ -493,28 +511,23 @@ void TStatsServiceActor::HandleUploadDisksStats(
             ctx,
             *volumeInfoPtr,
             UpdateCountersInterval,
-            Config->GetStatsUploadInterval()
-        ));
+            Config->GetStatsUploadInterval()));
 
         volumeInfoPtr->PerfCounters.YdbDiskCounters.Reset();
         volumeInfoPtr->PerfCounters.YdbVolumeSelfCounters.Reset();
 
         BuildGroupsInfoForUpload(ctx, *volumeInfoPtr, rows.Groups);
-        BuildPartitionsInfoForUpload(
-            ctx,
-            *volumeInfoPtr,
-            rows.Partitions);
+        BuildPartitionsInfoForUpload(ctx, *volumeInfoPtr, rows.Partitions);
     }
 
-    if (((ctx.Now() - YdbMetricsRequestSentTs) > Config->GetStatsUploadInterval())
-        && (!CurrentBlobMetrics.PoolKind2TabletOps.empty())) {
-
+    if (((ctx.Now() - YdbMetricsRequestSentTs) >
+         Config->GetStatsUploadInterval()) &&
+        (!CurrentBlobMetrics.PoolKind2TabletOps.empty()))
+    {
         YdbMetricsRequestSentTs = ctx.Now();
 
-        rows.Metrics.emplace_back(BuildBlobLoadMetricsForUpload(
-            ctx,
-            CurrentBlobMetrics
-        ));
+        rows.Metrics.emplace_back(
+            BuildBlobLoadMetricsForUpload(ctx, CurrentBlobMetrics));
     }
 
     for (auto& request: SplitRowsIntoRequests(std::move(rows), ctx)) {

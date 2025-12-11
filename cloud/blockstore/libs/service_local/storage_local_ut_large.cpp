@@ -3,10 +3,10 @@
 #include "file_io_service_provider.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/nvme/nvme_stub.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
-#include <cloud/blockstore/libs/nvme/nvme_stub.h>
 
 #include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/common/error.h>
@@ -50,7 +50,10 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
             CreateSingleFileIOServiceProvider(CreateAIOService());
 
         fileIOServiceProvider->Start();
-        Y_DEFER { fileIOServiceProvider->Stop(); };
+        Y_DEFER
+        {
+            fileIOServiceProvider->Stop();
+        }
 
         auto provider = CreateLocalStorageProvider(
             fileIOServiceProvider,
@@ -70,7 +73,8 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
 
         const ui32 chunkSize = 8_MB;
 
-        auto invokeIO = [&] (auto op) {
+        auto invokeIO = [&](auto op)
+        {
             for (ui64 i = 0; i < totalBlockCount; i += 1_GB / blockSize) {
                 op(i, Min<ui64>(totalBlockCount - i, chunkSize / blockSize));
             }
@@ -80,16 +84,19 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         memset(writeBuffer.get(), 'a', chunkSize);
         auto writeSgList = TGuardedSgList({{writeBuffer.get(), chunkSize}});
 
-        auto write = [&] (ui64 startIndex, ui64 blockCount) {
+        auto write = [&](ui64 startIndex, ui64 blockCount)
+        {
             auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
             request->SetStartIndex(startIndex);
             request->BlocksCount = blockCount;
             request->BlockSize = blockSize;
             request->Sglist = writeSgList;
 
-            auto response = storage->WriteBlocksLocal(
-                MakeIntrusive<TCallContext>(),
-                std::move(request)).GetValueSync();
+            auto response = storage
+                                ->WriteBlocksLocal(
+                                    MakeIntrusive<TCallContext>(),
+                                    std::move(request))
+                                .GetValueSync();
 
             UNIT_ASSERT_SUCCEEDED(response.GetError());
         };
@@ -97,7 +104,8 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         auto readBuffer = storage->AllocateBuffer(chunkSize);
         auto readSgList = TGuardedSgList({{readBuffer.get(), chunkSize}});
 
-        auto read = [&] (ui64 startIndex, ui64 blockCount) {
+        auto read = [&](ui64 startIndex, ui64 blockCount)
+        {
             UNIT_ASSERT_EQUAL(blockCount, chunkSize / blockSize);
 
             auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
@@ -106,9 +114,11 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
             request->BlockSize = blockSize;
             request->Sglist = readSgList;
 
-            auto response = storage->ReadBlocksLocal(
-                MakeIntrusive<TCallContext>(),
-                std::move(request)).GetValueSync();
+            auto response = storage
+                                ->ReadBlocksLocal(
+                                    MakeIntrusive<TCallContext>(),
+                                    std::move(request))
+                                .GetValueSync();
             UNIT_ASSERT_SUCCEEDED(response.GetError());
 
             return TStringBuf(readBuffer.get(), chunkSize);
@@ -120,13 +130,15 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
 
         // verify data
 
-        invokeIO([&] (ui64 startIndex, ui64 blockCount) {
-            auto buf = read(startIndex, blockCount);
+        invokeIO(
+            [&](ui64 startIndex, ui64 blockCount)
+            {
+                auto buf = read(startIndex, blockCount);
 
-            UNIT_ASSERT_VALUES_EQUAL(
-                chunkSize,
-                std::count(buf.begin(), buf.end(), 'a'));
-        });
+                UNIT_ASSERT_VALUES_EQUAL(
+                    chunkSize,
+                    std::count(buf.begin(), buf.end(), 'a'));
+            });
 
         // erase
 
@@ -135,9 +147,11 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
             request->SetStartIndex(0);
             request->SetBlocksCount(totalBlockCount);
 
-            auto response = storage->ZeroBlocks(
-                MakeIntrusive<TCallContext>(),
-                std::move(request)).GetValueSync();
+            auto response = storage
+                                ->ZeroBlocks(
+                                    MakeIntrusive<TCallContext>(),
+                                    std::move(request))
+                                .GetValueSync();
 
             UNIT_ASSERT_SUCCEEDED(response.GetError());
         }

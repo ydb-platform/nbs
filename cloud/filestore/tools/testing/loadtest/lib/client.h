@@ -10,8 +10,7 @@ namespace NCloud::NFileStore::NLoadTest {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IClientFactory
-    : public IStartable
+struct IClientFactory: public IStartable
 {
     virtual ~IClientFactory() = default;
 

@@ -36,8 +36,7 @@ void TMirrorPartitionResyncActor::ContinueResyncIfNeeded(
         NCloud::Send(
             ctx,
             PartConfig->GetParentActorId(),
-            std::make_unique<TEvVolume::TEvResyncFinished>()
-        );
+            std::make_unique<TEvVolume::TEvResyncFinished>());
 
         return;
     }
@@ -82,7 +81,7 @@ void TMirrorPartitionResyncActor::ResyncNextRange(const TActorContext& ctx)
     const auto resyncRange =
         RangeId2BlockRange(rangeId, PartConfig->GetBlockSize());
 
-    for (const auto& [key, requestInfo] :
+    for (const auto& [key, requestInfo]:
          WriteAndZeroRequestsInProgress.AllRequests())
     {
         const auto& requestRange = requestInfo.Value;
@@ -103,22 +102,22 @@ void TMirrorPartitionResyncActor::ResyncNextRange(const TActorContext& ctx)
         }
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%s] Resyncing range %s",
         PartConfig->GetName().c_str(),
         DescribeRange(resyncRange).c_str());
 
     auto requestInfo = CreateRequestInfo(
         SelfId(),
-        0,  // cookie
-        MakeIntrusive<TCallContext>()
-    );
+        0,   // cookie
+        MakeIntrusive<TCallContext>());
 
     TVector<TReplicaDescriptor> replicas;
     // filtering out replicas with fresh devices
     for (ui32 i = 0; i < Replicas.size(); ++i) {
-        if (State.DevicesReadyForReading(i, resyncRange))
-        {
+        if (State.DevicesReadyForReading(i, resyncRange)) {
             replicas.push_back(Replicas[i]);
         }
     }
@@ -158,7 +157,9 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
     const auto range = msg->Range;
     const auto rangeId = BlockRange2RangeId(range, PartConfig->GetBlockSize());
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%s] Range %s resync finished: %s",
         PartConfig->GetName().c_str(),
         DescribeRange(range).c_str(),
@@ -218,7 +219,9 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
     CpuUsage += CyclesToDurationSafe(msg->ExecCycles);
 
     if (HasError(msg->GetError())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::PARTITION,
             "[%s] Range %s resync failed: %s",
             PartConfig->GetName().c_str(),
             DescribeRange(range).c_str(),
@@ -237,9 +240,8 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
 
         TDeque<TPostponedRead> postponedReads;
         for (auto& pr: PostponedReads) {
-            const auto readRangeId = BlockRange2RangeId(
-                pr.BlockRange,
-                PartConfig->GetBlockSize());
+            const auto readRangeId =
+                BlockRange2RangeId(pr.BlockRange, PartConfig->GetBlockSize());
             if (readRangeId == rangeId) {
                 RejectPostponedRead(pr);
             } else {
@@ -253,7 +255,9 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
 
     BackoffProvider.Reset();
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%s] Range %s resynced",
         PartConfig->GetName().c_str(),
         DescribeRange(range).c_str());
@@ -280,9 +284,8 @@ void TMirrorPartitionResyncActor::HandleRangeResynced(
     State.MarkResynced(range);
     while (PostponedReads.size()) {
         auto& pr = PostponedReads.front();
-        const auto readRangeId = BlockRange2RangeId(
-            pr.BlockRange,
-            PartConfig->GetBlockSize());
+        const auto readRangeId =
+            BlockRange2RangeId(pr.BlockRange, PartConfig->GetBlockSize());
 
         bool resynced = true;
         for (ui32 id = readRangeId.first; id <= readRangeId.second; ++id) {

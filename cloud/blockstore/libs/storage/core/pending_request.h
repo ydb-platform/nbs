@@ -29,4 +29,4 @@ void CancelPendingRequests(
     const NActors::TActorContext& ctx,
     TDeque<TPendingRequest>& pendingRequests);
 
-}    // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NBlockStore::NStorage

@@ -1,7 +1,8 @@
 #pragma once
 
-#include "options.h"
 #include "public.h"
+
+#include "options.h"
 
 #include <cloud/filestore/config/server.pb.h>
 #include <cloud/filestore/libs/diagnostics/config.h>
@@ -17,28 +18,28 @@
 #include <cloud/storage/core/libs/kikimr/public.h>
 
 #include <contrib/ydb/library/actors/util/should_continue.h>
+
 #include <library/cpp/logger/log.h>
 #include <library/cpp/lwtrace/probes.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
-
 
 namespace NCloud::NFileStore::NDaemon {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_LOG_START_COMPONENT(c)                                       \
-    if (c) {                                                                   \
-        c->Start();                                                            \
-        STORAGE_INFO("Started " << #c);                                        \
-    }                                                                          \
-// FILESTORE_LOG_START_COMPONENT
+#define FILESTORE_LOG_START_COMPONENT(c) \
+    if (c) {                             \
+        c->Start();                      \
+        STORAGE_INFO("Started " << #c);  \
+    }                                    \
+    // FILESTORE_LOG_START_COMPONENT
 
-#define FILESTORE_LOG_STOP_COMPONENT(c)                                        \
-    if (c) {                                                                   \
-        c->Stop();                                                             \
-        STORAGE_INFO("Stopped " << #c);                                        \
-    }                                                                          \
-// FILESTORE_LOG_STOP_COMPONENT
+#define FILESTORE_LOG_STOP_COMPONENT(c) \
+    if (c) {                            \
+        c->Stop();                      \
+        STORAGE_INFO("Stopped " << #c); \
+    }                                   \
+    // FILESTORE_LOG_STOP_COMPONENT
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -113,4 +114,4 @@ private:
     void InitLogs();
 };
 
-} // namespace NCloud::NFileStore::NDaemon
+}   // namespace NCloud::NFileStore::NDaemon

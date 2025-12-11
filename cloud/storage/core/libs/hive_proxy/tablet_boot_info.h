@@ -15,8 +15,8 @@ struct TTabletBootInfo
     TTabletBootInfo() = default;
 
     TTabletBootInfo(
-            NKikimrTabletBase::TTabletStorageInfo storageInfoProto,
-            ui64 suggestedGeneration)
+        NKikimrTabletBase::TTabletStorageInfo storageInfoProto,
+        ui64 suggestedGeneration)
         : StorageInfoProto(std::move(storageInfoProto))
         , SuggestedGeneration(suggestedGeneration)
     {}

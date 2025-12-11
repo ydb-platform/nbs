@@ -7,7 +7,6 @@
 #include <cloud/storage/core/libs/common/verify.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-
 #include <contrib/ydb/library/actors/core/actor.h>
 
 #include <util/generic/map.h>
@@ -58,10 +57,8 @@ public:
         return Get(info, blobId.Channel(), blobId.Generation());
     }
 
-    T& Get(
-        const NKikimr::TTabletStorageInfo& info,
-        ui32 channel,
-        ui32 generation)
+    T&
+    Get(const NKikimr::TTabletStorageInfo& info, ui32 channel, ui32 generation)
     {
         auto proxyId = info.BSProxyIDForChannel(channel, generation);
 

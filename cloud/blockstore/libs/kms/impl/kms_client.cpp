@@ -39,7 +39,8 @@ const char REQUEST_ID_HEADER[] = "x-request-id";
 class TRequestHandler final
 {
 private:
-    using TReader = grpc::ClientAsyncResponseReader<kms::SymmetricDecryptResponse>;
+    using TReader =
+        grpc::ClientAsyncResponseReader<kms::SymmetricDecryptResponse>;
     using TResult = TResultOrError<TString>;
 
     const TString RequestId = CreateGuidAsString();
@@ -124,13 +125,10 @@ private:
     std::shared_ptr<kms::SymmetricCryptoService::Stub> Service;
 
 public:
-    TKmsClient(
-            ILoggingServicePtr logging,
-            NProto::TGrpcClientConfig config)
+    TKmsClient(ILoggingServicePtr logging, NProto::TGrpcClientConfig config)
         : Logging(std::move(logging))
         , Config(std::move(config))
-    {
-    }
+    {}
 
     ~TKmsClient()
     {
@@ -144,8 +142,8 @@ public:
         STORAGE_INFO("Connect to " << Config.GetAddress());
 
         auto creds = Config.GetInsecure()
-            ? grpc::InsecureChannelCredentials()
-            : grpc::SslCredentials(grpc::SslCredentialsOptions());
+                         ? grpc::InsecureChannelCredentials()
+                         : grpc::SslCredentials(grpc::SslCredentialsOptions());
 
         grpc::ChannelArguments args;
         if (Config.GetSslTargetNameOverride()) {
@@ -180,10 +178,8 @@ public:
             keyId,
             ciphertext);
 
-        auto future = requestHandler->Execute(
-            *Service,
-            &CQ,
-            requestHandler.get());
+        auto future =
+            requestHandler->Execute(*Service, &CQ, requestHandler.get());
 
         requestHandler.release();
         return future;
@@ -196,8 +192,7 @@ private:
         bool ok;
         while (CQ.Next(&tag, &ok)) {
             std::unique_ptr<TRequestHandler> requestHandler(
-                static_cast<TRequestHandler*>(tag)
-            );
+                static_cast<TRequestHandler*>(tag));
             requestHandler->Complete();
         }
         return nullptr;
@@ -212,9 +207,7 @@ IKmsClientPtr CreateKmsClient(
     ILoggingServicePtr logging,
     NProto::TGrpcClientConfig config)
 {
-    return std::make_shared<TKmsClient>(
-        std::move(logging),
-        std::move(config));
+    return std::make_shared<TKmsClient>(std::move(logging), std::move(config));
 }
 
 }   // namespace NCloud::NBlockStore

@@ -61,25 +61,23 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Channels)
         storageConfig.SetFlushBytesThreshold(1_GB);
         storageConfig.SetWriteBlobThreshold(16_KB);
 
-        TTestEnv env({ .ChannelCount = 4 }, std::move(storageConfig));
+        TTestEnv env({.ChannelCount = 4}, std::move(storageConfig));
         env.CreateSubDomain("nfs");
 
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         // only one mixed channel
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId, {
-            .ChannelCount = 4
-        });
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            {.ChannelCount = 4});
         tablet.InitSession("client", "session");
         {
             auto stats = GetStorageStats(tablet);
-            UNIT_ASSERT_VALUES_EQUAL(
-                4,
-                stats.GetConfigChannelCount());
-            UNIT_ASSERT_VALUES_EQUAL(
-                4,
-                stats.GetTabletChannelCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetConfigChannelCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetTabletChannelCount());
         }
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
@@ -88,12 +86,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Channels)
         TVector<ui32> channels;
 
         env.GetRuntime().SetEventFilter(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+            {
                 Y_UNUSED(runtime);
 
                 switch (event->GetTypeRewrite()) {
                     case TEvIndexTabletPrivate::EvWriteBlobRequest: {
-                        auto* msg = event->Get<TEvIndexTabletPrivate::TEvWriteBlobRequest>();
+                        auto* msg = event->Get<
+                            TEvIndexTabletPrivate::TEvWriteBlobRequest>();
                         for (const auto& blob: msg->Blobs) {
                             channels.push_back(blob.BlobId.Channel());
                         }
@@ -102,28 +102,23 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Channels)
                 }
 
                 return false;
-            }
-        );
+            });
 
         tablet.WriteData(handle, 0, 16_KB, 'a');
         tablet.WriteData(handle, 0, 16_KB, 'a');
         tablet.WriteData(handle, 0, 16_KB, 'a');
 
         SortUnique(channels);
-        ASSERT_VECTORS_EQUAL(channels, TVector<ui32>({ 3 }));
+        ASSERT_VECTORS_EQUAL(channels, TVector<ui32>({3}));
         channels.clear();
 
         // simulate situation when we received updateconfig from schemeshard
         // earlier than tablet restart from hive
-        tablet.UpdateConfig({ .ChannelCount = 5 });
+        tablet.UpdateConfig({.ChannelCount = 5});
         {
             auto stats = GetStorageStats(tablet);
-            UNIT_ASSERT_VALUES_EQUAL(
-                5,
-                stats.GetConfigChannelCount());
-            UNIT_ASSERT_VALUES_EQUAL(
-                4,
-                stats.GetTabletChannelCount());
+            UNIT_ASSERT_VALUES_EQUAL(5, stats.GetConfigChannelCount());
+            UNIT_ASSERT_VALUES_EQUAL(4, stats.GetTabletChannelCount());
         }
 
         tablet.WriteData(handle, 0, 16_KB, 'a');
@@ -132,7 +127,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Channels)
 
         // 4th must be unused: it's not present at tabetInfo yet
         SortUnique(channels);
-        ASSERT_VECTORS_EQUAL(channels, TVector<ui32>({ 3 }));
+        ASSERT_VECTORS_EQUAL(channels, TVector<ui32>({3}));
         channels.clear();
 
         // now restart the tablet with new tabletInfo
@@ -141,12 +136,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Channels)
         tablet.RecoverSession();
         {
             auto stats = GetStorageStats(tablet);
-            UNIT_ASSERT_VALUES_EQUAL(
-                5,
-                stats.GetConfigChannelCount());
-            UNIT_ASSERT_VALUES_EQUAL(
-                5,
-                stats.GetTabletChannelCount());
+            UNIT_ASSERT_VALUES_EQUAL(5, stats.GetConfigChannelCount());
+            UNIT_ASSERT_VALUES_EQUAL(5, stats.GetTabletChannelCount());
         }
 
         tablet.WriteData(handle, 0, 16_KB, 'a');
@@ -155,7 +146,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Channels)
 
         // both 3rd and 4th channels must be used
         SortUnique(channels);
-        ASSERT_VECTORS_EQUAL(channels, TVector<ui32>({ 3, 4 }));
+        ASSERT_VECTORS_EQUAL(channels, TVector<ui32>({3, 4}));
         channels.clear();
 
         // resize the same way but in opposite order
@@ -165,14 +156,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Channels)
         tablet.RecoverSession();
         {
             auto stats = GetStorageStats(tablet);
-            UNIT_ASSERT_VALUES_EQUAL(
-                5,
-                stats.GetConfigChannelCount());
-            UNIT_ASSERT_VALUES_EQUAL(
-                6,
-                stats.GetTabletChannelCount());
+            UNIT_ASSERT_VALUES_EQUAL(5, stats.GetConfigChannelCount());
+            UNIT_ASSERT_VALUES_EQUAL(6, stats.GetTabletChannelCount());
         }
-
 
         tablet.WriteData(handle, 0, 16_KB, 'a');
         tablet.WriteData(handle, 0, 16_KB, 'a');
@@ -180,19 +166,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Channels)
 
         // 5th must be unused: it's not present in filesystem config
         SortUnique(channels);
-        ASSERT_VECTORS_EQUAL(channels, TVector<ui32>({ 3, 4 }));
+        ASSERT_VECTORS_EQUAL(channels, TVector<ui32>({3, 4}));
         channels.clear();
 
         // now update filesystem config
-        tablet.UpdateConfig({ .ChannelCount = 6 });
+        tablet.UpdateConfig({.ChannelCount = 6});
         {
             auto stats = GetStorageStats(tablet);
-            UNIT_ASSERT_VALUES_EQUAL(
-                6,
-                stats.GetConfigChannelCount());
-            UNIT_ASSERT_VALUES_EQUAL(
-                6,
-                stats.GetTabletChannelCount());
+            UNIT_ASSERT_VALUES_EQUAL(6, stats.GetConfigChannelCount());
+            UNIT_ASSERT_VALUES_EQUAL(6, stats.GetTabletChannelCount());
         }
 
         tablet.WriteData(handle, 0, 16_KB, 'a');
@@ -201,7 +183,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Channels)
 
         // all the channels must be used
         SortUnique(channels);
-        ASSERT_VECTORS_EQUAL(channels, TVector<ui32>({ 3, 4, 5 }));
+        ASSERT_VECTORS_EQUAL(channels, TVector<ui32>({3, 4, 5}));
         channels.clear();
     }
 
@@ -214,16 +196,18 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Channels)
         storageConfig.SetFlushBytesThreshold(1_GB);
         storageConfig.SetWriteBlobThreshold(16_KB);
 
-        TTestEnv env({ .ChannelCount = 5 }, std::move(storageConfig));
+        TTestEnv env({.ChannelCount = 5}, std::move(storageConfig));
         env.CreateSubDomain("nfs");
 
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
         // two mixed channels
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId, {
-            .ChannelCount = 5
-        });
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            {.ChannelCount = 5});
         tablet.InitSession("client", "session");
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
@@ -236,26 +220,27 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Channels)
         TVector<ui32> channels;
 
         env.GetRuntime().SetEventFilter(
-            [&] (TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event) {
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+            {
                 Y_UNUSED(runtime);
 
                 switch (event->GetTypeRewrite()) {
                     case TEvBlobStorage::EvCollectGarbage: {
-                        auto* msg = event->Get<TEvBlobStorage::TEvCollectGarbage>();
+                        auto* msg =
+                            event->Get<TEvBlobStorage::TEvCollectGarbage>();
                         channels.push_back(msg->Channel);
                         break;
                     }
                 }
 
                 return false;
-            }
-        );
+            });
 
         const ui32 rangeId = GetMixedRangeIndex(id, 0);
         tablet.Compaction(rangeId);
         tablet.CollectGarbage();
 
-        ASSERT_VECTORS_EQUAL(channels, TVector<ui32>({ 3, 4 }));
+        ASSERT_VECTORS_EQUAL(channels, TVector<ui32>({3, 4}));
     }
 
     Y_UNIT_TEST(ShouldProperlyHandleCollectGarbageErrors)
@@ -277,29 +262,31 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Channels)
         bool sendError = true;
 
         auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvBlobStorage::EvCollectGarbage: {
-                        auto* msg = event->Get<TEvBlobStorage::TEvCollectGarbage>();
+                        auto* msg =
+                            event->Get<TEvBlobStorage::TEvCollectGarbage>();
                         collectRequestObserved = true;
                         if (sendError) {
-                            auto response =
-                                std::make_unique<TEvBlobStorage::TEvCollectGarbageResult>(
-                                    NKikimrProto::ERROR,
-                                    0,  // doesn't matter
-                                    0,  // doesn't matter
-                                    0,  // doesn't matter
-                                    msg->Channel
-                                );
+                            auto response = std::make_unique<
+                                TEvBlobStorage::TEvCollectGarbageResult>(
+                                NKikimrProto::ERROR,
+                                0,   // doesn't matter
+                                0,   // doesn't matter
+                                0,   // doesn't matter
+                                msg->Channel);
 
-                            runtime.Send(new IEventHandle(
-                                event->Sender,
-                                event->Recipient,
-                                response.release(),
-                                0, // flags
-                                0
-                            ),
-                            nodeIdx);
+                            runtime.Send(
+                                new IEventHandle(
+                                    event->Sender,
+                                    event->Recipient,
+                                    response.release(),
+                                    0,   // flags
+                                    0),
+                                nodeIdx);
 
                             return TTestActorRuntime::EEventAction::DROP;
                         }
@@ -315,9 +302,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Channels)
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
-
+            });
 
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         auto handle = CreateHandle(tablet, id);
@@ -334,8 +319,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Channels)
             auto response = tablet.RecvCollectGarbageResponse();
             UNIT_ASSERT_VALUES_EQUAL(
                 MAKE_KIKIMR_ERROR(NKikimrProto::ERROR),
-                response->GetStatus()
-            );
+                response->GetStatus());
         }
 
         UNIT_ASSERT(collectRequestObserved);
@@ -361,7 +345,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Channels)
         bool deleteGarbageObserved = false;
 
         auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvBlobStorage::EvCollectGarbage: {
                         collectGarbageObserved = true;
@@ -374,8 +360,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Channels)
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         ui32 nodeIdx = env.CreateNode("nfs");
         ui64 tabletId = env.BootIndexTablet(nodeIdx);

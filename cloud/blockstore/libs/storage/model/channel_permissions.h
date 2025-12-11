@@ -8,8 +8,8 @@ namespace NCloud::NBlockStore::NStorage {
 
 enum class EChannelPermission
 {
-    UserWritesAllowed       = (1 << 0),
-    SystemWritesAllowed     = (1 << 1),
+    UserWritesAllowed = (1 << 0),
+    SystemWritesAllowed = (1 << 1),
 };
 
 Y_DECLARE_FLAGS(EChannelPermissions, EChannelPermission);

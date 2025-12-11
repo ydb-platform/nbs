@@ -73,4 +73,4 @@ Y_UNIT_TEST_SUITE(TBlockRangeTest)
     }
 }
 
-} // namespace NCloud::NBlockStore
+}   // namespace NCloud::NBlockStore

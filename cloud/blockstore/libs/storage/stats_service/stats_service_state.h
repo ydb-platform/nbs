@@ -38,8 +38,8 @@ struct TDiskPerfData
     ui64 VolumeUserCpu = 0;
 
     TDiskPerfData(
-            EPublishingPolicy policy,
-            EHistogramCounterOptions histCounterOptions)
+        EPublishingPolicy policy,
+        EHistogramCounterOptions histCounterOptions)
         : DiskCounters(policy, histCounterOptions)
         , VolumeSelfCounters(policy, histCounterOptions)
         , YdbDiskCounters(policy, histCounterOptions)
@@ -69,8 +69,8 @@ struct TTotalCounters
     TSimpleCounter VolumeStartTimeOver5Sec;
 
     TTotalCounters(
-            EPublishingPolicy policy,
-            EHistogramCounterOptions histCounterOptions)
+        EPublishingPolicy policy,
+        EHistogramCounterOptions histCounterOptions)
         : PartAcc(policy, histCounterOptions)
         , VolumeAcc(policy, histCounterOptions)
     {}
@@ -145,8 +145,8 @@ struct TVolumeStatsInfo
     THashMap<ui64, TVector<NKikimr::TTabletChannelInfo>> ChannelInfos;
 
     TVolumeStatsInfo(
-            NProto::TVolume config,
-            EHistogramCounterOptions histCounterOptions)
+        NProto::TVolume config,
+        EHistogramCounterOptions histCounterOptions)
         : VolumeInfo(std::move(config))
         , PerfCounters(EPublishingPolicy::All, histCounterOptions)
     {}
@@ -172,7 +172,8 @@ class TStatsServiceState
 public:
     using TVolumesMap = THashMap<TString, TVolumeStatsInfo>;
     using TRecentVolumesList = TList<TRecentVolumeStatsInfo>;
-    using TRecentVolumesMap = THashMap<TStringBuf, TRecentVolumesList::iterator>;
+    using TRecentVolumesMap =
+        THashMap<TStringBuf, TRecentVolumesList::iterator>;
 
 private:
     TVolumesMap VolumesById;
@@ -209,47 +210,47 @@ public:
         NProto::TVolume config);
 
     TStatsServiceState(
-            const TStorageConfig& config,
-            const TDiagnosticsConfig& diagConfig)
+        const TStorageConfig& config,
+        const TDiagnosticsConfig& diagConfig)
         : Total(EPublishingPolicy::All, diagConfig.GetHistogramCounterOptions())
         , Hdd(EPublishingPolicy::Repl, diagConfig.GetHistogramCounterOptions())
         , Ssd(EPublishingPolicy::Repl, diagConfig.GetHistogramCounterOptions())
         , SsdNonrepl(
-            EPublishingPolicy::DiskRegistryBased,
-            diagConfig.GetHistogramCounterOptions())
+              EPublishingPolicy::DiskRegistryBased,
+              diagConfig.GetHistogramCounterOptions())
         , HddNonrepl(
-            EPublishingPolicy::DiskRegistryBased,
-            diagConfig.GetHistogramCounterOptions())
+              EPublishingPolicy::DiskRegistryBased,
+              diagConfig.GetHistogramCounterOptions())
         , SsdMirror2(
-            EPublishingPolicy::DiskRegistryBased,
-            diagConfig.GetHistogramCounterOptions())
+              EPublishingPolicy::DiskRegistryBased,
+              diagConfig.GetHistogramCounterOptions())
         , SsdMirror3(
-            EPublishingPolicy::DiskRegistryBased,
-            diagConfig.GetHistogramCounterOptions())
+              EPublishingPolicy::DiskRegistryBased,
+              diagConfig.GetHistogramCounterOptions())
         , SsdLocal(
-            EPublishingPolicy::DiskRegistryBased,
-            diagConfig.GetHistogramCounterOptions())
+              EPublishingPolicy::DiskRegistryBased,
+              diagConfig.GetHistogramCounterOptions())
         , HddLocal(
-            EPublishingPolicy::DiskRegistryBased,
-            diagConfig.GetHistogramCounterOptions())
+              EPublishingPolicy::DiskRegistryBased,
+              diagConfig.GetHistogramCounterOptions())
         , SsdSystem(
-            EPublishingPolicy::Repl,
-            diagConfig.GetHistogramCounterOptions())
+              EPublishingPolicy::Repl,
+              diagConfig.GetHistogramCounterOptions())
         , HddSystem(
-            EPublishingPolicy::Repl,
-            diagConfig.GetHistogramCounterOptions())
+              EPublishingPolicy::Repl,
+              diagConfig.GetHistogramCounterOptions())
         , SsdBlobLoadCounters(
-            config.GetCommonSSDPoolKind(),
-            config.GetMaxSSDGroupReadIops(),
-            config.GetMaxSSDGroupWriteIops(),
-            config.GetMaxSSDGroupReadBandwidth(),
-            config.GetMaxSSDGroupWriteBandwidth())
+              config.GetCommonSSDPoolKind(),
+              config.GetMaxSSDGroupReadIops(),
+              config.GetMaxSSDGroupWriteIops(),
+              config.GetMaxSSDGroupReadBandwidth(),
+              config.GetMaxSSDGroupWriteBandwidth())
         , HddBlobLoadCounters(
-            config.GetCommonHDDPoolKind(),
-            config.GetMaxHDDGroupReadIops(),
-            config.GetMaxHDDGroupWriteIops(),
-            config.GetMaxHDDGroupReadBandwidth(),
-            config.GetMaxHDDGroupWriteBandwidth())
+              config.GetCommonHDDPoolKind(),
+              config.GetMaxHDDGroupReadIops(),
+              config.GetMaxHDDGroupWriteIops(),
+              config.GetMaxHDDGroupReadBandwidth(),
+              config.GetMaxHDDGroupWriteBandwidth())
         , HistCounterOptions(diagConfig.GetHistogramCounterOptions())
     {}
 
@@ -328,17 +329,24 @@ public:
             case NCloud::NProto::STORAGE_MEDIA_SSD: {
                 return isSystem ? SsdSystem : Ssd;
             }
-            case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED: return SsdNonrepl;
-            case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED: return HddNonrepl;
-            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2: return SsdMirror2;
-            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3: return SsdMirror3;
-            case NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL: return SsdLocal;
-            case NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL: return HddLocal;
+            case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED:
+                return SsdNonrepl;
+            case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED:
+                return HddNonrepl;
+            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2:
+                return SsdMirror2;
+            case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3:
+                return SsdMirror3;
+            case NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL:
+                return SsdLocal;
+            case NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL:
+                return HddLocal;
             case NCloud::NProto::STORAGE_MEDIA_HDD:
             case NCloud::NProto::STORAGE_MEDIA_HYBRID:
             case NCloud::NProto::STORAGE_MEDIA_DEFAULT:
                 return isSystem ? HddSystem : Hdd;
-            default: {}
+            default: {
+            }
         }
 
         Y_ABORT("unsupported media kind: %u", static_cast<ui32>(mediaKind));

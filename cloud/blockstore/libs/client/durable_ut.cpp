@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service_test.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
@@ -28,8 +29,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TPostponedTimeTestService
-    : public TTestService
+struct TPostponedTimeTestService: public TTestService
 {
     const size_t ThrottledRequests;
     size_t requestCount = 0;
@@ -48,7 +48,7 @@ struct TPostponedTimeTestService
         NProto::TPingResponse response;
 
         if (requestCount <= ThrottledRequests) {
-            response = TErrorResponse {E_REJECTED, "Throttled"};
+            response = TErrorResponse{E_REJECTED, "Throttled"};
             callContext->AddTime(
                 EProcessingStage::Postponed,
                 TDuration::Seconds(2));
@@ -71,19 +71,19 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         static constexpr size_t maxRequestsCount = 3;
         size_t requestsCount = 0;
 
-        client->PingHandler =
-            [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
+        client->PingHandler = [&](std::shared_ptr<NProto::TPingRequest> request)
+        {
+            Y_UNUSED(request);
 
-                NProto::TPingResponse response;
+            NProto::TPingResponse response;
 
-                if (++requestsCount < maxRequestsCount) {
-                    auto& error = *response.MutableError();
-                    error.SetCode(E_REJECTED);
-                }
+            if (++requestsCount < maxRequestsCount) {
+                auto& error = *response.MutableError();
+                error.SetCode(E_REJECTED);
+            }
 
-                return MakeFuture(std::move(response));
-            };
+            return MakeFuture(std::move(response));
+        };
 
         auto config = std::make_shared<TClientAppConfig>();
 
@@ -92,9 +92,10 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
         scheduler->Start();
-        Y_SCOPE_EXIT(=) {
+        Y_SCOPE_EXIT(=)
+        {
             scheduler->Stop();
-        };
+        }
 
         auto requestStats = CreateRequestStatsStub();
         auto volumeStats = CreateVolumeStatsStub();
@@ -157,7 +158,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         Y_SCOPE_EXIT(=)
         {
             scheduler->Stop();
-        };
+        }
 
         auto requestStats = CreateRequestStatsStub();
         auto volumeStats = CreateVolumeStatsStub();
@@ -220,7 +221,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         Y_SCOPE_EXIT(=)
         {
             scheduler->Stop();
-        };
+        }
 
         auto requestStats = CreateRequestStatsStub();
         auto volumeStats = CreateVolumeStatsStub();
@@ -295,7 +296,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         Y_SCOPE_EXIT(=)
         {
             scheduler->Stop();
-        };
+        }
 
         auto requestStats = CreateRequestStatsStub();
         auto volumeStats = CreateVolumeStatsStub();
@@ -328,18 +329,18 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         size_t requestsCount = 0;
 
-        client->PingHandler =
-            [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
-                ++requestsCount;
+        client->PingHandler = [&](std::shared_ptr<NProto::TPingRequest> request)
+        {
+            Y_UNUSED(request);
+            ++requestsCount;
 
-                NProto::TPingResponse response;
+            NProto::TPingResponse response;
 
-                auto& error = *response.MutableError();
-                error.SetCode(E_FAIL);
+            auto& error = *response.MutableError();
+            error.SetCode(E_FAIL);
 
-                return MakeFuture(std::move(response));
-            };
+            return MakeFuture(std::move(response));
+        };
 
         auto config = std::make_shared<TClientAppConfig>();
 
@@ -348,9 +349,10 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
         scheduler->Start();
-        Y_SCOPE_EXIT(=) {
+        Y_SCOPE_EXIT(=)
+        {
             scheduler->Stop();
-        };
+        }
 
         auto requestStats = CreateRequestStatsStub();
         auto volumeStats = CreateVolumeStatsStub();
@@ -387,21 +389,21 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         size_t requestsCount = 0;
 
         client->ReadBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksLocalRequest> request) {
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            UNIT_ASSERT(!prevSgList || !prevSgList->Acquire());
+            prevSgList = std::make_unique<TGuardedSgList>(request->Sglist);
+            UNIT_ASSERT(prevSgList->Acquire());
 
-                UNIT_ASSERT(!prevSgList || !prevSgList->Acquire());
-                prevSgList = std::make_unique<TGuardedSgList>(request->Sglist);
-                UNIT_ASSERT(prevSgList->Acquire());
+            NProto::TReadBlocksLocalResponse response;
 
-                NProto::TReadBlocksLocalResponse response;
+            if (++requestsCount < maxRequestsCount) {
+                auto& error = *response.MutableError();
+                error.SetCode(E_REJECTED);
+            }
 
-                if (++requestsCount < maxRequestsCount) {
-                    auto& error = *response.MutableError();
-                    error.SetCode(E_REJECTED);
-                }
-
-                return MakeFuture(std::move(response));
-            };
+            return MakeFuture(std::move(response));
+        };
 
         auto config = std::make_shared<TClientAppConfig>();
 
@@ -410,9 +412,10 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
         scheduler->Start();
-        Y_SCOPE_EXIT(=) {
+        Y_SCOPE_EXIT(=)
+        {
             scheduler->Stop();
-        };
+        }
 
         auto requestStats = CreateRequestStatsStub();
         auto volumeStats = CreateVolumeStatsStub();
@@ -450,9 +453,10 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
         scheduler->Start();
-        Y_SCOPE_EXIT(=) {
+        Y_SCOPE_EXIT(=)
+        {
             scheduler->Stop();
-        };
+        }
 
         auto requestStats = CreateRequestStatsStub();
         auto volumeStats = CreateVolumeStatsStub();
@@ -499,11 +503,11 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         auto promise = NewPromise<NProto::TPingResponse>();
 
         auto client = std::make_shared<TTestService>();
-        client->PingHandler =
-            [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
-                return promise.GetFuture();
-            };
+        client->PingHandler = [&](std::shared_ptr<NProto::TPingRequest> request)
+        {
+            Y_UNUSED(request);
+            return promise.GetFuture();
+        };
 
         auto config = std::make_shared<TClientAppConfig>();
 
@@ -512,9 +516,10 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
         scheduler->Start();
-        Y_SCOPE_EXIT(=) {
+        Y_SCOPE_EXIT(=)
+        {
             scheduler->Stop();
-        };
+        }
 
         auto requestStats = CreateRequestStatsStub();
         auto volumeStats = CreateVolumeStatsStub();
@@ -556,16 +561,16 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         auto scheduler = std::make_shared<TTestScheduler>();
 
         auto client = std::make_shared<TTestService>();
-        client->PingHandler =
-            [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
+        client->PingHandler = [&](std::shared_ptr<NProto::TPingRequest> request)
+        {
+            Y_UNUSED(request);
 
-                NProto::TPingResponse response;
-                auto& error = *response.MutableError();
-                error.SetCode(E_REJECTED);
+            NProto::TPingResponse response;
+            auto& error = *response.MutableError();
+            error.SetCode(E_REJECTED);
 
-                return MakeFuture(std::move(response));
-            };
+            return MakeFuture(std::move(response));
+        };
 
         auto config = std::make_shared<TClientAppConfig>();
 
@@ -618,110 +623,113 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         ui32 blocksCount = 7;
 
         TVector<TString> blocks;
-        auto sglist = ResizeBlocks(
-            blocks,
-            blocksCount,
-            TString(DefaultBlockSize, 'f'));
+        auto sglist =
+            ResizeBlocks(blocks, blocksCount, TString(DefaultBlockSize, 'f'));
 
         client->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                UNIT_ASSERT_VALUES_EQUAL(diskId, request->GetDiskId());
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(diskId, request->GetDiskId());
 
-                request->Clear();
+            request->Clear();
 
-                NProto::TMountVolumeResponse response;
+            NProto::TMountVolumeResponse response;
 
-                if (++mountRequestsCount < maxRequestsCount) {
-                    auto& error = *response.MutableError();
-                    error.SetCode(E_REJECTED);
-                }
+            if (++mountRequestsCount < maxRequestsCount) {
+                auto& error = *response.MutableError();
+                error.SetCode(E_REJECTED);
+            }
 
-                return MakeFuture(std::move(response));
-            };
+            return MakeFuture(std::move(response));
+        };
 
         client->UnmountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TUnmountVolumeRequest> request) {
-                UNIT_ASSERT_VALUES_EQUAL(diskId, request->GetDiskId());
+            [&](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(diskId, request->GetDiskId());
 
-                request->Clear();
+            request->Clear();
 
-                NProto::TUnmountVolumeResponse response;
+            NProto::TUnmountVolumeResponse response;
 
-                if (++unmountRequestsCount < maxRequestsCount) {
-                    auto& error = *response.MutableError();
-                    error.SetCode(E_REJECTED);
-                }
+            if (++unmountRequestsCount < maxRequestsCount) {
+                auto& error = *response.MutableError();
+                error.SetCode(E_REJECTED);
+            }
 
-                return MakeFuture(std::move(response));
-            };
+            return MakeFuture(std::move(response));
+        };
 
         client->ReadBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksLocalRequest> request) {
-                UNIT_ASSERT_VALUES_EQUAL(diskId, request->GetDiskId());
-                UNIT_ASSERT(request->GetStartIndex() == startIndex);
-                UNIT_ASSERT(request->GetBlocksCount() == blocksCount);
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(diskId, request->GetDiskId());
+            UNIT_ASSERT(request->GetStartIndex() == startIndex);
+            UNIT_ASSERT(request->GetBlocksCount() == blocksCount);
 
-                auto guard = request->Sglist.Acquire();
-                UNIT_ASSERT(guard);
-                UNIT_ASSERT(guard.Get() == sglist);
+            auto guard = request->Sglist.Acquire();
+            UNIT_ASSERT(guard);
+            UNIT_ASSERT(guard.Get() == sglist);
 
-                request->Clear();
-                request->CommitId = 0;
-                request->BlockSize = 0;
-                request->Sglist = TGuardedSgList();
+            request->Clear();
+            request->CommitId = 0;
+            request->BlockSize = 0;
+            request->Sglist = TGuardedSgList();
 
-                NProto::TReadBlocksLocalResponse response;
+            NProto::TReadBlocksLocalResponse response;
 
-                if (++readRequestsCount < maxRequestsCount) {
-                    auto& error = *response.MutableError();
-                    error.SetCode(E_REJECTED);
-                }
+            if (++readRequestsCount < maxRequestsCount) {
+                auto& error = *response.MutableError();
+                error.SetCode(E_REJECTED);
+            }
 
-                return MakeFuture(std::move(response));
-            };
+            return MakeFuture(std::move(response));
+        };
 
         client->WriteBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) {
-                UNIT_ASSERT_VALUES_EQUAL(diskId, request->GetDiskId());
-                UNIT_ASSERT_VALUES_EQUAL(startIndex, request->GetStartIndex());
-                UNIT_ASSERT_VALUES_EQUAL(blocksCount, request->BlocksCount);
+            [&](std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(diskId, request->GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL(startIndex, request->GetStartIndex());
+            UNIT_ASSERT_VALUES_EQUAL(blocksCount, request->BlocksCount);
 
-                auto guard = request->Sglist.Acquire();
-                UNIT_ASSERT(guard);
-                UNIT_ASSERT(guard.Get() == sglist);
+            auto guard = request->Sglist.Acquire();
+            UNIT_ASSERT(guard);
+            UNIT_ASSERT(guard.Get() == sglist);
 
-                request->Clear();
-                request->BlocksCount = 0;
-                request->BlockSize = 0;
-                request->Sglist = TGuardedSgList();
+            request->Clear();
+            request->BlocksCount = 0;
+            request->BlockSize = 0;
+            request->Sglist = TGuardedSgList();
 
-                NProto::TWriteBlocksLocalResponse response;
+            NProto::TWriteBlocksLocalResponse response;
 
-                if (++writeRequestsCount < maxRequestsCount) {
-                    auto& error = *response.MutableError();
-                    error.SetCode(E_REJECTED);
-                }
+            if (++writeRequestsCount < maxRequestsCount) {
+                auto& error = *response.MutableError();
+                error.SetCode(E_REJECTED);
+            }
 
-                return MakeFuture(std::move(response));
-            };
+            return MakeFuture(std::move(response));
+        };
 
         client->ZeroBlocksHandler =
-            [&] (std::shared_ptr<NProto::TZeroBlocksRequest> request) {
-                UNIT_ASSERT_VALUES_EQUAL(diskId, request->GetDiskId());
-                UNIT_ASSERT_VALUES_EQUAL(startIndex, request->GetStartIndex());
-                UNIT_ASSERT_VALUES_EQUAL(blocksCount, request->GetBlocksCount());
+            [&](std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(diskId, request->GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL(startIndex, request->GetStartIndex());
+            UNIT_ASSERT_VALUES_EQUAL(blocksCount, request->GetBlocksCount());
 
-                request->Clear();
+            request->Clear();
 
-                NProto::TZeroBlocksResponse response;
+            NProto::TZeroBlocksResponse response;
 
-                if (++zeroRequestsCount < maxRequestsCount) {
-                    auto& error = *response.MutableError();
-                    error.SetCode(E_REJECTED);
-                }
+            if (++zeroRequestsCount < maxRequestsCount) {
+                auto& error = *response.MutableError();
+                error.SetCode(E_REJECTED);
+            }
 
-                return MakeFuture(std::move(response));
-            };
+            return MakeFuture(std::move(response));
+        };
 
         auto config = std::make_shared<TClientAppConfig>();
 
@@ -730,9 +738,10 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
         scheduler->Start();
-        Y_SCOPE_EXIT(=) {
+        Y_SCOPE_EXIT(=)
+        {
             scheduler->Stop();
-        };
+        }
 
         auto requestStats = CreateRequestStatsStub();
         auto volumeStats = CreateVolumeStatsStub();
@@ -839,52 +848,58 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         ui32 blocksCount = 7;
 
         client->ReadBlocksHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksRequest> request) {
-                if (readRequestsCount == 0) {
-                    UNIT_ASSERT_VALUES_EQUAL(diskId, request->GetDiskId());
-                    UNIT_ASSERT_VALUES_EQUAL(startIndex, request->GetStartIndex());
-                    UNIT_ASSERT_VALUES_EQUAL(blocksCount, request->GetBlocksCount());
-                } else {
-                    UNIT_ASSERT(request->GetDiskId().empty());
-                    UNIT_ASSERT_VALUES_EQUAL(0, request->GetStartIndex());
-                    UNIT_ASSERT_VALUES_EQUAL(0, request->GetBlocksCount());
-                }
+            [&](std::shared_ptr<NProto::TReadBlocksRequest> request)
+        {
+            if (readRequestsCount == 0) {
+                UNIT_ASSERT_VALUES_EQUAL(diskId, request->GetDiskId());
+                UNIT_ASSERT_VALUES_EQUAL(startIndex, request->GetStartIndex());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    blocksCount,
+                    request->GetBlocksCount());
+            } else {
+                UNIT_ASSERT(request->GetDiskId().empty());
+                UNIT_ASSERT_VALUES_EQUAL(0, request->GetStartIndex());
+                UNIT_ASSERT_VALUES_EQUAL(0, request->GetBlocksCount());
+            }
 
-                request->Clear();
+            request->Clear();
 
-                NProto::TReadBlocksResponse response;
+            NProto::TReadBlocksResponse response;
 
-                if (++readRequestsCount < maxRequestsCount) {
-                    auto& error = *response.MutableError();
-                    error.SetCode(E_REJECTED);
-                }
+            if (++readRequestsCount < maxRequestsCount) {
+                auto& error = *response.MutableError();
+                error.SetCode(E_REJECTED);
+            }
 
-                return MakeFuture(std::move(response));
-            };
+            return MakeFuture(std::move(response));
+        };
 
         client->WriteBlocksHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksRequest> request) {
-                if (writeRequestsCount == 0) {
-                    UNIT_ASSERT_VALUES_EQUAL(diskId, request->GetDiskId());
-                    UNIT_ASSERT_VALUES_EQUAL(startIndex, request->GetStartIndex());
-                    UNIT_ASSERT_VALUES_EQUAL(blocksCount, request->GetBlocks().GetBuffers().size());
-                } else {
-                    UNIT_ASSERT(request->GetDiskId().empty());
-                    UNIT_ASSERT_VALUES_EQUAL(0, request->GetStartIndex());
-                    UNIT_ASSERT(request->GetBlocks().GetBuffers().empty());
-                }
+            [&](std::shared_ptr<NProto::TWriteBlocksRequest> request)
+        {
+            if (writeRequestsCount == 0) {
+                UNIT_ASSERT_VALUES_EQUAL(diskId, request->GetDiskId());
+                UNIT_ASSERT_VALUES_EQUAL(startIndex, request->GetStartIndex());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    blocksCount,
+                    request->GetBlocks().GetBuffers().size());
+            } else {
+                UNIT_ASSERT(request->GetDiskId().empty());
+                UNIT_ASSERT_VALUES_EQUAL(0, request->GetStartIndex());
+                UNIT_ASSERT(request->GetBlocks().GetBuffers().empty());
+            }
 
-                request->Clear();
+            request->Clear();
 
-                NProto::TWriteBlocksResponse response;
+            NProto::TWriteBlocksResponse response;
 
-                if (++writeRequestsCount < maxRequestsCount) {
-                    auto& error = *response.MutableError();
-                    error.SetCode(E_REJECTED);
-                }
+            if (++writeRequestsCount < maxRequestsCount) {
+                auto& error = *response.MutableError();
+                error.SetCode(E_REJECTED);
+            }
 
-                return MakeFuture(std::move(response));
-            };
+            return MakeFuture(std::move(response));
+        };
 
         auto config = std::make_shared<TClientAppConfig>();
 
@@ -893,9 +908,10 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
         scheduler->Start();
-        Y_SCOPE_EXIT(=) {
+        Y_SCOPE_EXIT(=)
+        {
             scheduler->Stop();
-        };
+        }
 
         auto requestStats = CreateRequestStatsStub();
         auto volumeStats = CreateVolumeStatsStub();
@@ -918,9 +934,8 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
             request->SetStartIndex(startIndex);
             request->SetBlocksCount(blocksCount);
 
-            auto future = durable->ReadBlocks(
-                MakeIntrusive<TCallContext>(),
-                request);
+            auto future =
+                durable->ReadBlocks(MakeIntrusive<TCallContext>(), request);
 
             const auto& response = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT(!HasError(response));
@@ -939,9 +954,8 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
                 blocksCount,
                 DefaultBlockSize);
 
-            auto future = durable->WriteBlocks(
-                MakeIntrusive<TCallContext>(),
-                request);
+            auto future =
+                durable->WriteBlocks(MakeIntrusive<TCallContext>(), request);
 
             const auto& response = future.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT(!HasError(response));
@@ -1242,13 +1256,13 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
     {
         auto client = std::make_shared<TTestService>();
 
-        client->PingHandler =
-            [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
+        client->PingHandler = [&](std::shared_ptr<NProto::TPingRequest> request)
+        {
+            Y_UNUSED(request);
 
-                return MakeFuture<NProto::TPingResponse>(
-                    TErrorResponse(E_REJECTED));
-            };
+            return MakeFuture<NProto::TPingResponse>(
+                TErrorResponse(E_REJECTED));
+        };
 
         NProto::TClientAppConfig clientAppConfig;
         auto& appConfig = *clientAppConfig.MutableClientConfig();
@@ -1260,9 +1274,10 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
         scheduler->Start();
-        Y_SCOPE_EXIT(=) {
+        Y_SCOPE_EXIT(=)
+        {
             scheduler->Stop();
-        };
+        }
 
         auto requestStats = CreateRequestStatsStub();
         auto volumeStats = CreateVolumeStatsStub();
@@ -1307,9 +1322,10 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
         scheduler->Start();
-        Y_SCOPE_EXIT(=) {
+        Y_SCOPE_EXIT(=)
+        {
             scheduler->Stop();
-        };
+        }
 
         auto requestStats = CreateRequestStatsStub();
         auto volumeStats = CreateVolumeStatsStub();
@@ -1336,14 +1352,15 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         UNIT_ASSERT(SUCCEEDED(response.GetError().GetCode()));
 
         auto expectedDelay = TDuration::Seconds(8);
-        auto errorText = TStringBuilder() <<
-            "Request was posponed for " <<
-            callContext->Time(EProcessingStage::Postponed) <<
-            " which is less than " <<
-            expectedDelay;
+        auto errorText = TStringBuilder()
+                         << "Request was posponed for "
+                         << callContext->Time(EProcessingStage::Postponed)
+                         << " which is less than " << expectedDelay;
 
         UNIT_ASSERT_GE_C(
-            callContext->Time(EProcessingStage::Postponed), expectedDelay, errorText);
+            callContext->Time(EProcessingStage::Postponed),
+            expectedDelay,
+            errorText);
     }
 
     Y_UNIT_TEST(ShouldCountBackoffTimeAsPostponedForThrottledRequests)
@@ -1352,16 +1369,16 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         size_t requestCount = 0;
 
-        client->PingHandler =
-            [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
+        client->PingHandler = [&](std::shared_ptr<NProto::TPingRequest> request)
+        {
+            Y_UNUSED(request);
 
-                NProto::TPingResponse response;
-                if (!requestCount++) {
-                    response = TErrorResponse {E_REJECTED, "Throttled"};
-                }
-                return MakeFuture(std::move(response));
-            };
+            NProto::TPingResponse response;
+            if (!requestCount++) {
+                response = TErrorResponse{E_REJECTED, "Throttled"};
+            }
+            return MakeFuture(std::move(response));
+        };
 
         NProto::TClientAppConfig configProto;
         auto& clientConfigProto = *configProto.MutableClientConfig();
@@ -1377,9 +1394,10 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
         scheduler->Start();
-        Y_SCOPE_EXIT(=) {
+        Y_SCOPE_EXIT(=)
+        {
             scheduler->Stop();
-        };
+        }
 
         auto requestStats = CreateRequestStatsStub();
         auto volumeStats = CreateVolumeStatsStub();
@@ -1429,20 +1447,21 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         size_t requestCount = 0;
 
-        client->PingHandler =
-            [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
+        client->PingHandler = [&](std::shared_ptr<NProto::TPingRequest> request)
+        {
+            Y_UNUSED(request);
 
-                NProto::TPingResponse response;
-                if (!requestCount++) {
-                    response = TErrorResponse {E_REJECTED, "Some failure"};
-                }
-                return MakeFuture(std::move(response));
-            };
+            NProto::TPingResponse response;
+            if (!requestCount++) {
+                response = TErrorResponse{E_REJECTED, "Some failure"};
+            }
+            return MakeFuture(std::move(response));
+        };
 
         NProto::TClientAppConfig configProto;
         auto& clientConfigProto = *configProto.MutableClientConfig();
-        clientConfigProto.SetRetryTimeoutIncrement(TDuration::Seconds(1).MilliSeconds());
+        clientConfigProto.SetRetryTimeoutIncrement(
+            TDuration::Seconds(1).MilliSeconds());
         auto config = std::make_shared<TClientAppConfig>(configProto);
 
         auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
@@ -1450,9 +1469,10 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
         scheduler->Start();
-        Y_SCOPE_EXIT(=) {
+        Y_SCOPE_EXIT(=)
+        {
             scheduler->Stop();
-        };
+        }
 
         auto requestStats = CreateRequestStatsStub();
         auto volumeStats = CreateVolumeStatsStub();
@@ -1479,7 +1499,8 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         UNIT_ASSERT(SUCCEEDED(response.GetError().GetCode()));
 
         UNIT_ASSERT_VALUES_EQUAL(
-            callContext->Time(EProcessingStage::Postponed), TDuration());
+            callContext->Time(EProcessingStage::Postponed),
+            TDuration());
     }
 
     Y_UNIT_TEST(ShouldIncreaseRequestTimeoutOnRetry)
@@ -1487,36 +1508,38 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         auto client = std::make_shared<TTestService>();
 
         static constexpr uint32_t expectedTimeoutsSec[] = {30, 70, 110, 120};
-        static constexpr size_t maxRequestsCount = std::size(expectedTimeoutsSec);
+        static constexpr size_t maxRequestsCount =
+            std::size(expectedTimeoutsSec);
         size_t requestsCount = 0;
 
-        client->PingHandler =
-            [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                const auto& headers = request->GetHeaders();
-                const auto requestTimeoutMsec = headers.GetRequestTimeout();
-                UNIT_ASSERT_EQUAL(
-                    requestTimeoutMsec,
-                    expectedTimeoutsSec[requestsCount] * 1000);
+        client->PingHandler = [&](std::shared_ptr<NProto::TPingRequest> request)
+        {
+            const auto& headers = request->GetHeaders();
+            const auto requestTimeoutMsec = headers.GetRequestTimeout();
+            UNIT_ASSERT_EQUAL(
+                requestTimeoutMsec,
+                expectedTimeoutsSec[requestsCount] * 1000);
 
-                UNIT_ASSERT_VALUES_EQUAL(
-                    requestsCount,
-                    headers.GetRetryNumber());
+            UNIT_ASSERT_VALUES_EQUAL(requestsCount, headers.GetRetryNumber());
 
-                NProto::TPingResponse response;
+            NProto::TPingResponse response;
 
-                if (++requestsCount < maxRequestsCount) {
-                    auto& error = *response.MutableError();
-                    error.SetCode(E_TIMEOUT);
-                }
+            if (++requestsCount < maxRequestsCount) {
+                auto& error = *response.MutableError();
+                error.SetCode(E_TIMEOUT);
+            }
 
-                return MakeFuture(std::move(response));
-            };
+            return MakeFuture(std::move(response));
+        };
 
         NProto::TClientAppConfig configProto;
         auto& clientConfigProto = *configProto.MutableClientConfig();
-        clientConfigProto.SetRequestTimeout(TDuration::Seconds(30).MilliSeconds());
-        clientConfigProto.SetRequestTimeoutIncrementOnRetry(TDuration::Seconds(40).MilliSeconds());
-        clientConfigProto.SetRequestTimeoutMax(TDuration::Minutes(2).MilliSeconds());
+        clientConfigProto.SetRequestTimeout(
+            TDuration::Seconds(30).MilliSeconds());
+        clientConfigProto.SetRequestTimeoutIncrementOnRetry(
+            TDuration::Seconds(40).MilliSeconds());
+        clientConfigProto.SetRequestTimeoutMax(
+            TDuration::Minutes(2).MilliSeconds());
         auto config = std::make_shared<TClientAppConfig>(configProto);
 
         auto policy = CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT);
@@ -1524,9 +1547,10 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         auto timer = CreateCpuCycleTimer();
         auto scheduler = CreateScheduler(timer);
         scheduler->Start();
-        Y_SCOPE_EXIT(=) {
+        Y_SCOPE_EXIT(=)
+        {
             scheduler->Stop();
-        };
+        }
 
         auto requestStats = CreateRequestStatsStub();
         auto volumeStats = CreateVolumeStatsStub();
@@ -1546,9 +1570,7 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         auto request = std::make_shared<NProto::TPingRequest>();
         request->MutableHeaders()->SetRequestTimeout(
             TDuration::Seconds(30).MilliSeconds());
-        auto future = durable->Ping(
-            MakeIntrusive<TCallContext>(),
-            request);
+        auto future = durable->Ping(MakeIntrusive<TCallContext>(), request);
 
         const auto& response = future.GetValue(TDuration::Minutes(30));
         UNIT_ASSERT(!HasError(response));

@@ -24,21 +24,24 @@ constexpr size_t RDMA_MAX_DATA_LEN = Max<ui32>();
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum {
-    RDMA_PROTO_VERSION_0        = 0,
-    RDMA_PROTO_VERSION_1        = 1,
-    RDMA_PROTO_VERSION          = RDMA_PROTO_VERSION_1,
+enum
+{
+    RDMA_PROTO_VERSION_0 = 0,
+    RDMA_PROTO_VERSION_1 = 1,
+    RDMA_PROTO_VERSION = RDMA_PROTO_VERSION_1,
 };
 
-enum {
-    RDMA_PROTO_OK               = 0,
-    RDMA_PROTO_INVALID_REQUEST  = 1,
-    RDMA_PROTO_CONFIG_MISMATCH  = 2,
-    RDMA_PROTO_THROTTLED        = 3,
-    RDMA_PROTO_FAIL             = 4,
+enum
+{
+    RDMA_PROTO_OK = 0,
+    RDMA_PROTO_INVALID_REQUEST = 1,
+    RDMA_PROTO_CONFIG_MISMATCH = 2,
+    RDMA_PROTO_THROTTLED = 3,
+    RDMA_PROTO_FAIL = 4,
 };
 
-enum {
+enum
+{
     RDMA_PROTO_FLAG_NONE = 0,
     // encode data at the end of the buffer like this:
     //
@@ -79,10 +82,8 @@ inline void InitMessageHeader(void* msg, int version)
 inline int ParseMessageHeader(const void* msg)
 {
     const auto* hdr = static_cast<const TMessageHeader*>(msg);
-    if (hdr->Magic[0] == 'R' &&
-        hdr->Magic[1] == 'D' &&
-        hdr->Magic[2] == 'M' &&
-        hdr->Magic[3]  > '0')
+    if (hdr->Magic[0] == 'R' && hdr->Magic[1] == 'D' && hdr->Magic[2] == 'M' &&
+        hdr->Magic[3] > '0')
     {
         return hdr->Magic[3] - '0';
     }
@@ -95,7 +96,8 @@ inline int ParseMessageHeader(const void* msg)
 struct Y_PACKED TConnectMessage
 {
     union {
-        struct {
+        struct
+        {
             TMessageHeader Header;
             ui32 QueueSize : 16;
             ui32 Unused : 16;
@@ -112,7 +114,8 @@ static_assert(sizeof(TConnectMessage) == RDMA_PRIVATE_SIZE);
 struct Y_PACKED TAcceptMessage
 {
     union {
-        struct {
+        struct
+        {
             TMessageHeader Header;
             ui32 Unused : 16;
             ui32 KeepAliveTimeout : 16;
@@ -128,7 +131,8 @@ static_assert(sizeof(TAcceptMessage) == RDMA_PRIVATE_SIZE);
 struct Y_PACKED TRejectMessage
 {
     union {
-        struct {
+        struct
+        {
             TMessageHeader Header;
             ui32 Status : 16;
             ui32 QueueSize : 16;
@@ -170,7 +174,8 @@ static_assert(sizeof(TRequestMessage) == RDMA_REQUEST_SIZE);
 struct Y_PACKED TResponseMessage
 {
     union {
-        struct {
+        struct
+        {
             TMessageHeader Header;
             ui32 ReqId : 16;
             ui32 Status : 16;

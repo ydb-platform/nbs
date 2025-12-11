@@ -21,8 +21,8 @@ double UpdateRejectTimeoutMultiplier(
     if (!disconnectRecoveryInterval) {
         disconnectRecoveryInterval = TDuration::Minutes(1);
     }
-    double exponent = double((now - lastUpdateTs).MicroSeconds())
-        / disconnectRecoveryInterval.MicroSeconds();
+    double exponent = double((now - lastUpdateTs).MicroSeconds()) /
+                      disconnectRecoveryInterval.MicroSeconds();
     currentMultiplier /= pow(timeoutGrowthFactor, exponent);
 
     if (currentMultiplier < 1) {
@@ -44,7 +44,7 @@ double LogWithBase(double v, double base)
 struct TByUUID
 {
     template <typename T, typename U>
-    bool operator () (const T& lhs, const U& rhs) const
+    bool operator()(const T& lhs, const U& rhs) const
     {
         return lhs.GetDeviceUUID() < rhs.GetDeviceUUID();
     }
@@ -60,9 +60,8 @@ void FilterOutUnknownDevices(
     auto it = std::partition(
         devices.begin(),
         devices.end(),
-        [&] (const auto& d) {
-            return knownAgent.Devices.contains(d.GetDeviceUUID());
-        });
+        [&](const auto& d)
+        { return knownAgent.Devices.contains(d.GetDeviceUUID()); });
 
     std::move(it, devices.end(), RepeatedFieldBackInserter(&unknownDevices));
 
@@ -75,9 +74,8 @@ bool IsAllowedDevice(
 {
     return !FindIfPtr(
         agent.GetUnknownDevices(),
-        [&] (const auto& d) {
-            return d.GetDeviceUUID() == device.GetDeviceUUID();
-        });
+        [&](const auto& d)
+        { return d.GetDeviceUUID() == device.GetDeviceUUID(); });
 }
 
 }   // namespace
@@ -85,11 +83,12 @@ bool IsAllowedDevice(
 ////////////////////////////////////////////////////////////////////////////////
 
 TAgentList::TAgentList(
-        const TAgentListConfig& config,
-        NMonitoring::TDynamicCountersPtr counters,
-        TVector<NProto::TAgentConfig> configs,
-        THashMap<TString, NProto::TDiskRegistryAgentParams> diskRegistryAgentListParams,
-        TLog log)
+    const TAgentListConfig& config,
+    NMonitoring::TDynamicCountersPtr counters,
+    TVector<NProto::TAgentConfig> configs,
+    THashMap<TString, NProto::TDiskRegistryAgentParams>
+        diskRegistryAgentListParams,
+    TLog log)
     : Config(config)
     , ComponentGroup(std::move(counters))
     , DiskRegistryAgentListParams(std::move(diskRegistryAgentListParams))
@@ -102,7 +101,9 @@ TAgentList::TAgentList(
     }
 
     if (ComponentGroup) {
-        RejectAgentTimeoutCounter.Register(ComponentGroup, "RejectAgentTimeout");
+        RejectAgentTimeoutCounter.Register(
+            ComponentGroup,
+            "RejectAgentTimeout");
     }
 }
 
@@ -175,9 +176,7 @@ ui32 TAgentList::FindNodeId(const TAgentId& agentId) const
 {
     const auto* agent = FindAgent(agentId);
 
-    return agent
-        ? agent->GetNodeId()
-        : 0;
+    return agent ? agent->GetNodeId() : 0;
 }
 
 const NProto::TAgentConfig* TAgentList::FindAgent(TNodeId nodeId) const
@@ -212,9 +211,7 @@ NProto::TAgentConfig* TAgentList::FindAgent(const TAgentId& agentId)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TAgentList::TransferAgent(
-    NProto::TAgentConfig& agent,
-    TNodeId newNodeId)
+void TAgentList::TransferAgent(NProto::TAgentConfig& agent, TNodeId newNodeId)
 {
     Y_DEBUG_ABORT_UNLESS(newNodeId != 0);
     Y_DEBUG_ABORT_UNLESS(!FindAgent(newNodeId));
@@ -234,8 +231,8 @@ bool TAgentList::ValidateSerialNumber(
     }
 
     auto* knownDevice = knownAgent.Devices.FindPtr(config.GetDeviceUUID());
-    return knownDevice
-        && knownDevice->GetSerialNumber() == config.GetSerialNumber();
+    return knownDevice &&
+           knownDevice->GetSerialNumber() == config.GetSerialNumber();
 }
 
 void TAgentList::UpdateDevice(
@@ -252,8 +249,8 @@ void TAgentList::UpdateDevice(
     // If DA reports broken device we should keep the state and state message of
     // the device. At the same time we shouldn't remove the 'error' state
     // automatically.
-    if (oldConfig.GetState() != NProto::DEVICE_STATE_ERROR
-        && device.GetState() == NProto::DEVICE_STATE_ERROR)
+    if (oldConfig.GetState() != NProto::DEVICE_STATE_ERROR &&
+        device.GetState() == NProto::DEVICE_STATE_ERROR)
     {
         device.SetStateTs(timestamp.MicroSeconds());
     } else {
@@ -287,7 +284,8 @@ void TAgentList::UpdateDevice(
     if (!ValidateSerialNumber(knownAgent, device)) {
         device.SetState(NProto::DEVICE_STATE_ERROR);
         device.SetStateTs(timestamp.MicroSeconds());
-        device.SetStateMessage(TStringBuilder()
+        device.SetStateMessage(
+            TStringBuilder()
             << "invalid serial number: " << device.GetSerialNumber());
 
         return;
@@ -355,14 +353,21 @@ auto TAgentList::TryUpdateAgentDevices(
         auto it = std::partition(
             agent->MutableUnknownDevices()->begin(),
             end,
-            [&](const auto& device) {
-                return !knownAgent.Devices.contains(device.GetDeviceUUID());
-            });
+            [&](const auto& device)
+            { return !knownAgent.Devices.contains(device.GetDeviceUUID()); });
 
-        std::for_each(it, end, [&] (auto& newDevice) {
-            newDevices.push_back(newDevice.GetDeviceUUID());
-            AddNewDevice(*agent, knownAgent, timestamp, std::move(newDevice));
-        });
+        std::for_each(
+            it,
+            end,
+            [&](auto& newDevice)
+            {
+                newDevices.push_back(newDevice.GetDeviceUUID());
+                AddNewDevice(
+                    *agent,
+                    knownAgent,
+                    timestamp,
+                    std::move(newDevice));
+            });
 
         agent->MutableUnknownDevices()->erase(it, end);
     }
@@ -396,20 +401,19 @@ auto TAgentList::RegisterAgent(
 
     auto* agent = FindAgent(agentConfig.GetAgentId());
     if (!agent) {
-        STORAGE_INFO("A brand new agent %s #%d has arrived",
+        STORAGE_INFO(
+            "A brand new agent %s #%d has arrived",
             agentConfig.GetAgentId().c_str(),
             agentConfig.GetNodeId());
 
-        return AddNewAgent(
-            std::move(agentConfig),
-            timestamp,
-            knownAgent);
+        return AddNewAgent(std::move(agentConfig), timestamp, knownAgent);
     }
 
     const TNodeId prevNodeId = agent->GetNodeId();
 
     if (prevNodeId != agentConfig.GetNodeId()) {
-        STORAGE_INFO("Agent %s changed his previous node from #%d to #%d",
+        STORAGE_INFO(
+            "Agent %s changed his previous node from #%d to #%d",
             agentConfig.GetAgentId().c_str(),
             prevNodeId,
             agentConfig.GetNodeId());
@@ -419,8 +423,8 @@ auto TAgentList::RegisterAgent(
 
     agent->SetSeqNumber(agentConfig.GetSeqNumber());
     agent->SetDedicatedDiskAgent(agentConfig.GetDedicatedDiskAgent());
-    *agent->MutableUnknownDevices()
-        = std::move(*agentConfig.MutableUnknownDevices());
+    *agent->MutableUnknownDevices() =
+        std::move(*agentConfig.MutableUnknownDevices());
     agent->SetTemporaryAgent(agentConfig.GetTemporaryAgent());
 
     auto& newList = *agentConfig.MutableDevices();
@@ -442,8 +446,8 @@ auto TAgentList::RegisterAgent(
         auto& newDevice = newList[i];
         auto& oldDevice = oldList[j];
 
-        const int cmp = newDevice.GetDeviceUUID()
-            .compare(oldDevice.GetDeviceUUID());
+        const int cmp =
+            newDevice.GetDeviceUUID().compare(oldDevice.GetDeviceUUID());
 
         if (cmp == 0) {
             AddUpdatedDevice(
@@ -515,7 +519,8 @@ void TAgentList::PublishCounters(TInstant now)
         counter.Publish(now);
     }
 
-    RejectAgentTimeoutCounter.Set(GetRejectAgentTimeout(now, "").MilliSeconds());
+    RejectAgentTimeoutCounter.Set(
+        GetRejectAgentTimeout(now, "").MilliSeconds());
     RejectAgentTimeoutCounter.Publish(now);
 }
 
@@ -543,7 +548,9 @@ TString TAgentList::FindAgentRack(const TString& agentId) const
     return {};
 }
 
-TDuration TAgentList::GetRejectAgentTimeout(TInstant now, const TString& agentId) const
+TDuration TAgentList::GetRejectAgentTimeout(
+    TInstant now,
+    const TString& agentId) const
 {
     const auto m = UpdateRejectTimeoutMultiplier(
         RejectTimeoutMultiplier,
@@ -554,14 +561,18 @@ TDuration TAgentList::GetRejectAgentTimeout(TInstant now, const TString& agentId
 
     const auto* params = GetDiskRegistryAgentListParams(agentId);
 
-    auto nonReplicatedAgentMinTimeout = params
-        ? TDuration::MilliSeconds(params->GetNewNonReplicatedAgentMinTimeoutMs())
-        : Config.MinRejectAgentTimeout;
-    auto nonReplicatedAgentMaxTimeoutMs = params
-        ? TDuration::MilliSeconds(params->GetNewNonReplicatedAgentMaxTimeoutMs())
-        : Config.MaxRejectAgentTimeout;
+    auto nonReplicatedAgentMinTimeout =
+        params ? TDuration::MilliSeconds(
+                     params->GetNewNonReplicatedAgentMinTimeoutMs())
+               : Config.MinRejectAgentTimeout;
+    auto nonReplicatedAgentMaxTimeoutMs =
+        params ? TDuration::MilliSeconds(
+                     params->GetNewNonReplicatedAgentMaxTimeoutMs())
+               : Config.MaxRejectAgentTimeout;
 
-    return Min(nonReplicatedAgentMaxTimeoutMs, m * nonReplicatedAgentMinTimeout);
+    return Min(
+        nonReplicatedAgentMaxTimeoutMs,
+        m * nonReplicatedAgentMinTimeout);
 }
 
 void TAgentList::OnAgentDisconnected(TInstant now, const TString& agentId)
@@ -570,8 +581,9 @@ void TAgentList::OnAgentDisconnected(TInstant now, const TString& agentId)
 
     // the following formula calculates the time needed to restore
     // MinRejectAgentTimeout after reaching MaxRejectAgentTimeout
-    const TDuration disconnectCooldown = Config.DisconnectRecoveryInterval
-        * LogWithBase(
+    const TDuration disconnectCooldown =
+        Config.DisconnectRecoveryInterval *
+        LogWithBase(
             Config.MaxRejectAgentTimeout / Config.MinRejectAgentTimeout,
             Config.TimeoutGrowthFactor);
 
@@ -583,14 +595,18 @@ void TAgentList::OnAgentDisconnected(TInstant now, const TString& agentId)
     ts = now;
 
     const double multiplierLimit = Config.TimeoutGrowthFactor *
-        Config.MaxRejectAgentTimeout / Config.MinRejectAgentTimeout;
+                                   Config.MaxRejectAgentTimeout /
+                                   Config.MinRejectAgentTimeout;
 
-    RejectTimeoutMultiplier = Min(UpdateRejectTimeoutMultiplier(
-        RejectTimeoutMultiplier,
-        LastAgentDisconnectTs,
-        Config.TimeoutGrowthFactor,
-        Config.DisconnectRecoveryInterval,
-        now) * Config.TimeoutGrowthFactor, multiplierLimit);
+    RejectTimeoutMultiplier =
+        Min(UpdateRejectTimeoutMultiplier(
+                RejectTimeoutMultiplier,
+                LastAgentDisconnectTs,
+                Config.TimeoutGrowthFactor,
+                Config.DisconnectRecoveryInterval,
+                now) *
+                Config.TimeoutGrowthFactor,
+            multiplierLimit);
 
     LastAgentDisconnectTs = now;
 }
@@ -657,13 +673,14 @@ void TAgentList::RemoveAgentByIdx(size_t index)
     }
 }
 
-const NProto::TDiskRegistryAgentParams* TAgentList::GetDiskRegistryAgentListParams(
-    const TString& agentId) const
+const NProto::TDiskRegistryAgentParams*
+TAgentList::GetDiskRegistryAgentListParams(const TString& agentId) const
 {
     return DiskRegistryAgentListParams.FindPtr(agentId);
 }
 
-TVector<TString> TAgentList::CleanupExpiredAgentListParams(TInstant now) {
+TVector<TString> TAgentList::CleanupExpiredAgentListParams(TInstant now)
+{
     TVector<TString> expiredAgentListParamsAgentIds;
     for (const auto& [agentId, params]: DiskRegistryAgentListParams) {
         if (now.MilliSeconds() > params.GetDeadlineMs()) {

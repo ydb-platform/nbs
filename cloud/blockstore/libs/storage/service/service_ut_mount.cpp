@@ -1,5 +1,6 @@
 #include "service_ut.h"
 
+#include "cloud/blockstore/private/api/protos/volume.pb.h"
 #include "service_events_private.h"
 
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
@@ -10,7 +11,6 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/mount_token.h>
-#include "cloud/blockstore/private/api/protos/volume.pb.h"
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/common/helpers.h>
@@ -31,15 +31,16 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using EChangeBindingOp = TEvService::TEvChangeVolumeBindingRequest::EChangeBindingOp;
+using EChangeBindingOp =
+    TEvService::TEvChangeVolumeBindingRequest::EChangeBindingOp;
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 {
-    void DoTestShouldMountVolume(TTestEnv& env, ui32 nodeIdx)
+    void DoTestShouldMountVolume(TTestEnv & env, ui32 nodeIdx)
     {
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateVolume();
@@ -73,15 +74,19 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         {
             auto response = service.MountVolume(
                 DefaultDiskId,
-                "", // instanceId
-                "", // token
+                "",   // instanceId
+                "",   // token
                 NProto::IPC_GRPC,
                 NProto::VOLUME_ACCESS_REPAIR,
                 NProto::VOLUME_MOUNT_LOCAL);
             sessionId = response->Record.GetSessionId();
         }
 
-        service.WriteBlocks(DefaultDiskId, TBlockRange64::MakeOneBlock(0), sessionId, 1);
+        service.WriteBlocks(
+            DefaultDiskId,
+            TBlockRange64::MakeOneBlock(0),
+            sessionId,
+            1);
         {
             auto response = service.ReadBlocks(DefaultDiskId, 0, sessionId);
 
@@ -89,8 +94,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             UNIT_ASSERT_EQUAL(1, blocks.BuffersSize());
             UNIT_ASSERT_VALUES_EQUAL(
                 TString(DefaultBlockSize, 1),
-                blocks.GetBuffers(0)
-            );
+                blocks.GetBuffers(0));
         }
 
         service.UnmountVolume(DefaultDiskId, sessionId);
@@ -176,7 +180,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::VOLUME_MOUNT_LOCAL);
 
         for (ui32 nodeIdx: {nodeIdx1, nodeIdx2}) {
-            for (auto accessMode: {NProto::VOLUME_ACCESS_READ_WRITE, NProto::VOLUME_ACCESS_REPAIR}) {
+            for (auto accessMode:
+                 {NProto::VOLUME_ACCESS_READ_WRITE,
+                  NProto::VOLUME_ACCESS_REPAIR})
+            {
                 TServiceClient service2(env.GetRuntime(), nodeIdx);
                 auto response = service2.MountVolume(
                     DefaultDiskId,
@@ -192,7 +199,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
     }
 
     void DoTestShouldKeepSessionsAfterTabletRestart(
-        TTestEnv& env,
+        TTestEnv & env,
         ui32 nodeIdx1,
         ui32 nodeIdx2)
     {
@@ -210,7 +217,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::VOLUME_MOUNT_LOCAL);
         TString sessionId = response->Record.GetSessionId();
 
-        runtime.UpdateCurrentTime(runtime.GetCurrentTime() + TDuration::Seconds(10));
+        runtime.UpdateCurrentTime(
+            runtime.GetCurrentTime() + TDuration::Seconds(10));
 
         service1.MountVolume(
             DefaultDiskId,
@@ -239,12 +247,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
     {
         TTestEnv env(1, 2);
         auto unmountClientsTimeout = TDuration::Seconds(10);
-        ui32 nodeIdx1 = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
-        ui32 nodeIdx2 = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
+        ui32 nodeIdx1 =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
+        ui32 nodeIdx2 =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
         DoTestShouldKeepSessionsAfterTabletRestart(env, nodeIdx1, nodeIdx2);
     }
 
@@ -252,22 +258,24 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
     {
         TTestEnv env(1, 2);
         auto unmountClientsTimeout = TDuration::Seconds(9);
-        ui32 nodeIdx1 = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
-        ui32 nodeIdx2 = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
+        ui32 nodeIdx1 =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
+        ui32 nodeIdx2 =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
 
         ui64 volumeTabletId = 0;
         auto& runtime = env.GetRuntime();
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeResponse: {
-                        auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        auto* msg =
+                            event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
                         const auto& volumeDescription =
-                            msg->PathDescription.GetBlockStoreVolumeDescription();
+                            msg->PathDescription
+                                .GetBlockStoreVolumeDescription();
                         volumeTabletId = volumeDescription.GetVolumeTabletId();
                         break;
                     }
@@ -289,7 +297,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         if (!volumeTabletId) {
             TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvSSProxy::EvDescribeVolumeResponse);
+            options.FinalEvents.emplace_back(
+                TEvSSProxy::EvDescribeVolumeResponse);
             runtime.DispatchEvents(options);
         }
 
@@ -313,7 +322,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             UNIT_ASSERT(FAILED(response->GetStatus()));
         }
 
-        runtime.UpdateCurrentTime(runtime.GetCurrentTime() + unmountClientsTimeout);
+        runtime.UpdateCurrentTime(
+            runtime.GetCurrentTime() + unmountClientsTimeout);
 
         // Should now be able to mount the volume as the first service
         // should have timed out
@@ -362,7 +372,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         static constexpr TDuration mountVolumeTimeout = TDuration::Seconds(3);
 
         NProto::TStorageServiceConfig storageServiceConfig;
-        storageServiceConfig.SetInactiveClientsTimeout(mountVolumeTimeout.MilliSeconds());
+        storageServiceConfig.SetInactiveClientsTimeout(
+            mountVolumeTimeout.MilliSeconds());
 
         TTestEnv env;
         ui32 nodeIdx = SetupTestEnv(env, std::move(storageServiceConfig));
@@ -379,14 +390,17 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             sessionId = response->Record.GetSessionId();
         }
 
-        runtime.UpdateCurrentTime(runtime.GetCurrentTime() + mountVolumeTimeout);
+        runtime.UpdateCurrentTime(
+            runtime.GetCurrentTime() + mountVolumeTimeout);
         service.MountVolume();
-        runtime.UpdateCurrentTime(runtime.GetCurrentTime() + mountVolumeTimeout * 0.05);
+        runtime.UpdateCurrentTime(
+            runtime.GetCurrentTime() + mountVolumeTimeout * 0.05);
 
         // Wait for timeout check
         {
             TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvServicePrivate::EvInactiveClientsTimeout);
+            options.FinalEvents.emplace_back(
+                TEvServicePrivate::EvInactiveClientsTimeout);
             runtime.DispatchEvents(options);
         }
 
@@ -405,22 +419,24 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
     {
         TTestEnv env(1, 2);
         auto unmountClientsTimeout = TDuration::Seconds(9);
-        ui32 nodeIdx1 = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
-        ui32 nodeIdx2 = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
+        ui32 nodeIdx1 =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
+        ui32 nodeIdx2 =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
 
         auto& runtime = env.GetRuntime();
 
         ui64 volumeTabletId = 0;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeResponse: {
-                        auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        auto* msg =
+                            event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
                         const auto& volumeDescription =
-                            msg->PathDescription.GetBlockStoreVolumeDescription();
+                            msg->PathDescription
+                                .GetBlockStoreVolumeDescription();
                         volumeTabletId = volumeDescription.GetVolumeTabletId();
                         break;
                     }
@@ -442,7 +458,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         if (!volumeTabletId) {
             TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvSSProxy::EvDescribeVolumeResponse);
+            options.FinalEvents.emplace_back(
+                TEvSSProxy::EvDescribeVolumeResponse);
             runtime.DispatchEvents(options);
         }
 
@@ -466,7 +483,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             UNIT_ASSERT(FAILED(response->GetStatus()));
         }
 
-        runtime.UpdateCurrentTime(runtime.GetCurrentTime() + unmountClientsTimeout);
+        runtime.UpdateCurrentTime(
+            runtime.GetCurrentTime() + unmountClientsTimeout);
 
         // Should now be able to mount the volume as the first service
         // should have timed out
@@ -500,7 +518,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
-                        auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
+                        auto* msg = event->Get<
+                            TEvServicePrivate::TEvVolumeTabletStatus>();
                         volumeActorId = msg->VolumeActor;
                         volumeTabletId = msg->TabletId;
                         startVolumeActorId = event->Sender;
@@ -526,11 +545,11 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 NProto::IPC_GRPC,
                 NProto::VOLUME_ACCESS_READ_WRITE,
                 NProto::VOLUME_MOUNT_LOCAL,
-                0, // mountFlags
-                0, // mountSeqNumber
+                0,   // mountFlags
+                0,   // mountSeqNumber
                 NProto::TEncryptionDesc(),
-                0,  // fillSeqNumber
-                0   // fillGeneration
+                0,   // fillSeqNumber
+                0    // fillGeneration
             );
             sessionId = response->Record.GetSessionId();
         }
@@ -542,17 +561,18 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL,
-            0, // mountFlags
-            1, // mountSeqNumber
+            0,   // mountFlags
+            1,   // mountSeqNumber
             NProto::TEncryptionDesc(),
-            0,  // fillSeqNumber
-            0   // fillGeneration
+            0,   // fillSeqNumber
+            0    // fillGeneration
         );
 
         // Wait until start volume actor is stopped
         if (!startVolumeActorStopped) {
             TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvServicePrivate::EvStartVolumeActorStopped);
+            options.FinalEvents.emplace_back(
+                TEvServicePrivate::EvStartVolumeActorStopped);
             runtime.DispatchEvents(options);
             UNIT_ASSERT(startVolumeActorStopped);
         }
@@ -568,8 +588,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_BS_INVALID_SESSION,
                 response->GetStatus(),
-                response->GetErrorReason()
-            );
+                response->GetErrorReason());
         }
 
         // Should work again after remount
@@ -581,11 +600,11 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 NProto::IPC_GRPC,
                 NProto::VOLUME_ACCESS_READ_WRITE,
                 NProto::VOLUME_MOUNT_LOCAL,
-                0, // mountFlags
-                2, // mountSeqNumber
+                0,   // mountFlags
+                2,   // mountSeqNumber
                 NProto::TEncryptionDesc(),
-                0,  // fillSeqNumber
-                0   // fillGeneration
+                0,   // fillSeqNumber
+                0    // fillGeneration
             );
             sessionId = response->Record.GetSessionId();
         }
@@ -645,7 +664,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         THashSet<TActorId> removeClientRequestSenders;
 
         // Collect events (considering deduplication of forwarding through pipe)
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvAddClientRequest: {
                         events.emplace_back(EEventType::ADD_CLIENT_REQUEST);
@@ -653,8 +674,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                     case TEvVolume::EvAddClientResponse: {
-                        if (addClientRequestSenders.contains(event->Recipient)) {
-                            events.emplace_back(EEventType::ADD_CLIENT_RESPONSE);
+                        if (addClientRequestSenders.contains(event->Recipient))
+                        {
+                            events.emplace_back(
+                                EEventType::ADD_CLIENT_RESPONSE);
                         }
                         break;
                     }
@@ -664,8 +687,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                     case TEvVolume::EvRemoveClientResponse: {
-                        if (removeClientRequestSenders.contains(event->Recipient)) {
-                            events.emplace_back(EEventType::REMOVE_CLIENT_RESPONSE);
+                        if (removeClientRequestSenders.contains(
+                                event->Recipient)) {
+                            events.emplace_back(
+                                EEventType::REMOVE_CLIENT_RESPONSE);
                         }
                         break;
                     }
@@ -709,7 +734,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 sessionId = response->Record.GetSessionId();
             }
 
-            auto& prevService = services[i-numServices/2];
+            auto& prevService = services[i - numServices / 2];
             prevService.SendUnmountVolumeRequest(DefaultDiskId, sessionId);
         }
 
@@ -748,20 +773,22 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         auto error = MakeError(E_ARGUMENT, "Error");
         ui32 counter = 0;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeRequest: {
                         if (++counter != 2) {
                             break;
                         }
-                        auto response = std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
-                            error);
+                        auto response = std::make_unique<
+                            TEvSSProxy::TEvDescribeVolumeResponse>(error);
                         runtime.Send(
                             new IEventHandle(
                                 event->Sender,
                                 event->Recipient,
                                 response.release(),
-                                0, // flags
+                                0,   // flags
                                 event->Cookie),
                             nodeIdx);
                         return TTestActorRuntime::EEventAction::DROP;
@@ -788,17 +815,19 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         auto error = MakeError(E_ARGUMENT, "Error");
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeRequest: {
-                        auto response = std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
-                            error);
+                        auto response = std::make_unique<
+                            TEvSSProxy::TEvDescribeVolumeResponse>(error);
                         runtime.Send(
                             new IEventHandle(
                                 event->Sender,
                                 event->Recipient,
                                 response.release(),
-                                0, // flags
+                                0,   // flags
                                 event->Cookie),
                             nodeIdx);
                         return TTestActorRuntime::EEventAction::DROP;
@@ -828,7 +857,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         TActorId source;
         ui64 cookie = 0;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& ev) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& ev)
+            {
                 switch (ev->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeRequest: {
                         target = ev->Sender;
@@ -851,15 +882,14 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         runtime.DispatchEvents(options);
 
         using TResponseType = TEvSSProxy::TEvDescribeVolumeResponse;
-        auto response =
-            std::make_unique<TResponseType>(error);
+        auto response = std::make_unique<TResponseType>(error);
 
         runtime.Send(
             new IEventHandle(
                 target,
                 source,
                 response.release(),
-                0, // flags
+                0,   // flags
                 cookie),
             nodeIdx);
 
@@ -884,11 +914,16 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         TServiceClient service(runtime, nodeIdx);
         service.CreateVolume();
 
-        runtime.SetObserverFunc( [=] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [=](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeResponse: {
-                        auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
-                        auto& pathDescription = const_cast<NKikimrSchemeOp::TPathDescription&>(msg->PathDescription);
+                        auto* msg =
+                            event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        auto& pathDescription =
+                            const_cast<NKikimrSchemeOp::TPathDescription&>(
+                                msg->PathDescription);
                         mutator(pathDescription);
                         break;
                     }
@@ -902,11 +937,14 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         UNIT_ASSERT(response->GetErrorReason());
     }
 
-    Y_UNIT_TEST(ShouldFailVolumeMountIfDescribeVolumeReturnsUnparsableMountToken)
+    Y_UNIT_TEST(
+        ShouldFailVolumeMountIfDescribeVolumeReturnsUnparsableMountToken)
     {
         FailVolumeMountIfDescribeVolumeReturnsWrongInfoCommon(
-            [] (NKikimrSchemeOp::TPathDescription& pathDescription) {
-                auto& volumeDescription = *pathDescription.MutableBlockStoreVolumeDescription();
+            [](NKikimrSchemeOp::TPathDescription& pathDescription)
+            {
+                auto& volumeDescription =
+                    *pathDescription.MutableBlockStoreVolumeDescription();
                 volumeDescription.SetMountToken("some random string");
             });
     }
@@ -923,7 +961,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         service.AssignVolume(DefaultDiskId, TString(), "some mount token");
 
-        service.SendMountVolumeRequest(DefaultDiskId, TString(), "other mount token");
+        service.SendMountVolumeRequest(
+            DefaultDiskId,
+            TString(),
+            "other mount token");
         auto response = service.RecvMountVolumeResponse();
         UNIT_ASSERT(response->GetStatus() == E_ARGUMENT);
         UNIT_ASSERT(response->GetErrorReason().Contains("Mount token"));
@@ -962,7 +1003,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         service.AssignVolume(DefaultDiskId, TString(), "some mount token");
 
-        service.SendMountVolumeRequest(DefaultDiskId, TString(), "some mount token");
+        service.SendMountVolumeRequest(
+            DefaultDiskId,
+            TString(),
+            "some mount token");
         auto response = service.RecvMountVolumeResponse();
         UNIT_ASSERT(response->GetStatus() == E_ARGUMENT);
         UNIT_ASSERT(response->GetErrorReason().Contains("Mount token"));
@@ -983,8 +1027,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_ALREADY,
                 response->GetStatus(),
-                response->GetErrorReason()
-            );
+                response->GetErrorReason());
         }
 
         TString sessionId11;
@@ -1000,12 +1043,12 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         TString sessionId12;
         {
             auto response = service12.MountVolume(
-                    DefaultDiskId,
-                    TString(),
-                    TString(),
-                    NProto::IPC_GRPC,
-                    NProto::VOLUME_ACCESS_READ_ONLY,
-                    NProto::VOLUME_MOUNT_REMOTE);
+                DefaultDiskId,
+                TString(),
+                TString(),
+                NProto::IPC_GRPC,
+                NProto::VOLUME_ACCESS_READ_ONLY,
+                NProto::VOLUME_MOUNT_REMOTE);
             sessionId12 = response->Record.GetSessionId();
 
             service12.ReadBlocks(DefaultDiskId, 0, sessionId12);
@@ -1020,8 +1063,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_ALREADY,
                 response->GetStatus(),
-                response->GetErrorReason()
-            );
+                response->GetErrorReason());
         }
 
         service12.ReadBlocks(DefaultDiskId, 0, sessionId12);
@@ -1040,17 +1082,19 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         auto error = MakeError(E_ARGUMENT, "Error");
 
-        runtime.SetObserverFunc( [nodeIdx, error, &runtime] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [nodeIdx, error, &runtime](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvRemoveClientResponse: {
-                        auto response = std::make_unique<TEvVolume::TEvRemoveClientResponse>(
-                            error);
+                        auto response = std::make_unique<
+                            TEvVolume::TEvRemoveClientResponse>(error);
                         runtime.Send(
                             new IEventHandle(
                                 event->Recipient,
                                 event->Sender,
                                 response.release(),
-                                0, // flags,
+                                0,   // flags,
                                 event->Cookie),
                             nodeIdx);
                         return TTestActorRuntime::EEventAction::DROP;
@@ -1064,12 +1108,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL_C(
             error.GetCode(),
             response->GetStatus(),
-            response->GetErrorReason()
-        );
+            response->GetErrorReason());
         UNIT_ASSERT_VALUES_EQUAL(
             error.GetMessage(),
-            response->GetErrorReason()
-        );
+            response->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldFailUnmountIfStopVolumeFails)
@@ -1084,17 +1126,19 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         auto error = MakeError(E_ARGUMENT, "Error");
 
-        runtime.SetObserverFunc( [nodeIdx, error, &runtime] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [nodeIdx, error, &runtime](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvStopVolumeResponse: {
-                        auto response = std::make_unique<TEvServicePrivate::TEvStopVolumeResponse>(
-                            error);
+                        auto response = std::make_unique<
+                            TEvServicePrivate::TEvStopVolumeResponse>(error);
                         runtime.Send(
                             new IEventHandle(
                                 event->Recipient,
                                 event->Sender,
                                 response.release(),
-                                0, // flags,
+                                0,   // flags,
                                 event->Cookie),
                             nodeIdx);
                         return TTestActorRuntime::EEventAction::DROP;
@@ -1108,12 +1152,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL_C(
             error.GetCode(),
             response->GetStatus(),
-            response->GetErrorReason()
-        );
+            response->GetErrorReason());
         UNIT_ASSERT_VALUES_EQUAL(
             error.GetMessage(),
-            response->GetErrorReason()
-        );
+            response->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldHandleMountAfterUnmountInFlight)
@@ -1131,12 +1173,12 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         ui32 mountVolumeRequestsCount = 0;
         bool onceUnmountProcessedEventSent = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& ev) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& ev)
+            {
                 switch (ev->GetTypeRewrite()) {
                     case TEvServicePrivate::EvInternalMountVolumeRequest: {
-                        UNIT_ASSERT_VALUES_EQUAL(
-                            1,
-                            ++mountVolumeRequestsCount);
+                        UNIT_ASSERT_VALUES_EQUAL(1, ++mountVolumeRequestsCount);
                         break;
                     }
                     case TEvServicePrivate::EvUnmountRequestProcessed: {
@@ -1152,8 +1194,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                 }
-                if (!onceUnmountProcessedEventSent &&
-                    unmountProcessedEvent &&
+                if (!onceUnmountProcessedEventSent && unmountProcessedEvent &&
                     mountVolumeRequestsCount)
                 {
                     onceUnmountProcessedEventSent = true;
@@ -1173,8 +1214,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 response->GetStatus(),
-                response->GetErrorReason()
-            );
+                response->GetErrorReason());
         }
 
         {
@@ -1182,8 +1222,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 response->GetStatus(),
-                response->GetErrorReason()
-            );
+                response->GetErrorReason());
         }
     }
 
@@ -1204,8 +1243,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         // that happens after the first AddClient for local
                         // mounts
                 response->GetStatus(),
-                response->GetErrorReason()
-            );
+                response->GetErrorReason());
         }
 
         {
@@ -1213,8 +1251,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_ALREADY,
                 response->GetStatus(),
-                response->GetErrorReason()
-            );
+                response->GetErrorReason());
         }
     }
 
@@ -1230,7 +1267,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         service.MountVolume();
 
         ui32 waitReadyCnt = 0;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvWaitReadyRequest: {
                         ++waitReadyCnt;
@@ -1250,8 +1289,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
             response->GetStatus(),
-            response->GetErrorReason()
-        );  // Must not be S_ALREADY
+            response->GetErrorReason());   // Must not be S_ALREADY
 
         UNIT_ASSERT_VALUES_UNEQUAL(0, waitReadyCnt);
     }
@@ -1277,8 +1315,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,   // Must not be S_ALREADY
             response->GetStatus(),
-            response->GetErrorReason()
-        );
+            response->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldProcessRemountFromRemoteToLocalWithoutOtherClients)
@@ -1316,7 +1353,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 NProto::IPC_GRPC,
                 readWriteAccessOption,
                 NProto::VOLUME_MOUNT_LOCAL);
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());  // Must not be S_ALREADY
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_OK,
+                response->GetStatus());   // Must not be S_ALREADY
         }
     }
 
@@ -1371,8 +1410,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         auto localMountOptions = {
             NProto::VOLUME_MOUNT_LOCAL,
-            NProto::VOLUME_MOUNT_REMOTE
-        };
+            NProto::VOLUME_MOUNT_REMOTE};
 
         for (auto localMountOption: localMountOptions) {
             {
@@ -1397,8 +1435,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 UNIT_ASSERT_VALUES_EQUAL_C(
                     E_ARGUMENT,
                     writeResponse->GetStatus(),
-                    writeResponse->GetErrorReason()
-                );
+                    writeResponse->GetErrorReason());
             }
 
             TString sessionId;
@@ -1409,8 +1446,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                     "bar",
                     NProto::IPC_GRPC,
                     NProto::VOLUME_ACCESS_READ_WRITE,
-                    localMountOption
-                );
+                    localMountOption);
 
                 service.SendWriteBlocksRequest(
                     DefaultDiskId,
@@ -1421,8 +1457,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 UNIT_ASSERT_VALUES_EQUAL_C(
                     S_OK,
                     writeResponse->GetStatus(),
-                    writeResponse->GetErrorReason()
-                );
+                    writeResponse->GetErrorReason());
 
                 sessionId = mountResponse->Record.GetSessionId();
             }
@@ -1513,15 +1548,16 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
     {
         TTestEnv env(1, 2);
         auto unmountClientsTimeout = TDuration::Seconds(10);
-        ui32 nodeIdx1 = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
+        ui32 nodeIdx1 =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
         auto& runtime = env.GetRuntime();
 
         ui32 numCalls = 0;
         ui32 stopSeen = 0;
         ui32 startSeen = 0;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvAddClientRequest: {
                         if (!numCalls++) {
@@ -1564,9 +1600,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
     {
         TTestEnv env;
         auto unmountClientsTimeout = TDuration::Seconds(10);
-        ui32 nodeIdx = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
+        ui32 nodeIdx =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
 
         auto& runtime = env.GetRuntime();
 
@@ -1575,7 +1610,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         service.MountVolume();
 
         bool stopResponseSeen = false;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvStopVolumeResponse: {
                         stopResponseSeen = true;
@@ -1600,9 +1637,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
     {
         TTestEnv env;
         auto unmountClientsTimeout = TDuration::Seconds(10);
-        ui32 nodeIdx = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
+        ui32 nodeIdx =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
 
         auto& runtime = env.GetRuntime();
 
@@ -1630,7 +1666,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_ONLY,
             NProto::VOLUME_MOUNT_REMOTE);
-        UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == DefaultBlocksCount);
+        UNIT_ASSERT(
+            response->Record.GetVolume().GetBlocksCount() ==
+            DefaultBlocksCount);
 
         response = service_target.MountVolume(
             DefaultDiskId,
@@ -1639,7 +1677,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL);
-        UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == DefaultBlocksCount);
+        UNIT_ASSERT(
+            response->Record.GetVolume().GetBlocksCount() ==
+            DefaultBlocksCount);
     }
 
     Y_UNIT_TEST(ShouldHandleInterNodeMigrationScenario)
@@ -1667,7 +1707,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::VOLUME_MOUNT_REMOTE);
         TString sessionId = response->Record.GetSessionId();
         UNIT_ASSERT(response->GetStatus() == S_OK);
-        UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == DefaultBlocksCount);
+        UNIT_ASSERT(
+            response->Record.GetVolume().GetBlocksCount() ==
+            DefaultBlocksCount);
 
         response = service_target.MountVolume(
             DefaultDiskId,
@@ -1676,7 +1718,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_ONLY,
             NProto::VOLUME_MOUNT_REMOTE);
-        UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == DefaultBlocksCount);
+        UNIT_ASSERT(
+            response->Record.GetVolume().GetBlocksCount() ==
+            DefaultBlocksCount);
 
         service_source.UnmountVolume(DefaultDiskId, sessionId);
 
@@ -1687,16 +1731,17 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL);
-        UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == DefaultBlocksCount);
+        UNIT_ASSERT(
+            response->Record.GetVolume().GetBlocksCount() ==
+            DefaultBlocksCount);
     }
 
     Y_UNIT_TEST(ShouldnotRevomeVolumeIfLastClientUnmountedWithError)
     {
         TTestEnv env;
         auto unmountClientsTimeout = TDuration::Seconds(10);
-        ui32 nodeIdx = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
+        ui32 nodeIdx =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
 
         auto& runtime = env.GetRuntime();
 
@@ -1706,17 +1751,20 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         service.MountVolume();
 
         // Collect events (considering deduplication of forwarding through pipe)
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvRemoveClientRequest: {
                         auto error = MakeError(E_REJECTED, "");
-                        auto response = std::make_unique<TEvVolume::TEvRemoveClientResponse>(error);
+                        auto response = std::make_unique<
+                            TEvVolume::TEvRemoveClientResponse>(error);
                         runtime.Send(
                             new IEventHandle(
                                 event->Sender,
                                 event->Recipient,
                                 response.release(),
-                                0, // flags
+                                0,   // flags
                                 event->Cookie),
                             nodeIdx);
                         return TTestActorRuntime::EEventAction::DROP;
@@ -1725,10 +1773,11 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-
         auto response = service.MountVolume(DefaultDiskId);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(DefaultBlocksCount, response->Record.GetVolume().GetBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            DefaultBlocksCount,
+            response->Record.GetVolume().GetBlocksCount());
 
         service.SendUnmountVolumeRequest(
             DefaultDiskId,
@@ -1744,7 +1793,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         response = service.RecvMountVolumeResponse();
         UNIT_ASSERT(FAILED(response->GetStatus()));
         UNIT_ASSERT_VALUES_EQUAL(
-            "Volume \"path_to_test_volume\" already has connection with read-write access: 0",
+            "Volume \"path_to_test_volume\" already has connection with "
+            "read-write access: 0",
             response->GetErrorReason());
     }
 
@@ -1752,12 +1802,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
     {
         TTestEnv env(1, 2);
         auto unmountClientsTimeout = TDuration::Seconds(10);
-        ui32 nodeIdx1 = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
-        ui32 nodeIdx2 = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
+        ui32 nodeIdx1 =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
+        ui32 nodeIdx2 =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
 
         auto& runtime = env.GetRuntime();
 
@@ -1774,17 +1822,14 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL,
             true,
-            0
-        );
+            0);
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
             response1->GetStatus(),
-            response1->GetErrorReason()
-        );
+            response1->GetErrorReason());
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlocksCount,
-            response1->Record.GetVolume().GetBlocksCount()
-        );
+            response1->Record.GetVolume().GetBlocksCount());
 
         service1.WriteBlocks(
             DefaultDiskId,
@@ -1802,8 +1847,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             1);
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlocksCount,
-            response2->Record.GetVolume().GetBlocksCount()
-        );
+            response2->Record.GetVolume().GetBlocksCount());
 
         service2.WriteBlocks(
             DefaultDiskId,
@@ -1819,8 +1863,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             auto response = service1.RecvWriteBlocksResponse();
             UNIT_ASSERT_C(
                 FAILED(response->GetStatus()),
-                response->GetErrorReason()
-            );
+                response->GetErrorReason());
         }
 
         {
@@ -1835,8 +1878,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 auto response = service1.RecvMountVolumeResponse();
                 UNIT_ASSERT_C(
                     FAILED(response->GetStatus()),
-                    response->GetErrorReason()
-                );
+                    response->GetErrorReason());
             }
         }
 
@@ -1853,26 +1895,22 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             0);
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlocksCount,
-            response1->Record.GetVolume().GetBlocksCount()
-        );
+            response1->Record.GetVolume().GetBlocksCount());
 
         service1.WriteBlocks(
             DefaultDiskId,
             TBlockRange64::WithLength(0, 1024),
-            response1->Record.GetSessionId()
-        );
+            response1->Record.GetSessionId());
     }
 
     Y_UNIT_TEST(ShouldHandleMountRequestWithMountSeqNumber)
     {
         TTestEnv env(1, 2);
         auto unmountClientsTimeout = TDuration::Seconds(10);
-        ui32 nodeIdx1 = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
-        ui32 nodeIdx2 = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
+        ui32 nodeIdx1 =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
+        ui32 nodeIdx2 =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
 
         auto& runtime = env.GetRuntime();
 
@@ -1893,18 +1931,15 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
             response1->GetStatus(),
-            response1->GetErrorReason()
-        );
+            response1->GetErrorReason());
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlocksCount,
-            response1->Record.GetVolume().GetBlocksCount()
-        );
+            response1->Record.GetVolume().GetBlocksCount());
 
         service1.WriteBlocks(
             DefaultDiskId,
             TBlockRange64::WithLength(0, 1024),
-            response1->Record.GetSessionId()
-        );
+            response1->Record.GetSessionId());
 
         auto response2 = service2.MountVolume(
             DefaultDiskId,
@@ -1914,31 +1949,26 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL,
             true,
-            1
-        );
+            1);
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlocksCount,
-            response2->Record.GetVolume().GetBlocksCount()
-        );
+            response2->Record.GetVolume().GetBlocksCount());
 
         service2.WriteBlocks(
             DefaultDiskId,
             TBlockRange64::WithLength(0, 1024),
-            response2->Record.GetSessionId()
-        );
+            response2->Record.GetSessionId());
 
         {
             service1.SendWriteBlocksRequest(
                 DefaultDiskId,
                 TBlockRange64::WithLength(0, 1024),
                 response1->Record.GetSessionId(),
-                char(1)
-            );
+                char(1));
             auto response = service1.RecvWriteBlocksResponse();
             UNIT_ASSERT_C(
                 FAILED(response->GetStatus()),
-                response->GetErrorReason()
-            );
+                response->GetErrorReason());
         }
 
         {
@@ -1948,15 +1978,13 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 "bar",
                 NProto::IPC_GRPC,
                 NProto::VOLUME_ACCESS_READ_WRITE,
-                NProto::VOLUME_MOUNT_LOCAL
-            );
+                NProto::VOLUME_MOUNT_LOCAL);
 
             {
                 auto response = service1.RecvMountVolumeResponse();
                 UNIT_ASSERT_C(
                     FAILED(response->GetStatus()),
-                    response->GetErrorReason()
-                );
+                    response->GetErrorReason());
             }
         }
     }
@@ -1965,9 +1993,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
     {
         TTestEnv env;
         auto unmountClientsTimeout = TDuration::Seconds(10);
-        ui32 nodeIdx = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
+        ui32 nodeIdx =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
 
         auto& runtime = env.GetRuntime();
 
@@ -1983,27 +2010,24 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL,
             true,
-            1
-        );
+            1);
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
             response->GetStatus(),
-            response->GetErrorReason()
-        );
+            response->GetErrorReason());
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlocksCount,
-            response->Record.GetVolume().GetBlocksCount()
-        );
+            response->Record.GetVolume().GetBlocksCount());
 
         auto statResponse = service.StatVolume(DefaultDiskId);
         UNIT_ASSERT_VALUES_EQUAL_C(
             1,
             statResponse->Record.GetMountSeqNumber(),
-            statResponse->GetErrorReason()
-        );
+            statResponse->GetErrorReason());
     }
 
-    void ShouldProperlyReactToAcquireDiskError(NProto::EVolumeMountMode mountMode)
+    void ShouldProperlyReactToAcquireDiskError(
+        NProto::EVolumeMountMode mountMode)
     {
         TTestEnv env;
         NProto::TStorageServiceConfig config;
@@ -2015,52 +2039,52 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             DefaultDiskId,
             1_GB / DefaultBlockSize,
             DefaultBlockSize,
-            TString(), // folderId
-            TString(), // cloudId
-            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED
-        );
+            TString(),   // folderId
+            TString(),   // cloudId
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
 
         int acquireResps = 0;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvDiskRegistry::EvAcquireDiskResponse: {
                         ++acquireResps;
-                        auto* msg = event->Get<TEvDiskRegistry::TEvAcquireDiskResponse>();
+                        auto* msg = event->Get<
+                            TEvDiskRegistry::TEvAcquireDiskResponse>();
                         msg->Record.Clear();
                         msg->Record.MutableError()->SetCode(E_FAIL);
                         break;
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         {
             service.SendMountVolumeRequest(
                 DefaultDiskId,
-                "", // instanceId
-                "", // token
+                "",   // instanceId
+                "",   // token
                 NProto::IPC_GRPC,
                 NProto::VOLUME_ACCESS_READ_WRITE,
-                mountMode
-            );
+                mountMode);
 
             auto response = service.RecvMountVolumeResponse();
             UNIT_ASSERT_VALUES_EQUAL(1, acquireResps);
             UNIT_ASSERT_VALUES_EQUAL(E_FAIL, response->GetStatus());
         }
 
-        env.GetRuntime().SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+        env.GetRuntime().SetObserverFunc(
+            TTestActorRuntime::DefaultObserverFunc);
 
         {
             service.SendMountVolumeRequest(
                 DefaultDiskId,
-                "", // instanceId
-                "", // token
+                "",   // instanceId
+                "",   // token
                 NProto::IPC_GRPC,
                 NProto::VOLUME_ACCESS_READ_WRITE,
-                mountMode
-            );
+                mountMode);
 
             auto response = service.RecvMountVolumeResponse();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
@@ -2068,16 +2092,13 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL(8, volume.DevicesSize());
             UNIT_ASSERT_VALUES_EQUAL(
                 "transport0",
-                volume.GetDevices(0).GetTransportId()
-            );
+                volume.GetDevices(0).GetTransportId());
             UNIT_ASSERT_VALUES_EQUAL(
                 128_MB / DefaultBlockSize,
-                volume.GetDevices(0).GetBlockCount()
-            );
+                volume.GetDevices(0).GetBlockCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 100500,
-                volume.GetDevices(0).GetPhysicalOffset()
-            );
+                volume.GetDevices(0).GetPhysicalOffset());
         }
     }
 
@@ -2091,7 +2112,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         ShouldProperlyReactToAcquireDiskError(NProto::VOLUME_MOUNT_REMOTE);
     }
 
-    void DoTestShouldChangeVolumeBindingForMountedVolume(TTestEnv& env, ui32 nodeIdx)
+    void DoTestShouldChangeVolumeBindingForMountedVolume(
+        TTestEnv & env,
+        ui32 nodeIdx)
     {
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateVolume();
@@ -2106,12 +2129,15 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         service.ReadBlocks(DefaultDiskId, 0, sessionId);
 
         {
-            auto request = std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
-                DefaultDiskId,
-                EChangeBindingOp::RELEASE_TO_HIVE,
-                NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT);
+            auto request =
+                std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+                    DefaultDiskId,
+                    EChangeBindingOp::RELEASE_TO_HIVE,
+                    NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
-            auto response = service.RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
+            auto response =
+                service
+                    .RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
         }
 
         service.WaitForVolume(DefaultDiskId);
@@ -2128,7 +2154,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         DoTestShouldChangeVolumeBindingForMountedVolume(env, nodeIdx);
     }
 
-    void DoTestShouldRejectChangeVolumeBindingForUnknownVolume(TTestEnv& env, ui32 nodeIdx)
+    void DoTestShouldRejectChangeVolumeBindingForUnknownVolume(
+        TTestEnv & env,
+        ui32 nodeIdx)
     {
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateVolume();
@@ -2142,12 +2170,15 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         service.ReadBlocks(DefaultDiskId, 0, sessionId);
 
         {
-            auto request = std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
-                "Unknown",
-                EChangeBindingOp::RELEASE_TO_HIVE,
-                NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT);
+            auto request =
+                std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+                    "Unknown",
+                    EChangeBindingOp::RELEASE_TO_HIVE,
+                    NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
-            auto response = service.RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
+            auto response =
+                service
+                    .RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
             UNIT_ASSERT_C(
                 FAILED(response->GetStatus()),
                 "ChangeVolumeBindingRequest request unexpectedly succeeded");
@@ -2163,54 +2194,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         DoTestShouldRejectChangeVolumeBindingForUnknownVolume(env, nodeIdx);
     }
 
-    void DoTestShouldBringRemotelyMountedVolumeBack(TTestEnv& env, ui32 nodeIdx)
-    {
-        TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateVolume();
-
-        TString sessionId;
-        {
-            auto response = service.MountVolume();
-            sessionId = response->Record.GetSessionId();
-        }
-
-        service.WaitForVolume(DefaultDiskId);
-        service.ReadBlocks(DefaultDiskId, 0, sessionId);
-
-        {
-            auto request = std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
-                DefaultDiskId,
-                EChangeBindingOp::RELEASE_TO_HIVE,
-                NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT);
-            service.SendRequest(MakeStorageServiceId(), std::move(request));
-            auto response = service.RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
-        }
-
-        service.WaitForVolume(DefaultDiskId);
-        service.ReadBlocks(DefaultDiskId, 0, sessionId);
-
-        {
-            auto request = std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
-                DefaultDiskId,
-                EChangeBindingOp::ACQUIRE_FROM_HIVE,
-                NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT);
-            service.SendRequest(MakeStorageServiceId(), std::move(request));
-            auto response = service.RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
-        }
-
-        service.UnmountVolume(DefaultDiskId, sessionId);
-    }
-
-    Y_UNIT_TEST(ShouldBringRemotelyMountedVolumeBack)
-    {
-        TTestEnv env;
-        ui32 nodeIdx = SetupTestEnv(env);
-
-        DoTestShouldBringRemotelyMountedVolumeBack(env, nodeIdx);
-    }
-
-    void DoTestShouldSucceedSettingRemoteBindingForRemotelyMountedVolume(
-        TTestEnv& env,
+    void DoTestShouldBringRemotelyMountedVolumeBack(
+        TTestEnv & env,
         ui32 nodeIdx)
     {
         TServiceClient service(env.GetRuntime(), nodeIdx);
@@ -2226,30 +2211,92 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         service.ReadBlocks(DefaultDiskId, 0, sessionId);
 
         {
-            auto request = std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
-                DefaultDiskId,
-                EChangeBindingOp::RELEASE_TO_HIVE,
-                NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT);
+            auto request =
+                std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+                    DefaultDiskId,
+                    EChangeBindingOp::RELEASE_TO_HIVE,
+                    NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
-            auto response = service.RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
+            auto response =
+                service
+                    .RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
         }
 
         service.WaitForVolume(DefaultDiskId);
         service.ReadBlocks(DefaultDiskId, 0, sessionId);
 
         {
-            auto request = std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
-                DefaultDiskId,
-                EChangeBindingOp::ACQUIRE_FROM_HIVE,
-                NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT);
+            auto request =
+                std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+                    DefaultDiskId,
+                    EChangeBindingOp::ACQUIRE_FROM_HIVE,
+                    NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
-            auto response = service.RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
+            auto response =
+                service
+                    .RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
         }
 
         service.UnmountVolume(DefaultDiskId, sessionId);
     }
 
-    void DoTestShouldAllowRemoteMountIfBindingSetToLocal(TTestEnv& env, ui32 nodeIdx)
+    Y_UNIT_TEST(ShouldBringRemotelyMountedVolumeBack)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        DoTestShouldBringRemotelyMountedVolumeBack(env, nodeIdx);
+    }
+
+    void DoTestShouldSucceedSettingRemoteBindingForRemotelyMountedVolume(
+        TTestEnv & env,
+        ui32 nodeIdx)
+    {
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateVolume();
+
+        TString sessionId;
+        {
+            auto response = service.MountVolume();
+            sessionId = response->Record.GetSessionId();
+        }
+
+        service.WaitForVolume(DefaultDiskId);
+        service.ReadBlocks(DefaultDiskId, 0, sessionId);
+
+        {
+            auto request =
+                std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+                    DefaultDiskId,
+                    EChangeBindingOp::RELEASE_TO_HIVE,
+                    NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT);
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+            auto response =
+                service
+                    .RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
+        }
+
+        service.WaitForVolume(DefaultDiskId);
+        service.ReadBlocks(DefaultDiskId, 0, sessionId);
+
+        {
+            auto request =
+                std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+                    DefaultDiskId,
+                    EChangeBindingOp::ACQUIRE_FROM_HIVE,
+                    NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT);
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+            auto response =
+                service
+                    .RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
+        }
+
+        service.UnmountVolume(DefaultDiskId, sessionId);
+    }
+
+    void DoTestShouldAllowRemoteMountIfBindingSetToLocal(
+        TTestEnv & env,
+        ui32 nodeIdx)
     {
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateVolume();
@@ -2263,12 +2310,15 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::VOLUME_MOUNT_LOCAL);
 
         {
-            auto request = std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
-                DefaultDiskId,
-                EChangeBindingOp::ACQUIRE_FROM_HIVE,
-                NProto::EPreemptionSource::SOURCE_BALANCER);
+            auto request =
+                std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+                    DefaultDiskId,
+                    EChangeBindingOp::ACQUIRE_FROM_HIVE,
+                    NProto::EPreemptionSource::SOURCE_BALANCER);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
-            auto response = service.RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
+            auto response =
+                service
+                    .RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
         }
 
         response = service.MountVolume(
@@ -2307,7 +2357,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         DoTestShouldAllowRemoteMountIfBindingSetToLocal(env, nodeIdx);
     }
 
-    void DoTestShouldAllowLocalMountIfBindingSetToRemote(TTestEnv& env, ui32 nodeIdx)
+    void DoTestShouldAllowLocalMountIfBindingSetToRemote(
+        TTestEnv & env,
+        ui32 nodeIdx)
     {
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateVolume();
@@ -2321,12 +2373,15 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::VOLUME_MOUNT_REMOTE);
 
         {
-            auto request = std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
-                DefaultDiskId,
-                EChangeBindingOp::RELEASE_TO_HIVE,
-                NProto::EPreemptionSource::SOURCE_BALANCER);
+            auto request =
+                std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+                    DefaultDiskId,
+                    EChangeBindingOp::RELEASE_TO_HIVE,
+                    NProto::EPreemptionSource::SOURCE_BALANCER);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
-            auto response = service.RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
+            auto response =
+                service
+                    .RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
         }
 
         response = service.MountVolume(
@@ -2369,26 +2424,30 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
     {
         TTestEnv env;
         auto unmountClientsTimeout = TDuration::Seconds(9);
-        ui32 nodeIdx = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
+        ui32 nodeIdx =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
 
         ui64 volumeTabletId = 0;
         TActorId volumeActorId;
         auto& runtime = env.GetRuntime();
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
-                        auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
+                        auto* msg = event->Get<
+                            TEvServicePrivate::TEvVolumeTabletStatus>();
                         volumeActorId = msg->VolumeActor;
                         volumeTabletId = msg->TabletId;
                         break;
                     }
                     case TEvSSProxy::EvDescribeVolumeResponse: {
-                        auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        auto* msg =
+                            event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
                         const auto& volumeDescription =
-                            msg->PathDescription.GetBlockStoreVolumeDescription();
+                            msg->PathDescription
+                                .GetBlockStoreVolumeDescription();
                         volumeTabletId = volumeDescription.GetVolumeTabletId();
                         break;
                     }
@@ -2411,16 +2470,23 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         if (!volumeTabletId) {
             TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvSSProxy::EvDescribeVolumeResponse);
+            options.FinalEvents.emplace_back(
+                TEvSSProxy::EvDescribeVolumeResponse);
             runtime.DispatchEvents(options);
         }
 
         UNIT_ASSERT(volumeTabletId);
         UNIT_ASSERT(volumeActorId);
 
-        runtime.Send(new IEventHandle(volumeActorId, service.GetSender(), new TEvents::TEvPoisonPill()), nodeIdx);
+        runtime.Send(
+            new IEventHandle(
+                volumeActorId,
+                service.GetSender(),
+                new TEvents::TEvPoisonPill()),
+            nodeIdx);
         TDispatchOptions rebootOptions;
-        rebootOptions.FinalEvents.push_back(TDispatchOptions::TFinalEventCondition(TEvTablet::EvBoot, 1));
+        rebootOptions.FinalEvents.push_back(
+            TDispatchOptions::TFinalEventCondition(TEvTablet::EvBoot, 1));
         runtime.DispatchEvents(rebootOptions);
 
         service.MountVolume(
@@ -2438,23 +2504,24 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
     {
         TTestEnv env(1, 2);
         auto unmountClientsTimeout = TDuration::Seconds(9);
-        ui32 nodeIdx1 = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
+        ui32 nodeIdx1 =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
 
-        SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
+        SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
 
         ui64 volumeTabletId = 0;
         auto& runtime = env.GetRuntime();
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeResponse: {
-                        auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        auto* msg =
+                            event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
                         const auto& volumeDescription =
-                            msg->PathDescription.GetBlockStoreVolumeDescription();
+                            msg->PathDescription
+                                .GetBlockStoreVolumeDescription();
                         volumeTabletId = volumeDescription.GetVolumeTabletId();
                         break;
                     }
@@ -2477,7 +2544,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         if (!volumeTabletId) {
             TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvSSProxy::EvDescribeVolumeResponse);
+            options.FinalEvents.emplace_back(
+                TEvSSProxy::EvDescribeVolumeResponse);
             runtime.DispatchEvents(options);
         }
 
@@ -2523,12 +2591,12 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 DefaultDiskId,
                 DefaultBlocksCount,
                 DefaultBlockSize,
-                "",  // folderId
-                "",  // cloudId
+                "",   // folderId
+                "",   // cloudId
                 NCloud::NProto::STORAGE_MEDIA_DEFAULT,
                 NProto::TVolumePerformanceProfile(),
-                "",  // placementGroupId
-                0,  // placementPartitionIndex
+                "",   // placementGroupId
+                0,    // placementPartitionIndex
                 0,
                 encryptionSpec);
             auto response = service.RecvCreateVolumeResponse();
@@ -2552,12 +2620,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT,
                 response->GetStatus(),
-                response->GetErrorReason()
-            );
+                response->GetErrorReason());
             UNIT_ASSERT_C(
                 response->GetErrorReason().Contains("encryption key hashes"),
-                response->GetErrorReason()
-            );
+                response->GetErrorReason());
         }
 
         {
@@ -2575,8 +2641,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 response->GetStatus(),
-                response->GetErrorReason()
-            );
+                response->GetErrorReason());
         }
     }
 
@@ -2585,24 +2650,28 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         static constexpr TDuration mountVolumeTimeout = TDuration::Seconds(1);
 
         NProto::TStorageServiceConfig storageServiceConfig;
-        storageServiceConfig.SetInactiveClientsTimeout(mountVolumeTimeout.MilliSeconds());
+        storageServiceConfig.SetInactiveClientsTimeout(
+            mountVolumeTimeout.MilliSeconds());
 
         TTestEnv env;
         ui32 nodeIdx1 = SetupTestEnv(env, std::move(storageServiceConfig));
 
         auto& runtime = env.GetRuntime();
         bool dieSeen = false;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvRemoveClientRequest: {
-                        auto msg = std::make_unique<TEvVolume::TEvRemoveClientResponse>(
+                        auto msg = std::make_unique<
+                            TEvVolume::TEvRemoveClientResponse>(
                             MakeTabletIsDeadError(E_REJECTED, __LOCATION__));
                         runtime.Send(
                             new IEventHandle(
                                 event->Sender,
                                 event->Recipient,
                                 msg.release(),
-                                0, // flags
+                                0,   // flags
                                 event->Cookie),
                             nodeIdx1);
                         return TTestActorRuntime::EEventAction::DROP;
@@ -2616,13 +2685,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             });
 
         TServiceClient service1(env.GetRuntime(), nodeIdx1);
-        service1.CreateVolume(
-            DefaultDiskId,
-            512,
-            DefaultBlockSize,
-            "foo",
-            "bar"
-        );
+        service1
+            .CreateVolume(DefaultDiskId, 512, DefaultBlockSize, "foo", "bar");
 
         service1.MountVolume(
             DefaultDiskId,
@@ -2630,18 +2694,14 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             TString(),
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_ONLY,
-            NProto::VOLUME_MOUNT_LOCAL
-        );
+            NProto::VOLUME_MOUNT_LOCAL);
 
         service1.DestroyVolume(DefaultDiskId);
 
         {
             TDispatchOptions options;
-            options.FinalEvents.emplace_back(
-                TEvService::EvUnregisterVolume);
-            UNIT_ASSERT_VALUES_EQUAL(
-                true,
-                runtime.DispatchEvents(options));
+            options.FinalEvents.emplace_back(TEvService::EvUnregisterVolume);
+            UNIT_ASSERT_VALUES_EQUAL(true, runtime.DispatchEvents(options));
         }
 
         {
@@ -2650,14 +2710,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 TEvService::EvUnmountVolumeRequest);
             options.FinalEvents.emplace_back(
                 TEvServicePrivate::EvSessionActorDied);
-            UNIT_ASSERT_VALUES_EQUAL(
-                true,
-                runtime.DispatchEvents(options));
+            UNIT_ASSERT_VALUES_EQUAL(true, runtime.DispatchEvents(options));
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            true,
-            dieSeen);
+        UNIT_ASSERT_VALUES_EQUAL(true, dieSeen);
     }
 
     Y_UNIT_TEST(ShouldAllowToIncreaseSeqNumWithNonLocalReadOnlyMounts)
@@ -2669,13 +2725,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         TServiceClient service1(env.GetRuntime(), nodeIdx1);
         TServiceClient service2(env.GetRuntime(), nodeIdx2);
 
-        service1.CreateVolume(
-            DefaultDiskId,
-            512,
-            DefaultBlockSize,
-            "foo",
-            "bar"
-        );
+        service1
+            .CreateVolume(DefaultDiskId, 512, DefaultBlockSize, "foo", "bar");
 
         auto response1 = service1.MountVolume(
             DefaultDiskId,
@@ -2683,11 +2734,14 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             TString(),
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL
-        );
+            NProto::VOLUME_MOUNT_LOCAL);
         auto session1 = response1->Record.GetSessionId();
 
-        service1.WriteBlocks(DefaultDiskId, TBlockRange64::MakeOneBlock(0), session1, 1);
+        service1.WriteBlocks(
+            DefaultDiskId,
+            TBlockRange64::MakeOneBlock(0),
+            session1,
+            1);
 
         auto response2 = service2.MountVolume(
             DefaultDiskId,
@@ -2717,13 +2771,13 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             1);
     }
 
-    Y_UNIT_TEST(ShouldNotUnmountInactiveClientIfThereArePendingMountUnmountRequests)
+    Y_UNIT_TEST(
+        ShouldNotUnmountInactiveClientIfThereArePendingMountUnmountRequests)
     {
         TTestEnv env;
         NProto::TStorageServiceConfig storageServiceConfig;
         storageServiceConfig.SetInitialAddClientTimeout(
-            TDuration::Seconds(5).MilliSeconds()
-        );
+            TDuration::Seconds(5).MilliSeconds());
 
         ui32 nodeIdx1 = SetupTestEnv(env, std::move(storageServiceConfig));
 
@@ -2733,12 +2787,16 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         ui64 volumeTabletId = 0;
         auto& runtime = env.GetRuntime();
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeResponse: {
-                        auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        auto* msg =
+                            event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
                         const auto& volumeDescription =
-                            msg->PathDescription.GetBlockStoreVolumeDescription();
+                            msg->PathDescription
+                                .GetBlockStoreVolumeDescription();
                         volumeTabletId = volumeDescription.GetVolumeTabletId();
                         break;
                     }
@@ -2749,13 +2807,15 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         service1.CreateVolume();
 
         auto sessionId1 = service1.MountVolume()->Record.GetSessionId();
-        auto sessionId2 = service2.MountVolume(
-            DefaultDiskId,
-            TString(),
-            TString(),
-            NProto::IPC_GRPC,
-            NProto::VOLUME_ACCESS_READ_ONLY,
-            NProto::VOLUME_MOUNT_REMOTE)->Record.GetSessionId();
+        auto sessionId2 = service2
+                              .MountVolume(
+                                  DefaultDiskId,
+                                  TString(),
+                                  TString(),
+                                  NProto::IPC_GRPC,
+                                  NProto::VOLUME_ACCESS_READ_ONLY,
+                                  NProto::VOLUME_MOUNT_REMOTE)
+                              ->Record.GetSessionId();
 
         RebootTablet(runtime, volumeTabletId, service1.GetSender(), nodeIdx1);
 
@@ -2767,7 +2827,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         bool unmountSeen = false;
         bool responseCatched = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvAddClientResponse: {
                         if (!savedEvent && !responseCatched) {
@@ -2828,7 +2890,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         ui32 localStartSeen = 0;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvStartVolumeResponse: {
                         ++localStartSeen;
@@ -2857,12 +2921,16 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         ui64 volumeTabletId = 0;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeResponse: {
-                        auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        auto* msg =
+                            event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
                         const auto& volumeDescription =
-                            msg->PathDescription.GetBlockStoreVolumeDescription();
+                            msg->PathDescription
+                                .GetBlockStoreVolumeDescription();
                         volumeTabletId = volumeDescription.GetVolumeTabletId();
                         break;
                     }
@@ -2874,7 +2942,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         bool startVolumeSeen = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvAddClientRequest: {
                         return TTestActorRuntime::EEventAction::DROP;
@@ -2908,7 +2978,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         service.CreateVolume();
         service.AssignVolume();
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvHiveProxy::EvLockTabletRequest: {
                         ++lockTabletRequestCount;
@@ -2943,7 +3015,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         service.CreateVolume();
         service.AssignVolume();
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvHiveProxy::EvLockTabletRequest: {
                         startVolumeActorId = event->Sender;
@@ -2951,9 +3025,11 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                     case TEvSSProxy::EvDescribeVolumeResponse: {
-                        auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        auto* msg =
+                            event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
                         const auto& volumeDescription =
-                            msg->PathDescription.GetBlockStoreVolumeDescription();
+                            msg->PathDescription
+                                .GetBlockStoreVolumeDescription();
                         volumeTabletId = volumeDescription.GetVolumeTabletId();
                         break;
                     }
@@ -2974,7 +3050,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         auto response = service.RecvMountVolumeResponse();
         UNIT_ASSERT(FAILED(response->GetStatus()));
         UNIT_ASSERT_VALUES_EQUAL(
-            "Concurrent lock requests detected", response->GetErrorReason());
+            "Concurrent lock requests detected",
+            response->GetErrorReason());
         UNIT_ASSERT_VALUES_EQUAL(2, lockTabletRequestCount);
     }
 
@@ -3000,16 +3077,20 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
-                        auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
+                        auto* msg = event->Get<
+                            TEvServicePrivate::TEvVolumeTabletStatus>();
                         volumeActorIds.push_back(msg->VolumeActor);
                         break;
                     }
                     case TEvTablet::EvTabletDead: {
                         auto* msg = event->Get<TEvTablet::TEvTabletDead>();
-                        if (msg->Reason == TEvTablet::TEvTabletDead::ReasonDemotedByStateStorage
+                        if (msg->Reason == TEvTablet::TEvTabletDead::
+                                               ReasonDemotedByStateStorage
                             // Ignore events that were sent to the volume.
-                            && Find(volumeActorIds.begin(), volumeActorIds.end(), event->Recipient) ==
-                            volumeActorIds.end())
+                            && Find(
+                                   volumeActorIds.begin(),
+                                   volumeActorIds.end(),
+                                   event->Recipient) == volumeActorIds.end())
                         {
                             ++volumeDemotedByStateStorageCount;
                         }
@@ -3028,11 +3109,11 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL,
-            0, // mountFlags
-            0, // mountSeqNumber
+            0,   // mountFlags
+            0,   // mountSeqNumber
             NProto::TEncryptionDesc(),
-            0,  // fillSeqNumber
-            0   // fillGeneration
+            0,   // fillSeqNumber
+            0    // fillGeneration
         );
 
         service2.MountVolume(
@@ -3042,11 +3123,11 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_WRITE,
             NProto::VOLUME_MOUNT_LOCAL,
-            0, // mountFlags
-            1, // mountSeqNumber
+            0,   // mountFlags
+            1,   // mountSeqNumber
             NProto::TEncryptionDesc(),
-            0,  // fillSeqNumber
-            0   // fillGeneration
+            0,   // fillSeqNumber
+            0    // fillGeneration
         );
 
         // If tablet on node with outdated mount does not stop then it will
@@ -3090,8 +3171,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         if (!mountRequestProcessed) {
                             auto* msg = event->Get<
                                 TEvServicePrivate::TEvMountRequestProcessed>();
-                            const_cast<NProto::TError&>(msg->Error) = MakeKikimrError(
-                                NKikimrProto::ERROR);
+                            const_cast<NProto::TError&>(msg->Error) =
+                                MakeKikimrError(NKikimrProto::ERROR);
                             mountRequestProcessed = true;
                         }
                         break;
@@ -3124,11 +3205,15 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         service.SendMountVolumeRequest();
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvWaitReadyRequest: {
                         // Let volume tablet start.
-                        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(1000));
+                        runtime.DispatchEvents(
+                            TDispatchOptions(),
+                            TDuration::MilliSeconds(1000));
                         service.SendDestroyVolumeRequest();
                         break;
                     }
@@ -3157,7 +3242,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         bool addClientSeen = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvAddClientRequest: {
                         addClientSeen = true;
@@ -3203,7 +3290,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         bool startVolumeSeen = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvStartVolumeRequest: {
                         startVolumeSeen = true;
@@ -3276,13 +3365,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         service2.SetClientId(service1.GetClientId());
         service3.SetClientId(service1.GetClientId());
 
-        service1.CreateVolume(
-            DefaultDiskId,
-            512,
-            DefaultBlockSize,
-            "foo",
-            "bar"
-        );
+        service1
+            .CreateVolume(DefaultDiskId, 512, DefaultBlockSize, "foo", "bar");
 
         auto response1 = service1.MountVolume(
             DefaultDiskId,
@@ -3290,11 +3374,14 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             TString(),
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL
-        );
+            NProto::VOLUME_MOUNT_LOCAL);
         auto session1 = response1->Record.GetSessionId();
 
-        service1.WriteBlocks(DefaultDiskId, TBlockRange64::MakeOneBlock(0), session1, 1);
+        service1.WriteBlocks(
+            DefaultDiskId,
+            TBlockRange64::MakeOneBlock(0),
+            session1,
+            1);
 
         auto response2 = service2.MountVolume(
             DefaultDiskId,
@@ -3332,8 +3419,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             TString(),
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_REMOTE
-        );
+            NProto::VOLUME_MOUNT_REMOTE);
         auto session3 = response3->Record.GetSessionId();
 
         service3.WriteBlocks(
@@ -3365,13 +3451,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         TServiceClient service1(env.GetRuntime(), nodeIdx1);
         TServiceClient service2(env.GetRuntime(), nodeIdx2);
 
-        service1.CreateVolume(
-            DefaultDiskId,
-            512,
-            DefaultBlockSize,
-            "foo",
-            "bar"
-        );
+        service1
+            .CreateVolume(DefaultDiskId, 512, DefaultBlockSize, "foo", "bar");
 
         auto response1 = service1.MountVolume(
             DefaultDiskId,
@@ -3379,13 +3460,14 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             TString(),
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL
-        );
+            NProto::VOLUME_MOUNT_LOCAL);
 
         auto sessionId = response1->Record.GetSessionId();
 
         bool tabletDeadSeen = false;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvTablet::EvTabletDead: {
                         tabletDeadSeen = true;
@@ -3403,9 +3485,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             env.GetRuntime().DispatchEvents(options);
         }
 
-        auto response2 = service1.UnmountVolume(
-            DefaultDiskId,
-            sessionId);
+        auto response2 = service1.UnmountVolume(DefaultDiskId, sessionId);
         UNIT_ASSERT_C(
             SUCCEEDED(response2->GetStatus()),
             response2->GetErrorReason());
@@ -3416,7 +3496,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         static constexpr TDuration mountVolumeTimeout = TDuration::Seconds(3);
 
         NProto::TStorageServiceConfig storageServiceConfig;
-        storageServiceConfig.SetInactiveClientsTimeout(mountVolumeTimeout.MilliSeconds());
+        storageServiceConfig.SetInactiveClientsTimeout(
+            mountVolumeTimeout.MilliSeconds());
 
         TTestEnv env;
         ui32 nodeIdx = SetupTestEnv(env, std::move(storageServiceConfig));
@@ -3430,40 +3511,46 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         bool reject = true;
         NProto::TError lastError;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvRemoveClientRequest: {
                         if (!reject) {
                             break;
                         }
                         reject = false;
-                        auto error = MakeError(E_REJECTED, "Something went wrong:(");
-                        auto response = std::make_unique<TEvVolume::TEvRemoveClientResponse>(
-                            error);
+                        auto error =
+                            MakeError(E_REJECTED, "Something went wrong:(");
+                        auto response = std::make_unique<
+                            TEvVolume::TEvRemoveClientResponse>(error);
                         runtime.Send(
                             new IEventHandle(
                                 event->Sender,
                                 event->Recipient,
                                 response.release(),
-                                0, // flags,
+                                0,   // flags,
                                 event->Cookie),
                             nodeIdx);
                         return TTestActorRuntime::EEventAction::DROP;
                     };
                     case TEvServicePrivate::EvUnmountRequestProcessed: {
-                        const auto* msg = event->Get<TEvServicePrivate::TEvUnmountRequestProcessed>();
+                        const auto* msg = event->Get<
+                            TEvServicePrivate::TEvUnmountRequestProcessed>();
                         lastError = msg->Error;
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-        runtime.UpdateCurrentTime(runtime.GetCurrentTime() + mountVolumeTimeout);
+        runtime.UpdateCurrentTime(
+            runtime.GetCurrentTime() + mountVolumeTimeout);
         // wait for rejected unmount
         {
             TDispatchOptions options;
             options.FinalEvents.emplace_back(TEvVolume::EvRemoveClientResponse);
-            options.FinalEvents.emplace_back(TEvService::EvUnmountVolumeResponse);
+            options.FinalEvents.emplace_back(
+                TEvService::EvUnmountVolumeResponse);
             runtime.DispatchEvents(options);
         }
 
@@ -3474,8 +3561,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         {
             TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvService::EvUnmountVolumeResponse);
-            options.FinalEvents.emplace_back(TEvServicePrivate::EvSessionActorDied);
+            options.FinalEvents.emplace_back(
+                TEvService::EvUnmountVolumeResponse);
+            options.FinalEvents.emplace_back(
+                TEvServicePrivate::EvSessionActorDied);
             runtime.DispatchEvents(options);
         }
 
@@ -3487,7 +3576,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         NProto::TStorageServiceConfig storageConfig;
         NProto::TFeaturesConfig featuresConfig;
 
-        storageConfig.SetInitialAddClientTimeout(TDuration::Seconds(2).MilliSeconds());
+        storageConfig.SetInitialAddClientTimeout(
+            TDuration::Seconds(2).MilliSeconds());
         storageConfig.SetRejectMountOnAddClientTimeout(true);
 
         TTestEnv env;
@@ -3496,7 +3586,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         auto& runtime = env.GetRuntime();
 
         bool rejectAddClient = true;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvAddClientRequest: {
                         if (rejectAddClient) {
@@ -3536,12 +3628,16 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         service.AssignVolume(DefaultDiskId, "foo", "bar");
 
         ui64 volumeTabletId = 0;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeResponse: {
-                        auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        auto* msg =
+                            event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
                         const auto& volumeDescription =
-                            msg->PathDescription.GetBlockStoreVolumeDescription();
+                            msg->PathDescription
+                                .GetBlockStoreVolumeDescription();
                         volumeTabletId = volumeDescription.GetVolumeTabletId();
                         break;
                     }
@@ -3561,19 +3657,23 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         bool unlockSeen = false;
         bool failDescribe = true;
         bool sessionDeathSeen = false;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeResponse: {
                         if (failDescribe) {
-                            auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                            auto* msg = event->Get<
+                                TEvSSProxy::TEvDescribeVolumeResponse>();
                             const_cast<NProto::TError&>(msg->Error) =
                                 MakeError(E_REJECTED, "SS is dead");
-                            }
+                        }
                         break;
                     }
                     case TEvHiveProxy::EvUnlockTabletRequest: {
                         if (check) {
-                            auto* msg = event->Get<TEvHiveProxy::TEvUnlockTabletRequest>();
+                            auto* msg = event->Get<
+                                TEvHiveProxy::TEvUnlockTabletRequest>();
                             if (msg->TabletId == volumeTabletId) {
                                 unlockSeen = true;
                             }
@@ -3610,7 +3710,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::VOLUME_ACCESS_READ_ONLY,
             NProto::VOLUME_MOUNT_LOCAL);
 
-        service.ReadBlocks(DefaultDiskId, 0, mountResponse->Record.GetSessionId());
+        service.ReadBlocks(
+            DefaultDiskId,
+            0,
+            mountResponse->Record.GetSessionId());
     }
 
     Y_UNIT_TEST(ShouldRestartVolumeClientIfUnmountComesFromMonitoring)
@@ -3624,20 +3727,17 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         TServiceClient service2(env.GetRuntime(), nodeIdx);
         TServiceClient service3(env.GetRuntime(), nodeIdx);
 
-        service1.CreateVolume(
-            DefaultDiskId,
-            512,
-            DefaultBlockSize,
-            "foo",
-            "bar"
-        );
+        service1
+            .CreateVolume(DefaultDiskId, 512, DefaultBlockSize, "foo", "bar");
 
         TActorId volumeClient1;
         TActorId volumeClient2;
         bool volumeClientPillSeen = false;
         ui32 addCnt = 0;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvAddClientRequest: {
                         if (!volumeClient1 || volumeClientPillSeen) {
@@ -3653,7 +3753,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                     case TEvents::TSystem::PoisonPill: {
-                        if (volumeClient1 && volumeClient1 == event->Recipient) {
+                        if (volumeClient1 && volumeClient1 == event->Recipient)
+                        {
                             volumeClientPillSeen = true;
                             addCnt = 0;
                         }
@@ -3669,8 +3770,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             TString(),
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL
-        );
+            NProto::VOLUME_MOUNT_LOCAL);
 
         auto sessionId = response1->Record.GetSessionId();
 
@@ -3685,8 +3785,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             TString(),
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_ONLY,
-            NProto::VOLUME_MOUNT_REMOTE
-        );
+            NProto::VOLUME_MOUNT_REMOTE);
 
         service3.SendMountVolumeRequest(
             DefaultDiskId,
@@ -3694,8 +3793,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             TString(),
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_ONLY,
-            NProto::VOLUME_MOUNT_REMOTE
-        );
+            NProto::VOLUME_MOUNT_REMOTE);
 
         service1.RecvUnmountVolumeResponse();
         UNIT_ASSERT_VALUES_EQUAL(true, volumeClientPillSeen);
@@ -3706,7 +3804,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         service3.RecvMountVolumeResponse();
     }
 
-    Y_UNIT_TEST(ShouldMoveTabletToControlIfLocalMounterCannotRunTabletLocallyDuringMigration)
+    Y_UNIT_TEST(
+        ShouldMoveTabletToControlIfLocalMounterCannotRunTabletLocallyDuringMigration)
     {
         TTestEnv env(1, 2);
         NProto::TStorageServiceConfig config;
@@ -3738,7 +3837,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::VOLUME_MOUNT_LOCAL);
         TString sessionId = response->Record.GetSessionId();
         UNIT_ASSERT(response->GetStatus() == S_OK);
-        UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == DefaultBlocksCount);
+        UNIT_ASSERT(
+            response->Record.GetVolume().GetBlocksCount() ==
+            DefaultBlocksCount);
 
         response = serviceTarget.MountVolume(
             DefaultDiskId,
@@ -3749,12 +3850,16 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::VOLUME_MOUNT_REMOTE,
             0,
             1);
-        UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == DefaultBlocksCount);
+        UNIT_ASSERT(
+            response->Record.GetVolume().GetBlocksCount() ==
+            DefaultBlocksCount);
 
         ui32 unlockCnt = 0;
         ui32 lockCnt = 0;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvHiveProxy::EvUnlockTabletRequest: {
                         ++unlockCnt;
@@ -3764,7 +3869,6 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         ++lockCnt;
                         break;
                     }
-
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
@@ -3810,7 +3914,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         ui32 lockCnt = 0;
         bool failAddClient = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvHiveProxy::EvUnlockTabletRequest: {
                         ++unlockCnt;
@@ -3822,21 +3928,21 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                     }
                     case TEvVolume::EvAddClientRequest: {
                         if (failAddClient) {
-                            auto response = std::make_unique<TEvVolume::TEvAddClientResponse>(
+                            auto response = std::make_unique<
+                                TEvVolume::TEvAddClientResponse>(
                                 MakeError(E_BS_MOUNT_CONFLICT, "error"));
                             runtime.Send(
                                 new IEventHandle(
                                     event->Sender,
                                     event->Recipient,
                                     response.release(),
-                                    0, // flags
+                                    0,   // flags
                                     event->Cookie),
                                 nodeIdx);
                             return TTestActorRuntime::EEventAction::DROP;
                         }
                         break;
                     }
-
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
@@ -3908,7 +4014,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         ui32 unlockCnt = 0;
         ui32 lockCnt = 0;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvHiveProxy::EvUnlockTabletRequest: {
                         ++unlockCnt;
@@ -3931,7 +4039,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::VOLUME_MOUNT_LOCAL);
         TString sessionId = response->Record.GetSessionId();
         UNIT_ASSERT(response->GetStatus() == S_OK);
-        UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == DefaultBlocksCount);
+        UNIT_ASSERT(
+            response->Record.GetVolume().GetBlocksCount() ==
+            DefaultBlocksCount);
         UNIT_ASSERT_VALUES_EQUAL(1, unlockCnt);
         UNIT_ASSERT_VALUES_EQUAL(1, lockCnt);
 
@@ -3965,8 +4075,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             "DrVolume",
             1_GB / DefaultBlockSize,
             DefaultBlockSize,
-            TString(), // folderId
-            TString(), // cloudId
+            TString(),   // folderId
+            TString(),   // cloudId
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
 
         auto response1 = service.MountVolume(
@@ -3980,10 +4090,11 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         ui32 lockCnt = 0;
         ui32 unlockCnt = 0;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                     case TEvHiveProxy::EvUnlockTabletRequest: {
+                    case TEvHiveProxy::EvUnlockTabletRequest: {
                         ++unlockCnt;
                         break;
                     }
@@ -3991,7 +4102,6 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         ++lockCnt;
                         break;
                     }
-
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
@@ -4008,7 +4118,6 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, lockCnt);
         UNIT_ASSERT_VALUES_EQUAL(0, unlockCnt);
-
 
         service.UnmountVolume("DrVolume", response2->Record.GetSessionId());
         service.UnmountVolume(DefaultDiskId, response2->Record.GetSessionId());
@@ -4042,10 +4151,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             DefaultDiskId,
             1_GB / DefaultBlockSize,
             DefaultBlockSize,
-            TString(), // folderId
-            TString(), // cloudId
-            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED
-        );
+            TString(),   // folderId
+            TString(),   // cloudId
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
 
         auto response1 = service.MountVolume(
             DefaultDiskId,
@@ -4053,25 +4161,25 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             TString(),
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL
-        );
+            NProto::VOLUME_MOUNT_LOCAL);
 
         auto sessionId = response1->Record.GetSessionId();
 
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& ev) {
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& ev)
+            {
                 switch (ev->GetTypeRewrite()) {
                     case TEvDiskRegistry::EvReleaseDiskRequest: {
                         using TResponse =
                             TEvDiskRegistry::TEvReleaseDiskResponse;
-                        auto response =
-                            std::make_unique<TResponse>(
-                                MakeError(E_NOT_FOUND, "Disk not found"));
+                        auto response = std::make_unique<TResponse>(
+                            MakeError(E_NOT_FOUND, "Disk not found"));
                         env.GetRuntime().Send(
                             new IEventHandle(
                                 ev->Sender,
                                 ev->Recipient,
                                 response.release(),
-                                0, // flags
+                                0,   // flags
                                 ev->Cookie),
                             nodeIdx);
                         return TTestActorRuntime::EEventAction::DROP;
@@ -4082,9 +4190,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         service.DestroyVolume();
 
-        service.UnmountVolume(
-            DefaultDiskId,
-            sessionId);
+        service.UnmountVolume(DefaultDiskId, sessionId);
     }
 
     void CheckChangeVolumeBindingRequestDelay(
@@ -4095,8 +4201,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
     {
         TTestEnv env;
         NProto::TStorageServiceConfig config;
-        config.SetBalancerActionDelayInterval(
-            configDelay.MilliSeconds());
+        config.SetBalancerActionDelayInterval(configDelay.MilliSeconds());
         ui32 nodeIdx1 = SetupTestEnv(env, config, {});
 
         auto& runtime = env.GetRuntime();
@@ -4105,11 +4210,11 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         service.CreateVolume();
 
         runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
+            [](auto& runtime, const auto& parentId, const auto& actorId)
+            {
+                Y_UNUSED(parentId);
+                runtime.EnableScheduleForActor(actorId);
+            });
 
         auto response = service.MountVolume();
 
@@ -4117,10 +4222,11 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         TVector<TMonotonic> tss;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& ev)
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& ev)
             {
                 switch (ev->GetTypeRewrite()) {
-                     case TEvService::EvChangeVolumeBindingRequest: {
+                    case TEvService::EvChangeVolumeBindingRequest: {
                         auto value = runtime.GetCurrentMonotonicTime();
                         tss.push_back(value);
                         break;
@@ -4136,9 +4242,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                     DefaultDiskId,
                     EChangeBindingOp::RELEASE_TO_HIVE,
                     preemptionSource);
-            service.SendRequest(
-                MakeStorageServiceId(),
-                std::move(request));
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvResponse<TResponse>();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
@@ -4157,9 +4261,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                     DefaultDiskId,
                     EChangeBindingOp::ACQUIRE_FROM_HIVE,
                     preemptionSource);
-            service.SendRequest(
-                MakeStorageServiceId(),
-                std::move(request));
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvResponse<TResponse>();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
@@ -4205,10 +4307,11 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         TAutoPtr<IEventHandle> delayedMsg;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& ev)
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& ev)
             {
                 switch (ev->GetTypeRewrite()) {
-                     case TEvServicePrivate::EvMountRequestProcessed: {
+                    case TEvServicePrivate::EvMountRequestProcessed: {
                         delayedMsg = ev;
                         return TTestActorRuntime::EEventAction::DROP;
                     }
@@ -4222,22 +4325,21 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                     DefaultDiskId,
                     EChangeBindingOp::RELEASE_TO_HIVE,
                     NProto::EPreemptionSource::SOURCE_BALANCER);
-            service.SendRequest(
-                MakeStorageServiceId(),
-                std::move(request));
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
         }
 
         {
             TDispatchOptions options;
-            options.FinalEvents.emplace_back(
-                TEvVolume::EvAddClientRequest);
+            options.FinalEvents.emplace_back(TEvVolume::EvAddClientRequest);
             runtime.DispatchEvents(options);
         }
 
         {
             auto writeRequest = service.CreateWriteBlocksRequest(
-                DefaultDiskId, TBlockRange64::MakeOneBlock(0), sessionId);
-            auto callContext =  writeRequest->CallContext;
+                DefaultDiskId,
+                TBlockRange64::MakeOneBlock(0),
+                sessionId);
+            auto callContext = writeRequest->CallContext;
             service.SendRequest(
                 MakeStorageServiceId(),
                 std::move(writeRequest));
@@ -4260,8 +4362,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         {
             auto writeRequest = service.CreateWriteBlocksRequest(
-                DefaultDiskId, TBlockRange64::MakeOneBlock(0), sessionId);
-            auto callContext =  writeRequest->CallContext;
+                DefaultDiskId,
+                TBlockRange64::MakeOneBlock(0),
+                sessionId);
+            auto callContext = writeRequest->CallContext;
             service.SendRequest(
                 MakeStorageServiceId(),
                 std::move(writeRequest));
@@ -4288,10 +4392,11 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         TAutoPtr<IEventHandle> delayedMsg;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& ev)
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& ev)
             {
                 switch (ev->GetTypeRewrite()) {
-                     case TEvServicePrivate::EvMountRequestProcessed: {
+                    case TEvServicePrivate::EvMountRequestProcessed: {
                         delayedMsg = ev;
                         return TTestActorRuntime::EEventAction::DROP;
                     }
@@ -4305,15 +4410,12 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                     DefaultDiskId,
                     EChangeBindingOp::RELEASE_TO_HIVE,
                     NProto::EPreemptionSource::SOURCE_BALANCER);
-            service.SendRequest(
-                MakeStorageServiceId(),
-                std::move(request));
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
         }
 
         {
             TDispatchOptions options;
-            options.FinalEvents.emplace_back(
-                TEvVolume::EvAddClientRequest);
+            options.FinalEvents.emplace_back(TEvVolume::EvAddClientRequest);
             runtime.DispatchEvents(options);
         }
 
@@ -4323,9 +4425,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                     DefaultDiskId,
                     EChangeBindingOp::RELEASE_TO_HIVE,
                     NProto::EPreemptionSource::SOURCE_BALANCER);
-            service.SendRequest(
-                MakeStorageServiceId(),
-                std::move(request));
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             using TResponse = TEvService::TEvChangeVolumeBindingResponse;
             auto response = service.RecvResponse<TResponse>();
@@ -4360,8 +4460,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             TString(),
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL
-        );
+            NProto::VOLUME_MOUNT_LOCAL);
 
         service.DestroyVolume();
 
@@ -4371,13 +4470,11 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             TString(),
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL
-        );
+            NProto::VOLUME_MOUNT_LOCAL);
 
         auto response1 = service.RecvMountVolumeResponse();
         const auto errorCode = response1->GetStatus();
-        auto status =
-            static_cast<ui32>(STATUS_FROM_CODE(errorCode));
+        auto status = static_cast<ui32>(STATUS_FROM_CODE(errorCode));
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(NKikimrScheme::StatusPathDoesNotExist),
             status);
@@ -4386,7 +4483,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         UNIT_ASSERT(HasProtoFlag(error.GetFlags(), NProto::EF_SILENT));
     }
 
-    Y_UNIT_TEST(ShouldReturnSilentErrorIfVolumeRemovedBeforeMountForNonReplicated)
+    Y_UNIT_TEST(
+        ShouldReturnSilentErrorIfVolumeRemovedBeforeMountForNonReplicated)
     {
         TTestEnv env;
         NProto::TStorageServiceConfig config;
@@ -4400,10 +4498,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             DefaultDiskId,
             1_GB / DefaultBlockSize,
             DefaultBlockSize,
-            TString(), // folderId
-            TString(), // cloudId
-            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED
-        );
+            TString(),   // folderId
+            TString(),   // cloudId
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
 
         auto response = service.MountVolume(
             DefaultDiskId,
@@ -4411,23 +4508,23 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             TString(),
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL
-        );
+            NProto::VOLUME_MOUNT_LOCAL);
 
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& ev) {
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& ev)
+            {
                 switch (ev->GetTypeRewrite()) {
                     case TEvDiskRegistry::EvAcquireDiskRequest: {
                         using TResponse =
                             TEvDiskRegistry::TEvAcquireDiskResponse;
-                        auto response =
-                            std::make_unique<TResponse>(
-                                MakeError(E_NOT_FOUND, "Disk not found"));
+                        auto response = std::make_unique<TResponse>(
+                            MakeError(E_NOT_FOUND, "Disk not found"));
                         env.GetRuntime().Send(
                             new IEventHandle(
                                 ev->Sender,
                                 ev->Recipient,
                                 response.release(),
-                                0, // flags
+                                0,   // flags
                                 ev->Cookie),
                             nodeIdx);
                         return TTestActorRuntime::EEventAction::DROP;
@@ -4442,8 +4539,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             TString(),
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL
-        );
+            NProto::VOLUME_MOUNT_LOCAL);
 
         auto response1 = service.RecvMountVolumeResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, response1->GetStatus());
@@ -4464,7 +4560,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         ui32 numDescribes = 0;
         auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeRequest: {
                         ++numDescribes;
@@ -4477,6 +4575,15 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
+        service.SendMountVolumeRequest(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL);
+
+        service.SendUnmountVolumeRequest(DefaultDiskId, "");
 
         service.SendMountVolumeRequest(
             DefaultDiskId,
@@ -4484,28 +4591,12 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             TString(),
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL
-        );
-
-        service.SendUnmountVolumeRequest(
-            DefaultDiskId,
-            ""
-        );
-
-        service.SendMountVolumeRequest(
-            DefaultDiskId,
-            TString(),
-            TString(),
-            NProto::IPC_GRPC,
-            NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL
-        );
+            NProto::VOLUME_MOUNT_LOCAL);
 
         {
             auto response = service.RecvMountVolumeResponse();
             const auto errorCode = response->GetStatus();
-            auto status =
-                static_cast<ui32>(STATUS_FROM_CODE(errorCode));
+            auto status = static_cast<ui32>(STATUS_FROM_CODE(errorCode));
 
             UNIT_ASSERT_VALUES_EQUAL(
                 static_cast<ui32>(NKikimrScheme::StatusPathDoesNotExist),
@@ -4516,16 +4607,13 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         {
             auto response = service.RecvUnmountVolumeResponse();
-            UNIT_ASSERT_VALUES_EQUAL(
-                S_ALREADY,
-                response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, response->GetStatus());
         }
 
         {
             auto response = service.RecvMountVolumeResponse();
             const auto errorCode = response->GetStatus();
-            auto status =
-                static_cast<ui32>(STATUS_FROM_CODE(errorCode));
+            auto status = static_cast<ui32>(STATUS_FROM_CODE(errorCode));
 
             UNIT_ASSERT_VALUES_EQUAL(
                 static_cast<ui32>(NKikimrScheme::StatusPathDoesNotExist),
@@ -4552,7 +4640,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             DefaultBlockSize,
             folderId,
             cloudId);
-        req->Record.MutableEncryptionSpec()->SetMode(NProto::ENCRYPTION_AES_XTS);
+        req->Record.MutableEncryptionSpec()->SetMode(
+            NProto::ENCRYPTION_AES_XTS);
         req->Record.SetProjectId(projectId);
         service.SendRequest(MakeStorageServiceId(), std::move(req));
         auto resp = service.RecvResponse<TEvService::TEvCreateVolumeResponse>();
@@ -4564,7 +4653,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         encryptionDesc.SetMode(NProto::ENCRYPTION_AES_XTS);
         encryptionDesc.SetKeyHash("encryptionkeyhash");
 
-        auto validateVolume = [&](const NProto::TMountVolumeResponse& response) {
+        auto validateVolume = [&](const NProto::TMountVolumeResponse& response)
+        {
             UNIT_ASSERT_C(!HasError(response), response.GetError());
             const auto& volume = response.GetVolume();
             UNIT_ASSERT_VALUES_EQUAL(projectId, volume.GetProjectId());
@@ -4629,7 +4719,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             // failed to mount with wrong keyhash
             {
                 auto encryption = encryptionDesc;
-                encryption.SetKeyHash(TString("wrong") + encryption.GetKeyHash());
+                encryption.SetKeyHash(
+                    TString("wrong") + encryption.GetKeyHash());
                 service.SendMountVolumeRequest(
                     DefaultDiskId,
                     "",
@@ -4684,7 +4775,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             DefaultBlockSize,
             folderId,
             cloudId);
-        req->Record.MutableEncryptionSpec()->SetMode(NProto::ENCRYPTION_AES_XTS);
+        req->Record.MutableEncryptionSpec()->SetMode(
+            NProto::ENCRYPTION_AES_XTS);
         req->Record.SetProjectId(projectId);
         service.SendRequest(MakeStorageServiceId(), std::move(req));
         auto resp = service.RecvResponse<TEvService::TEvCreateVolumeResponse>();
@@ -4696,7 +4788,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         encryptionDesc.SetMode(NProto::ENCRYPTION_AES_XTS);
         encryptionDesc.SetKeyHash("encryptionkeyhash");
 
-        auto validateVolume = [&](const NProto::TMountVolumeResponse& response) {
+        auto validateVolume = [&](const NProto::TMountVolumeResponse& response)
+        {
             UNIT_ASSERT_C(!HasError(response), response.GetError());
             const auto& volume = response.GetVolume();
             UNIT_ASSERT_VALUES_EQUAL(projectId, volume.GetProjectId());
@@ -4722,31 +4815,35 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             sessionId = response->Record.GetSessionId();
         }
 
-        TVector<NProto::EPreemptionSource> sources {
+        TVector<NProto::EPreemptionSource> sources{
             NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT,
             NProto::EPreemptionSource::SOURCE_BALANCER,
             NProto::EPreemptionSource::SOURCE_MANUAL};
 
         for (auto s: sources) {
             {
-                auto request = std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
-                    DefaultDiskId,
-                    EChangeBindingOp::RELEASE_TO_HIVE,
-                    s);
+                auto request =
+                    std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+                        DefaultDiskId,
+                        EChangeBindingOp::RELEASE_TO_HIVE,
+                        s);
                 service.SendRequest(MakeStorageServiceId(), std::move(request));
-                auto response = service.RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
+                auto response = service.RecvResponse<
+                    TEvService::TEvChangeVolumeBindingResponse>();
             }
 
             service.WaitForVolume(DefaultDiskId);
             service.ReadBlocks(DefaultDiskId, 0, sessionId);
 
             {
-                auto request = std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
-                    DefaultDiskId,
-                    EChangeBindingOp::ACQUIRE_FROM_HIVE,
-                    s);
+                auto request =
+                    std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+                        DefaultDiskId,
+                        EChangeBindingOp::ACQUIRE_FROM_HIVE,
+                        s);
                 service.SendRequest(MakeStorageServiceId(), std::move(request));
-                auto response = service.RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
+                auto response = service.RecvResponse<
+                    TEvService::TEvChangeVolumeBindingResponse>();
             }
 
             service.WaitForVolume(DefaultDiskId);
@@ -4758,12 +4855,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
     {
         TTestEnv env(1, 2);
         auto unmountClientsTimeout = TDuration::Seconds(10);
-        ui32 nodeIdx1 = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
-        ui32 nodeIdx2 = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
+        ui32 nodeIdx1 =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
+        ui32 nodeIdx2 =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
 
         auto& runtime = env.GetRuntime();
 
@@ -4775,7 +4870,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             service1.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service1.RecvCreateVolumeResponse();
-            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, response->GetStatus(), response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetStatus());
         }
 
         ui32 mountFlags = 0;
@@ -4793,14 +4891,13 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             mountFlags,
             mountSeqNumber++,
             NProto::TEncryptionDesc(),
-            0,  // fillSeqNumber
-            1   // fillGeneration
+            0,   // fillSeqNumber
+            1    // fillGeneration
         );
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
             response1->GetStatus(),
-            response1->GetErrorReason()
-        );
+            response1->GetErrorReason());
 
         auto response2 = service2.MountVolume(
             DefaultDiskId,
@@ -4812,14 +4909,13 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             mountFlags,
             mountSeqNumber++,
             NProto::TEncryptionDesc(),
-            1,  // fillSeqNumber
-            1   // fillGeneration
+            1,   // fillSeqNumber
+            1    // fillGeneration
         );
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
             response2->GetStatus(),
-            response2->GetErrorReason()
-        );
+            response2->GetErrorReason());
 
         service1.SendMountVolumeRequest(
             DefaultDiskId,
@@ -4831,8 +4927,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             mountFlags,
             mountSeqNumber++,
             NProto::TEncryptionDesc(),
-            0,  // fillSeqNumber
-            1   // fillGeneration
+            0,   // fillSeqNumber
+            1    // fillGeneration
         );
 
         {
@@ -4840,8 +4936,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_PRECONDITION_FAILED,
                 response->GetStatus(),
-                response->GetErrorReason()
-            );
+                response->GetErrorReason());
         }
 
         response1 = service1.MountVolume(
@@ -4854,14 +4949,13 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             mountFlags,
             mountSeqNumber++,
             NProto::TEncryptionDesc(),
-            0,  // fillSeqNumber
-            1   // fillGeneration
+            0,   // fillSeqNumber
+            1    // fillGeneration
         );
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
             response1->GetStatus(),
-            response1->GetErrorReason()
-        );
+            response1->GetErrorReason());
 
         service2.UnmountVolume(DefaultDiskId, response2->Record.GetSessionId());
 
@@ -4877,8 +4971,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             mountFlags,
             mountSeqNumber++,
             NProto::TEncryptionDesc(),
-            0,  // fillSeqNumber
-            1   // fillGeneration
+            0,   // fillSeqNumber
+            1    // fillGeneration
         );
 
         {
@@ -4886,8 +4980,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_PRECONDITION_FAILED,
                 response->GetStatus(),
-                response->GetErrorReason()
-            );
+                response->GetErrorReason());
         }
 
         // Checking that client can mount with same fill seq no after unmount.
@@ -4901,23 +4994,21 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             mountFlags,
             mountSeqNumber++,
             NProto::TEncryptionDesc(),
-            1,  // fillSeqNumber
-            1   // fillGeneration
+            1,   // fillSeqNumber
+            1    // fillGeneration
         );
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
             response2->GetStatus(),
-            response2->GetErrorReason()
-        );
+            response2->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldPreserveFillSeqNumberAfterVolumeConfigUpdate)
     {
         TTestEnv env(1, 1);
         auto unmountClientsTimeout = TDuration::Seconds(10);
-        ui32 nodeIdx = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
+        ui32 nodeIdx =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
 
         auto& runtime = env.GetRuntime();
 
@@ -4928,7 +5019,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvCreateVolumeResponse();
-            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, response->GetStatus(), response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetStatus());
         }
 
         ui32 mountFlags = 0;
@@ -4946,14 +5040,13 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             mountFlags,
             mountSeqNumber++,
             NProto::TEncryptionDesc(),
-            1,  // fillSeqNumber
-            1   // fillGeneration
+            1,   // fillSeqNumber
+            1    // fillGeneration
         );
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
             response->GetStatus(),
-            response->GetErrorReason()
-        );
+            response->GetErrorReason());
 
         // Resize volume request updates volume config
         service.ResizeVolume(DefaultDiskId, DefaultBlocksCount * 2);
@@ -4968,8 +5061,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             mountFlags,
             mountSeqNumber++,
             NProto::TEncryptionDesc(),
-            0,  // fillSeqNumber
-            1   // fillGeneration
+            0,   // fillSeqNumber
+            1    // fillGeneration
         );
 
         {
@@ -4977,8 +5070,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_PRECONDITION_FAILED,
                 response->GetStatus(),
-                response->GetErrorReason()
-            );
+                response->GetErrorReason());
         }
     }
 
@@ -4986,9 +5078,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
     {
         TTestEnv env(1, 1);
         auto unmountClientsTimeout = TDuration::Seconds(10);
-        ui32 nodeIdx = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
+        ui32 nodeIdx =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
 
         auto& runtime = env.GetRuntime();
 
@@ -5001,7 +5092,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvCreateVolumeResponse();
-            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, response->GetStatus(), response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetStatus());
         }
 
         ui32 mountFlags = 0;
@@ -5019,14 +5113,12 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             mountFlags,
             mountSeqNumber++,
             NProto::TEncryptionDesc(),
-            1, // fillSeqNumber
-            fillGeneration
-        );
+            1,   // fillSeqNumber
+            fillGeneration);
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
             response->GetStatus(),
-            response->GetErrorReason()
-        );
+            response->GetErrorReason());
 
         {
             NPrivateProto::TFinishFillDiskRequest request;
@@ -5040,12 +5132,11 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 response->GetStatus(),
-                response->GetErrorReason()
-            );
+                response->GetErrorReason());
         }
 
-        // Should not be able to mount when IS_FILL flag is set and fill is finished
-        // even if fillSeqNumber is big enough
+        // Should not be able to mount when IS_FILL flag is set and fill is
+        // finished even if fillSeqNumber is big enough
         service.SendMountVolumeRequest(
             DefaultDiskId,
             TString(),
@@ -5056,17 +5147,15 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             mountFlags,
             mountSeqNumber++,
             NProto::TEncryptionDesc(),
-            2, // fillSeqNumber
-            fillGeneration
-        );
+            2,   // fillSeqNumber
+            fillGeneration);
 
         {
             auto response = service.RecvMountVolumeResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_PRECONDITION_FAILED,
                 response->GetStatus(),
-                response->GetErrorReason()
-            );
+                response->GetErrorReason());
         }
 
         // Should be able to mount when fill is finished
@@ -5081,14 +5170,13 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             mountFlags,
             mountSeqNumber++,
             NProto::TEncryptionDesc(),
-            0, // fillSeqNumber
-            0 // fillGeneration
+            0,   // fillSeqNumber
+            0    // fillGeneration
         );
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
             response->GetStatus(),
-            response->GetErrorReason()
-        );
+            response->GetErrorReason());
 
         response = service.MountVolume(
             DefaultDiskId,
@@ -5100,26 +5188,23 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             mountFlags,
             mountSeqNumber++,
             NProto::TEncryptionDesc(),
-            0, // fillSeqNumber
-            0 // fillGeneration
+            0,   // fillSeqNumber
+            0    // fillGeneration
         );
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
             response->GetStatus(),
-            response->GetErrorReason()
-        );
+            response->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldHandleMountRequestWithFillGeneration)
     {
         TTestEnv env(1, 2);
         auto unmountClientsTimeout = TDuration::Seconds(10);
-        ui32 nodeIdx1 = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
-        ui32 nodeIdx2 = SetupTestEnvWithMultipleMount(
-            env,
-            unmountClientsTimeout);
+        ui32 nodeIdx1 =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
+        ui32 nodeIdx2 =
+            SetupTestEnvWithMultipleMount(env, unmountClientsTimeout);
 
         auto& runtime = env.GetRuntime();
 
@@ -5132,7 +5217,10 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             service1.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service1.RecvCreateVolumeResponse();
-            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, response->GetStatus(), response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetStatus());
         }
 
         ui32 mountFlags = 0;
@@ -5140,10 +5228,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         ui64 mountSeqNumber = 0;
 
-        auto checkMountVolume = [&](
-            TServiceClient& service,
-            ui64 fillGeneration,
-            ui32 expectedStatus)
+        auto checkMountVolume = [&](TServiceClient& service,
+                                    ui64 fillGeneration,
+                                    ui32 expectedStatus)
         {
             service.SendMountVolumeRequest(
                 DefaultDiskId,
@@ -5156,15 +5243,13 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                 mountSeqNumber++,
                 NProto::TEncryptionDesc(),
                 0,
-                fillGeneration
-            );
+                fillGeneration);
 
             auto response = service.RecvMountVolumeResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 expectedStatus,
                 response->GetStatus(),
-                response->GetErrorReason()
-            );
+                response->GetErrorReason());
         };
 
         checkMountVolume(service1, 713, S_OK);
@@ -5186,8 +5271,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             512,
             DefaultBlockSize,
             TString(),
-            TString()
-        );
+            TString());
 
         auto response1 = service.MountVolume(
             DefaultDiskId,
@@ -5195,14 +5279,14 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             TString(),
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL
-        );
+            NProto::VOLUME_MOUNT_LOCAL);
 
         auto sessionId = response1->Record.GetSessionId();
 
         bool tabletDeadSeen = false;
         env.GetRuntime().SetObserverFunc(
-            [&] (TAutoPtr<IEventHandle>& event) {
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvTablet::EvTabletDead: {
                         tabletDeadSeen = true;
@@ -5224,8 +5308,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             512,
             DefaultBlockSize,
             TString(),
-            TString()
-        );
+            TString());
 
         service.SendUnmountVolumeRequest(DefaultDiskId, sessionId);
 
@@ -5235,8 +5318,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             TString(),
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL
-        );
+            NProto::VOLUME_MOUNT_LOCAL);
 
         service.SendUnmountVolumeRequest(DefaultDiskId, sessionId);
 
@@ -5268,8 +5350,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             TString(),
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL
-        );
+            NProto::VOLUME_MOUNT_LOCAL);
     }
 
     Y_UNIT_TEST(ShouldKillMountActorIfTabletIsChangedDuringTabletStart)
@@ -5284,16 +5365,19 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             512,
             DefaultBlockSize,
             TString(),
-            TString()
-        );
+            TString());
 
         ui64 volumeTabletId = 0;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeResponse: {
-                        auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        auto* msg =
+                            event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
                         const auto& volumeDescription =
-                            msg->PathDescription.GetBlockStoreVolumeDescription();
+                            msg->PathDescription
+                                .GetBlockStoreVolumeDescription();
                         volumeTabletId = volumeDescription.GetVolumeTabletId();
                         break;
                     }
@@ -5307,20 +5391,24 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             TString(),
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL
-        );
+            NProto::VOLUME_MOUNT_LOCAL);
 
         auto sessionId = response1->Record.GetSessionId();
 
         if (!volumeTabletId) {
             TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvSSProxy::EvDescribeVolumeResponse);
+            options.FinalEvents.emplace_back(
+                TEvSSProxy::EvDescribeVolumeResponse);
             env.GetRuntime().DispatchEvents(options);
         }
 
         UNIT_ASSERT(volumeTabletId);
 
-        RebootTablet(env.GetRuntime(), volumeTabletId, service.GetSender(), nodeIdx);
+        RebootTablet(
+            env.GetRuntime(),
+            volumeTabletId,
+            service.GetSender(),
+            nodeIdx);
 
         service.SendMountVolumeRequest(
             DefaultDiskId,
@@ -5328,18 +5416,20 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             TString(),
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL
-        );
+            NProto::VOLUME_MOUNT_LOCAL);
 
         ui32 sessionActorDeathCnt = 0;
         env.GetRuntime().SetObserverFunc(
-            [&] (TAutoPtr<IEventHandle>& event) {
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvHiveProxy::EvLockTabletResponse: {
-                        auto* msg = event->Get<TEvHiveProxy::TEvLockTabletResponse>();
-                        const_cast<NProto::TError&>(msg->Error) = MakeKikimrError(
-                            NKikimrProto::ERROR,
-                            "Could not connect");
+                        auto* msg =
+                            event->Get<TEvHiveProxy::TEvLockTabletResponse>();
+                        const_cast<NProto::TError&>(msg->Error) =
+                            MakeKikimrError(
+                                NKikimrProto::ERROR,
+                                "Could not connect");
                         break;
                     }
                     case TEvServicePrivate::EvSessionActorDied: {
@@ -5354,12 +5444,13 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             auto mountResponse = service.RecvMountVolumeResponse();
             UNIT_ASSERT_VALUES_EQUAL(
                 MAKE_KIKIMR_ERROR(NKikimrProto::ERROR),
-                mountResponse->GetStatus() );
+                mountResponse->GetStatus());
         }
 
         if (!sessionActorDeathCnt) {
             TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvServicePrivate::EvSessionActorDied);
+            options.FinalEvents.emplace_back(
+                TEvServicePrivate::EvSessionActorDied);
             env.GetRuntime().DispatchEvents(options);
         }
 
@@ -5378,8 +5469,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             512,
             DefaultBlockSize,
             TString(),
-            TString()
-        );
+            TString());
 
         auto response1 = service.MountVolume(
             DefaultDiskId,
@@ -5387,8 +5477,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             TString(),
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL
-        );
+            NProto::VOLUME_MOUNT_LOCAL);
 
         service.SendMountVolumeRequest(
             DefaultDiskId,
@@ -5396,20 +5485,21 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             TString(),
             NProto::IPC_GRPC,
             NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL
-        );
+            NProto::VOLUME_MOUNT_LOCAL);
 
         ui32 sessionActorDeathCnt = 0;
         env.GetRuntime().SetObserverFunc(
-            [&] (TAutoPtr<IEventHandle>& event) {
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeResponse: {
-                        auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        auto* msg =
+                            event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
                         auto& pathDescription =
-                            const_cast<NKikimrSchemeOp::TPathDescription&>(msg->PathDescription);
-                        pathDescription.
-                        MutableBlockStoreVolumeDescription()->
-                        SetVolumeTabletId(111);
+                            const_cast<NKikimrSchemeOp::TPathDescription&>(
+                                msg->PathDescription);
+                        pathDescription.MutableBlockStoreVolumeDescription()
+                            ->SetVolumeTabletId(111);
                         break;
                     }
                     case TEvServicePrivate::EvSessionActorDied: {
@@ -5422,12 +5512,13 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         {
             auto mountResponse = service.RecvMountVolumeResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, mountResponse->GetStatus() );
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, mountResponse->GetStatus());
         }
 
         if (!sessionActorDeathCnt) {
             TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvServicePrivate::EvSessionActorDied);
+            options.FinalEvents.emplace_back(
+                TEvServicePrivate::EvSessionActorDied);
             env.GetRuntime().DispatchEvents(options);
         }
 
@@ -5829,7 +5920,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::VOLUME_MOUNT_LOCAL,
             0,
             1);
-        UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == DefaultBlocksCount);
+        UNIT_ASSERT(
+            response->Record.GetVolume().GetBlocksCount() ==
+            DefaultBlocksCount);
 
         response = service_target.MountVolume(
             DefaultDiskId,
@@ -5840,7 +5933,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::VOLUME_MOUNT_LOCAL,
             0,
             2);
-        UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == DefaultBlocksCount);
+        UNIT_ASSERT(
+            response->Record.GetVolume().GetBlocksCount() ==
+            DefaultBlocksCount);
 
         service_source.UnmountVolume(DefaultDiskId, sessionId);
     }
@@ -5863,7 +5958,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         auto response = service_source.MountVolume();
         TString sessionId = response->Record.GetSessionId();
         UNIT_ASSERT(response->GetStatus() == S_OK);
-        UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == DefaultBlocksCount);
+        UNIT_ASSERT(
+            response->Record.GetVolume().GetBlocksCount() ==
+            DefaultBlocksCount);
 
         response = service_target.MountVolume(
             DefaultDiskId,
@@ -5874,9 +5971,11 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::VOLUME_MOUNT_LOCAL,
             0,
             1);
-        UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == DefaultBlocksCount);
+        UNIT_ASSERT(
+            response->Record.GetVolume().GetBlocksCount() ==
+            DefaultBlocksCount);
 
-        response= service_target.MountVolume(
+        response = service_target.MountVolume(
             DefaultDiskId,
             TString(),
             TString(),
@@ -5885,7 +5984,9 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             NProto::VOLUME_MOUNT_LOCAL,
             0,
             2);
-        UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == DefaultBlocksCount);
+        UNIT_ASSERT(
+            response->Record.GetVolume().GetBlocksCount() ==
+            DefaultBlocksCount);
 
         service_source.UnmountVolume(DefaultDiskId, sessionId);
     }

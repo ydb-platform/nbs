@@ -12,10 +12,12 @@ struct TCleanupQueue::TImpl
 {
     struct TLess
     {
-        bool operator ()(const TCleanupQueueItem& l, const TCleanupQueueItem& r) const
+        bool operator()(
+            const TCleanupQueueItem& l,
+            const TCleanupQueueItem& r) const
         {
-            return std::forward_as_tuple(l.CommitId, l.BlobId)
-                <  std::forward_as_tuple(r.CommitId, r.BlobId);
+            return std::forward_as_tuple(l.CommitId, l.BlobId) <
+                   std::forward_as_tuple(r.CommitId, r.BlobId);
         }
     };
 
@@ -115,7 +117,9 @@ size_t TCleanupQueue::GetCount(ui64 maxCommitId) const
     return Impl->GetCount(maxCommitId);
 }
 
-TVector<TCleanupQueueItem> TCleanupQueue::GetItems(ui64 maxCommitId, size_t limit) const
+TVector<TCleanupQueueItem> TCleanupQueue::GetItems(
+    ui64 maxCommitId,
+    size_t limit) const
 {
     return Impl->GetItems(maxCommitId, limit);
 }

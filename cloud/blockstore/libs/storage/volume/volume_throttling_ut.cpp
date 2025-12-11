@@ -1,8 +1,8 @@
 #include "volume_actor.h"
 
 #include <cloud/blockstore/libs/storage/api/service.h>
-#include <cloud/blockstore/libs/storage/api/volume_throttling_manager.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/api/volume_throttling_manager.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_throttling_policy.h>
 #include <cloud/blockstore/libs/storage/volume/testlib/test_env.h>
@@ -110,7 +110,8 @@ void SendThrottlingConfig(
     ui32 version,
     const TVector<NProto::TVolumeThrottlingRule>& rules)
 {
-    auto notification = std::make_unique<TEvVolumeThrottlingManager::TEvVolumeThrottlingConfigNotification>();
+    auto notification = std::make_unique<
+        TEvVolumeThrottlingManager::TEvVolumeThrottlingConfigNotification>();
     notification->Config.SetVersion(version);
     for (const auto& rule: rules) {
         *notification->Config.AddRules() = rule;

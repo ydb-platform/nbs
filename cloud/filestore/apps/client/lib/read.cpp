@@ -9,8 +9,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TReadCommand final
-    : public TFileStoreCommand
+class TReadCommand final: public TFileStoreCommand
 {
 private:
     TString Path;
@@ -45,14 +44,14 @@ public:
 
         Y_ENSURE(
             resolved.back().Node.GetType() != NProto::E_DIRECTORY_NODE,
-            "can't read a directory node"
-        );
+            "can't read a directory node");
 
         Y_ABORT_UNLESS(resolved.size() >= 2);
 
         const auto& parent = resolved[resolved.size() - 2];
 
-        static const int flags = ProtoFlag(NProto::TCreateHandleRequest::E_READ);
+        static const int flags =
+            ProtoFlag(NProto::TCreateHandleRequest::E_READ);
 
         auto createRequest = CreateRequest<NProto::TCreateHandleRequest>();
         createRequest->SetNodeId(parent.Node.GetId());
@@ -77,10 +76,8 @@ public:
         readRequest->SetOffset(Offset);
         readRequest->SetLength(Length);
 
-        auto readResponse = WaitFor(session.ReadData(
-            PrepareCallContext(),
-            std::move(readRequest)
-        ));
+        auto readResponse = WaitFor(
+            session.ReadData(PrepareCallContext(), std::move(readRequest)));
 
         CheckResponse(readResponse);
 

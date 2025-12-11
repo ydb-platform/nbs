@@ -20,17 +20,17 @@ LWTRACE_USING(FILESTORE_STORAGE_PROVIDER);
 ////////////////////////////////////////////////////////////////////////////////
 
 TAddDataActor::TAddDataActor(
-        ITraceSerializerPtr traceSerializer,
-        TString logTag,
-        TString fileSystemId,
-        TActorId tablet,
-        TRequestInfoPtr requestInfo,
-        ui64 commitId,
-        TVector<TMergedBlob> blobs,
-        TVector<TBlockBytesMeta> unalignedDataParts,
-        TWriteRange writeRange,
-        IProfileLogPtr profileLog,
-        NProto::TProfileLogRequestInfo profileLogRequest)
+    ITraceSerializerPtr traceSerializer,
+    TString logTag,
+    TString fileSystemId,
+    TActorId tablet,
+    TRequestInfoPtr requestInfo,
+    ui64 commitId,
+    TVector<TMergedBlob> blobs,
+    TVector<TBlockBytesMeta> unalignedDataParts,
+    TWriteRange writeRange,
+    IProfileLogPtr profileLog,
+    NProto::TProfileLogRequestInfo profileLogRequest)
     : TraceSerializer(std::move(traceSerializer))
     , LogTag(std::move(logTag))
     , FileSystemId(std::move(fileSystemId))

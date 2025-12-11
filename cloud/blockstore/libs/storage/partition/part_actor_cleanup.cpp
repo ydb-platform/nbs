@@ -37,18 +37,16 @@ void TPartitionActor::EnqueueCleanupIfNeeded(const TActorContext& ctx)
     auto& scoreHistory = State->GetCleanupScoreHistory();
     const auto now = ctx.Now();
     if (scoreHistory.LastTs() + Config->GetMaxCleanupDelay() <= now) {
-        scoreHistory.Register({
-            now,
-            static_cast<ui32>(State->GetCleanupQueue().GetQueueBytes() / 1_MB)
-        });
+        scoreHistory.Register(
+            {now,
+             static_cast<ui32>(
+                 State->GetCleanupQueue().GetQueueBytes() / 1_MB)});
     }
 
     ui64 commitId = State->GetCleanupCommitId();
 
-    ui32 pendingBlobs = State->GetBlobCountToCleanup(
-        commitId,
-        Config->GetCleanupThreshold()
-    );
+    ui32 pendingBlobs =
+        State->GetBlobCountToCleanup(commitId, Config->GetCleanupThreshold());
 
     if (pendingBlobs < Config->GetCleanupThreshold()) {
         // not ready
@@ -60,17 +58,20 @@ void TPartitionActor::EnqueueCleanupIfNeeded(const TActorContext& ctx)
     auto request = std::make_unique<TEvPartitionPrivate::TEvCleanupRequest>(
         MakeIntrusive<TCallContext>(CreateRequestId()));
 
-    const auto throttlingAllowed = State->GetCleanupQueue().GetQueueBytes()
-        < Config->GetCleanupQueueBytesLimitForThrottling();
+    const auto throttlingAllowed =
+        State->GetCleanupQueue().GetQueueBytes() <
+        Config->GetCleanupQueueBytesLimitForThrottling();
 
     if (throttlingAllowed && Config->GetMaxCleanupDelay()) {
         // TODO: unify this code and compaction delay-related code
         auto execTime = State->GetCleanupExecTimeForLastSecond(ctx.Now());
         auto delay = Config->GetMinCleanupDelay();
         if (Config->GetMaxCleanupExecTimePerSecond()) {
-            auto throttlingFactor = double(execTime.GetValue())
-                / Config->GetMaxCleanupExecTimePerSecond().GetValue();
-            const auto throttleDelay = (TDuration::Seconds(1) - execTime) * throttlingFactor;
+            auto throttlingFactor =
+                double(execTime.GetValue()) /
+                Config->GetMaxCleanupExecTimePerSecond().GetValue();
+            const auto throttleDelay =
+                (TDuration::Seconds(1) - execTime) * throttlingFactor;
 
             delay = Max(delay, throttleDelay);
         }
@@ -84,10 +85,7 @@ void TPartitionActor::EnqueueCleanupIfNeeded(const TActorContext& ctx)
     if (State->GetCleanupDelay()) {
         ctx.Schedule(State->GetCleanupDelay(), request.release());
     } else {
-        NCloud::Send(
-            ctx,
-            SelfId(),
-            std::move(request));
+        NCloud::Send(ctx, SelfId(), std::move(request));
     }
 }
 
@@ -97,10 +95,8 @@ void TPartitionActor::HandleCleanup(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -112,14 +108,14 @@ void TPartitionActor::HandleCleanup(
         requestInfo->CallContext->RequestId,
         PartitionConfig.GetDiskId());
 
-    auto replyError = [=] (
-        const TActorContext& ctx,
-        TRequestInfo& requestInfo,
-        ui32 errorCode,
-        TString errorReason)
+    auto replyError = [=](const TActorContext& ctx,
+                          TRequestInfo& requestInfo,
+                          ui32 errorCode,
+                          TString errorReason)
     {
-        auto response = std::make_unique<TEvPartitionPrivate::TEvCleanupResponse>(
-            MakeError(errorCode, std::move(errorReason)));
+        auto response =
+            std::make_unique<TEvPartitionPrivate::TEvCleanupResponse>(
+                MakeError(errorCode, std::move(errorReason)));
 
         LWTRACK(
             ResponseSent_Partition,
@@ -140,7 +136,11 @@ void TPartitionActor::HandleCleanup(
     {
         State->GetCleanupState().SetStatus(EOperationStatus::Idle);
 
-        replyError(ctx, *requestInfo, E_TRY_AGAIN, "Metadata rebuild is running");
+        replyError(
+            ctx,
+            *requestInfo,
+            E_TRY_AGAIN,
+            "Metadata rebuild is running");
         return;
     }
 
@@ -155,8 +155,7 @@ void TPartitionActor::HandleCleanup(
 
     auto cleanupQueue = State->GetCleanupQueue().GetItems(
         commitId,
-        Config->GetMaxBlobsToCleanup()
-    );
+        Config->GetMaxBlobsToCleanup());
 
     if (!cleanupQueue) {
         State->GetCleanupState().SetStatus(EOperationStatus::Idle);
@@ -199,7 +198,8 @@ bool TPartitionActor::PrepareCleanup(
     for (const auto& item: args.CleanupQueue) {
         TMaybe<NProto::TBlobMeta> blobMeta;
         if (db.ReadBlobMeta(item.BlobId, blobMeta)) {
-            Y_ABORT_UNLESS(blobMeta.Defined(),
+            Y_ABORT_UNLESS(
+                blobMeta.Defined(),
                 "Could not read meta data for blob: %s",
                 ToString(MakeBlobId(TabletID(), item.BlobId)).data());
 
@@ -225,7 +225,6 @@ void TPartitionActor::ExecuteCleanup(
     size_t mixedBlobsCount = 0;
     size_t mergedBlobsCount = 0;
 
-
     Y_ABORT_UNLESS(args.CleanupQueue.size() == args.BlobsMeta.size());
     for (size_t i = 0; i < args.CleanupQueue.size(); ++i) {
         const auto& item = args.CleanupQueue[i];
@@ -242,7 +241,8 @@ void TPartitionActor::ExecuteCleanup(
                 }
             } else {
                 // each block has its own commitId
-                Y_ABORT_UNLESS(mixedBlocks.BlocksSize() == mixedBlocks.CommitIdsSize());
+                Y_ABORT_UNLESS(
+                    mixedBlocks.BlocksSize() == mixedBlocks.CommitIdsSize());
                 for (size_t j = 0; j < mixedBlocks.BlocksSize(); ++j) {
                     ui32 blockIndex = mixedBlocks.GetBlocks(j);
                     ui64 commitId = mixedBlocks.GetCommitIds(j);
@@ -252,10 +252,11 @@ void TPartitionActor::ExecuteCleanup(
 
             ++mixedBlobsCount;
             if (!IsDeletionMarker(item.BlobId)) {
-                // Mins for block counts are needed due to some inconsistencies caused by
-                // NBS-1422
+                // Mins for block counts are needed due to some inconsistencies
+                // caused by NBS-1422
                 State->DecrementMixedBlocksCount(
-                    Min(mixedBlocks.BlocksSize(), State->GetMixedBlocksCount()));
+                    Min(mixedBlocks.BlocksSize(),
+                        State->GetMixedBlocksCount()));
             }
         } else if (blobMeta.HasMergedBlocks()) {
             const auto& mergedBlocks = blobMeta.GetMergedBlocks();
@@ -267,8 +268,8 @@ void TPartitionActor::ExecuteCleanup(
 
             ++mergedBlobsCount;
             if (!IsDeletionMarker(item.BlobId)) {
-                // Mins for block counts are needed due to some inconsistencies caused by
-                // NBS-1422
+                // Mins for block counts are needed due to some inconsistencies
+                // caused by NBS-1422
                 ui64 delta = blockRange.Size() - mergedBlocks.GetSkipped();
                 State->DecrementMergedBlocksCount(
                     Min(delta, State->GetMergedBlocksCount()));
@@ -350,7 +351,8 @@ void TPartitionActor::CompleteCleanup(
     EnqueueCleanupIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
 
-    auto time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
+    auto time =
+        CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
     PartCounters->RequestCounters.Cleanup.AddRequest(time);
 }
 

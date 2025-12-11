@@ -37,8 +37,7 @@ std::unique_ptr<NActors::TTestActorRuntime> TTestRuntimeBuilder::Build()
         StorageConfig = std::make_shared<TStorageConfig>(
             CreateDefaultStorageConfig(),
             std::make_shared<NFeatures::TFeaturesConfig>(
-                NCloud::NProto::TFeaturesConfig())
-        );
+                NCloud::NProto::TFeaturesConfig()));
     }
 
     if (!DiagnosticsConfig) {
@@ -57,19 +56,19 @@ std::unique_ptr<NActors::TTestActorRuntime> TTestRuntimeBuilder::Build()
         TBlockStoreComponents::END,
         GetComponentName);
 
-    // for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
+    // for (ui32 i = TBlockStoreComponents::START; i <
+    // TBlockStoreComponents::END; ++i) {
     //    runtime->SetLogPriority(i, NActors::NLog::PRI_DEBUG);
     // }
-    // runtime->SetLogPriority(NActors::NLog::InvalidComponent, NActors::NLog::PRI_DEBUG);
+    // runtime->SetLogPriority(NActors::NLog::InvalidComponent,
+    // NActors::NLog::PRI_DEBUG);
     runtime->SetLogPriority(
         TBlockStoreComponents::DISK_REGISTRY,
-        NActors::NLog::PRI_DEBUG
-    );
+        NActors::NLog::PRI_DEBUG);
 
     runtime->SetLogPriority(
         TBlockStoreComponents::DISK_REGISTRY_WORKER,
-        NActors::NLog::PRI_DEBUG
-    );
+        NActors::NLog::PRI_DEBUG);
 
     int nodeIdx = 0;
     for (auto* diskAgent: DiskAgents) {
@@ -80,10 +79,8 @@ std::unique_ptr<NActors::TTestActorRuntime> TTestRuntimeBuilder::Build()
             NActors::TActorSetupCmd(
                 diskAgent,
                 NActors::TMailboxType::Simple,
-                0
-            ),
-            nodeIdx
-        );
+                0),
+            nodeIdx);
 
         ++nodeIdx;
     }
@@ -93,36 +90,28 @@ std::unique_ptr<NActors::TTestActorRuntime> TTestRuntimeBuilder::Build()
         NActors::TActorSetupCmd(
             new TSSProxyMock(),
             NActors::TMailboxType::Simple,
-            0
-        )
-    );
+            0));
 
     runtime->AddLocalService(
         MakeStorageServiceId(),
         NActors::TActorSetupCmd(
             new TFakeStorageService(),
             NActors::TMailboxType::Simple,
-            0
-        )
-    );
+            0));
 
     runtime->AddLocalService(
         MakeVolumeProxyServiceId(),
         NActors::TActorSetupCmd(
             new TFakeVolumeProxy(),
             NActors::TMailboxType::Simple,
-            0
-        )
-    );
+            0));
 
     NKikimr::SetupTabletServices(*runtime);
 
     std::unique_ptr<NKikimr::TTabletStorageInfo> tabletInfo(
         NKikimr::CreateTestTabletInfo(
             TestTabletId,
-            NKikimr::TTabletTypes::BlockStoreDiskRegistry
-        )
-    );
+            NKikimr::TTabletTypes::BlockStoreDiskRegistry));
 
     auto storageConfig = StorageConfig;
     auto diagnosticsConfig = DiagnosticsConfig;
@@ -131,23 +120,23 @@ std::unique_ptr<NActors::TTestActorRuntime> TTestRuntimeBuilder::Build()
     auto logging = Logging;
 
     auto createFunc =
-        [=] (const NActors::TActorId& owner, NKikimr::TTabletStorageInfo* info) {
-            auto tablet = CreateDiskRegistry(
-                owner,
-                logging,
-                info,
-                storageConfig,
-                diagnosticsConfig,
-                logbrokerService,
-                notifyService);
-            return tablet.release();
-        };
+        [=](const NActors::TActorId& owner, NKikimr::TTabletStorageInfo* info)
+    {
+        auto tablet = CreateDiskRegistry(
+            owner,
+            logging,
+            info,
+            storageConfig,
+            diagnosticsConfig,
+            logbrokerService,
+            notifyService);
+        return tablet.release();
+    };
 
     auto actorId = NKikimr::CreateTestBootstrapper(
         *runtime,
         tabletInfo.release(),
-        createFunc
-    );
+        createFunc);
 
     runtime->EnableScheduleForActor(actorId);
 
@@ -178,8 +167,7 @@ TTestRuntimeBuilder& TTestRuntimeBuilder::With(
     StorageConfig = std::make_shared<TStorageConfig>(
         config,
         std::make_shared<NFeatures::TFeaturesConfig>(
-            NCloud::NProto::TFeaturesConfig())
-    );
+            NCloud::NProto::TFeaturesConfig()));
     return *this;
 }
 
@@ -203,22 +191,25 @@ TTestRuntimeBuilder& TTestRuntimeBuilder::With(NNotify::IServicePtr service)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void WaitForSecureErase(
-    NActors::TTestActorRuntime& runtime,
-    size_t deviceCount)
+void WaitForSecureErase(NActors::TTestActorRuntime& runtime, size_t deviceCount)
 {
+    using NActors::IEventHandle;
     using NActors::TDispatchOptions;
     using NActors::TTestActorRuntimeBase;
-    using NActors::IEventHandle;
 
     size_t cleanDevices = 0;
 
     TTestActorRuntimeBase::TEventObserver prev;
 
     prev = runtime.SetObserverFunc(
-        [&] (TAutoPtr<IEventHandle>& event) {
-            if (event->GetTypeRewrite() == TEvDiskRegistryPrivate::EvSecureEraseResponse) {
-                auto* msg = event->Get<TEvDiskRegistryPrivate::TEvSecureEraseResponse>();
+        [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistryPrivate::EvSecureEraseResponse)
+            {
+                auto* msg =
+                    event
+                        ->Get<TEvDiskRegistryPrivate::TEvSecureEraseResponse>();
 
                 cleanDevices += msg->CleanDevices;
             }
@@ -229,7 +220,8 @@ void WaitForSecureErase(
     runtime.AdvanceCurrentTime(TDuration::Seconds(5));
 
     TDispatchOptions options;
-    options.CustomFinalCondition = [&] {
+    options.CustomFinalCondition = [&]
+    {
         return cleanDevices >= deviceCount;
     };
 
@@ -282,7 +274,8 @@ void WaitForAgent(NActors::TTestActorRuntime& runtime, int nodeIdx)
 
     TAutoPtr<NActors::IEventHandle> handle;
     runtime.GrabEdgeEventRethrow<TEvDiskAgent::TEvWaitReadyResponse>(
-        handle, WaitTimeout);
+        handle,
+        WaitTimeout);
     UNIT_ASSERT(handle);
 }
 
@@ -305,7 +298,10 @@ void RegisterAndWaitForAgents(
     const TVector<NProto::TAgentConfig>& agents)
 {
     for (size_t i = 0; i != agents.size(); ++i) {
-        RegisterAndWaitForAgent(runtime, static_cast<int>(i), agents[i].DevicesSize());
+        RegisterAndWaitForAgent(
+            runtime,
+            static_cast<int>(i),
+            agents[i].DevicesSize());
     }
 }
 
@@ -314,17 +310,22 @@ void RegisterAndWaitForAgent(
     int nodeIdx,
     size_t deviceCount)
 {
+    using NActors::IEventHandle;
     using NActors::TDispatchOptions;
     using NActors::TTestActorRuntimeBase;
-    using NActors::IEventHandle;
 
     TTestActorRuntimeBase::TEventObserver prev;
     size_t cleanDevices = 0;
 
     if (deviceCount) {
-        prev = runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
-                if (event->GetTypeRewrite() == TEvDiskRegistryPrivate::EvSecureEraseResponse) {
-                    auto* msg = event->Get<TEvDiskRegistryPrivate::TEvSecureEraseResponse>();
+        prev = runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvDiskRegistryPrivate::EvSecureEraseResponse)
+                {
+                    auto* msg = event->Get<
+                        TEvDiskRegistryPrivate::TEvSecureEraseResponse>();
 
                     cleanDevices += msg->CleanDevices;
                 }
@@ -354,14 +355,16 @@ void RegisterAndWaitForAgent(
 
     TAutoPtr<NActors::IEventHandle> handle;
     runtime.GrabEdgeEventRethrow<TEvDiskAgent::TEvWaitReadyResponse>(
-        handle, WaitTimeout);
+        handle,
+        WaitTimeout);
     UNIT_ASSERT(handle);
 
     if (deviceCount) {
         runtime.AdvanceCurrentTime(TDuration::Seconds(6));
 
         TDispatchOptions options;
-        options.CustomFinalCondition = [&] {
+        options.CustomFinalCondition = [&]
+        {
             return cleanDevices >= deviceCount;
         };
 

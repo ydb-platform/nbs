@@ -1,7 +1,7 @@
-#include "command.h"
-
-#include "common_filter_params.h"
 #include "public.h"
+
+#include "command.h"
+#include "common_filter_params.h"
 
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/filestore/libs/service/request.h>
@@ -25,8 +25,7 @@ constexpr TStringBuf BlockSizeLabel = "block-size";
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TEventProcessor
-    : public TProtobufEventProcessor
+class TEventProcessor: public TProtobufEventProcessor
 {
 private:
     TVector<IRequestFilterPtr> Filters;
@@ -44,15 +43,15 @@ public:
             NProto::TProfileLogRecord filtered_message;
             filtered_message.SetFileSystemId(message->GetFileSystemId());
 
-            for (const auto& filter : Filters) {
+            for (const auto& filter: Filters) {
                 const auto current_record = filter->GetFilteredRecord(*message);
-                for (const auto& request : current_record.GetRequests()) {
+                for (const auto& request: current_record.GetRequests()) {
                     *filtered_message.AddRequests() = request;
                 }
             }
 
             const auto order = GetItemOrder(filtered_message);
-            for (const auto i : order) {
+            for (const auto i: order) {
                 DumpRequest(filtered_message, i, out);
             }
         }
@@ -61,8 +60,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFindBytesAccessCommand final
-    : public TCommand
+class TFindBytesAccessCommand final: public TCommand
 {
 private:
     const TCommonFilterParams CommonFilterParams;
@@ -91,9 +89,7 @@ public:
             .RequiredArgument("NUM")
             .StoreResult(&Count);
 
-        Opts.AddLongOption(
-                BlockSizeLabel.data(),
-                "Block size (in bytes)")
+        Opts.AddLongOption(BlockSizeLabel.data(), "Block size (in bytes)")
             .RequiredArgument("NUM")
             .StoreResult(&BlockSize)
             .DefaultValue(4_KB);
@@ -109,16 +105,14 @@ public:
 
         const auto nodeId = CommonFilterParams.GetNodeId(parseResult);
         if (nodeId.Defined()) {
-            filter = CreateRequestFilterByNodeId(
-                std::move(filter),
-                nodeId.GetRef());
+            filter =
+                CreateRequestFilterByNodeId(std::move(filter), nodeId.GetRef());
         }
 
         const auto handle = CommonFilterParams.GetHandle(parseResult);
         if (handle.Defined()) {
-            filter = CreateRequestFilterByHandle(
-                std::move(filter),
-                handle.GetRef());
+            filter =
+                CreateRequestFilterByHandle(std::move(filter), handle.GetRef());
         }
 
         const auto until = CommonFilterParams.GetUntil(parseResult);
@@ -135,7 +129,8 @@ public:
                 since.GetRef().MicroSeconds());
         }
 
-        const auto fileSystemId = CommonFilterParams.GetFileSystemId(parseResult);
+        const auto fileSystemId =
+            CommonFilterParams.GetFileSystemId(parseResult);
         if (fileSystemId.Defined()) {
             filter = CreateRequestFilterByFileSystemId(
                 std::move(filter),
@@ -149,13 +144,10 @@ public:
             static_cast<ui32>(NStorage::EFileStoreSystemRequest::TruncateRange),
             static_cast<ui32>(NStorage::EFileStoreSystemRequest::Compaction),
             static_cast<ui32>(NStorage::EFileStoreSystemRequest::Cleanup),
-            static_cast<ui32>(NStorage::EFileStoreSystemRequest::Flush)
-        };
+            static_cast<ui32>(NStorage::EFileStoreSystemRequest::Flush)};
 
         Filters.push_back(
-            CreateRequestFilterByRequestType(
-                filter,
-                std::move(requestTypes)));
+            CreateRequestFilterByRequestType(filter, std::move(requestTypes)));
 
         return true;
     }
@@ -164,11 +156,7 @@ public:
     {
         TEventProcessor processor(Filters);
         const char* path[] = {"", PathToProfileLog.c_str()};
-        return IterateEventLog(
-            NEvClass::Factory(),
-            &processor,
-            2,
-            path);
+        return IterateEventLog(NEvClass::Factory(), &processor, 2, path);
     }
 };
 

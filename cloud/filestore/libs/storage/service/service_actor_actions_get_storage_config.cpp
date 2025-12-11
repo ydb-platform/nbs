@@ -40,9 +40,7 @@ public:
 
 private:
     void HandleError(const TActorContext& ctx, NProto::TError error);
-    void HandleSuccess(
-        const TActorContext& ctx,
-        NProto::TStorageConfig config);
+    void HandleSuccess(const TActorContext& ctx, NProto::TStorageConfig config);
 
 private:
     STFUNC(StateWork);
@@ -55,9 +53,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TGetStorageConfigActionActor::TGetStorageConfigActionActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigPtr storageConfig,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TStorageConfigPtr storageConfig,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , StorageConfig(std::move(storageConfig))
     , Input(std::move(input))
@@ -67,9 +65,7 @@ void TGetStorageConfigActionActor::Bootstrap(const TActorContext& ctx)
 {
     NProtoPrivate::TGetStorageConfigRequest request;
     if (!google::protobuf::util::JsonStringToMessage(Input, &request).ok()) {
-        HandleError(
-            ctx,
-            MakeError(E_ARGUMENT, "Failed to parse input"));
+        HandleError(ctx, MakeError(E_ARGUMENT, "Failed to parse input"));
         return;
     }
 
@@ -96,11 +92,11 @@ void TGetStorageConfigActionActor::HandleError(
     const TActorContext& ctx,
     NProto::TError error)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(error);
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(error);
     google::protobuf::util::MessageToJsonString(
         NProtoPrivate::TGetStorageConfigResponse(),
-        response->Record.MutableOutput()
-    );
+        response->Record.MutableOutput());
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
@@ -113,8 +109,8 @@ void TGetStorageConfigActionActor::HandleSuccess(
     auto msg = std::make_unique<TEvService::TEvExecuteActionResponse>();
 
     google::protobuf::util::MessageToJsonString(
-        std::move(config), msg->Record.MutableOutput()
-    );
+        std::move(config),
+        msg->Record.MutableOutput());
 
     NCloud::Reply(ctx, *RequestInfo, std::move(msg));
     Die(ctx);
@@ -154,7 +150,7 @@ STFUNC(TGetStorageConfigActionActor::StateWork)
     }
 }
 
-} // namespace
+}   // namespace
 
 IActorPtr TStorageServiceActor::CreateGetStorageConfigActionActor(
     TRequestInfoPtr requestInfo,

@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/storage/protos/volume.pb.h>
 #include <cloud/blockstore/libs/storage/volume/model/follower_disk.h>
 #include <cloud/blockstore/libs/storage/volume/model/meta.h>
+
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
 
 #include <contrib/ydb/core/tablet_flat/flat_cxx_database.h>
@@ -16,8 +17,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TVolumeDatabase
-    : public NKikimr::NIceDb::TNiceDb
+class TVolumeDatabase: public NKikimr::NIceDb::TNiceDb
 {
 public:
     TVolumeDatabase(NKikimr::NTable::TDatabase& database)
@@ -35,7 +35,8 @@ public:
     void WriteStartPartitionsNeeded(const bool startPartitionsNeeded);
     bool ReadStartPartitionsNeeded(TMaybe<bool>& startPartitionsNeeded);
     void WriteStorageConfig(const NProto::TStorageServiceConfig& storageConfig);
-    bool ReadStorageConfig(TMaybe<NProto::TStorageServiceConfig>& storageConfig);
+    bool ReadStorageConfig(
+        TMaybe<NProto::TStorageServiceConfig>& storageConfig);
 
     //
     // MetaHistory
@@ -52,7 +53,9 @@ public:
     bool ReadClients(THashMap<TString, TVolumeClientState>& infos);
 
     void WriteClient(const NProto::TVolumeClientInfo& info);
-    bool ReadClient(const TString& clientId, TMaybe<NProto::TVolumeClientInfo>& info);
+    bool ReadClient(
+        const TString& clientId,
+        TMaybe<NProto::TVolumeClientInfo>& info);
 
     void RemoveClient(const TString& clientId);
 

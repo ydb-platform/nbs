@@ -8,16 +8,14 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool RunTest(
-    ui64 size,
-    ui64 iterations,
-    TMaybe<ui32> brokenBlockIdx)
+bool RunTest(ui64 size, ui64 iterations, TMaybe<ui32> brokenBlockIdx)
 {
     auto logging = CreateLoggingService("console", TLogSettings{});
     logging->Start();
-    Y_DEFER {
+    Y_DEFER
+    {
         logging->Stop();
-    };
+    }
 
     auto configHolder = CreateTestConfig(
         {.FilePath = "",
@@ -30,9 +28,8 @@ bool RunTest(
 
     const auto& config = configHolder->GetConfig();
 
-    auto validator = CreateValidator(
-        config,
-        logging->CreateLog("VALIDATOR_UT"));
+    auto validator =
+        CreateValidator(config, logging->CreateLog("VALIDATOR_UT"));
 
     const auto& range = config.GetRanges(0);
     TVector<ui64> data(size);
@@ -54,8 +51,7 @@ bool RunTest(
             .RequestTimestamp = Now().MicroSeconds(),
             .TestTimestamp = Now().MicroSeconds(),
             .TestId = config.GetTestId(),
-            .Checksum = 0
-        };
+            .Checksum = 0};
         validator->Write(&blockData, config.GetBlockSize());
     }
 
@@ -70,16 +66,12 @@ Y_UNIT_TEST_SUITE(TCheckpointValidator)
 {
     Y_UNIT_TEST(ShouldValidateCorrectly)
     {
-        UNIT_ASSERT_VALUES_EQUAL(
-            RunTest(1000, 5000, Nothing()),
-            true);
+        UNIT_ASSERT_VALUES_EQUAL(RunTest(1000, 5000, Nothing()), true);
     }
 
     Y_UNIT_TEST(ShouldFailValidation)
     {
-        UNIT_ASSERT_VALUES_EQUAL(
-            RunTest(1000, 5000, TMaybe<ui32>(50)),
-            false);
+        UNIT_ASSERT_VALUES_EQUAL(RunTest(1000, 5000, TMaybe<ui32>(50)), false);
     }
 }
 

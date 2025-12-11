@@ -31,11 +31,12 @@ void TPartitionActor::EnqueueTrimFreshLogIfNeeded(const TActorContext& ctx)
 
     using TRequest = TEvPartitionCommonPrivate::TEvTrimFreshLogRequest;
     auto request = std::make_unique<TRequest>(
-        MakeIntrusive<TCallContext>(CreateRequestId())
-    );
+        MakeIntrusive<TCallContext>(CreateRequestId()));
 
     if (State->GetTrimFreshLogBackoffDelay()) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
             "[%lu] TrimFreshLog request scheduled: %lu, %s",
             TabletID(),
             request->CallContext->RequestId,
@@ -43,15 +44,14 @@ void TPartitionActor::EnqueueTrimFreshLogIfNeeded(const TActorContext& ctx)
 
         ctx.Schedule(State->GetTrimFreshLogBackoffDelay(), request.release());
     } else {
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
             "[%lu] TrimFreshLog request sent: %lu",
             TabletID(),
             request->CallContext->RequestId);
 
-        NCloud::Send(
-            ctx,
-            SelfId(),
-            std::move(request));
+        NCloud::Send(ctx, SelfId(), std::move(request));
     }
 }
 
@@ -62,10 +62,8 @@ void TPartitionActor::HandleTrimFreshLog(
     auto* msg = ev->Get();
 
     using TMethod = TEvPartitionCommonPrivate::TTrimFreshLogMethod;
-    auto requestInfo = CreateRequestInfo<TMethod>(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo<TMethod>(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -77,16 +75,14 @@ void TPartitionActor::HandleTrimFreshLog(
         requestInfo->CallContext->RequestId,
         PartitionConfig.GetDiskId());
 
-    auto replyError = [=] (
-        const TActorContext& ctx,
-        TRequestInfo& requestInfo,
-        ui32 errorCode,
-        TString errorReason)
+    auto replyError = [=](const TActorContext& ctx,
+                          TRequestInfo& requestInfo,
+                          ui32 errorCode,
+                          TString errorReason)
     {
         using TResponse = TEvPartitionCommonPrivate::TEvTrimFreshLogResponse;
         auto response = std::make_unique<TResponse>(
-            MakeError(errorCode, std::move(errorReason))
-        );
+            MakeError(errorCode, std::move(errorReason)));
 
         LWTRACK(
             ResponseSent_Partition,
@@ -110,7 +106,9 @@ void TPartitionActor::HandleTrimFreshLog(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%lu] Start TrimFreshLog @%lu @%lu",
         TabletID(),
         trimFreshLogToCommitId,
@@ -118,9 +116,8 @@ void TPartitionActor::HandleTrimFreshLog(
 
     State->GetTrimFreshLogState().SetStatus(EOperationStatus::Started);
 
-    TVector<ui32> freshChannels = State->GetChannelsByKind([](auto kind) {
-        return kind == EChannelDataKind::Fresh;
-    });
+    TVector<ui32> freshChannels = State->GetChannelsByKind(
+        [](auto kind) { return kind == EChannelDataKind::Fresh; });
 
     auto actor = NCloud::Register<TTrimFreshLogActor>(
         ctx,
@@ -144,14 +141,18 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
     const auto* msg = ev->Get();
 
     if (FAILED(msg->GetStatus())) {
-        LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION,
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::PARTITION,
             "[" << TabletID() << "]"
                 << " TrimFreshLog failed: " << msg->GetStatus()
                 << " reason: " << msg->GetError().GetMessage().Quote());
 
         State->RegisterTrimFreshLogError();
     } else {
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
             "[%lu] TrimFreshLog completed",
             TabletID());
 

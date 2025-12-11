@@ -39,7 +39,9 @@ void TPartitionActor::CompleteInitSchema(
 {
     Y_UNUSED(args);
 
-    LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%lu] Schema initialized",
         TabletID());
 

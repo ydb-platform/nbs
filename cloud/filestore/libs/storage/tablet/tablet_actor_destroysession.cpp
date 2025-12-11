@@ -1,4 +1,5 @@
 #include "tablet_actor.h"
+
 #include "shard_request_actor.h"
 
 namespace NCloud::NFileStore::NStorage {
@@ -40,7 +41,9 @@ void TIndexTabletActor::HandleDestroySession(
     const auto& sessionId = GetSessionId(msg->Record);
     const auto sessionSeqNo = GetSessionSeqNo(msg->Record);
 
-    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s DestroySession c:%s, s:%s n:%lu",
         LogTag.c_str(),
         clientId.c_str(),
@@ -65,10 +68,8 @@ void TIndexTabletActor::HandleDestroySession(
         return;
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvIndexTablet::TDestroySessionMethod>(*requestInfo);
@@ -99,7 +100,9 @@ bool TIndexTabletActor::PrepareTx_DestroySession(
         return true;
     }
 
-    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s Wipe session s:%s n:%lu",
         LogTag.c_str(),
         args.SessionId.c_str(),
@@ -161,17 +164,15 @@ void TIndexTabletActor::ExecuteTx_DestroySession(
 
         auto it = args.Nodes.find(nodeId);
         if (it != args.Nodes.end() && !HasOpenHandles(nodeId)) {
-            auto e = RemoveNode(
-                db,
-                *it,
-                it->MinCommitId,
-                commitId);
+            auto e = RemoveNode(db, *it, it->MinCommitId, commitId);
 
             if (HasError(e)) {
-                WriteOrphanNode(db, TStringBuilder()
-                    << "DestroySession: " << args.SessionId
-                    << ", RemoveNode: " << nodeId
-                    << ", Error: " << FormatError(e), nodeId);
+                WriteOrphanNode(
+                    db,
+                    TStringBuilder() << "DestroySession: " << args.SessionId
+                                     << ", RemoveNode: " << nodeId
+                                     << ", Error: " << FormatError(e),
+                    nodeId);
             }
         }
     }
@@ -193,7 +194,9 @@ void TIndexTabletActor::CompleteTx_DestroySession(
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     // session will be deleted in other shards via the code in the main tablet
     if (!IsMainTablet() || shardIds.empty()) {
-        LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s DestroySession completed",
             LogTag.c_str());
 
@@ -201,7 +204,9 @@ void TIndexTabletActor::CompleteTx_DestroySession(
         return;
     }
 
-    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s DestroySession completed - local"
         ", destroying shard sessions (%s)",
         LogTag.c_str(),

@@ -22,8 +22,8 @@ class TRestoreValidationActor final
     : public NActors::TActorBootstrapped<TRestoreValidationActor>
 {
 private:
-    using TValidators =
-        void(TRestoreValidationActor::*)(const NActors::TActorContext&);
+    using TValidators = void (TRestoreValidationActor::*)(
+        const NActors::TActorContext&);
 
     const NActors::TActorId Owner;
     const TRequestInfoPtr Request;
@@ -47,9 +47,7 @@ public:
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
-    void ReplyAndDie(
-        const NActors::TActorContext& ctx,
-        NProto::TError error);
+    void ReplyAndDie(const NActors::TActorContext& ctx, NProto::TError error);
 
     template <typename Container>
     void SetErrorDevicesInBackup(const Container& deviceIds, TInstant now);
@@ -86,4 +84,4 @@ private:
         const NActors::TActorContext& ctx);
 };
 
-}   // NCloud::NBlockStore::NStorage::NDiskRegistry
+}   // namespace NCloud::NBlockStore::NStorage::NDiskRegistry

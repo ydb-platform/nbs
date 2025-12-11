@@ -32,17 +32,16 @@
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
 // TODO: invalid reference
+#include <cloud/blockstore/libs/diagnostics/config.h>
+#include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/partition/part_events_private.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_events_private.h>
 #include <cloud/blockstore/libs/storage/service/service_events_private.h>
 
-#include <cloud/blockstore/libs/diagnostics/config.h>
-#include <cloud/blockstore/libs/kikimr/helpers.h>
-
 #include <contrib/ydb/core/blockstore/core/blockstore.h>
 #include <contrib/ydb/core/mind/local.h>
-#include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 
+#include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/size_literals.h>
@@ -74,8 +73,7 @@ bool HasProbe(const NLWTrace::TShuttleTrace& trace, const TString& probeName);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFakeHiveProxy final
-    : public TActor<TFakeHiveProxy>
+class TFakeHiveProxy final: public TActor<TFakeHiveProxy>
 {
 private:
     ui32 PartitionGeneration = 0;
@@ -112,8 +110,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFakeStorageService final
-    : public NActors::TActor<TFakeStorageService>
+class TFakeStorageService final: public NActors::TActor<TFakeStorageService>
 {
 public:
     TFakeStorageService()
@@ -156,64 +153,73 @@ private:
 #define TICK(runtime) runtime->AdvanceCurrentTime(TDuration::Seconds(1));
 // TICK
 
-#define TEST_RESPONSE_IMPL(volume, eventNamespace, name, status, timeout) {         \
-    auto response =                                                                 \
-        volume.TryRecvResponse<eventNamespace::TEv ## name ## Response>(            \
-            timeout);                                                               \
-    UNIT_ASSERT(response);                                                          \
-    UNIT_ASSERT_VALUES_EQUAL(status, response->GetStatus());                        \
-} // TEST_RESPONSE_IMPL
+#define TEST_RESPONSE_IMPL(volume, eventNamespace, name, status, timeout) \
+    {                                                                     \
+        auto response =                                                   \
+            volume.TryRecvResponse<eventNamespace::TEv##name##Response>(  \
+                timeout);                                                 \
+        UNIT_ASSERT(response);                                            \
+        UNIT_ASSERT_VALUES_EQUAL(status, response->GetStatus());          \
+    }   // TEST_RESPONSE_IMPL
 
-#define TEST_RESPONSE(volume, name, status, timeout) {                              \
-    TEST_RESPONSE_IMPL(volume, TEvService, name, status, timeout);                  \
-} // TEST_RESPONSE
+#define TEST_RESPONSE(volume, name, status, timeout)                   \
+    {                                                                  \
+        TEST_RESPONSE_IMPL(volume, TEvService, name, status, timeout); \
+    }   // TEST_RESPONSE
 
-#define TEST_RESPONSE_VOLUME_EVENT(volume, name, status, timeout) {                 \
-    TEST_RESPONSE_IMPL(volume, TEvVolume, name, status, timeout);                   \
-} // TEST_RESPONSE_VOLUME_EVENT
+#define TEST_RESPONSE_VOLUME_EVENT(volume, name, status, timeout)     \
+    {                                                                 \
+        TEST_RESPONSE_IMPL(volume, TEvVolume, name, status, timeout); \
+    }   // TEST_RESPONSE_VOLUME_EVENT
 
-#define TEST_QUICK_RESPONSE_IMPL(runtime, eventNamespace, name, status) {           \
-    runtime->DispatchEvents({}, TInstant::Zero());                                  \
-    auto evList = runtime->CaptureEvents();                                         \
-    std::unique_ptr<IEventHandle> handle;                                           \
-    for (auto& ev : evList) {                                                       \
-        if (ev->GetTypeRewrite() == eventNamespace::Ev ## name ## Response) {       \
-            handle.reset(ev.Release());                                             \
-            break;                                                                  \
-        }                                                                           \
-    }                                                                               \
-    UNIT_ASSERT(handle);                                                            \
-    auto response =                                                                 \
-        handle->Release<eventNamespace::TEv ## name ## Response>();                 \
-    UNIT_ASSERT_VALUES_EQUAL(status, response->GetStatus());                        \
-    runtime->PushEventsFront(evList);                                               \
-} // TEST_QUICK_RESPONSE
+#define TEST_QUICK_RESPONSE_IMPL(runtime, eventNamespace, name, status)       \
+    {                                                                         \
+        runtime->DispatchEvents({}, TInstant::Zero());                        \
+        auto evList = runtime->CaptureEvents();                               \
+        std::unique_ptr<IEventHandle> handle;                                 \
+        for (auto& ev: evList) {                                              \
+            if (ev->GetTypeRewrite() == eventNamespace::Ev##name##Response) { \
+                handle.reset(ev.Release());                                   \
+                break;                                                        \
+            }                                                                 \
+        }                                                                     \
+        UNIT_ASSERT(handle);                                                  \
+        auto response =                                                       \
+            handle->Release<eventNamespace::TEv##name##Response>();           \
+        UNIT_ASSERT_VALUES_EQUAL(status, response->GetStatus());              \
+        runtime->PushEventsFront(evList);                                     \
+    }   // TEST_QUICK_RESPONSE
 
-#define TEST_QUICK_RESPONSE(runtime, name, status) {                                \
-    TEST_QUICK_RESPONSE_IMPL(runtime, TEvService, name, status);                    \
-} // TEST_QUICK_RESPONSE
+#define TEST_QUICK_RESPONSE(runtime, name, status)                   \
+    {                                                                \
+        TEST_QUICK_RESPONSE_IMPL(runtime, TEvService, name, status); \
+    }   // TEST_QUICK_RESPONSE
 
-#define TEST_QUICK_RESPONSE_VOLUME_EVENT(runtime, name, status) {                   \
-    TEST_QUICK_RESPONSE_IMPL(runtime, TEvVolume, name, status);                     \
-} // TEST_QUICK_RESPONSE_VOLUME_EVENT
+#define TEST_QUICK_RESPONSE_VOLUME_EVENT(runtime, name, status)     \
+    {                                                               \
+        TEST_QUICK_RESPONSE_IMPL(runtime, TEvVolume, name, status); \
+    }   // TEST_QUICK_RESPONSE_VOLUME_EVENT
 
-#define TEST_NO_RESPONSE_IMPL(runtime, eventNamespace, name) {                      \
-    runtime->DispatchEvents({}, TInstant::Zero());                                  \
-    auto evList = runtime->CaptureEvents();                                         \
-    for (auto& ev : evList) {                                                       \
-        UNIT_ASSERT(                                                                \
-            ev->GetTypeRewrite() != eventNamespace::Ev ## name ## Response);        \
-    }                                                                               \
-    runtime->PushEventsFront(evList);                                               \
-} // TEST_NO_RESPONSE
+#define TEST_NO_RESPONSE_IMPL(runtime, eventNamespace, name)                 \
+    {                                                                        \
+        runtime->DispatchEvents({}, TInstant::Zero());                       \
+        auto evList = runtime->CaptureEvents();                              \
+        for (auto& ev: evList) {                                             \
+            UNIT_ASSERT(                                                     \
+                ev->GetTypeRewrite() != eventNamespace::Ev##name##Response); \
+        }                                                                    \
+        runtime->PushEventsFront(evList);                                    \
+    }   // TEST_NO_RESPONSE
 
-#define TEST_NO_RESPONSE(runtime, name) {                                           \
-    TEST_NO_RESPONSE_IMPL(runtime, TEvService, name);                               \
-} // TEST_NO_RESPONSE
+#define TEST_NO_RESPONSE(runtime, name)                   \
+    {                                                     \
+        TEST_NO_RESPONSE_IMPL(runtime, TEvService, name); \
+    }   // TEST_NO_RESPONSE
 
-#define TEST_NO_RESPONSE_VOLUME_EVENT(runtime, name) {                              \
-    TEST_NO_RESPONSE_IMPL(runtime, TEvVolume, name);                                \
-} // TEST_NO_RESPONSE_VOLUME_EVENT
+#define TEST_NO_RESPONSE_VOLUME_EVENT(runtime, name)     \
+    {                                                    \
+        TEST_NO_RESPONSE_IMPL(runtime, TEvVolume, name); \
+    }   // TEST_NO_RESPONSE_VOLUME_EVENT
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -229,9 +235,9 @@ private:
 
 public:
     TVolumeClient(
-            TTestActorRuntime& runtime,
-            ui32 nodeIdx = 0,
-            ui64 volumeTabletId = TestVolumeTablets[0])
+        TTestActorRuntime& runtime,
+        ui32 nodeIdx = 0,
+        ui64 volumeTabletId = TestVolumeTablets[0])
         : Runtime(runtime)
         , NodeIdx(nodeIdx)
         , VolumeTabletId(volumeTabletId)
@@ -253,12 +259,8 @@ public:
     template <typename TRequest>
     void SendToPipe(std::unique_ptr<TRequest> request, ui64 cookie = 0)
     {
-        Runtime.SendToPipe(
-            PipeClient,
-            Sender,
-            request.release(),
-            NodeIdx,
-            cookie);
+        Runtime
+            .SendToPipe(PipeClient, Sender, request.release(), NodeIdx, cookie);
     }
 
     void ForwardToPipe(TAutoPtr<IEventHandle>& event)
@@ -292,7 +294,8 @@ public:
         Runtime.GrabEdgeEventRethrow<TResponse>(handle, WaitTimeout);
 
         Y_ABORT_UNLESS(handle);
-        return std::unique_ptr<TResponse>(handle->Release<TResponse>().Release());
+        return std::unique_ptr<TResponse>(
+            handle->Release<TResponse>().Release());
     }
 
     std::unique_ptr<TEvBlockStore::TEvUpdateVolumeConfig>
@@ -331,7 +334,8 @@ public:
         SendToPipe(std::move(request));
     }
 
-    std::unique_ptr<TEvBlockStore::TEvUpdateVolumeConfigResponse> RecvUpdateVolumeConfigResponse()
+    std::unique_ptr<TEvBlockStore::TEvUpdateVolumeConfigResponse>
+    RecvUpdateVolumeConfigResponse()
     {
         return RecvResponse<TEvBlockStore::TEvUpdateVolumeConfigResponse>();
     }
@@ -343,8 +347,8 @@ public:
         auto response = RecvUpdateVolumeConfigResponse();
         UNIT_ASSERT_C(
             response->Record.GetStatus() == NKikimrBlockStore::OK,
-            "Unexpected status: " <<
-            NKikimrBlockStore::EStatus_Name(response->Record.GetStatus()));
+            "Unexpected status: " << NKikimrBlockStore::EStatus_Name(
+                response->Record.GetStatus()));
     }
 
     void CreateVolume(
@@ -364,7 +368,8 @@ public:
 
     auto TagUpdater(NProto::EStorageMediaKind mediaKind, ui64 blockCount)
     {
-        return [this, mediaKind, blockCount, version = 1] (auto tags) mutable {
+        return [this, mediaKind, blockCount, version = 1](auto tags) mutable
+        {
             UpdateVolumeConfig(
                 0,
                 0,
@@ -389,8 +394,8 @@ public:
     std::unique_ptr<TEvVolume::TEvAddClientRequest> CreateAddClientRequest(
         const NProto::TVolumeClientInfo& info);
 
-    std::unique_ptr<TEvVolume::TEvRemoveClientRequest> CreateRemoveClientRequest(
-        const TString& clientId);
+    std::unique_ptr<TEvVolume::TEvRemoveClientRequest>
+    CreateRemoveClientRequest(const TString& clientId);
 
     std::unique_ptr<TEvService::TEvStatVolumeRequest> CreateStatVolumeRequest(
         const TString& clientId = {},
@@ -402,7 +407,8 @@ public:
         const TString& clientId,
         const TString& checkpointId = {});
 
-    std::unique_ptr<TEvService::TEvReadBlocksLocalRequest> CreateReadBlocksLocalRequest(
+    std::unique_ptr<TEvService::TEvReadBlocksLocalRequest>
+    CreateReadBlocksLocalRequest(
         const TBlockRange64& readRange,
         const TGuardedSgList& sglist,
         const TString& clientId,
@@ -421,7 +427,8 @@ public:
         const TString& clientId,
         const TString& blockContent);
 
-    std::unique_ptr<TEvService::TEvWriteBlocksLocalRequest> CreateWriteBlocksLocalRequest(
+    std::unique_ptr<TEvService::TEvWriteBlocksLocalRequest>
+    CreateWriteBlocksLocalRequest(
         const TBlockRange64& writeRange,
         const TString& clientId,
         const TString& blockContent);
@@ -430,40 +437,46 @@ public:
         const TBlockRange64& zeroRange,
         const TString& clientId);
 
-    std::unique_ptr<TEvVolume::TEvDescribeBlocksRequest> CreateDescribeBlocksRequest(
+    std::unique_ptr<TEvVolume::TEvDescribeBlocksRequest>
+    CreateDescribeBlocksRequest(
         const TBlockRange64& range,
         const TString& clientId,
         ui32 blocksCountToRead = 0);
 
-    std::unique_ptr<TEvService::TEvCreateCheckpointRequest> CreateCreateCheckpointRequest(
+    std::unique_ptr<TEvService::TEvCreateCheckpointRequest>
+    CreateCreateCheckpointRequest(
         const TString& checkpointId,
-        NProto::ECheckpointType checkpointType = NProto::ECheckpointType::NORMAL);
+        NProto::ECheckpointType checkpointType =
+            NProto::ECheckpointType::NORMAL);
 
-    std::unique_ptr<TEvService::TEvDeleteCheckpointRequest> CreateDeleteCheckpointRequest(
-        const TString& checkpointId);
+    std::unique_ptr<TEvService::TEvDeleteCheckpointRequest>
+    CreateDeleteCheckpointRequest(const TString& checkpointId);
 
-    std::unique_ptr<TEvService::TEvGetChangedBlocksRequest> CreateGetChangedBlocksRequest(
+    std::unique_ptr<TEvService::TEvGetChangedBlocksRequest>
+    CreateGetChangedBlocksRequest(
         const TBlockRange64& range,
         const TString& lowCheckpointId,
         const TString& highCheckpointId);
 
-    std::unique_ptr<TEvVolume::TEvDeleteCheckpointDataRequest> CreateDeleteCheckpointDataRequest(
-        const TString& checkpointId);
+    std::unique_ptr<TEvVolume::TEvDeleteCheckpointDataRequest>
+    CreateDeleteCheckpointDataRequest(const TString& checkpointId);
 
     std::unique_ptr<TEvService::TEvGetCheckpointStatusRequest>
     CreateGetCheckpointStatusRequest(const TString& checkpointId);
 
-    std::unique_ptr<TEvPartition::TEvBackpressureReport> CreateBackpressureReport(
-        const TBackpressureReport& report);
+    std::unique_ptr<TEvPartition::TEvBackpressureReport>
+    CreateBackpressureReport(const TBackpressureReport& report);
 
-    std::unique_ptr<TEvVolume::TEvCompactRangeRequest> CreateCompactRangeRequest(
+    std::unique_ptr<TEvVolume::TEvCompactRangeRequest>
+    CreateCompactRangeRequest(
         const TBlockRange64& range,
         const TString& operationId);
 
-    std::unique_ptr<TEvVolume::TEvGetCompactionStatusRequest> CreateGetCompactionStatusRequest(
-        const TString& operationId);
+    std::unique_ptr<TEvVolume::TEvGetCompactionStatusRequest>
+    CreateGetCompactionStatusRequest(const TString& operationId);
 
-    std::unique_ptr<TEvVolume::TEvUpdateUsedBlocksRequest> CreateUpdateUsedBlocksRequest(
+    std::unique_ptr<TEvVolume::TEvUpdateUsedBlocksRequest>
+    CreateUpdateUsedBlocksRequest(
         const TVector<TBlockRange64>& ranges,
         bool used);
 
@@ -471,30 +484,37 @@ public:
         const TString& params,
         HTTP_METHOD method);
 
-    std::unique_ptr<TEvVolume::TEvRebuildMetadataRequest> CreateRebuildMetadataRequest(
+    std::unique_ptr<TEvVolume::TEvRebuildMetadataRequest>
+    CreateRebuildMetadataRequest(
         NProto::ERebuildMetadataType type,
         ui32 batchSize);
 
-    std::unique_ptr<TEvVolume::TEvGetRebuildMetadataStatusRequest> CreateGetRebuildMetadataStatusRequest();
+    std::unique_ptr<TEvVolume::TEvGetRebuildMetadataStatusRequest>
+    CreateGetRebuildMetadataStatusRequest();
 
     std::unique_ptr<NMon::TEvRemoteHttpInfo> CreateRemoteHttpInfo(
         const TString& params);
 
-    std::unique_ptr<TEvVolume::TEvGetVolumeInfoRequest> CreateGetVolumeInfoRequest();
+    std::unique_ptr<TEvVolume::TEvGetVolumeInfoRequest>
+    CreateGetVolumeInfoRequest();
 
-    std::unique_ptr<TEvVolume::TEvUpdateVolumeParamsRequest> CreateUpdateVolumeParamsRequest(
+    std::unique_ptr<TEvVolume::TEvUpdateVolumeParamsRequest>
+    CreateUpdateVolumeParamsRequest(
         const TString& diskId,
-        const THashMap<TString, NProto::TUpdateVolumeParamsMapValue>& volumeParams);
+        const THashMap<TString, NProto::TUpdateVolumeParamsMapValue>&
+            volumeParams);
 
-    std::unique_ptr<TEvVolume::TEvChangeStorageConfigRequest> CreateChangeStorageConfigRequest(
-        NProto::TStorageServiceConfig patch);
+    std::unique_ptr<TEvVolume::TEvChangeStorageConfigRequest>
+    CreateChangeStorageConfigRequest(NProto::TStorageServiceConfig patch);
 
-    std::unique_ptr<TEvVolume::TEvGetStorageConfigRequest> CreateGetStorageConfigRequest();
+    std::unique_ptr<TEvVolume::TEvGetStorageConfigRequest>
+    CreateGetStorageConfigRequest();
 
     std::unique_ptr<TEvVolumePrivate::TEvDeviceTimedOutRequest>
     CreateDeviceTimedOutRequest(TString deviceUUID);
 
-    std::unique_ptr<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest> CreateUpdateShadowDiskStateRequest(
+    std::unique_ptr<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>
+    CreateUpdateShadowDiskStateRequest(
         TString checkpointId,
         TEvVolumePrivate::TEvUpdateShadowDiskStateRequest::EReason reason,
         ui64 processedBlockCount);
@@ -509,17 +529,15 @@ public:
     CreateLinkLeaderVolumeToFollowerRequest(const TLeaderFollowerLink& link);
 
     std::unique_ptr<TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest>
-    CreateUnlinkLeaderVolumeFromFollowerRequest(const TLeaderFollowerLink& link);
+    CreateUnlinkLeaderVolumeFromFollowerRequest(
+        const TLeaderFollowerLink& link);
 
     std::unique_ptr<TEvVolumePrivate::TEvUpdateFollowerStateRequest>
     CreateUpdateFollowerStateRequest(TFollowerDiskInfo followerDiskInfo);
 
-    void SendRemoteHttpInfo(
-        const TString& params,
-        HTTP_METHOD method);
+    void SendRemoteHttpInfo(const TString& params, HTTP_METHOD method);
 
-    void SendRemoteHttpInfo(
-        const TString& params);
+    void SendRemoteHttpInfo(const TString& params);
 
     std::unique_ptr<NMon::TEvRemoteHttpInfoRes> RecvCreateRemoteHttpInfoRes();
 
@@ -530,54 +548,55 @@ public:
     std::unique_ptr<NMon::TEvRemoteHttpInfoRes> RemoteHttpInfo(
         const TString& params);
 
-void SendPartitionTabletMetrics(
-    ui64 tabletId,
-    const NKikimrTabletBase::TMetrics& metrics);
+    void SendPartitionTabletMetrics(
+        ui64 tabletId,
+        const NKikimrTabletBase::TMetrics& metrics);
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
-    template <typename... Args>                                                \
-    void Send##name##Request(Args&&... args)                                   \
-    {                                                                          \
-        SendToPipe(                                                            \
-            Create##name##Request(std::forward<Args>(args)...));               \
-    }                                                                          \
-                                                                               \
-    std::unique_ptr<ns::TEv##name##Response> Recv##name##Response()            \
-    {                                                                          \
-        return RecvResponse<ns::TEv##name##Response>();                        \
-    }                                                                          \
-                                                                               \
-    std::unique_ptr<ns::TEv##name##Response> Recv##name##Response(             \
-        TDuration timeout)                                                     \
-    {                                                                          \
-        return TryRecvResponse<ns::TEv##name##Response>(timeout);              \
-    }                                                                          \
-                                                                               \
-    template <typename... Args>                                                \
-    std::unique_ptr<ns::TEv##name##Response> name(Args&&... args)              \
-    {                                                                          \
-        Send##name##Request(std::forward<Args>(args)...);                      \
-        auto response = Recv##name##Response();                                \
-        UNIT_ASSERT_C(                                                         \
-            SUCCEEDED(response->GetStatus()),                                  \
-            response->GetErrorReason());                                       \
-        return response;                                                       \
-    }                                                                          \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ns)                             \
+    template <typename... Args>                                         \
+    void Send##name##Request(Args&&... args)                            \
+    {                                                                   \
+        SendToPipe(Create##name##Request(std::forward<Args>(args)...)); \
+    }                                                                   \
+                                                                        \
+    std::unique_ptr<ns::TEv##name##Response> Recv##name##Response()     \
+    {                                                                   \
+        return RecvResponse<ns::TEv##name##Response>();                 \
+    }                                                                   \
+                                                                        \
+    std::unique_ptr<ns::TEv##name##Response> Recv##name##Response(      \
+        TDuration timeout)                                              \
+    {                                                                   \
+        return TryRecvResponse<ns::TEv##name##Response>(timeout);       \
+    }                                                                   \
+                                                                        \
+    template <typename... Args>                                         \
+    std::unique_ptr<ns::TEv##name##Response> name(Args&&... args)       \
+    {                                                                   \
+        Send##name##Request(std::forward<Args>(args)...);               \
+        auto response = Recv##name##Response();                         \
+        UNIT_ASSERT_C(                                                  \
+            SUCCEEDED(response->GetStatus()),                           \
+            response->GetErrorReason());                                \
+        return response;                                                \
+    }                                                                   \
+    // BLOCKSTORE_DECLARE_METHOD
 
     BLOCKSTORE_VOLUME_REQUESTS(BLOCKSTORE_DECLARE_METHOD, TEvVolume)
-    BLOCKSTORE_VOLUME_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_METHOD, TEvVolumePrivate)
-    BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE(BLOCKSTORE_DECLARE_METHOD, TEvService)
+    BLOCKSTORE_VOLUME_REQUESTS_PRIVATE(
+        BLOCKSTORE_DECLARE_METHOD,
+        TEvVolumePrivate)
+    BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE(
+        BLOCKSTORE_DECLARE_METHOD,
+        TEvService)
 
 #undef BLOCKSTORE_DECLARE_METHOD
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-inline NProto::TDeviceConfig MakeDevice(
-    const TString& uuid,
-    const TString& name,
-    const TString& transportId)
+inline NProto::TDeviceConfig
+MakeDevice(const TString& uuid, const TString& name, const TString& transportId)
 {
     NProto::TDeviceConfig device;
     device.SetAgentId("agent-1");
@@ -588,7 +607,7 @@ inline NProto::TDeviceConfig MakeDevice(
     device.SetTransportId(transportId);
     device.SetBlockSize(DefaultDeviceBlockSize);
     return device;
-};
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -603,7 +622,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
 struct TTestRuntimeBuilder
 {
     NProto::TStorageServiceConfig StorageServiceConfig;
-    TDiskRegistryStatePtr DiskRegistryState = MakeIntrusive<TDiskRegistryState>();
+    TDiskRegistryStatePtr DiskRegistryState =
+        MakeIntrusive<TDiskRegistryState>();
 
     TTestRuntimeBuilder& With(NProto::TStorageServiceConfig config);
 

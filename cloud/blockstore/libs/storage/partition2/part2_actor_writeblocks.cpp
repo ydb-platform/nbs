@@ -42,10 +42,7 @@ IWriteBlocksHandlerPtr CreateWriteHandler(
     std::unique_ptr<TEvService::TEvWriteBlocksRequest> request,
     ui32 blockSize)
 {
-    return CreateWriteBlocksHandler(
-        writeRange,
-        std::move(request),
-        blockSize);
+    return CreateWriteBlocksHandler(writeRange, std::move(request), blockSize);
 }
 
 IWriteBlocksHandlerPtr CreateWriteHandler(
@@ -54,9 +51,7 @@ IWriteBlocksHandlerPtr CreateWriteHandler(
     ui32 blockSize)
 {
     Y_UNUSED(blockSize);
-    return CreateWriteBlocksHandler(
-        writeRange,
-        std::move(request));
+    return CreateWriteBlocksHandler(writeRange, std::move(request));
 }
 
 TGuardedSgList GetSglist(const NProto::TWriteBlocksRequest& request)
@@ -69,8 +64,8 @@ const TGuardedSgList& GetSglist(const NProto::TWriteBlocksLocalRequest& request)
     return request.Sglist;
 }
 
-template <typename ...T>
-IEventBasePtr CreateWriteBlocksResponse(bool replyLocal, T&& ...args)
+template <typename... T>
+IEventBasePtr CreateWriteBlocksResponse(bool replyLocal, T&&... args)
 {
     if (replyLocal) {
         return std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
@@ -89,8 +84,7 @@ void TPartitionActor::HandleWriteBlocks(
     const TEvService::TEvWriteBlocksRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    HandleWriteBlocksRequest<TEvService::TWriteBlocksMethod>(
-        ev, ctx, false);
+    HandleWriteBlocksRequest<TEvService::TWriteBlocksMethod>(ev, ctx, false);
 }
 
 void TPartitionActor::HandleWriteBlocksLocal(
@@ -98,7 +92,9 @@ void TPartitionActor::HandleWriteBlocksLocal(
     const TActorContext& ctx)
 {
     HandleWriteBlocksRequest<TEvService::TWriteBlocksLocalMethod>(
-        ev, ctx, true);
+        ev,
+        ctx,
+        true);
 }
 
 template <typename TMethod>
@@ -109,10 +105,8 @@ void TPartitionActor::HandleWriteBlocksRequest(
 {
     auto msg = ev->Release();
 
-    auto requestInfo = CreateRequestInfo<TMethod>(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo<TMethod>(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -188,7 +182,8 @@ void TPartitionActor::HandleWriteBlocksRequest(
                             << checksum.ShortUtf8DebugString().Quote()
                             << "; Incoming checksum: "
                             << msg->Record.GetChecksums(0)
-                                   .ShortUtf8DebugString().Quote(),
+                                   .ShortUtf8DebugString()
+                                   .Quote(),
                         flags));
                 }
             }
@@ -203,8 +198,7 @@ void TPartitionActor::HandleWriteBlocksRequest(
     auto ok = InitReadWriteBlockRange(
         msg->Record.GetStartIndex(),
         blocksCount,
-        &writeRange
-    );
+        &writeRange);
 
     if (!ok) {
         replyError(MakeError(
@@ -248,8 +242,7 @@ void TPartitionActor::HandleWriteBlocksRequest(
         requestInfo,
         ConvertRangeSafe(writeRange),
         std::move(writeHandler),
-        replyLocal
-    );
+        replyLocal);
 }
 
 void TPartitionActor::WriteBlocks(
@@ -261,13 +254,10 @@ void TPartitionActor::WriteBlocks(
 {
     TRequestInBuffer<TWriteBufferRequestData> requestInBuffer{
         writeRange.Size(),
-        {
-            std::move(requestInfo),
-            writeRange,
-            std::move(writeHandler),
-            replyLocal
-        }
-    };
+        {std::move(requestInfo),
+         writeRange,
+         std::move(writeHandler),
+         replyLocal}};
 
     const auto requestSize = writeRange.Size() * State->GetBlockSize();
     const auto writeBlobThreshold =
@@ -279,11 +269,12 @@ void TPartitionActor::WriteBlocks(
             // we will accumulate these writes in FreshBlocks table
             EnqueueProcessWriteQueueIfNeeded(ctx);
 
-            LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
+            LOG_TRACE(
+                ctx,
+                TBlockStoreComponents::PARTITION,
                 "[%lu] Enqueueing fresh blocks (range: %s)",
                 TabletID(),
-                DescribeRange(writeRange).data()
-            );
+                DescribeRange(writeRange).data());
             State->GetWriteBuffer().Put(std::move(requestInBuffer));
         } else {
             WriteFreshBlocks(ctx, std::move(requestInBuffer));
@@ -299,7 +290,9 @@ void TPartitionActor::HandleWriteBlocksCompleted(
 {
     auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%lu] Complete write blocks @%lu",
         TabletID(),
         msg->CommitId);
@@ -317,15 +310,13 @@ void TPartitionActor::HandleWriteBlocksCompleted(
     PartCounters->RequestCounters.WriteBlocks.AddRequest(
         time,
         requestBytes,
-        requestCount
-    );
+        requestCount);
 
     LogBlockInfos(
         ctx,
         EBlockStoreRequest::WriteBlocks,
         std::move(msg->AffectedBlockInfos),
-        msg->CommitId
-    );
+        msg->CommitId);
 
     if (Executor()->GetStats().IsAnyChannelYellowMove) {
         ScheduleYellowStateUpdate(ctx);

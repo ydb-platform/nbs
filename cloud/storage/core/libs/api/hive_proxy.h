@@ -7,7 +7,6 @@
 #include <cloud/storage/core/libs/kikimr/events.h>
 
 #include <contrib/ydb/core/base/hive.h>
-
 #include <contrib/ydb/library/actors/core/actorid.h>
 
 #include <util/generic/vector.h>
@@ -16,19 +15,19 @@ namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define STORAGE_HIVE_PROXY_REQUESTS(xxx, ...)                                  \
-    xxx(LockTablet,     __VA_ARGS__)                                           \
-    xxx(UnlockTablet,   __VA_ARGS__)                                           \
-    xxx(GetStorageInfo, __VA_ARGS__)                                           \
-    xxx(BootExternal,   __VA_ARGS__)                                           \
-    xxx(ReassignTablet, __VA_ARGS__)                                           \
-    xxx(CreateTablet,   __VA_ARGS__)                                           \
-    xxx(LookupTablet,   __VA_ARGS__)                                           \
-    xxx(DrainNode,      __VA_ARGS__)                                           \
-                                                                               \
-    xxx(BackupTabletBootInfos,     __VA_ARGS__)                                \
-    xxx(ListTabletBootInfoBackups, __VA_ARGS__)                                \
-// STORAGE_HIVE_PROXY_REQUESTS
+#define STORAGE_HIVE_PROXY_REQUESTS(xxx, ...)   \
+    xxx(LockTablet, __VA_ARGS__)                \
+    xxx(UnlockTablet, __VA_ARGS__)              \
+    xxx(GetStorageInfo, __VA_ARGS__)            \
+    xxx(BootExternal, __VA_ARGS__)              \
+    xxx(ReassignTablet, __VA_ARGS__)            \
+    xxx(CreateTablet, __VA_ARGS__)              \
+    xxx(LookupTablet, __VA_ARGS__)              \
+    xxx(DrainNode, __VA_ARGS__)                 \
+                                                \
+    xxx(BackupTabletBootInfos, __VA_ARGS__)     \
+    xxx(ListTabletBootInfoBackups, __VA_ARGS__) \
+    // STORAGE_HIVE_PROXY_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -88,7 +87,7 @@ struct TEvHiveProxy
         TGetStorageInfoResponse() = default;
 
         explicit TGetStorageInfoResponse(
-                NKikimr::TTabletStorageInfoPtr storageInfo)
+            NKikimr::TTabletStorageInfoPtr storageInfo)
             : StorageInfo(std::move(storageInfo))
         {}
     };
@@ -128,10 +127,10 @@ struct TEvHiveProxy
         TBootExternalResponse() = default;
 
         TBootExternalResponse(
-                NKikimr::TTabletStorageInfoPtr storageInfo,
-                ui32 suggestedGeneration,
-                EBootMode bootMode,
-                ui32 slaveId)
+            NKikimr::TTabletStorageInfoPtr storageInfo,
+            ui32 suggestedGeneration,
+            EBootMode bootMode,
+            ui32 slaveId)
             : StorageInfo(std::move(storageInfo))
             , SuggestedGeneration(suggestedGeneration)
             , BootMode(bootMode)
@@ -148,9 +147,7 @@ struct TEvHiveProxy
         const ui64 TabletId;
         const TVector<ui32> Channels;
 
-        TReassignTabletRequest(
-                ui64 tabletId,
-                TVector<ui32> channels)
+        TReassignTabletRequest(ui64 tabletId, TVector<ui32> channels)
             : TabletId(tabletId)
             , Channels(std::move(channels))
         {}
@@ -169,9 +166,7 @@ struct TEvHiveProxy
         const ui64 HiveId;
         const NKikimrHive::TEvCreateTablet Request;
 
-        TCreateTabletRequest(
-                ui64 hiveId,
-                NKikimrHive::TEvCreateTablet request)
+        TCreateTabletRequest(ui64 hiveId, NKikimrHive::TEvCreateTablet request)
             : HiveId(hiveId)
             , Request(std::move(request))
         {}
@@ -196,10 +191,7 @@ struct TEvHiveProxy
         const ui64 Owner;
         const ui64 OwnerIdx;
 
-        TLookupTabletRequest(
-                ui64 hiveId,
-                ui64 owner,
-                ui64 ownerIdx)
+        TLookupTabletRequest(ui64 hiveId, ui64 owner, ui64 ownerIdx)
             : HiveId(hiveId)
             , Owner(owner)
             , OwnerIdx(ownerIdx)
@@ -270,7 +262,7 @@ struct TEvHiveProxy
         TVector<TTabletBootInfo> TabletBootInfos;
 
         explicit TListTabletBootInfoBackupsResponse(
-                TVector<TTabletBootInfo> tabletBootInfos = {})
+            TVector<TTabletBootInfo> tabletBootInfos = {})
             : TabletBootInfos(std::move(tabletBootInfos))
         {}
     };
@@ -318,7 +310,8 @@ struct TEvHiveProxy
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TStorageEvents::HIVE_PROXY_END,
+    static_assert(
+        EvEnd < (int)TStorageEvents::HIVE_PROXY_END,
         "EvEnd expected to be < TStorageEvents::HIVE_PROXY_END");
 
     STORAGE_HIVE_PROXY_REQUESTS(STORAGE_DECLARE_EVENTS)

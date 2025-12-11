@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -13,8 +14,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TQueryAvailableStorageCommand final
-    : public TCommand
+class TQueryAvailableStorageCommand final: public TCommand
 {
 private:
     TString StoragePoolName;
@@ -25,7 +25,9 @@ public:
     TQueryAvailableStorageCommand(IBlockStorePtr client)
         : TCommand(std::move(client))
     {
-        Opts.AddLongOption("agent-id", "agent id (several agents can be added at a time)")
+        Opts.AddLongOption(
+                "agent-id",
+                "agent id (several agents can be added at a time)")
             .RequiredArgument("STR")
             .AppendTo(&AgentIds);
 
@@ -36,18 +38,20 @@ public:
         Opts.AddLongOption("storage-pool-kind", "storage pool kind")
             .RequiredArgument("STR")
             .DefaultValue("local")
-            .Handler1T<TString>([this] (const auto& s) {
-                if (s == "local") {
-                    StoragePoolKind = NProto::STORAGE_POOL_KIND_LOCAL;
-                } else if (s == "global") {
-                    StoragePoolKind = NProto::STORAGE_POOL_KIND_GLOBAL;
-                } else if (s == "default") {
-                    StoragePoolKind = NProto::STORAGE_POOL_KIND_DEFAULT;
-                } else {
-                    ythrow yexception()
-                        << "unknown storage pool kind: " << s;
-                }
-            });
+            .Handler1T<TString>(
+                [this](const auto& s)
+                {
+                    if (s == "local") {
+                        StoragePoolKind = NProto::STORAGE_POOL_KIND_LOCAL;
+                    } else if (s == "global") {
+                        StoragePoolKind = NProto::STORAGE_POOL_KIND_GLOBAL;
+                    } else if (s == "default") {
+                        StoragePoolKind = NProto::STORAGE_POOL_KIND_DEFAULT;
+                    } else {
+                        ythrow yexception()
+                            << "unknown storage pool kind: " << s;
+                    }
+                });
     }
 
 protected:
@@ -57,7 +61,8 @@ protected:
         auto& output = GetOutputStream();
 
         STORAGE_DEBUG("Reading QueryAvailableStorage request");
-        auto request = std::make_shared<NProto::TQueryAvailableStorageRequest>();
+        auto request =
+            std::make_shared<NProto::TQueryAvailableStorageRequest>();
         if (Proto) {
             ParseFromTextFormat(input, *request);
         } else {
@@ -65,8 +70,7 @@ protected:
             request->SetStoragePoolKind(StoragePoolKind);
             request->MutableAgentIds()->Assign(
                 AgentIds.begin(),
-                AgentIds.end()
-            );
+                AgentIds.end());
         }
 
         STORAGE_DEBUG("Sending QueryAvailableStorage request");

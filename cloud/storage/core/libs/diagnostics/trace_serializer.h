@@ -11,7 +11,7 @@
 #include <util/generic/vector.h>
 
 namespace NLWTrace {
-    class TManager;
+class TManager;
 }   // namespace NLWTrace
 
 namespace NCloud {
@@ -34,8 +34,7 @@ struct TTraceIntervalParams
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct ITraceSerializer
-    : public IStartable
+struct ITraceSerializer: public IStartable
 {
     virtual ~ITraceSerializer() = default;
 

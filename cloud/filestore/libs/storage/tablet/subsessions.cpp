@@ -12,7 +12,7 @@ namespace {
 
 constexpr size_t MaxSubSessions = 2;
 
-}
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -30,9 +30,7 @@ NActors::TActorId TSubSessions::AddSubSession(
         auto loSeqNo = std::min_element(
             SubSessions.begin(),
             SubSessions.end(),
-            [] (const auto& a, const auto& b) {
-                return a.SeqNo < b.SeqNo;
-            });
+            [](const auto& a, const auto& b) { return a.SeqNo < b.SeqNo; });
         auto ans = loSeqNo->Owner;
         SubSessions.erase(loSeqNo);
         return ans;
@@ -51,9 +49,7 @@ NActors::TActorId TSubSessions::UpdateSubSession(
     }
     auto* subsession = FindIf(
         SubSessions,
-        [&] (const auto& subsession) {
-            return subsession.SeqNo == seqNo;
-        });
+        [&](const auto& subsession) { return subsession.SeqNo == seqNo; });
     if (subsession != SubSessions.end()) {
         subsession->ReadOnly = readOnly;
         if (subsession->Owner != owner) {
@@ -70,9 +66,7 @@ ui32 TSubSessions::DeleteSubSession(const NActors::TActorId& owner)
 {
     auto subsession = FindIf(
         SubSessions,
-        [&] (const auto& subsession) {
-            return subsession.Owner == owner;
-        });
+        [&](const auto& subsession) { return subsession.Owner == owner; });
     if (subsession == SubSessions.end()) {
         return true;
     }
@@ -99,9 +93,8 @@ ui32 TSubSessions::DeleteSubSession(ui64 sessionSeqNo)
 {
     auto subsession = FindIf(
         SubSessions,
-        [&] (const auto& subsession) {
-            return subsession.SeqNo == sessionSeqNo;
-        });
+        [&](const auto& subsession)
+        { return subsession.SeqNo == sessionSeqNo; });
 
     if (subsession == SubSessions.end()) {
         return !ReadyToDestroy(sessionSeqNo);
@@ -142,9 +135,7 @@ bool TSubSessions::HasSeqNo(ui64 seqNo) const
 {
     auto subsession = FindIf(
         SubSessions,
-        [&] (const auto& subsession) {
-            return subsession.SeqNo == seqNo;
-        });
+        [&](const auto& subsession) { return subsession.SeqNo == seqNo; });
     if (subsession != SubSessions.end()) {
         return true;
     }
@@ -158,18 +149,14 @@ bool TSubSessions::IsValid() const
     }
     return AllOf(
         SubSessions,
-        [&] (const auto& subsession) {
-            return !!subsession.Owner;
-        });
+        [&](const auto& subsession) { return !!subsession.Owner; });
 }
 
 std::optional<TSubSession> TSubSessions::GetSubSessionBySeqNo(ui64 seqNo) const
 {
     auto subsession = FindIf(
         SubSessions,
-        [&] (const auto& subsession) {
-            return subsession.SeqNo == seqNo;
-        });
+        [&](const auto& subsession) { return subsession.SeqNo == seqNo; });
     if (subsession != SubSessions.end()) {
         return *subsession;
     }

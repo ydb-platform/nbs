@@ -18,7 +18,8 @@ namespace {
 
 bool AllSucceeded(std::initializer_list<bool> ls)
 {
-    auto identity = [] (bool x) {
+    auto identity = [](bool x)
+    {
         return x;
     };
 
@@ -33,9 +34,12 @@ void ProcessUserNotifications(
     TVector<NProto::TUserNotification>& userNotifications)
 {
     // Filter out unknown events for future version rollback compatibility
-    std::erase_if(userNotifications, [] (const auto& notif) {
-            return notif.GetEventCase()
-                == NProto::TUserNotification::EventCase::EVENT_NOT_SET;
+    std::erase_if(
+        userNotifications,
+        [](const auto& notif)
+        {
+            return notif.GetEventCase() ==
+                   NProto::TUserNotification::EventCase::EVENT_NOT_SET;
         });
 
     THashSet<TString> ids(
@@ -43,9 +47,10 @@ void ProcessUserNotifications(
         errorNotifications.end(),
         errorNotifications.size());
 
-    auto isObsolete = [&ids, now = ctx.Now()] (const auto& notif) {
-        if (notif.GetHasLegacyCopy()
-            && !ids.contains(notif.GetDiskError().GetDiskId()))
+    auto isObsolete = [&ids, now = ctx.Now()](const auto& notif)
+    {
+        if (notif.GetHasLegacyCopy() &&
+            !ids.contains(notif.GetDiskError().GetDiskId()))
         {
             return true;
         }
@@ -57,10 +62,11 @@ void ProcessUserNotifications(
 
     for (const auto& notif: userNotifications) {
         if (isObsolete(notif)) {
-            LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
+            LOG_INFO(
+                ctx,
+                TBlockStoreComponents::DISK_REGISTRY,
                 "Obsolete user notification deleted: %s",
-                (TStringBuilder() << notif).c_str()
-            );
+                (TStringBuilder() << notif).c_str());
             db.DeleteUserNotification(notif.GetSeqNo());
         }
     }
@@ -107,10 +113,10 @@ bool TDiskRegistryActor::PrepareLoadState(
 
     TDiskRegistryDatabase db(tx.DB);
 
-    return AllSucceeded({
-        LoadState(db, args.Snapshot),
-        db.ReadRestoreState(args.RestoreState),
-        db.ReadLastBackupTs(args.LastBackupTime)});
+    return AllSucceeded(
+        {LoadState(db, args.Snapshot),
+         db.ReadRestoreState(args.RestoreState),
+         db.ReadLastBackupTs(args.LastBackupTime)});
 }
 
 void TDiskRegistryActor::ExecuteLoadState(

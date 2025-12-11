@@ -3,6 +3,7 @@
 #include "ut_env.h"
 
 #include <cloud/blockstore/libs/storage/api/service.h>
+
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
 #include <contrib/ydb/core/mind/bscontroller/bsc.h>
@@ -23,8 +24,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestMirrorPartition
-    : public TActor<TTestMirrorPartition>
+class TTestMirrorPartition: public TActor<TTestMirrorPartition>
 {
 private:
     const TActorId Leader;
@@ -62,7 +62,8 @@ public:
         auto requestInfo =
             CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-        NCloud::Register<TMigrationRequestActor<TEvService::TWriteBlocksMethod>>(
+        NCloud::Register<
+            TMigrationRequestActor<TEvService::TWriteBlocksMethod>>(
             ctx,
             std::move(requestInfo),
             Leader,
@@ -351,7 +352,7 @@ Y_UNIT_TEST_SUITE(TMigrationRequestActorTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, unexpectedCookie->Val());
     }
-#endif // NDEBUG
+#endif   // NDEBUG
 
     Y_UNIT_TEST_F(ShouldHandleLeaderAndFollowerUndelivery, TFixture)
     {

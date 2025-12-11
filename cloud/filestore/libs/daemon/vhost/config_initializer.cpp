@@ -1,4 +1,5 @@
 #include "config_initializer.h"
+
 #include "options.h"
 
 #include <cloud/filestore/libs/endpoint_vhost/config.h>
@@ -45,8 +46,8 @@ void TConfigInitializerVhost::ApplyVHostAppConfig(const TString& text)
     AppConfig.Clear();
     ParseProtoTextFromStringRobust(text, AppConfig);
 
-    ServerConfig = std::make_shared<NServer::TServerConfig>(
-        AppConfig.GetServerConfig());
+    ServerConfig =
+        std::make_shared<NServer::TServerConfig>(AppConfig.GetServerConfig());
 
     VhostServiceConfig = std::make_shared<TVhostServiceConfig>(
         AppConfig.GetVhostServiceConfig());

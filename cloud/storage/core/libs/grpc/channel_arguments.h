@@ -1,7 +1,7 @@
 #pragma once
 
-#include <contrib/libs/grpc/include/grpcpp/support/channel_arguments.h>
 #include <contrib/libs/grpc/include/grpcpp/resource_quota.h>
+#include <contrib/libs/grpc/include/grpcpp/support/channel_arguments.h>
 
 namespace NCloud::NStorage::NGrpc {
 
@@ -29,7 +29,9 @@ grpc::ChannelArguments CreateChannelArguments(const TConfig& config)
     if (auto backoff = config.GetGrpcReconnectBackoff()) {
         args.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS, backoff.MilliSeconds());
         args.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, backoff.MilliSeconds());
-        args.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS, backoff.MilliSeconds());
+        args.SetInt(
+            GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS,
+            backoff.MilliSeconds());
     }
 
     return args;

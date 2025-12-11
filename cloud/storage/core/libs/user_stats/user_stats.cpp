@@ -20,4 +20,3 @@ NActors::IActorPtr CreateStorageUserStats(
 }
 
 }   // namespace NCloud::NStorage::NUserStats
-

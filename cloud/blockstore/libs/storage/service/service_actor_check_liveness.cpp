@@ -48,8 +48,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TVolumeLivenessCheckActor::TVolumeLivenessCheckActor(
-        TRequestInfoPtr requestInfo,
-        TVector<TString> volumesToCheck)
+    TRequestInfoPtr requestInfo,
+    TVector<TString> volumesToCheck)
     : RequestInfo(std::move(requestInfo))
     , VolumesToCheck(std::move(volumesToCheck))
 {}
@@ -104,8 +104,8 @@ void TVolumeLivenessCheckActor::HandleDescribeResponse(
     if (FAILED(error.GetCode()) &&
         FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD)
     {
-        const auto status =
-            static_cast<NKikimrScheme::EStatus>(STATUS_FROM_CODE(error.GetCode()));
+        const auto status = static_cast<NKikimrScheme::EStatus>(
+            STATUS_FROM_CODE(error.GetCode()));
         deleted = status == NKikimrScheme::StatusPathDoesNotExist;
     }
 
@@ -157,7 +157,9 @@ void TServiceActor::HandleRunVolumesLivenessCheckResponse(
     auto& preemptedVolumes = *State.GetManuallyPreemptedVolumes();
     for (const auto& v: msg->DeletedVolumes) {
         preemptedVolumes.RemoveVolume(v);
-        LOG_DEBUG_S(ctx, TBlockStoreComponents::SERVICE,
+        LOG_DEBUG_S(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "Deleting from manually preempted volumes list: " << v.Quote());
     }
 

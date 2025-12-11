@@ -6,12 +6,9 @@
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/testing/unittest/registar.h>
 
-#define UT_FAULT_INJECTION_PROVIDER(PROBE, EVENT, GROUPS, TYPES, NAMES)        \
-    PROBE(UtFaultInjection,                                                    \
-        GROUPS(),                                                              \
-        TYPES(ui64),                                                           \
-        NAMES("cookie"))                                                       \
-// UT_FAULT_INJECTION_PROVIDER
+#define UT_FAULT_INJECTION_PROVIDER(PROBE, EVENT, GROUPS, TYPES, NAMES) \
+    PROBE(UtFaultInjection, GROUPS(), TYPES(ui64), NAMES("cookie"))     \
+    // UT_FAULT_INJECTION_PROVIDER
 
 LWTRACE_DECLARE_PROVIDER(UT_FAULT_INJECTION_PROVIDER);
 LWTRACE_DEFINE_PROVIDER(UT_FAULT_INJECTION_PROVIDER);
@@ -26,7 +23,7 @@ std::unique_ptr<NLWTrace::TManager> CreateTraceManager()
 {
     auto traceManager = std::make_unique<NLWTrace::TManager>(
         *Singleton<NLWTrace::TProbeRegistry>(),
-        true);  // allowDestructiveActions
+        true);   // allowDestructiveActions
 
     traceManager->RegisterCustomAction(
         "ServiceErrorAction",
@@ -84,10 +81,13 @@ Y_UNIT_TEST_SUITE(TFaultInjectionTest)
 
         UNIT_CHECK_GENERATED_NO_EXCEPTION(TestFunc(1), TServiceError);
 
-        UNIT_ASSERT_EXCEPTION_SATISFIES(TestFunc(42), TServiceError, [] (auto& e) {
-            return e.GetCode() == E_REJECTED
-                && e.GetMessage().Contains("Error!");
-        });
+        UNIT_ASSERT_EXCEPTION_SATISFIES(
+            TestFunc(42),
+            TServiceError,
+            [](auto& e) {
+                return e.GetCode() == E_REJECTED &&
+                       e.GetMessage().Contains("Error!");
+            });
     }
 }
 

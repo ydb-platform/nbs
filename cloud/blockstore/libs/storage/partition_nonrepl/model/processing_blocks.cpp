@@ -5,9 +5,9 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 TProcessingBlocks::TProcessingBlocks(
-        ui64 blockCount,
-        ui32 blockSize,
-        ui64 initialProcessingIndex)
+    ui64 blockCount,
+    ui32 blockSize,
+    ui64 initialProcessingIndex)
     : BlockCount(blockCount)
     , BlockSize(blockSize)
     , BlockMap(std::make_unique<TCompressedBitmap>(BlockCount))
@@ -20,9 +20,9 @@ TProcessingBlocks::TProcessingBlocks(
 }
 
 TProcessingBlocks::TProcessingBlocks(
-        ui64 blockCount,
-        ui32 blockSize,
-        TCompressedBitmap blockMap)
+    ui64 blockCount,
+    ui32 blockSize,
+    TCompressedBitmap blockMap)
     : BlockCount(blockCount)
     , BlockSize(blockSize)
     , BlockMap(std::make_unique<TCompressedBitmap>(std::move(blockMap)))
@@ -62,10 +62,7 @@ bool TProcessingBlocks::IsProcessed(TBlockRange64 range) const
 
 void TProcessingBlocks::MarkProcessed(TBlockRange64 range)
 {
-    BlockMap->Set(
-        range.Start,
-        Min(BlockCount, range.End + 1)
-    );
+    BlockMap->Set(range.Start, Min(BlockCount, range.End + 1));
 }
 
 bool TProcessingBlocks::AdvanceProcessingIndex()
@@ -92,8 +89,8 @@ bool TProcessingBlocks::SkipProcessedRanges()
         CurrentProcessingIndex = chunkEnd;
     }
 
-    while (CurrentProcessingIndex < BlockCount
-            && BlockMap->Test(CurrentProcessingIndex))
+    while (CurrentProcessingIndex < BlockCount &&
+           BlockMap->Test(CurrentProcessingIndex))
     {
         ++CurrentProcessingIndex;
     }
@@ -112,8 +109,7 @@ TBlockRange64 TProcessingBlocks::BuildProcessingRange() const
 {
     return TBlockRange64::WithLength(
         CurrentProcessingIndex,
-        NextProcessingIndex - CurrentProcessingIndex
-    );
+        NextProcessingIndex - CurrentProcessingIndex);
 }
 
 ui64 TProcessingBlocks::GetBlockCountNeedToBeProcessed() const

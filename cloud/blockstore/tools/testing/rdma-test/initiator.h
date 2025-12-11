@@ -6,8 +6,6 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IRunnablePtr CreateTestInitiator(
-    TOptionsPtr options,
-    IStoragePtr storage);
+IRunnablePtr CreateTestInitiator(TOptionsPtr options, IStoragePtr storage);
 
 }   // namespace NCloud::NBlockStore

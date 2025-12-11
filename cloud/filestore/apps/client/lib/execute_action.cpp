@@ -15,8 +15,7 @@ TString ReadFile(const TString& path)
     return TFileInput(path).ReadAll();
 }
 
-class TExecuteActionCommand final
-    : public TFileStoreServiceCommand
+class TExecuteActionCommand final: public TFileStoreServiceCommand
 {
 private:
     TString Action;

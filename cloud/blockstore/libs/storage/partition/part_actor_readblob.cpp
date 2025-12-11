@@ -9,7 +9,6 @@
 #include <cloud/storage/core/libs/common/alloc.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 
@@ -29,10 +28,11 @@ void TPartitionActor::HandleReadBlob(
 {
     auto msg = ev->Release();
 
-    auto requestInfo = CreateRequestInfo<TEvPartitionCommonPrivate::TReadBlobMethod>(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo<TEvPartitionCommonPrivate::TReadBlobMethod>(
+            ev->Sender,
+            ev->Cookie,
+            msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -167,8 +167,8 @@ void TPartitionActor::HandleReadBlobCompleted(
             PartCounters->Simple.ReadBlobDeadlineCount.Increment(1);
         }
 
-        if (State->IncrementReadBlobErrorCount()
-                >= Config->GetMaxReadBlobErrorsBeforeSuicide())
+        if (State->IncrementReadBlobErrorCount() >=
+            Config->GetMaxReadBlobErrorsBeforeSuicide())
         {
             ReportTabletBSFailure(
                 TStringBuilder()

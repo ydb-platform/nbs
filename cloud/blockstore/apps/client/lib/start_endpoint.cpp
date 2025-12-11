@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/version/version.h>
@@ -43,7 +44,7 @@ TMap<TString, NProto::EClientIpcType> GetIpcTypes()
         ipcTypes.emplace(GetIpcTypeString(ipcType), ipcType);
     }
     return ipcTypes;
-};
+}
 
 TMaybe<NProto::EClientIpcType> GetIpcType(const TString& typeStr)
 {
@@ -58,10 +59,10 @@ TMaybe<NProto::EClientIpcType> GetIpcType(const TString& typeStr)
 ////////////////////////////////////////////////////////////////////////////////
 
 static const TMap<TString, NProto::EVolumeAccessMode> AccessModes = {
-    { "rw",      NProto::VOLUME_ACCESS_READ_WRITE      },
-    { "ro",      NProto::VOLUME_ACCESS_READ_ONLY       },
-    { "repair",  NProto::VOLUME_ACCESS_REPAIR          },
-    { "user-ro", NProto::VOLUME_ACCESS_USER_READ_ONLY  },
+    {"rw", NProto::VOLUME_ACCESS_READ_WRITE},
+    {"ro", NProto::VOLUME_ACCESS_READ_ONLY},
+    {"repair", NProto::VOLUME_ACCESS_REPAIR},
+    {"user-ro", NProto::VOLUME_ACCESS_USER_READ_ONLY},
 };
 
 TMaybe<NProto::EVolumeAccessMode> GetAccessMode(const TString& modeStr)
@@ -76,8 +77,8 @@ TMaybe<NProto::EVolumeAccessMode> GetAccessMode(const TString& modeStr)
 ////////////////////////////////////////////////////////////////////////////////
 
 static const TMap<TString, NProto::EVolumeMountMode> MountModes = {
-    { "local",  NProto::VOLUME_MOUNT_LOCAL  },
-    { "remote", NProto::VOLUME_MOUNT_REMOTE },
+    {"local", NProto::VOLUME_MOUNT_LOCAL},
+    {"remote", NProto::VOLUME_MOUNT_REMOTE},
 };
 
 TMaybe<NProto::EVolumeMountMode> GetMountMode(const TString& modeStr)
@@ -91,8 +92,7 @@ TMaybe<NProto::EVolumeMountMode> GetMountMode(const TString& modeStr)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TStartEndpointCommand final
-    : public TCommand
+class TStartEndpointCommand final: public TCommand
 {
 private:
     TString UnixSocketPath;
@@ -126,7 +126,9 @@ public:
             .StoreResult(&DiskId);
 
         auto ipcTypes = JoinSeq('|', GetKeys(GetIpcTypes()));
-        Opts.AddLongOption("ipc-type", "IPC type used by client [" + ipcTypes + "]")
+        Opts.AddLongOption(
+                "ipc-type",
+                "IPC type used by client [" + ipcTypes + "]")
             .RequiredArgument("STR")
             .StoreResult(&IpcTypeStr);
 
@@ -139,16 +141,22 @@ public:
             .StoreResult(&InstanceId);
 
         auto accessModes = JoinSeq('|', GetKeys(AccessModes));
-        Opts.AddLongOption("access-mode", "volume access mode [" + accessModes + "]")
+        Opts.AddLongOption(
+                "access-mode",
+                "volume access mode [" + accessModes + "]")
             .RequiredArgument("STR")
             .StoreResult(&AccessModeStr);
 
         auto mountModes = JoinSeq('|', GetKeys(MountModes));
-        Opts.AddLongOption("mount-mode", "volume mount mode [" + mountModes + "]")
+        Opts.AddLongOption(
+                "mount-mode",
+                "volume mount mode [" + mountModes + "]")
             .RequiredArgument("STR")
             .StoreResult(&MountModeStr);
 
-        Opts.AddLongOption("disable-throttling", "explicitly disable throttling")
+        Opts.AddLongOption(
+                "disable-throttling",
+                "explicitly disable throttling")
             .NoArgument()
             .SetFlag(&ThrottlingDisabled);
 
@@ -162,17 +170,23 @@ public:
             .DefaultValue(1)
             .StoreResult(&VhostQueuesCount);
 
-        Opts.AddLongOption("disable-unaligned-requests", "explicitly disable unaligned request support")
+        Opts.AddLongOption(
+                "disable-unaligned-requests",
+                "explicitly disable unaligned request support")
             .NoArgument()
             .SetFlag(&UnalignedRequestsDisabled);
 
-        Opts.AddLongOption("encryption-mode", "encryption mode [no|aes-xts|test]")
+        Opts.AddLongOption(
+                "encryption-mode",
+                "encryption mode [no|aes-xts|test]")
             .RequiredArgument("STR")
-            .Handler1T<TString>([this] (const auto& s) {
-                EncryptionMode = EncryptionModeFromString(s);
-            });
+            .Handler1T<TString>(
+                [this](const auto& s)
+                { EncryptionMode = EncryptionModeFromString(s); });
 
-        Opts.AddLongOption("encryption-key-path", "path to file with encryption key")
+        Opts.AddLongOption(
+                "encryption-key-path",
+                "path to file with encryption key")
             .RequiredArgument("STR")
             .StoreResult(&EncryptionKeyPath);
 
@@ -184,7 +198,9 @@ public:
             .NoArgument()
             .SetFlag(&Persistent);
 
-        Opts.AddLongOption("nbd-device", "nbd device file which nbd-client connected to")
+        Opts.AddLongOption(
+                "nbd-device",
+                "nbd device file which nbd-client connected to")
             .OptionalArgument("STR")
             .StoreResult(&NbdDeviceFile);
 
@@ -230,18 +246,19 @@ protected:
             request->SetMountSeqNumber(MountSeqNumber);
             request->SetVhostQueuesCount(VhostQueuesCount);
             request->SetUnalignedRequestsDisabled(UnalignedRequestsDisabled);
-            request->MutableEncryptionSpec()->CopyFrom(
-                CreateEncryptionSpec(
-                    EncryptionMode,
-                    EncryptionKeyPath,
-                    EncryptionKeyHash));
+            request->MutableEncryptionSpec()->CopyFrom(CreateEncryptionSpec(
+                EncryptionMode,
+                EncryptionKeyPath,
+                EncryptionKeyHash));
             request->SetPersistent(Persistent);
             if (NbdDeviceFile) {
                 request->SetNbdDeviceFile(NbdDeviceFile);
             } else {
                 request->SetUseFreeNbdDeviceFile(true);
             }
-            request->MutableClientCGroups()->Assign(CGroups.begin(), CGroups.end());
+            request->MutableClientCGroups()->Assign(
+                CGroups.begin(),
+                CGroups.end());
         }
 
         STORAGE_DEBUG("Sending StartEndpoint request");

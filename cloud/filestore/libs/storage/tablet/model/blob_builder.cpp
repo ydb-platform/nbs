@@ -10,10 +10,8 @@ void TMixedBlobBuilder::Accept(const TBlock& block, TStringBuf blockData)
 {
     Y_ABORT_UNLESS(blockData.size() == BlockSize);
 
-    auto& range = Ranges[GetMixedRangeIndex(
-        Hasher,
-        block.NodeId,
-        block.BlockIndex)];
+    auto& range =
+        Ranges[GetMixedRangeIndex(Hasher, block.NodeId, block.BlockIndex)];
     AddBlock(range, block, blockData);
 
     if (range.Blocks.size() == MaxBlocksInBlob) {
@@ -43,7 +41,7 @@ void TMixedBlobBuilder::AddBlock(
 void TMixedBlobBuilder::CompleteBlob(TRange& range)
 {
     Blobs.emplace_back(
-        TPartialBlobId(), // need to generate BlobId later
+        TPartialBlobId(),   // need to generate BlobId later
         std::move(range.Blocks),
         std::move(range.BlobContent));
 
@@ -85,7 +83,7 @@ void TMergedBlobBuilder::Accept(
     BlocksCount += blocksCount;
 
     Blobs.emplace_back(
-        TPartialBlobId(), // need to generate BlobId later
+        TPartialBlobId(),   // need to generate BlobId later
         block,
         blocksCount,
         std::move(blobContent));
@@ -131,10 +129,8 @@ void TCompactionBlobBuilder::CompleteBlob()
 
 void TFlushBytesBlobBuilder::Accept(TBlockWithBytes block)
 {
-    auto& range = Ranges[GetMixedRangeIndex(
-        Hasher,
-        block.NodeId,
-        block.BlockIndex)];
+    auto& range =
+        Ranges[GetMixedRangeIndex(Hasher, block.NodeId, block.BlockIndex)];
     range.Blocks.push_back(std::move(block));
 
     if (range.Blocks.size() == MaxBlocksInBlob) {

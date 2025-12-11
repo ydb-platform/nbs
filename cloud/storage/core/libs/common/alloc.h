@@ -1,7 +1,8 @@
 #pragma once
 
-#include <util/memory/alloc.h>
 #include <library/cpp/deprecated/atomic/atomic.h>
+
+#include <util/memory/alloc.h>
 
 #include <array>
 
@@ -9,8 +10,7 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TProfilingAllocator final
-    : public IAllocator
+class TProfilingAllocator final: public IAllocator
 {
 private:
     IAllocator* Allocator;
@@ -47,9 +47,8 @@ class TProfilingAllocatorRegistry
 {
     static_assert(static_cast<size_t>(AllocatorTag::Max) <= 1024);
 
-    using TAllocators = std::array<
-        TProfilingAllocator,
-        static_cast<size_t>(AllocatorTag::Max)>;
+    using TAllocators =
+        std::array<TProfilingAllocator, static_cast<size_t>(AllocatorTag::Max)>;
 
 private:
     mutable TAllocators Allocators;
@@ -119,7 +118,7 @@ public:
 
     void deallocate(T* p, size_t n)
     {
-        IAllocator::TBlock block = { p, n * sizeof(T) };
+        IAllocator::TBlock block = {p, n * sizeof(T)};
         Allocator->Release(block);
     }
 
@@ -135,12 +134,16 @@ public:
         p->~T1();
     }
 
-    friend bool operator ==(const TStlAllocatorBase& l, const TStlAllocatorBase& r)
+    friend bool operator==(
+        const TStlAllocatorBase& l,
+        const TStlAllocatorBase& r)
     {
         return l.Allocator == r.Allocator;
     }
 
-    friend bool operator !=(const TStlAllocatorBase& l, const TStlAllocatorBase& r)
+    friend bool operator!=(
+        const TStlAllocatorBase& l,
+        const TStlAllocatorBase& r)
     {
         return !(l == r);
     }
@@ -155,13 +158,13 @@ template <typename T>
 using TStlAlloc = TStlAllocatorBase<T, IAllocator>;
 
 template <typename T>
-bool operator ==(const TStlAlloc<T>&, const TStlAlloc<T>&) noexcept
+bool operator==(const TStlAlloc<T>&, const TStlAlloc<T>&) noexcept
 {
     return true;
 }
 
 template <typename T>
-bool operator !=(const TStlAlloc<T>&, const TStlAlloc<T>&) noexcept
+bool operator!=(const TStlAlloc<T>&, const TStlAlloc<T>&) noexcept
 {
     return false;
 }

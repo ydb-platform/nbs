@@ -19,8 +19,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEnv
-    : public NUnitTest::TBaseFixture
+struct TEnv: public NUnitTest::TBaseFixture
 {
     TStringStream Data;
     NMonitoring::TDynamicCountersPtr Counters;
@@ -61,48 +60,51 @@ Y_UNIT_TEST_SUITE(TMetricRegistryStressTest)
 
         SetupRegistry({
             CreateLabel("test_project", "filestore"),
-            CreateLabel("test_component", "test_fs"),});
+            CreateLabel("test_component", "test_fs"),
+        });
 
         std::atomic<ui64> metricsCount(0);
 
         NTests::TScopedTasks tasks;
 
         for (size_t i = 0; i < 5; ++i) {
-            tasks.Add([index = i, r = Registry, &ks = keys, &metricsCount] {
-                std::atomic<i64> value(1'000'000 * index);
-                for (size_t i = 0; i < COUNT / 5; ++i) {
-                    const auto key = r->Register(
-                        {
-                            CreateLabel("test_name", "test_value"),
-                            CreateSensor(
-                                TStringBuilder() << "test_sensor_" << value.load())
-                        },
-                        value,
-                        EAggregationType::AT_MIN);
+            tasks.Add(
+                [index = i, r = Registry, &ks = keys, &metricsCount]
+                {
+                    std::atomic<i64> value(1'000'000 * index);
+                    for (size_t i = 0; i < COUNT / 5; ++i) {
+                        const auto key = r->Register(
+                            {CreateLabel("test_name", "test_value"),
+                             CreateSensor(
+                                 TStringBuilder()
+                                 << "test_sensor_" << value.load())},
+                            value,
+                            EAggregationType::AT_MIN);
 
-                    ks.Do([&k = key](THashSet<TMetricKey>& s) {
-                        UNIT_ASSERT(s.insert(k).second);
-                    });
+                        ks.Do([&k = key](THashSet<TMetricKey>& s)
+                              { UNIT_ASSERT(s.insert(k).second); });
 
-                    ++value;
+                        ++value;
 
-                    r->Unregister(key);
+                        r->Unregister(key);
 
-                    ++metricsCount;
-                }
-            });
+                        ++metricsCount;
+                    }
+                });
         }
 
         for (size_t i = 0; i < 3; ++i) {
-            tasks.Add([i, r = Registry, &metricsCount] {
-                TStringStream data;
-                auto visitor = CreateRegistryVisitor(data);
-                while (metricsCount < COUNT) {
-                    r->Visit(TInstant::Now(), *visitor);
-                    data.Clear();
-                    sleep(i + 1);
-                }
-            });
+            tasks.Add(
+                [i, r = Registry, &metricsCount]
+                {
+                    TStringStream data;
+                    auto visitor = CreateRegistryVisitor(data);
+                    while (metricsCount < COUNT) {
+                        r->Visit(TInstant::Now(), *visitor);
+                        data.Clear();
+                        sleep(i + 1);
+                    }
+                });
         }
 
         tasks.Start();
@@ -120,7 +122,8 @@ Y_UNIT_TEST_SUITE(TMetricRegistryStressTest)
 
         SetupRegistry({
             CreateLabel("test_project", "filestore"),
-            CreateLabel("test_component", "test_fs"),});
+            CreateLabel("test_component", "test_fs"),
+        });
 
         auto scopedRegistry = CreateScopedMetricsRegistry(
             {CreateLabel("test_common_label", "test_common_value")},
@@ -137,52 +140,54 @@ Y_UNIT_TEST_SUITE(TMetricRegistryStressTest)
                  r = Registry,
                  &ks = keys,
                  &metricsCount]
-            {
-                std::atomic<i64> value(1'000'000 * index);
-                for (size_t i = 0; i < COUNT / 5; ++i) {
-                    const auto key = r->Register(
-                        {
-                            CreateLabel("test_name", "test_value"),
-                            CreateSensor(
-                                TStringBuilder() << "test_sensor_" << value.load())
-                        },
-                        value);
+                {
+                    std::atomic<i64> value(1'000'000 * index);
+                    for (size_t i = 0; i < COUNT / 5; ++i) {
+                        const auto key = r->Register(
+                            {CreateLabel("test_name", "test_value"),
+                             CreateSensor(
+                                 TStringBuilder()
+                                 << "test_sensor_" << value.load())},
+                            value);
 
-                    const auto subKey = sr->Register(
-                        {
-                            CreateLabel("test_sub_name", "test_sub_value"),
-                            CreateSensor(
-                                TStringBuilder() << "test_sensor_" << value.load())
-                        },
-                        value,
-                        EAggregationType::AT_AVG,
-                        EMetricType::MT_DERIVATIVE);
+                        const auto subKey = sr->Register(
+                            {CreateLabel("test_sub_name", "test_sub_value"),
+                             CreateSensor(
+                                 TStringBuilder()
+                                 << "test_sensor_" << value.load())},
+                            value,
+                            EAggregationType::AT_AVG,
+                            EMetricType::MT_DERIVATIVE);
 
-                    ks.Do([&k = key, &sk = subKey](THashSet<TMetricKey>& s) {
-                        UNIT_ASSERT(s.insert(k).second);
-                        UNIT_ASSERT(s.insert(sk).second);
-                    });
+                        ks.Do(
+                            [&k = key, &sk = subKey](THashSet<TMetricKey>& s)
+                            {
+                                UNIT_ASSERT(s.insert(k).second);
+                                UNIT_ASSERT(s.insert(sk).second);
+                            });
 
-                    ++value;
+                        ++value;
 
-                    sr->Unregister(subKey);
-                    r->Unregister(key);
+                        sr->Unregister(subKey);
+                        r->Unregister(key);
 
-                    ++metricsCount;
-                }
-            });
+                        ++metricsCount;
+                    }
+                });
         }
 
         for (size_t i = 0; i < 3; ++i) {
-            tasks.Add([i, r = Registry, &metricsCount] {
-                TStringStream data;
-                auto visitor = CreateRegistryVisitor(data);
-                while (metricsCount < COUNT) {
-                    r->Visit(TInstant::Now(), *visitor);
-                    data.Clear();
-                    sleep(i + 1);
-                }
-            });
+            tasks.Add(
+                [i, r = Registry, &metricsCount]
+                {
+                    TStringStream data;
+                    auto visitor = CreateRegistryVisitor(data);
+                    while (metricsCount < COUNT) {
+                        r->Visit(TInstant::Now(), *visitor);
+                        data.Clear();
+                        sleep(i + 1);
+                    }
+                });
         }
 
         tasks.Start();
@@ -214,9 +219,8 @@ Y_UNIT_TEST_SUITE(TMetricRegistryStressTest)
             {CreateLabel("volume", "second_fs")},
             serviceVolumeRegistry);
 
-        auto firstFsAggregatableRegistry = CreateScopedMetricsRegistry(
-            {},
-            {serviceRegistry, firstFsRegistry});
+        auto firstFsAggregatableRegistry =
+            CreateScopedMetricsRegistry({}, {serviceRegistry, firstFsRegistry});
         auto secondFsAggregatableRegistry = CreateScopedMetricsRegistry(
             {},
             {serviceRegistry, secondFsRegistry});
@@ -226,72 +230,78 @@ Y_UNIT_TEST_SUITE(TMetricRegistryStressTest)
         NTests::TScopedTasks tasks;
 
         for (size_t i = 0; i < 5; ++i) {
-            tasks.Add([r = firstFsAggregatableRegistry, &ks = keys, &metricsCount] {
-                for (size_t i = 0; i < COUNT / 10; ++i) {
-                    std::atomic<i64> value(i);
+            tasks.Add(
+                [r = firstFsAggregatableRegistry, &ks = keys, &metricsCount]
+                {
+                    for (size_t i = 0; i < COUNT / 10; ++i) {
+                        std::atomic<i64> value(i);
 
-                    const auto key = r->Register(
-                        {CreateSensor("test")},
-                        value,
-                        EAggregationType::AT_AVG,
-                        EMetricType::MT_DERIVATIVE);
+                        const auto key = r->Register(
+                            {CreateSensor("test")},
+                            value,
+                            EAggregationType::AT_AVG,
+                            EMetricType::MT_DERIVATIVE);
 
-                    ks.Do([&k = key](THashSet<TMetricKey>& s) {
-                        UNIT_ASSERT(s.insert(k).second);
-                    });
+                        ks.Do([&k = key](THashSet<TMetricKey>& s)
+                              { UNIT_ASSERT(s.insert(k).second); });
 
-                    value += i;
+                        value += i;
 
-                    r->Unregister(key);
+                        r->Unregister(key);
 
-                    ++metricsCount;
-                }
-            });
+                        ++metricsCount;
+                    }
+                });
         }
 
         for (size_t i = 0; i < 5; ++i) {
-            tasks.Add([r = secondFsAggregatableRegistry, &ks = keys, &metricsCount] {
-                for (size_t i = 0; i < COUNT / 10; ++i) {
-                    TAtomic value = i;
+            tasks.Add(
+                [r = secondFsAggregatableRegistry, &ks = keys, &metricsCount]
+                {
+                    for (size_t i = 0; i < COUNT / 10; ++i) {
+                        TAtomic value = i;
 
-                    const auto key = r->Register(
-                        {CreateSensor("test")},
-                        value,
-                        EAggregationType::AT_AVG,
-                        EMetricType::MT_DERIVATIVE);
+                        const auto key = r->Register(
+                            {CreateSensor("test")},
+                            value,
+                            EAggregationType::AT_AVG,
+                            EMetricType::MT_DERIVATIVE);
 
-                    ks.Do([&k = key](THashSet<TMetricKey>& s) {
-                        UNIT_ASSERT(s.insert(k).second);
-                    });
+                        ks.Do([&k = key](THashSet<TMetricKey>& s)
+                              { UNIT_ASSERT(s.insert(k).second); });
 
-                    AtomicIncrement(value);
+                        AtomicIncrement(value);
 
-                    r->Unregister(key);
+                        r->Unregister(key);
 
-                    ++metricsCount;
-                }
-            });
+                        ++metricsCount;
+                    }
+                });
         }
 
         for (size_t i = 0; i < 3; ++i) {
-            tasks.Add([i, r = Registry, &metricsCount] {
-                TStringStream data;
-                auto visitor = CreateRegistryVisitor(data);
-                while (metricsCount < COUNT) {
-                    r->Visit(TInstant::Now(), *visitor);
-                    data.Clear();
-                    sleep(i + 1);
-                }
-            });
+            tasks.Add(
+                [i, r = Registry, &metricsCount]
+                {
+                    TStringStream data;
+                    auto visitor = CreateRegistryVisitor(data);
+                    while (metricsCount < COUNT) {
+                        r->Visit(TInstant::Now(), *visitor);
+                        data.Clear();
+                        sleep(i + 1);
+                    }
+                });
         }
 
         for (size_t i = 0; i < 3; ++i) {
-            tasks.Add([i, r = Registry, &metricsCount] {
-                while (metricsCount < COUNT) {
-                    r->Update(TInstant::Now());
-                    sleep(i + 1);
-                }
-            });
+            tasks.Add(
+                [i, r = Registry, &metricsCount]
+                {
+                    while (metricsCount < COUNT) {
+                        r->Update(TInstant::Now());
+                        sleep(i + 1);
+                    }
+                });
         }
 
         tasks.Start();

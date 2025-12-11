@@ -16,19 +16,20 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TSizePrinter
-    : google::protobuf::TextFormat::FastFieldValuePrinter
+struct TSizePrinter: google::protobuf::TextFormat::FastFieldValuePrinter
 {
     void PrintString(
         const google::protobuf::string& val,
-        google::protobuf::TextFormat::BaseTextGenerator* generator) const override
+        google::protobuf::TextFormat::BaseTextGenerator* generator)
+        const override
     {
         generator->PrintString(TStringBuilder() << val.size() << " bytes");
     }
 
     void PrintBytes(
         const google::protobuf::string& val,
-        google::protobuf::TextFormat::BaseTextGenerator* generator) const override
+        google::protobuf::TextFormat::BaseTextGenerator* generator)
+        const override
     {
         generator->PrintString(TStringBuilder() << val.size() << " bytes");
     }
@@ -36,8 +37,7 @@ struct TSizePrinter
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTextPrinter
-    : google::protobuf::TextFormat::Printer
+struct TTextPrinter: google::protobuf::TextFormat::Printer
 {
     TTextPrinter()
     {
@@ -46,11 +46,13 @@ struct TTextPrinter
         SetTruncateStringFieldLongerThan(256);
 
         RegisterFieldValuePrinter(
-            NProto::TWriteDataRequest::descriptor()->FindFieldByLowercaseName("buffer"),
+            NProto::TWriteDataRequest::descriptor()->FindFieldByLowercaseName(
+                "buffer"),
             new TSizePrinter());
 
         RegisterFieldValuePrinter(
-            NProto::TReadDataResponse::descriptor()->FindFieldByLowercaseName("buffer"),
+            NProto::TReadDataResponse::descriptor()->FindFieldByLowercaseName(
+                "buffer"),
             new TSizePrinter());
     }
 };
@@ -59,7 +61,7 @@ struct TTextPrinter
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IOutputStream& operator <<(IOutputStream& out, const TRequestInfo& info)
+IOutputStream& operator<<(IOutputStream& out, const TRequestInfo& info)
 {
     if (info.FileSystemId) {
         out << "[f:" << info.FileSystemId << "] ";
@@ -114,8 +116,7 @@ ui64 CreateRequestId()
 #define FILESTORE_DECLARE_REQUEST(name, ...) #name,
 
 static const TString RequestNames[] = {
-    FILESTORE_REQUESTS(FILESTORE_DECLARE_REQUEST)
-    "DescribeData",
+    FILESTORE_REQUESTS(FILESTORE_DECLARE_REQUEST) "DescribeData",
     "GenerateBlobIds",
     "AddData",
     "ReadBlob",

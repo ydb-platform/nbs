@@ -34,19 +34,19 @@ class TAsyncIOContext
 #if defined(AIO_RING_MAGIC)
     struct io_ring
     {
-        ui32 id;                // kernel internal index number
-        ui32 nr;                // number of io_events
-        ui32 head;              // reader position
-        ui32 tail;              // writes position
+        ui32 id;     // kernel internal index number
+        ui32 nr;     // number of io_events
+        ui32 head;   // reader position
+        ui32 tail;   // writes position
 
-        ui32 magic;             // AIO_RING_MAGIC
+        ui32 magic;   // AIO_RING_MAGIC
         ui32 compat_features;
         ui32 incompat_features;
-        ui32 header_length;     // size of aio_ring
+        ui32 header_length;   // size of aio_ring
 
-        io_event events[0];     // variable array of size nr
+        io_event events[0];   // variable array of size nr
     };
-#endif  // AIO_RING_MAGIC
+#endif   // AIO_RING_MAGIC
 
 private:
     io_context* Context = nullptr;
@@ -55,23 +55,26 @@ public:
     TAsyncIOContext(size_t nr)
     {
         int ret = io_setup(nr, &Context);
-        Y_ABORT_UNLESS(ret == 0,
+        Y_ABORT_UNLESS(
+            ret == 0,
             "unable to initialize context: %s",
             LastSystemErrorText(-ret));
 
 #if defined(AIO_RING_MAGIC)
         auto* ring = reinterpret_cast<io_ring*>(Context);
-        Y_ABORT_UNLESS(ring->magic == AIO_RING_MAGIC &&
-                 ring->header_length == sizeof(io_ring),
+        Y_ABORT_UNLESS(
+            ring->magic == AIO_RING_MAGIC &&
+                ring->header_length == sizeof(io_ring),
             "unsupported AIO version");
-#endif  // AIO_RING_MAGIC
+#endif   // AIO_RING_MAGIC
     }
 
     ~TAsyncIOContext()
     {
         if (Context) {
             int ret = io_destroy(Context);
-            Y_ABORT_UNLESS(ret == 0,
+            Y_ABORT_UNLESS(
+                ret == 0,
                 "unable to destroy context: %s",
                 LastSystemErrorText(-ret));
         }
@@ -108,21 +111,22 @@ public:
 
         return count;
 
-#else   // !AIO_RING_MAGIC
+#else    // !AIO_RING_MAGIC
 
         int ret = io_getevents(Context, 0, nr, events, nullptr);
-        Y_ABORT_UNLESS(ret >= 0,
+        Y_ABORT_UNLESS(
+            ret >= 0,
             "unable to get async IO completion: %s",
             LastSystemErrorText(-ret));
 
         return ret;
-#endif  // AIO_RING_MAGIC
+#endif   // AIO_RING_MAGIC
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TAsyncIORequest : iocb
+struct TAsyncIORequest: iocb
 {
     TCallContextPtr CallContext;
 
@@ -135,11 +139,11 @@ struct TAsyncIORequest : iocb
     TPromise<NProto::TError> Result;
 
     TAsyncIORequest(
-            TCallContextPtr callContext,
-            TGuardedSgList guardedSgList,
-            ui64 offset,
-            ui64 length,
-            TPromise<NProto::TError> result)
+        TCallContextPtr callContext,
+        TGuardedSgList guardedSgList,
+        ui64 offset,
+        ui64 length,
+        TPromise<NProto::TError> result)
         : CallContext(std::move(callContext))
         , GuardedSgList(std::move(guardedSgList))
         , Guard(GuardedSgList.Acquire())
@@ -155,9 +159,10 @@ struct TAsyncIORequest : iocb
 
     void HandleError(int error)
     {
-        Result.SetValue(MakeError(MAKE_SYSTEM_ERROR(error), TStringBuilder()
-            << "(" << LastSystemErrorText(error) << ") "
-            << "async IO operation failed"));
+        Result.SetValue(MakeError(
+            MAKE_SYSTEM_ERROR(error),
+            TStringBuilder() << "(" << LastSystemErrorText(error) << ") "
+                             << "async IO operation failed"));
     }
 };
 
@@ -165,8 +170,7 @@ using TAsyncIORequestPtr = std::unique_ptr<TAsyncIORequest>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TLocalStorage final
-    : public IStorage
+class TLocalStorage final: public IStorage
 {
 private:
     TFileHandle FileHandle;
@@ -272,7 +276,7 @@ private:
 
         IOContext.Submit(request.get());
 
-        request.release();  // ownership transferred
+        request.release();   // ownership transferred
     }
 
     static void* ThreadProc(void* arg)
@@ -300,7 +304,7 @@ private:
                     request->CallContext->LWOrbit,
                     request->CallContext->RequestId);
 
-                signed res = event.res; // it is really signed
+                signed res = event.res;   // it is really signed
                 if (res == (signed)request->Length) {
                     request->HandleCompletion();
                 } else {
@@ -321,10 +325,8 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IStoragePtr CreateLocalAIOStorage(
-    const TString& path,
-    ui32 blockSize,
-    ui32 blocksCount)
+IStoragePtr
+CreateLocalAIOStorage(const TString& path, ui32 blockSize, ui32 blocksCount)
 {
     return std::make_shared<TLocalStorage>(path, blockSize, blocksCount);
 }

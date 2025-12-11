@@ -933,8 +933,8 @@ private:
         // Log sample:
         // {"TimestampMcs":1726,"DurationMcs":7163,"RequestType":35,"ErrorCode":2147942422,"NodeInfo":{"NodeName":"security.capability","NewNodeName":"","NodeId":5,"Size":0}}
         // {"TimestampMcs":1726,"DurationMcs":192,"RequestType":33,"ErrorCode":2147942402,"NodeInfo":{"ParentNodeId":17033,"NodeName":"CPackSourceConfig.cmake","Flags":0,"Mode":0,"NodeId":0,"Handle":0,"Size":0}}
-        // {parent_node_id=1, node_name=name, flags=0, mode=509, node_id=2, handle=0, size=0}
-
+        // {parent_node_id=1, node_name=name, flags=0, mode=509, node_id=2,
+        // handle=0, size=0}
 
         if (logRequest.GetNodeInfo().GetNodeName()) {
             KnownLogNodes[logRequest.GetNodeInfo().GetNodeId()].Name =

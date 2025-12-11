@@ -12,17 +12,17 @@ using namespace NKikimr;
 ////////////////////////////////////////////////////////////////////////////////
 
 TLaggingAgentMigrationActor::TLaggingAgentMigrationActor(
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticsConfig,
-        TNonreplicatedPartitionConfigPtr partConfig,
-        TActorId parentActorId,
-        IProfileLogPtr profileLog,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
-        TString rwClientId,
-        TActorId targetActorId,
-        TActorId sourceActorId,
-        TCompressedBitmap migrationBlockMap,
-        TString agentId)
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
+    TNonreplicatedPartitionConfigPtr partConfig,
+    TActorId parentActorId,
+    IProfileLogPtr profileLog,
+    IBlockDigestGeneratorPtr blockDigestGenerator,
+    TString rwClientId,
+    TActorId targetActorId,
+    TActorId sourceActorId,
+    TCompressedBitmap migrationBlockMap,
+    TString agentId)
     : TNonreplicatedPartitionMigrationCommonActor(
           this,
           config,

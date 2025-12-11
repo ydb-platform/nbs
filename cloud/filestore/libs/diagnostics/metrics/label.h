@@ -42,11 +42,13 @@ using TLabels = TVector<TLabel>;
 template <>
 struct THash<NCloud::NFileStore::NMetrics::TLabel>
 {
-    size_t operator()(const NCloud::NFileStore::NMetrics::TLabel& label) const noexcept;
+    size_t operator()(
+        const NCloud::NFileStore::NMetrics::TLabel& label) const noexcept;
 };
 
 template <>
 struct THash<NCloud::NFileStore::NMetrics::TLabels>
 {
-    size_t operator()(const NCloud::NFileStore::NMetrics::TLabels& labels) const noexcept;
+    size_t operator()(
+        const NCloud::NFileStore::NMetrics::TLabels& labels) const noexcept;
 };

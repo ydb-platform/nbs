@@ -18,13 +18,12 @@ void TOptions::Parse(int argc, char** argv)
     opts.AddLongOption("test")
         .RequiredArgument("{" + GetEnumAllNames<ETestMode>() + "}")
         .DefaultValue(ToString(TestMode))
-        .Handler1T<TString>([this] (const auto& s) {
-            TestMode = FromString<ETestMode>(s);
-        });
+        .Handler1T<TString>([this](const auto& s)
+                            { TestMode = FromString<ETestMode>(s); });
 
-    const auto& verbose = opts.AddLongOption("verbose")
-        .OptionalArgument("STR")
-        .StoreResult(&VerboseLevel);
+    const auto& verbose =
+        opts.AddLongOption("verbose").OptionalArgument("STR").StoreResult(
+            &VerboseLevel);
 
     // connection options
     opts.AddLongOption("host")
@@ -55,18 +54,15 @@ void TOptions::Parse(int argc, char** argv)
     opts.AddLongOption("wait")
         .RequiredArgument("{" + GetEnumAllNames<EWaitMode>() + "}")
         .DefaultValue(ToString(WaitMode))
-        .Handler1T<TString>([this] (const auto& s) {
-            WaitMode = FromString<EWaitMode>(s);
-        });
+        .Handler1T<TString>([this](const auto& s)
+                            { WaitMode = FromString<EWaitMode>(s); });
 
     opts.AddLongOption("connect-timeout")
         .RequiredArgument("SEC")
         .DefaultValue(ToString(ConnectTimeout))
         .StoreResult(&ConnectTimeout);
 
-    opts.AddLongOption("tos")
-        .RequiredArgument("NUM")
-        .StoreResult(&Tos);
+    opts.AddLongOption("tos").RequiredArgument("NUM").StoreResult(&Tos);
 
     opts.AddLongOption("source-interface")
         .RequiredArgument()
@@ -76,9 +72,8 @@ void TOptions::Parse(int argc, char** argv)
     opts.AddLongOption("storage")
         .RequiredArgument("{" + GetEnumAllNames<EStorageKind>() + "}")
         .DefaultValue(ToString(StorageKind))
-        .Handler1T<TString>([this] (const auto& s) {
-            StorageKind = FromString<EStorageKind>(s);
-        });
+        .Handler1T<TString>([this](const auto& s)
+                            { StorageKind = FromString<EStorageKind>(s); });
 
     opts.AddLongOption("storage-path")
         .RequiredArgument("PATH")

@@ -15,7 +15,9 @@ void TIndexTabletActor::HandleDumpCompactionRange(
 {
     auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s DumpCompactionRange: rangeId %u",
         LogTag.c_str(),
         msg->RangeId);
@@ -25,16 +27,11 @@ void TIndexTabletActor::HandleDumpCompactionRange(
         msg->CallContext,
         "DumpCompactionRange");
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    ExecuteTx<TDumpCompactionRange>(
-        ctx,
-        std::move(requestInfo),
-        msg->RangeId);
+    ExecuteTx<TDumpCompactionRange>(ctx, std::move(requestInfo), msg->RangeId);
 }
 
 bool TIndexTabletActor::PrepareTx_DumpCompactionRange(
@@ -65,7 +62,9 @@ void TIndexTabletActor::CompleteTx_DumpCompactionRange(
     const TActorContext& ctx,
     TTxIndexTablet::TDumpCompactionRange& args)
 {
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s DumpCompactionRange completed: rangeId %u, blobs %lu",
         LogTag.c_str(),
         args.RangeId,
@@ -77,9 +76,8 @@ void TIndexTabletActor::CompleteTx_DumpCompactionRange(
         "DumpCompactionRange");
 
     using TResponse = TEvIndexTabletPrivate::TEvDumpCompactionRangeResponse;
-    auto response = std::make_unique<TResponse>(
-        args.RangeId,
-        std::move(args.Blobs));
+    auto response =
+        std::make_unique<TResponse>(args.RangeId, std::move(args.Blobs));
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }

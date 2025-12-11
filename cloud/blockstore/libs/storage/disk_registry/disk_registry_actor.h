@@ -226,9 +226,7 @@ private:
 
     void StartMigration(const NActors::TActorContext& ctx);
 
-    bool LoadState(
-        TDiskRegistryDatabase& db,
-        TDiskRegistryStateSnapshot& args);
+    bool LoadState(TDiskRegistryDatabase& db, TDiskRegistryStateSnapshot& args);
 
     void AddPendingDeallocation(
         const NActors::TActorContext& ctx,
@@ -488,7 +486,8 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleRestoreDiskRegistryPartResponse(
-        const TEvDiskRegistryPrivate::TEvRestoreDiskRegistryPartResponse::TPtr& ev,
+        const TEvDiskRegistryPrivate::TEvRestoreDiskRegistryPartResponse::TPtr&
+            ev,
         const NActors::TActorContext& ctx);
 
     void HandleBackupDiskRegistryStateResponse(
@@ -499,15 +498,18 @@ private:
     bool RejectRequests(STFUNC_SIG);
 
     void HandleRestoreDiskRegistryValidationResponse(
-        const TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse::TPtr& ev,
+        const TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse::
+            TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleDiskRegistryAgentListExpiredParamsCleanup(
-        const TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup::TPtr& ev,
+        const TEvDiskRegistryPrivate::
+            TEvDiskRegistryAgentListExpiredParamsCleanup::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleDiskRegistryAgentListExpiredParamsCleanupReadOnly(
-        const TEvDiskRegistryPrivate::TEvDiskRegistryAgentListExpiredParamsCleanup::TPtr& ev,
+        const TEvDiskRegistryPrivate::
+            TEvDiskRegistryAgentListExpiredParamsCleanup::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleEnableDeviceResponse(
@@ -515,26 +517,36 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleSwitchAgentDisksToReadOnlyReshedule(
-        const TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest::TPtr& ev,
+        const TEvDiskRegistryPrivate::TEvSwitchAgentDisksToReadOnlyRequest::
+            TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    BLOCKSTORE_DISK_REGISTRY_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvDiskRegistry)
-    BLOCKSTORE_DISK_REGISTRY_REQUESTS_FWD_SERVICE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvService)
-    BLOCKSTORE_DISK_REGISTRY_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvDiskRegistryPrivate)
+    BLOCKSTORE_DISK_REGISTRY_REQUESTS(
+        BLOCKSTORE_IMPLEMENT_REQUEST,
+        TEvDiskRegistry)
+    BLOCKSTORE_DISK_REGISTRY_REQUESTS_FWD_SERVICE(
+        BLOCKSTORE_IMPLEMENT_REQUEST,
+        TEvService)
+    BLOCKSTORE_DISK_REGISTRY_REQUESTS_PRIVATE(
+        BLOCKSTORE_IMPLEMENT_REQUEST,
+        TEvDiskRegistryPrivate)
 
     using TCounters = TDiskRegistryCounters;
-    BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS(BLOCKSTORE_IMPLEMENT_TRANSACTION, TTxDiskRegistry)
+    BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS(
+        BLOCKSTORE_IMPLEMENT_TRANSACTION,
+        TTxDiskRegistry)
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DISK_REGISTRY_COUNTER(name)                                 \
-    if (Counters) {                                                            \
-        auto& counter = Counters->Cumulative()                                 \
-            [TDiskRegistryCounters::CUMULATIVE_COUNTER_Request_##name];        \
-        counter.Increment(1);                                                  \
-    }                                                                          \
-// BLOCKSTORE_DISK_REGISTRY_COUNTER
+#define BLOCKSTORE_DISK_REGISTRY_COUNTER(name)                              \
+    if (Counters) {                                                         \
+        auto& counter =                                                     \
+            Counters->Cumulative()                                          \
+                [TDiskRegistryCounters::CUMULATIVE_COUNTER_Request_##name]; \
+        counter.Increment(1);                                               \
+    }                                                                       \
+    // BLOCKSTORE_DISK_REGISTRY_COUNTER
 
 TDiskRegistryStateSnapshot MakeNewLoadState(
     NProto::TDiskRegistryStateBackup&& backup);

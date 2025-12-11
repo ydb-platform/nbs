@@ -8,8 +8,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TIncompleteRequestProvider
-    : public IIncompleteRequestProvider
+class TIncompleteRequestProvider: public IIncompleteRequestProvider
 {
 public:
     TIncompleteRequestProvider() = default;
@@ -33,12 +32,11 @@ IIncompleteRequestProviderPtr CreateIncompleteRequestProviderStub()
 
 TIncompleteRequestsCollector CreateIncompleteRequestsCollectorStub()
 {
-    return [] (
-        TCallContext& callContext,
-        IVolumeInfoPtr volumeInfo,
-        NCloud::NProto::EStorageMediaKind mediaKind,
-        EBlockStoreRequest requestType,
-        TRequestTime time)
+    return [](TCallContext& callContext,
+              IVolumeInfoPtr volumeInfo,
+              NCloud::NProto::EStorageMediaKind mediaKind,
+              EBlockStoreRequest requestType,
+              TRequestTime time)
     {
         Y_UNUSED(callContext);
         Y_UNUSED(volumeInfo);

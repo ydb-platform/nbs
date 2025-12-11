@@ -18,11 +18,15 @@ Y_UNIT_TEST_SUITE(TServiceListVolumesTest)
         TTestEnv env;
         ui32 nodeIdx = SetupTestEnv(env);
 
-        TVector<TString> expected = {"volume1", "volume2", "volume3", "volume4"};
+        TVector<TString> expected = {
+            "volume1",
+            "volume2",
+            "volume3",
+            "volume4"};
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
-        for (const auto& diskId : expected) {
+        for (const auto& diskId: expected) {
             service.CreateVolume(diskId);
         }
 
@@ -30,7 +34,10 @@ Y_UNIT_TEST_SUITE(TServiceListVolumesTest)
         const auto& volumesProto = response->Record.GetVolumes();
 
         TVector<TString> volumes;
-        Copy(volumesProto.begin(), volumesProto.end(), std::back_inserter(volumes));
+        Copy(
+            volumesProto.begin(),
+            volumesProto.end(),
+            std::back_inserter(volumes));
         Sort(volumes);
 
         UNIT_ASSERT_VALUES_EQUAL(volumes, expected);
@@ -49,17 +56,19 @@ Y_UNIT_TEST_SUITE(TServiceListVolumesTest)
 
         auto error = MakeError(E_ARGUMENT, "Error");
 
-        runtime.SetObserverFunc( [nodeIdx, error, &runtime] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [nodeIdx, error, &runtime](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeSchemeRequest: {
-                        auto response = std::make_unique<TEvSSProxy::TEvDescribeSchemeResponse>(
-                            error);
+                        auto response = std::make_unique<
+                            TEvSSProxy::TEvDescribeSchemeResponse>(error);
                         runtime.Send(
                             new IEventHandle(
                                 event->Sender,
                                 event->Recipient,
                                 response.release(),
-                                0, // flags
+                                0,   // flags
                                 event->Cookie),
                             nodeIdx);
                         return TTestActorRuntime::EEventAction::DROP;

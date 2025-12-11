@@ -32,15 +32,14 @@ private:
 
 public:
     TProfileLog(
-            TProfileLogSettings settings,
-            ITimerPtr timer,
-            ISchedulerPtr scheduler)
+        TProfileLogSettings settings,
+        ITimerPtr timer,
+        ISchedulerPtr scheduler)
         : EventLog(settings.FilePath, NEvClass::Factory()->CurrentFormat())
         , Settings(std::move(settings))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
-    {
-    }
+    {}
 
     ~TProfileLog() override;
 
@@ -83,13 +82,13 @@ void TProfileLog::ScheduleFlush()
 
     Scheduler->Schedule(
         Timer->Now() + Settings.TimeThreshold,
-        [weakPtr = weak_from_this()] {
+        [weakPtr = weak_from_this()]
+        {
             if (auto self = weakPtr.lock()) {
                 self->Flush();
                 self->ScheduleFlush();
             }
-        }
-    );
+        });
 }
 
 void TProfileLog::Flush()
@@ -146,17 +145,14 @@ void TProfileLog::Flush()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TProfileLogStub final
-    : public IProfileLog
+class TProfileLogStub final: public IProfileLog
 {
 public:
     void Start() override
-    {
-    }
+    {}
 
     void Stop() override
-    {
-    }
+    {}
 
     void Write(TRecord record) override
     {
@@ -176,8 +172,7 @@ IProfileLogPtr CreateProfileLog(
     return std::make_shared<TProfileLog>(
         std::move(settings),
         std::move(timer),
-        std::move(scheduler)
-    );
+        std::move(scheduler));
 }
 
 IProfileLogPtr CreateProfileLogStub()

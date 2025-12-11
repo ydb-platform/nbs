@@ -15,10 +15,8 @@ void TIndexTabletActor::HandleDeleteZeroCompactionRanges(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     ExecuteTx<TDeleteZeroCompactionRanges>(
@@ -55,7 +53,8 @@ void TIndexTabletActor::ExecuteTx_DeleteZeroCompactionRanges(
     ui32 rangeCount = RangesWithEmptyCompactionScore.size();
     ui32 rangesPerTx = Config->GetMaxZeroCompactionRangesToDeletePerTx();
     for (ui32 i = args.StartIndex;
-            i < Min<ui32>(args.StartIndex + rangesPerTx, rangeCount); ++i)
+         i < Min<ui32>(args.StartIndex + rangesPerTx, rangeCount);
+         ++i)
     {
         ui32 range = RangesWithEmptyCompactionScore[i];
         db.WriteCompactionMap(
@@ -64,7 +63,6 @@ void TIndexTabletActor::ExecuteTx_DeleteZeroCompactionRanges(
             GetCompactionStats(range).DeletionsCount,
             GetCompactionStats(range).GarbageBlocksCount);
     }
-
 }
 
 void TIndexTabletActor::CompleteTx_DeleteZeroCompactionRanges(

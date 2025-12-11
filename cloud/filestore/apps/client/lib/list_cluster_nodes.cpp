@@ -6,8 +6,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TListClusterNodesCommand final
-    : public TFileStoreCommand
+class TListClusterNodesCommand final: public TFileStoreCommand
 {
 public:
     bool Execute() override
@@ -17,10 +16,9 @@ public:
         auto request = std::make_shared<NProto::TListClusterNodesRequest>();
         request->SetFileSystemId(FileSystemId);
 
-        auto response = WaitFor(
-            Client->ListClusterNodes(
-                std::move(callContext),
-                std::move(request)));
+        auto response = WaitFor(Client->ListClusterNodes(
+            std::move(callContext),
+            std::move(request)));
 
         if (HasError(response)) {
             ythrow TServiceError(response.GetError());

@@ -24,9 +24,9 @@ enum EDescribeKind : ui64
 }   // namespace
 
 TCreateVolumeLinkActor::TCreateVolumeLinkActor(
-        TString logPrefix,
-        NActors::TActorId volumeActorId,
-        TLeaderFollowerLink link)
+    TString logPrefix,
+    NActors::TActorId volumeActorId,
+    TLeaderFollowerLink link)
     : LogPrefix(std::move(logPrefix))
     , VolumeActorId(volumeActorId)
     , Follower{
@@ -69,8 +69,8 @@ void TCreateVolumeLinkActor::LinkVolumes(const TActorContext& ctx)
                             << "The size of the leader disk "
                             << Follower.Link.LeaderDiskIdForPrint().Quote()
                             << " is larger than the size of follower disk "
-                            << Follower.Link.FollowerDiskIdForPrint().Quote() << " "
-                            << sourceSize << " > " << targetSize;
+                            << Follower.Link.FollowerDiskIdForPrint().Quote()
+                            << " " << sourceSize << " > " << targetSize;
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,

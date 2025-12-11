@@ -24,20 +24,21 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_DECLARE_METHOD(name, ...)                                    \
-    struct T##name##Method                                                     \
-    {                                                                          \
-        [[maybe_unused]] static constexpr auto RequestName = TStringBuf(#name);\
-        using TRequest = NProto::T##name##Request;                             \
-        using TResponse = NProto::T##name##Response;                           \
-                                                                               \
-        template <typename T, typename ...TArgs>                               \
-        static TFuture<TResponse> Execute(T& client, TArgs&& ...args)          \
-        {                                                                      \
-            return client.name(std::forward<TArgs>(args)...);                  \
-        }                                                                      \
-    };                                                                         \
-// FILESTORE_DECLARE_METHOD
+#define FILESTORE_DECLARE_METHOD(name, ...)                           \
+    struct T##name##Method                                            \
+    {                                                                 \
+        [[maybe_unused]] static constexpr auto RequestName =          \
+            TStringBuf(#name);                                        \
+        using TRequest = NProto::T##name##Request;                    \
+        using TResponse = NProto::T##name##Response;                  \
+                                                                      \
+        template <typename T, typename... TArgs>                      \
+        static TFuture<TResponse> Execute(T& client, TArgs&&... args) \
+        {                                                             \
+            return client.name(std::forward<TArgs>(args)...);         \
+        }                                                             \
+    };                                                                \
+    // FILESTORE_DECLARE_METHOD
 
 FILESTORE_SERVICE(FILESTORE_DECLARE_METHOD)
 FILESTORE_DECLARE_METHOD(ReadDataLocal)
@@ -48,8 +49,7 @@ FILESTORE_DECLARE_METHOD(WriteDataLocal)
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-struct TRequestState
-    : public TAtomicRefCount<TRequestState<T>>
+struct TRequestState: public TAtomicRefCount<TRequestState<T>>
 {
     using TRequest = typename T::TRequest;
     using TResponse = typename T::TResponse;
@@ -63,15 +63,15 @@ struct TRequestState
     ui64 MountSeqNumber = 0;
 
     TRequestState(
-            TCallContextPtr callContext,
-            std::shared_ptr<TRequest> request = std::make_shared<TRequest>())
+        TCallContextPtr callContext,
+        std::shared_ptr<TRequest> request = std::make_shared<TRequest>())
         : CallContext(std::move(callContext))
         , Request(std::move(request))
         , Response(NewPromise<TResponse>())
     {}
 };
 
-template<>
+template <>
 struct TRequestState<TCreateSessionMethod>
     : public TAtomicRefCount<TRequestState<TCreateSessionMethod>>
 {
@@ -90,11 +90,11 @@ struct TRequestState<TCreateSessionMethod>
     TPromise<TResponse> Response;
 
     TRequestState(
-            bool readOnly,
-            ui64 mountSeqNumber,
-            int flags,
-            TCallContextPtr callContext,
-            std::shared_ptr<TRequest> request = std::make_shared<TRequest>())
+        bool readOnly,
+        ui64 mountSeqNumber,
+        int flags,
+        TCallContextPtr callContext,
+        std::shared_ptr<TRequest> request = std::make_shared<TRequest>())
         : ReadOnly(readOnly)
         , MountSeqNumber(mountSeqNumber)
         , Flags(flags)
@@ -174,8 +174,7 @@ std::tuple<TString, ui64, bool> GetSessionParams(
     return {
         GetSessionId(response),
         GetSessionSeqNo(response),
-        GetReadOnly(response)
-    };
+        GetReadOnly(response)};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -184,7 +183,8 @@ class TSession
     : public ISession
     , public std::enable_shared_from_this<TSession>
 {
-    friend TSessionIntrospectedState NCloud::NFileStore::NClient::GetSessionInternalState(
+    friend TSessionIntrospectedState
+    NCloud::NFileStore::NClient::GetSessionInternalState(
         const ISessionPtr& session);
 
     enum ESessionState
@@ -227,19 +227,20 @@ private:
 
 public:
     TSession(
-            ILoggingServicePtr logging,
-            ITimerPtr timer,
-            ISchedulerPtr scheduler,
-            IFileStoreServicePtr client,
-            TSessionConfigPtr config)
+        ILoggingServicePtr logging,
+        ITimerPtr timer,
+        ISchedulerPtr scheduler,
+        IFileStoreServicePtr client,
+        TSessionConfigPtr config)
         : Logging(std::move(logging))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Client(std::move(client))
         , Config(std::move(config))
-        , FsTag(Sprintf("[f:%s][c:%s]",
-            Config->GetFileSystemId().Quote().c_str(),
-            Config->GetClientId().Quote().c_str()))
+        , FsTag(Sprintf(
+              "[f:%s][c:%s]",
+              Config->GetFileSystemId().Quote().c_str(),
+              Config->GetClientId().Quote().c_str()))
         , CreateSessionResponse(NewPromise<TCreateSessionMethod::TResponse>())
         , DestroySessionResponse(NewPromise<TDestroySessionMethod::TResponse>())
     {
@@ -250,7 +251,8 @@ public:
         bool readOnly = false,
         ui64 mountSeqNumber = 0) override
     {
-        auto callContext = MakeIntrusive<TCallContext>(Config->GetFileSystemId());
+        auto callContext =
+            MakeIntrusive<TCallContext>(Config->GetFileSystemId());
         callContext->RequestType = EFileStoreRequest::CreateSession;
 
         auto state = MakeIntrusive<TRequestState<TCreateSessionMethod>>(
@@ -267,7 +269,8 @@ public:
         bool readOnly,
         ui64 mountSeqNumber) override
     {
-        auto callContext = MakeIntrusive<TCallContext>(Config->GetFileSystemId());
+        auto callContext =
+            MakeIntrusive<TCallContext>(Config->GetFileSystemId());
         callContext->RequestType = EFileStoreRequest::CreateSession;
 
         auto state = MakeIntrusive<TRequestState<TCreateSessionMethod>>(
@@ -282,7 +285,8 @@ public:
 
     TFuture<NProto::TDestroySessionResponse> DestroySession() override
     {
-        auto callContext = MakeIntrusive<TCallContext>(Config->GetFileSystemId());
+        auto callContext =
+            MakeIntrusive<TCallContext>(Config->GetFileSystemId());
         callContext->RequestType = EFileStoreRequest::DestroySession;
 
         auto state = MakeIntrusive<TRequestState<TDestroySessionMethod>>(
@@ -294,7 +298,8 @@ public:
 
     TFuture<NProto::TPingSessionResponse> PingSession()
     {
-        auto callContext = MakeIntrusive<TCallContext>(Config->GetFileSystemId());
+        auto callContext =
+            MakeIntrusive<TCallContext>(Config->GetFileSystemId());
         callContext->RequestType = EFileStoreRequest::PingSession;
 
         auto state = MakeIntrusive<TRequestState<TPingSessionMethod>>(
@@ -308,24 +313,24 @@ public:
     // Session methods
     //
 
-#define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        auto state = MakeIntrusive<TRequestState<T##name##Method>>(            \
-            std::move(callContext),                                            \
-            std::move(request));                                               \
-                                                                               \
-        ExecuteRequest(state);                                                 \
-        return state->Response;                                                \
-    }                                                                          \
-// FILESTORE_IMPLEMENT_METHOD
+#define FILESTORE_IMPLEMENT_METHOD(name, ...)                       \
+    TFuture<NProto::T##name##Response> name(                        \
+        TCallContextPtr callContext,                                \
+        std::shared_ptr<NProto::T##name##Request> request) override \
+    {                                                               \
+        auto state = MakeIntrusive<TRequestState<T##name##Method>>( \
+            std::move(callContext),                                 \
+            std::move(request));                                    \
+                                                                    \
+        ExecuteRequest(state);                                      \
+        return state->Response;                                     \
+    }                                                               \
+    // FILESTORE_IMPLEMENT_METHOD
 
-FILESTORE_DATA_METHODS(FILESTORE_IMPLEMENT_METHOD)
-FILESTORE_LOCAL_DATA_METHODS(FILESTORE_IMPLEMENT_METHOD)
-FILESTORE_IMPLEMENT_METHOD(ReadDataLocal)
-FILESTORE_IMPLEMENT_METHOD(WriteDataLocal)
+    FILESTORE_DATA_METHODS(FILESTORE_IMPLEMENT_METHOD)
+    FILESTORE_LOCAL_DATA_METHODS(FILESTORE_IMPLEMENT_METHOD)
+    FILESTORE_IMPLEMENT_METHOD(ReadDataLocal)
+    FILESTORE_IMPLEMENT_METHOD(WriteDataLocal)
 
 #undef FILESTORE_IMPLEMENT_METHOD
 
@@ -333,17 +338,17 @@ FILESTORE_IMPLEMENT_METHOD(WriteDataLocal)
     // Forwarded methods
     //
 
-#define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        return ForwardRequest<T##name##Method>(                                \
-            std::move(callContext),                                            \
-            std::move(request));                                               \
-    }                                                                          \
+#define FILESTORE_IMPLEMENT_METHOD(name, ...)                       \
+    TFuture<NProto::T##name##Response> name(                        \
+        TCallContextPtr callContext,                                \
+        std::shared_ptr<NProto::T##name##Request> request) override \
+    {                                                               \
+        return ForwardRequest<T##name##Method>(                     \
+            std::move(callContext),                                 \
+            std::move(request));                                    \
+    }
 
-FILESTORE_SESSION_FORWARD(FILESTORE_IMPLEMENT_METHOD)
+    FILESTORE_SESSION_FORWARD(FILESTORE_IMPLEMENT_METHOD)
 
 #undef FILESTORE_IMPLEMENT_METHOD
 
@@ -370,39 +375,34 @@ private:
     // CreateSession request
     //
 
-    void ExecuteRequest(
-        TRequestStatePtr<TCreateSessionMethod> state)
+    void ExecuteRequest(TRequestStatePtr<TCreateSessionMethod> state)
     {
-        with_lock(SessionLock) {
+        with_lock (SessionLock) {
             if (SessionState == SessionDestroying) {
-                state->Response.SetValue(
-                    TErrorResponse(
-                        E_INVALID_STATE,
-                        "Session is being destroyed"));
+                state->Response.SetValue(TErrorResponse(
+                    E_INVALID_STATE,
+                    "Session is being destroyed"));
                 return;
             }
 
             if (SessionState == SessionBroken) {
                 state->Response.SetValue(
-                    TErrorResponse(
-                        E_INVALID_STATE,
-                        "Session is broken"));
+                    TErrorResponse(E_INVALID_STATE, "Session is broken"));
                 return;
             }
 
             if (SessionState == SessionEstablishing) {
-                auto postpone = [state, weakPtr = weak_from_this()] (
-                    const auto& future) mutable
+                auto postpone = [state, weakPtr = weak_from_this()](
+                                    const auto& future) mutable
                 {
                     Y_UNUSED(future);
                     if (auto self = weakPtr.lock()) {
                         self->ExecuteRequest(state);
                         return;
                     }
-                    state->Response.SetValue(
-                        TErrorResponse(
-                            E_INVALID_STATE,
-                            "Session is destroyed"));
+                    state->Response.SetValue(TErrorResponse(
+                        E_INVALID_STATE,
+                        "Session is destroyed"));
                 };
 
                 CreateSessionResponse.GetFuture().Subscribe(postpone);
@@ -412,15 +412,18 @@ private:
 
             SessionState = SessionEstablishing;
 
-            auto sessionId =
-                (state->Flags & F_RESET_SESSION_ID) ? TString() : GetSafeCurrentSessionId();
+            auto sessionId = (state->Flags & F_RESET_SESSION_ID)
+                                 ? TString()
+                                 : GetSafeCurrentSessionId();
 
             if (sessionId) {
-                STORAGE_INFO(LogTag(sessionId, state->MountSeqNumber)
+                STORAGE_INFO(
+                    LogTag(sessionId, state->MountSeqNumber)
                     << " recovering session f: "
                     << static_cast<ui32>(state->Flags));
             } else {
-                STORAGE_INFO(LogTag(sessionId, state->MountSeqNumber)
+                STORAGE_INFO(
+                    LogTag(sessionId, state->MountSeqNumber)
                     << " initiating session f: "
                     << static_cast<ui32>(state->Flags));
             }
@@ -445,14 +448,15 @@ private:
 
         if (HasError(response)) {
             const auto& error = response.GetError();
-            STORAGE_WARN(LogTag(state->SessionId, state->MountSeqNumber)
-                << " failed to establish session: "
-                << FormatError(error));
+            STORAGE_WARN(
+                LogTag(state->SessionId, state->MountSeqNumber)
+                << " failed to establish session: " << FormatError(error));
 
             if (error.GetCode() == E_FS_INVALID_SESSION) {
                 // reset session
                 if (state->SessionId) {
-                    STORAGE_INFO(LogTag(state->SessionId, state->MountSeqNumber)
+                    STORAGE_INFO(
+                        LogTag(state->SessionId, state->MountSeqNumber)
                         << " retrying session f: ");
 
                     state->SessionId = {};
@@ -464,8 +468,10 @@ private:
 
         with_lock (SessionLock) {
             if (!HasError(response)) {
-                STORAGE_INFO(LogTag(GetSessionId(response), GetSessionSeqNo(response))
-                    << " session established " << GetSessionState(response).size());
+                STORAGE_INFO(
+                    LogTag(GetSessionId(response), GetSessionSeqNo(response))
+                    << " session established "
+                    << GetSessionState(response).size());
 
                 SessionState = SessionEstablished;
 
@@ -496,7 +502,7 @@ private:
             if (SessionState == SessionBroken) {
                 state->Response.SetValue(
                     TErrorResponse(E_INVALID_STATE, "Session is not broken"));
-                    return;
+                return;
             }
 
             if (SessionState == SessionDestroying) {
@@ -507,18 +513,17 @@ private:
             if (SessionState == SessionEstablishing ||
                 !CreateSessionResponse.HasValue())
             {
-                auto postpone = [state, weakPtr = weak_from_this()] (
-                    const auto& future) mutable
+                auto postpone = [state, weakPtr = weak_from_this()](
+                                    const auto& future) mutable
                 {
                     Y_UNUSED(future);
                     if (auto self = weakPtr.lock()) {
                         self->ExecuteRequest(state);
                         return;
                     }
-                    state->Response.SetValue(
-                        TErrorResponse(
-                            E_INVALID_STATE,
-                            "Session is destroyed"));
+                    state->Response.SetValue(TErrorResponse(
+                        E_INVALID_STATE,
+                        "Session is destroyed"));
                 };
 
                 CreateSessionResponse.GetFuture().Subscribe(postpone);
@@ -527,7 +532,8 @@ private:
 
             SessionState = SessionDestroying;
 
-            STORAGE_INFO(LogTag(SessionId, SessionSeqNo) << " destroying session");
+            STORAGE_INFO(
+                LogTag(SessionId, SessionSeqNo) << " destroying session");
             FillRequestFromSessionState(*state);
 
             DestroySessionResponse = state->Response;
@@ -545,11 +551,12 @@ private:
 
         if (HasError(response)) {
             const auto& error = response.GetError();
-            STORAGE_WARN(LogTag(state->SessionId, state->MountSeqNumber)
-                << " failed to destroy session: "
-                << FormatError(error));
+            STORAGE_WARN(
+                LogTag(state->SessionId, state->MountSeqNumber)
+                << " failed to destroy session: " << FormatError(error));
         } else {
-            STORAGE_INFO(LogTag(state->SessionId, state->MountSeqNumber)
+            STORAGE_INFO(
+                LogTag(state->SessionId, state->MountSeqNumber)
                 << " session destroyed");
         }
 
@@ -588,22 +595,22 @@ private:
                 }
                 case SessionBroken: {
                     return MakeFuture<NProto::TCreateSessionResponse>(
-                        TErrorResponse(
-                            E_INVALID_STATE,
-                            "session is broken"));
+                        TErrorResponse(E_INVALID_STATE, "session is broken"));
                     break;
                 }
                 case SessionRequested: {
                     SessionState = SessionEstablishing;
 
-                    auto callContext = MakeIntrusive<TCallContext>(Config->GetFileSystemId());
+                    auto callContext =
+                        MakeIntrusive<TCallContext>(Config->GetFileSystemId());
                     callContext->RequestType = EFileStoreRequest::CreateSession;
 
-                    requestState = MakeIntrusive<TRequestState<TCreateSessionMethod>>(
-                        ReadOnly,
-                        SessionSeqNo,
-                        F_RESTORE_SESSION,
-                        std::move(callContext));
+                    requestState =
+                        MakeIntrusive<TRequestState<TCreateSessionMethod>>(
+                            ReadOnly,
+                            SessionSeqNo,
+                            F_RESTORE_SESSION,
+                            std::move(callContext));
 
                     requestState->SessionId = SessionId;
 
@@ -686,8 +693,8 @@ private:
                     sessionResponse);
             } else {
                 sessionResponse.Subscribe(
-                    [state, weakPtr = weak_from_this()] (
-                        const auto& future) mutable
+                    [state,
+                     weakPtr = weak_from_this()](const auto& future) mutable
                     {
                         if (auto self = weakPtr.lock()) {
                             self->HandleRequestAfterSessionCreate<T>(
@@ -706,7 +713,7 @@ private:
         }
 
         state->Response.SetValue(TErrorResponse(error));
-   }
+    }
 
     template <typename T>
     void ExecuteRequestWithSession(TRequestStatePtr<T> state)
@@ -720,17 +727,19 @@ private:
         headers->SetOriginFqdn(GetFQDNHostName());
         headers->SetSessionSeqNo(state->MountSeqNumber);
 
-        T::Execute(*Client, state->CallContext, state->Request).Subscribe(
-            [state = std::move(state), weakPtr = weak_from_this()] (
-                const auto& future) mutable
-            {
-                if (auto self = weakPtr.lock()) {
-                    self->HandleResponse(std::move(state), future);
-                    return;
-                }
-                state->Response.SetValue(
-                    TErrorResponse(E_INVALID_STATE, "request was cancelled"));
-            });
+        T::Execute(*Client, state->CallContext, state->Request)
+            .Subscribe(
+                [state = std::move(state),
+                 weakPtr = weak_from_this()](const auto& future) mutable
+                {
+                    if (auto self = weakPtr.lock()) {
+                        self->HandleResponse(std::move(state), future);
+                        return;
+                    }
+                    state->Response.SetValue(TErrorResponse(
+                        E_INVALID_STATE,
+                        "request was cancelled"));
+                });
     }
 
     template <typename T>
@@ -782,7 +791,8 @@ private:
 
         Scheduler->Schedule(
             Timer->Now() + Config->GetSessionPingTimeout(),
-            [weakPtr = weak_from_this()] {
+            [weakPtr = weak_from_this()]
+            {
                 if (auto self = weakPtr.lock()) {
                     self->DoPing();
                 }
@@ -794,7 +804,7 @@ private:
         auto ping = PingSession();
 
         ping.Subscribe(
-            [weakPtr = weak_from_this()] (
+            [weakPtr = weak_from_this()](
                 const TFuture<NProto::TPingSessionResponse>& future)
             {
                 Y_UNUSED(future);

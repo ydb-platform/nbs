@@ -31,9 +31,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void SetupTestEnv(
-    TTestEnv& env,
-    TStorageConfigPtr storageConfig)
+void SetupTestEnv(TTestEnv& env, TStorageConfigPtr storageConfig)
 {
     env.CreateSubDomain("nbs");
     env.CreateBlockStoreNode(
@@ -83,10 +81,13 @@ void MkDir(TTestActorRuntime& runtime, const TString& path)
         runtime,
         MakeSSProxyServiceId(),
         sender,
-        std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(std::move(modifyScheme)));
+        std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(
+            std::move(modifyScheme)));
 
     TAutoPtr<IEventHandle> handle;
-    auto response = runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvModifySchemeResponse>(handle);
+    auto response =
+        runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvModifySchemeResponse>(
+            handle);
     UNIT_ASSERT_C(Succeeded(response), GetErrorReason(response));
 }
 
@@ -101,7 +102,9 @@ void SendDescribeDir(TTestActorRuntime& runtime, const TString& path)
         std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(path));
 
     TAutoPtr<IEventHandle> handle;
-    auto response = runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeSchemeResponse>(handle);
+    auto response =
+        runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeSchemeResponse>(
+            handle);
     UNIT_ASSERT_C(Succeeded(response), GetErrorReason(response));
     UNIT_ASSERT_EQUAL(
         response->PathDescription.GetSelf().GetPathType(),
@@ -119,7 +122,9 @@ void SendWaitTx(TTestActorRuntime& runtime, ui64 tabletId, ui64 txId)
         std::make_unique<TEvSSProxy::TEvWaitSchemeTxRequest>(tabletId, txId));
 
     TAutoPtr<IEventHandle> handle;
-    auto response = runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvWaitSchemeTxResponse>(handle);
+    auto response =
+        runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvWaitSchemeTxResponse>(
+            handle);
     UNIT_ASSERT_C(Succeeded(response), GetErrorReason(response));
 }
 
@@ -150,8 +155,8 @@ void FillVolumeConfig(
     }
 
     auto partition = volumeConfig.PartitionsSize()
-        ? volumeConfig.MutablePartitions(0)
-        : volumeConfig.AddPartitions();
+                         ? volumeConfig.MutablePartitions(0)
+                         : volumeConfig.AddPartitions();
     partition->SetBlockCount(blocksCount);
 }
 
@@ -197,7 +202,7 @@ void CreateVolumeViaModifyScheme(
         auto splitted = SplitPath(relativeVolumeDir);
 
         TString dirToCreate = rootDir;
-        for (const auto& part : splitted) {
+        for (const auto& part: splitted) {
             dirToCreate += "/" + part;
             MkDir(runtime, dirToCreate);
         }
@@ -220,8 +225,8 @@ void CreateVolumeViaModifyScheme(
         *op.MutableVolumeConfig(),
         diskId,
         blockSize,
-        1,  // blocksCount
-        1  // numChannels
+        1,   // blocksCount
+        1    // numChannels
     );
 
     Send(
@@ -233,7 +238,8 @@ void CreateVolumeViaModifyScheme(
 
     TAutoPtr<IEventHandle> handle;
     auto response =
-        runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvModifySchemeResponse>(handle);
+        runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvModifySchemeResponse>(
+            handle);
     UNIT_ASSERT_C(Succeeded(response), GetErrorReason(response));
 }
 
@@ -287,12 +293,7 @@ void SendCreateVolumeRequest(
     const ui32 numChannels = 1;
 
     TVolumeConfig volumeConfig;
-    FillVolumeConfig(
-        volumeConfig,
-        diskId,
-        blockSize,
-        blocksCount,
-        numChannels);
+    FillVolumeConfig(volumeConfig, diskId, blockSize, blocksCount, numChannels);
 
     Send(
         runtime,
@@ -300,7 +301,6 @@ void SendCreateVolumeRequest(
         sender,
         std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(
             std::move(volumeConfig)));
-
 }
 
 void CreateVolume(
@@ -349,19 +349,19 @@ void DescribeVolumeWithFailure(
 
     TAutoPtr<IEventHandle> handle;
     auto response =
-        runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeVolumeResponse>(handle);
+        runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeVolumeResponse>(
+            handle);
 
     UNIT_ASSERT_C(!Succeeded(response), GetErrorReason(response));
 }
 
-struct TVolume {
+struct TVolume
+{
     TString Path;
     TString MountToken;
 };
 
-TVolume DescribeVolume(
-    TTestActorRuntime& runtime,
-    const TString& diskId)
+TVolume DescribeVolume(TTestActorRuntime& runtime, const TString& diskId)
 {
     TActorId sender = runtime.AllocateEdgeActor();
 
@@ -373,7 +373,8 @@ TVolume DescribeVolume(
 
     TAutoPtr<IEventHandle> handle;
     auto response =
-        runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeVolumeResponse>(handle);
+        runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeVolumeResponse>(
+            handle);
 
     UNIT_ASSERT_C(Succeeded(response), GetErrorReason(response));
 
@@ -389,7 +390,7 @@ TVolume DescribeVolume(
 
     UNIT_ASSERT_VALUES_EQUAL(diskId, volumeConfig.GetDiskId());
 
-    return { response->Path, volumeDescription.GetMountToken() };
+    return {response->Path, volumeDescription.GetMountToken()};
 }
 
 TString DescribeVolumeAndReturnPath(
@@ -428,7 +429,8 @@ void ModifyVolume(
 
     TAutoPtr<IEventHandle> handle;
     auto response =
-        runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvModifyVolumeResponse>(handle);
+        runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvModifyVolumeResponse>(
+            handle);
 
     UNIT_ASSERT_C(Succeeded(response), GetErrorReason(response));
 }
@@ -441,9 +443,7 @@ void AssignVolume(
     ModifyVolume(runtime, EOpType::Assign, diskId, mountToken);
 }
 
-void DestroyVolume(
-    TTestActorRuntime& runtime,
-    const TString& diskId)
+void DestroyVolume(TTestActorRuntime& runtime, const TString& diskId)
 {
     ModifyVolume(runtime, EOpType::Destroy, diskId);
 }
@@ -515,12 +515,12 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         TTestEnv env;
         auto& runtime = env.GetRuntime();
         auto config = CreateStorageConfig(
-            []() {
+            []()
+            {
                 NProto::TStorageServiceConfig config;
                 config.SetUseSchemeCache(true);
                 return config;
-            }()
-        );
+            }());
         SetupTestEnv(env, config);
 
         CreateVolumeViaModifySchemeDeprecated(runtime, config, "old-volume");
@@ -719,7 +719,10 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
             auto config = CreateTestStorageConfig(configProto);
             SetupTestEnv(env, config);
 
-            CreateVolumeViaModifySchemeDeprecated(runtime, config, "old-volume");
+            CreateVolumeViaModifySchemeDeprecated(
+                runtime,
+                config,
+                "old-volume");
             CreateVolumeViaModifyScheme(runtime, config, "new-volume");
 
             UNIT_ASSERT_VALUES_EQUAL(
@@ -739,12 +742,12 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                 runtime,
                 MakeSSProxyServiceId(),
                 sender,
-                std::make_unique<TEvSSProxy::TEvBackupPathDescriptionsRequest>());
+                std::make_unique<
+                    TEvSSProxy::TEvBackupPathDescriptionsRequest>());
 
             TAutoPtr<IEventHandle> handle;
-            auto response =
-                runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvBackupPathDescriptionsResponse>(
-                    handle);
+            auto response = runtime.GrabEdgeEventRethrow<
+                TEvSSProxy::TEvBackupPathDescriptionsResponse>(handle);
             UNIT_ASSERT_C(Succeeded(response), GetErrorReason(response));
         }
 
@@ -950,9 +953,11 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                 handle2);
 
         UNIT_ASSERT_C(
-            SUCCEEDED(response1->GetStatus()), response1->GetErrorReason());
+            SUCCEEDED(response1->GetStatus()),
+            response1->GetErrorReason());
         UNIT_ASSERT_C(
-            SUCCEEDED(response2->GetStatus()), response2->GetErrorReason());
+            SUCCEEDED(response2->GetStatus()),
+            response2->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldCreateVolumeRaceFailure)
@@ -963,16 +968,10 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         TActorId sender = runtime.AllocateEdgeActor();
 
-        SendCreateVolumeRequest(
-            runtime,
-            sender,
-            "volume",
-            1);  // blockSize
-        SendCreateVolumeRequest(
-            runtime,
-            sender,
-            "volume",
-            2);  // blockSize
+        SendCreateVolumeRequest(runtime, sender, "volume",
+                                1);   // blockSize
+        SendCreateVolumeRequest(runtime, sender, "volume",
+                                2);   // blockSize
 
         TAutoPtr<IEventHandle> handle1;
         auto response1 =
@@ -988,11 +987,16 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
             DoSwap(response1, response2);
         }
 
-        UNIT_ASSERT_C(SUCCEEDED(response1->GetStatus()), response1->GetErrorReason());
-        UNIT_ASSERT_C(FAILED(response2->GetStatus()), response2->GetErrorReason());
+        UNIT_ASSERT_C(
+            SUCCEEDED(response1->GetStatus()),
+            response1->GetErrorReason());
+        UNIT_ASSERT_C(
+            FAILED(response2->GetStatus()),
+            response2->GetErrorReason());
     }
 
-    Y_UNIT_TEST(ShouldCreateVolumeEvenWhenSmthButNotVolumeExistsAtDeprecatedPath)
+    Y_UNIT_TEST(
+        ShouldCreateVolumeEvenWhenSmthButNotVolumeExistsAtDeprecatedPath)
     {
         TTestEnv env;
         SetupTestEnv(env);
@@ -1002,7 +1006,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         CreateVolume(runtime, "volume");
     }
 
-    Y_UNIT_TEST(ShouldFailVolumeCreationWhenVolumeWithDifferentConfigExistsAtDeprecatedPath)
+    Y_UNIT_TEST(
+        ShouldFailVolumeCreationWhenVolumeWithDifferentConfigExistsAtDeprecatedPath)
     {
         TTestEnv env;
         auto& runtime = env.GetRuntime();
@@ -1011,7 +1016,10 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         const ui32 blockSize = 1;
         CreateVolumeViaModifySchemeDeprecated(
-            runtime, config, "volume", blockSize);
+            runtime,
+            config,
+            "volume",
+            blockSize);
         CreateVolumeWithFailure(runtime, "volume", blockSize + 1);
 
         DestroyVolume(runtime, "volume");
@@ -1026,12 +1034,13 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         auto error = MakeError(E_FAIL, "Error");
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeSchemeRequest: {
-                        auto response =
-                            std::make_unique<TEvSSProxy::TEvDescribeSchemeResponse>(
-                                error);
+                        auto response = std::make_unique<
+                            TEvSSProxy::TEvDescribeSchemeResponse>(error);
                         Send(
                             runtime,
                             event->Sender,
@@ -1055,7 +1064,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         UNIT_ASSERT(response->GetErrorReason() == error.GetMessage());
     }
 
-    Y_UNIT_TEST(ShouldFailVolumeCreationIfDescribeSchemeReturnsWrongVolumeConfig)
+    Y_UNIT_TEST(
+        ShouldFailVolumeCreationIfDescribeSchemeReturnsWrongVolumeConfig)
     {
         TTestEnv env;
         SetupTestEnv(env);
@@ -1063,7 +1073,9 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         const ui32 blockSize = 1;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeSchemeResponse: {
                         auto* msg =
@@ -1076,7 +1088,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                                 msg->PathDescription);
 
                         auto& volumeDescription =
-                            *pathDescription.MutableBlockStoreVolumeDescription();
+                            *pathDescription
+                                 .MutableBlockStoreVolumeDescription();
                         auto& volumeConfig =
                             *volumeDescription.MutableVolumeConfig();
                         volumeConfig.SetBlockSize(blockSize + 1);
@@ -1095,7 +1108,9 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         SetupTestEnv(env);
         auto& runtime = env.GetRuntime();
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeSchemeResponse: {
                         auto* msg =
@@ -1118,7 +1133,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         CreateVolumeWithFailure(runtime, "volume");
     }
 
-    Y_UNIT_TEST(ShouldFailVolumeCreationIfDescribeVolumeAfterCreateReturnsStatusPathDoesNotExist)
+    Y_UNIT_TEST(
+        ShouldFailVolumeCreationIfDescribeVolumeAfterCreateReturnsStatusPathDoesNotExist)
     {
         TTestEnv env;
         SetupTestEnv(env);
@@ -1128,13 +1144,21 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
             NKikimrScheme::StatusPathDoesNotExist,
             "path does not exist");
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
-                    case NKikimr::NSchemeShard::TEvSchemeShard::EvDescribeSchemeResult: {
-                        auto record = event->Get<NSchemeShard::TEvSchemeShard::TEvDescribeSchemeResult>()->MutableRecord();
-                        auto path = record->GetPathDescription().GetSelf().GetName();
+                    case NKikimr::NSchemeShard::TEvSchemeShard::
+                        EvDescribeSchemeResult: {
+                        auto record = event
+                                          ->Get<NSchemeShard::TEvSchemeShard::
+                                                    TEvDescribeSchemeResult>()
+                                          ->MutableRecord();
+                        auto path =
+                            record->GetPathDescription().GetSelf().GetName();
                         if (path == "volume") {
-                            record->SetStatus(NKikimrScheme::StatusPathDoesNotExist);
+                            record->SetStatus(
+                                NKikimrScheme::StatusPathDoesNotExist);
                         }
                     }
                 }
@@ -1165,7 +1189,9 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         SetupTestEnv(env);
         auto& runtime = env.GetRuntime();
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvTxUserProxy::EvNavigate: {
                         return TTestActorRuntime::EEventAction::DROP;
@@ -1198,12 +1224,10 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         UNIT_ASSERT_VALUES_EQUAL_C(
             E_TIMEOUT,
             response->GetStatus(),
-            response->GetErrorReason()
-        );
+            response->GetErrorReason());
         UNIT_ASSERT_VALUES_EQUAL(
             "DescribeVolume timeout for volume: \"/local/nbs/vol0\"",
-            response->GetErrorReason()
-        );
+            response->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldRetryDescribeRequestIfWrongVolumeInfo)
@@ -1219,30 +1243,35 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         ui32 count = 0;
         TActorId senderId;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvTxUserProxy::EvNavigate: {
                         senderId = event->Sender;
                         break;
                     }
                     case TEvSchemeShard::EvDescribeSchemeResult: {
-                        auto* msg =
-                            event->Get<TEvSchemeShard::TEvDescribeSchemeResult>();
+                        auto* msg = event->Get<
+                            TEvSchemeShard::TEvDescribeSchemeResult>();
                         if (event->Recipient != senderId || count != 0) {
                             break;
                         }
                         ++count;
                         auto* record = msg->MutableRecord();
-                        const auto error =
-                            MakeSchemeShardError(record->GetStatus(), record->GetReason());
+                        const auto error = MakeSchemeShardError(
+                            record->GetStatus(),
+                            record->GetReason());
                         if (FAILED(error.GetCode())) {
                             break;
                         }
                         auto* pathDescription =
-                                record->MutablePathDescription();
+                            record->MutablePathDescription();
                         auto* volumeDescription =
-                            pathDescription->MutableBlockStoreVolumeDescription();
-                        auto* volumeConfig = volumeDescription->MutableVolumeConfig();
+                            pathDescription
+                                ->MutableBlockStoreVolumeDescription();
+                        auto* volumeConfig =
+                            volumeDescription->MutableVolumeConfig();
                         volumeConfig->ClearPartitions();
                         break;
                     }
@@ -1256,7 +1285,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
             runtime,
             MakeSSProxyServiceId(),
             sender,
-            std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>("old-volume"));
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+                "old-volume"));
 
         // wait for background operations completion
         runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
@@ -1265,7 +1295,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         TAutoPtr<IEventHandle> handle;
         auto response =
-            runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeVolumeResponse>(handle);
+            runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeVolumeResponse>(
+                handle);
 
         UNIT_ASSERT_C(Succeeded(response), GetErrorReason(response));
 
@@ -1283,7 +1314,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         UNIT_ASSERT(count == 1);
     }
 
-    Y_UNIT_TEST(ShouldReturnERejectedIfIfSchemeShardDetectsPathIdVersionMismatch)
+    Y_UNIT_TEST(
+        ShouldReturnERejectedIfIfSchemeShardDetectsPathIdVersionMismatch)
     {
         TTestEnv env;
         auto& runtime = env.GetRuntime();
@@ -1298,14 +1330,16 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
             runtime,
             MakeSSProxyServiceId(),
             sender,
-            std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>("old-volume"));
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+                "old-volume"));
 
         // wait for background operations completion
         runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
         TAutoPtr<IEventHandle> handle;
         auto response =
-            runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeVolumeResponse>(handle);
+            runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeVolumeResponse>(
+                handle);
 
         UNIT_ASSERT_C(Succeeded(response), GetErrorReason(response));
 
@@ -1349,20 +1383,27 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
             runtime,
             MakeSSProxyServiceId(),
             sender,
-            std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(std::move(modifyScheme)));
+            std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(
+                std::move(modifyScheme)));
 
         // wait for background operations completion
         runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
         TAutoPtr<IEventHandle> modifyHandle;
         auto modifyResponse =
-            runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvModifySchemeResponse>(modifyHandle);
+            runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvModifySchemeResponse>(
+                modifyHandle);
 
-        UNIT_ASSERT_C(FAILED(modifyResponse->GetStatus()), GetErrorReason(modifyResponse));
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, modifyResponse->GetError().GetCode());
+        UNIT_ASSERT_C(
+            FAILED(modifyResponse->GetStatus()),
+            GetErrorReason(modifyResponse));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            modifyResponse->GetError().GetCode());
     }
 
-    Y_UNIT_TEST(ShouldReturnConcurrentModificationErrorIfSchemeShardDetectsWrongVersion)
+    Y_UNIT_TEST(
+        ShouldReturnConcurrentModificationErrorIfSchemeShardDetectsWrongVersion)
     {
         TTestEnv env;
         auto& runtime = env.GetRuntime();
@@ -1377,14 +1418,16 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
             runtime,
             MakeSSProxyServiceId(),
             sender,
-            std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>("old-volume"));
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+                "old-volume"));
 
         // wait for background operations completion
         runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
         TAutoPtr<IEventHandle> handle;
         auto response =
-            runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeVolumeResponse>(handle);
+            runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeVolumeResponse>(
+                handle);
 
         UNIT_ASSERT_C(Succeeded(response), GetErrorReason(response));
 
@@ -1429,17 +1472,23 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
             runtime,
             MakeSSProxyServiceId(),
             sender,
-            std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(std::move(modifyScheme)));
+            std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(
+                std::move(modifyScheme)));
 
         // wait for background operations completion
         runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
         TAutoPtr<IEventHandle> modifyHandle;
         auto modifyResponse =
-            runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvModifySchemeResponse>(modifyHandle);
+            runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvModifySchemeResponse>(
+                modifyHandle);
 
-        UNIT_ASSERT_C(FAILED(modifyResponse->GetStatus()), GetErrorReason(modifyResponse));
-        UNIT_ASSERT_VALUES_EQUAL(E_ABORTED, modifyResponse->GetError().GetCode());
+        UNIT_ASSERT_C(
+            FAILED(modifyResponse->GetStatus()),
+            GetErrorReason(modifyResponse));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ABORTED,
+            modifyResponse->GetError().GetCode());
     }
 
     Y_UNIT_TEST(ShouldReturnERejectedWhenSSisUnavailable)
@@ -1449,11 +1498,13 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         auto config = CreateStorageConfig();
         SetupTestEnv(env, config);
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvTxUserProxy::EvNavigate: {
-                        auto response =
-                            std::make_unique<TEvSchemeShard::TEvDescribeSchemeResult>();
+                        auto response = std::make_unique<
+                            TEvSchemeShard::TEvDescribeSchemeResult>();
                         auto& rec = *response->MutableRecord();
                         rec.SetStatus(NKikimrScheme::StatusNotAvailable);
                         rec.SetReason("ss is gone");
@@ -1465,11 +1516,13 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                     case TEvTxUserProxy::EvProposeTransaction: {
-                        auto response =
-                            std::make_unique<TEvTxUserProxy::TEvProposeTransactionStatus>(
-                                TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ExecError);
+                        auto response = std::make_unique<
+                            TEvTxUserProxy::TEvProposeTransactionStatus>(
+                            TEvTxUserProxy::TEvProposeTransactionStatus::
+                                EStatus::ExecError);
                         auto& rec = response->Record;
-                        rec.SetSchemeShardStatus(NKikimrScheme::StatusNotAvailable);
+                        rec.SetSchemeShardStatus(
+                            NKikimrScheme::StatusNotAvailable);
                         rec.SetSchemeShardReason("ss is gone");
                         Send(
                             runtime,
@@ -1482,7 +1535,6 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-
         TActorId sender = runtime.AllocateEdgeActor();
 
         {
@@ -1490,16 +1542,14 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                 runtime,
                 MakeSSProxyServiceId(),
                 sender,
-                std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>("volume"));
+                std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+                    "volume"));
 
             TAutoPtr<IEventHandle> describeHandle;
-            auto describeResponse =
-                runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeVolumeResponse>(
-                    describeHandle);
+            auto describeResponse = runtime.GrabEdgeEventRethrow<
+                TEvSSProxy::TEvDescribeVolumeResponse>(describeHandle);
 
-            UNIT_ASSERT_VALUES_EQUAL(
-                describeResponse->GetStatus(),
-                E_REJECTED);
+            UNIT_ASSERT_VALUES_EQUAL(describeResponse->GetStatus(), E_REJECTED);
             UNIT_ASSERT_VALUES_EQUAL(
                 "ss is gone",
                 describeResponse->GetError().GetMessage());
@@ -1510,16 +1560,14 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                 runtime,
                 MakeSSProxyServiceId(),
                 sender,
-                std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>("volume"));
+                std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
+                    "volume"));
 
             TAutoPtr<IEventHandle> describeHandle;
-            auto describeResponse =
-                runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeSchemeResponse>(
-                    describeHandle);
+            auto describeResponse = runtime.GrabEdgeEventRethrow<
+                TEvSSProxy::TEvDescribeSchemeResponse>(describeHandle);
 
-            UNIT_ASSERT_VALUES_EQUAL(
-                describeResponse->GetStatus(),
-                E_REJECTED);
+            UNIT_ASSERT_VALUES_EQUAL(describeResponse->GetStatus(), E_REJECTED);
             UNIT_ASSERT_VALUES_EQUAL(
                 "ss is gone",
                 describeResponse->GetError().GetMessage());
@@ -1538,12 +1586,11 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
             TAutoPtr<IEventHandle> modifyHandle;
             auto modifyResponse =
-                runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvModifyVolumeResponse>(
-                    modifyHandle);
+                runtime
+                    .GrabEdgeEventRethrow<TEvSSProxy::TEvModifyVolumeResponse>(
+                        modifyHandle);
 
-            UNIT_ASSERT_VALUES_EQUAL(
-                modifyResponse->GetStatus(),
-                E_REJECTED);
+            UNIT_ASSERT_VALUES_EQUAL(modifyResponse->GetStatus(), E_REJECTED);
         }
     }
 
@@ -1554,13 +1601,17 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         auto config = CreateStorageConfig();
         SetupTestEnv(env, config);
 
-        auto txStatus = TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ProxyNotReady;
+        auto txStatus =
+            TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ProxyNotReady;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvTxUserProxy::EvProposeTransaction: {
-                        auto response =
-                            std::make_unique<TEvTxUserProxy::TEvProposeTransactionStatus>(txStatus);
+                        auto response = std::make_unique<
+                            TEvTxUserProxy::TEvProposeTransactionStatus>(
+                            txStatus);
                         Send(
                             runtime,
                             event->Sender,
@@ -1572,7 +1623,6 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-
         TActorId sender = runtime.AllocateEdgeActor();
 
         {
@@ -1588,15 +1638,15 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
             TAutoPtr<IEventHandle> modifyHandle;
             auto modifyResponse =
-                runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvModifyVolumeResponse>(
-                    modifyHandle);
+                runtime
+                    .GrabEdgeEventRethrow<TEvSSProxy::TEvModifyVolumeResponse>(
+                        modifyHandle);
 
-            UNIT_ASSERT_VALUES_EQUAL(
-                modifyResponse->GetStatus(),
-                E_REJECTED);
+            UNIT_ASSERT_VALUES_EQUAL(modifyResponse->GetStatus(), E_REJECTED);
         }
 
-        txStatus = TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::WrongRequest;
+        txStatus =
+            TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::WrongRequest;
 
         {
             Send(
@@ -1611,8 +1661,9 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
             TAutoPtr<IEventHandle> modifyHandle;
             auto modifyResponse =
-                runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvModifyVolumeResponse>(
-                    modifyHandle);
+                runtime
+                    .GrabEdgeEventRethrow<TEvSSProxy::TEvModifyVolumeResponse>(
+                        modifyHandle);
 
             UNIT_ASSERT_VALUES_EQUAL(
                 modifyResponse->GetStatus(),
@@ -1620,7 +1671,8 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldReturnERejectedIfSchemeShardIsUnavailableForDeprecatedPath)
+    Y_UNIT_TEST(
+        ShouldReturnERejectedIfSchemeShardIsUnavailableForDeprecatedPath)
     {
         TTestEnv env;
         auto& runtime = env.GetRuntime();
@@ -1628,13 +1680,18 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
         SetupTestEnv(env, config);
         CreateVolumeViaModifySchemeDeprecated(runtime, config, "volume");
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvTxUserProxy::EvNavigate: {
-                        auto request = event->Get<TEvTxUserProxy::TEvNavigate>()->Record;
-                        if (request.GetDescribePath().GetPath() == "/local/nbs/volume") {
-                            auto response =
-                                std::make_unique<TEvSchemeShard::TEvDescribeSchemeResult>();
+                        auto request =
+                            event->Get<TEvTxUserProxy::TEvNavigate>()->Record;
+                        if (request.GetDescribePath().GetPath() ==
+                            "/local/nbs/volume")
+                        {
+                            auto response = std::make_unique<
+                                TEvSchemeShard::TEvDescribeSchemeResult>();
                             auto& record = *response->MutableRecord();
                             record.SetStatus(NKikimrScheme::StatusNotAvailable);
                             record.SetReason("ss is gone");
@@ -1657,12 +1714,12 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                 runtime,
                 MakeSSProxyServiceId(),
                 sender,
-                std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>("volume"));
+                std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+                    "volume"));
 
             TAutoPtr<IEventHandle> handle;
-            auto response =
-                runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeVolumeResponse>(
-                    handle);
+            auto response = runtime.GrabEdgeEventRethrow<
+                TEvSSProxy::TEvDescribeVolumeResponse>(handle);
 
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
             UNIT_ASSERT_VALUES_EQUAL(
@@ -1679,24 +1736,23 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         CreateVolume(runtime, "vol0", 4096);
 
-        runtime.SetEventFilter([&] (auto& runtime, auto& ev) {
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& ev)
+            {
                 Y_UNUSED(runtime);
                 switch (ev->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeSchemeResponse: {
                         using TEvent = TEvSSProxy::TEvDescribeSchemeResponse;
                         using TDescription = NKikimrSchemeOp::TPathDescription;
-                        auto* msg =
-                            ev->template Get<TEvent>();
+                        auto* msg = ev->template Get<TEvent>();
                         TDescription& desc =
                             const_cast<TDescription&>(msg->PathDescription);
-                        desc.
-                            MutableBlockStoreVolumeDescription()->
-                            SetVolumeTabletId(0);
+                        desc.MutableBlockStoreVolumeDescription()
+                            ->SetVolumeTabletId(0);
                     }
                 }
                 return false;
-            }
-        );
+            });
 
         TActorId sender = runtime.AllocateEdgeActor();
 
@@ -1722,30 +1778,31 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
 
         CreateVolume(runtime, "vol0", 4096);
 
-        runtime.SetEventFilter([&] (auto& runtime, auto& ev) {
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& ev)
+            {
                 Y_UNUSED(runtime);
                 switch (ev->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeSchemeResponse: {
                         using TEvent = TEvSSProxy::TEvDescribeSchemeResponse;
                         using TDescription = NKikimrSchemeOp::TPathDescription;
-                        auto* msg =
-                            ev->template Get<TEvent>();
+                        auto* msg = ev->template Get<TEvent>();
                         auto& desc =
                             const_cast<TDescription&>(msg->PathDescription);
                         if (FAILED(msg->GetStatus()) ||
                             desc.GetSelf().GetPathType() !=
-                            NKikimrSchemeOp::EPathTypeBlockStoreVolume)
+                                NKikimrSchemeOp::EPathTypeBlockStoreVolume)
                         {
                             break;
                         }
-                        desc.
-                            MutableBlockStoreVolumeDescription()->
-                            MutablePartitions()->at(0).SetTabletId(0);
+                        desc.MutableBlockStoreVolumeDescription()
+                            ->MutablePartitions()
+                            ->at(0)
+                            .SetTabletId(0);
                     }
                 }
                 return false;
-            }
-        );
+            });
 
         TActorId sender = runtime.AllocateEdgeActor();
 

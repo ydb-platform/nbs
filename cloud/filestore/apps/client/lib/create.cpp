@@ -1,8 +1,6 @@
 #include "command.h"
-
-#include "performance_profile_params.h"
-
 #include "library/cpp/json/json_writer.h"
+#include "performance_profile_params.h"
 
 #include <cloud/filestore/public/api/protos/fs.pb.h>
 
@@ -14,8 +12,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCreateCommand final
-    : public TFileStoreCommand
+class TCreateCommand final: public TFileStoreCommand
 {
 private:
     const TPerformanceProfileParams PerformanceProfileParams;
@@ -80,8 +77,8 @@ public:
         } else if (StorageMediaKindArg == "hybrid") {
             StorageMediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID;
         } else if (StorageMediaKindArg) {
-            ythrow yexception() << "invalid storage media kind: "
-                << StorageMediaKindArg
+            ythrow yexception()
+                << "invalid storage media kind: " << StorageMediaKindArg
                 << ", should be one of 'ssd', 'hdd', 'hybrid'";
         }
 
@@ -90,23 +87,22 @@ public:
 
         PerformanceProfileParams.FillRequest(*request);
 
-        auto response = WaitFor(
-            Client->CreateFileStore(
-                std::move(callContext),
-                std::move(request)));
+        auto response = WaitFor(Client->CreateFileStore(
+            std::move(callContext),
+            std::move(request)));
 
-        if (JsonOutput){
+        if (JsonOutput) {
             // We don't use result.PrintJSON(), because TError.PrintJSON()
             // writes only code, and it is more reliable to use formatted
             // error in tests and scripts.
             NJson::TJsonValue resultJson;
-            if (HasError(response)){
+            if (HasError(response)) {
                 resultJson["Error"] = FormatErrorJson(response.GetError());
             }
 
             NJson::WriteJson(&Cout, &resultJson, false, true, true);
 
-            if (HasError(response)){
+            if (HasError(response)) {
                 ProgramShouldContinue.ShouldStop(1);
                 return false;
             }

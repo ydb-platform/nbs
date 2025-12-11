@@ -39,14 +39,14 @@ void SetupConfigDispatcher(
     }
 
     const auto& names = settings.HasAllowList()
-        ? settings.GetAllowList().GetNames()
-        : settings.GetDenyList().GetNames();
+                            ? settings.GetAllowList().GetNames()
+                            : settings.GetDenyList().GetNames();
 
     std::set<ui32> items;
     TVector<TString> failedItemNames;
 
     for (const auto& name: names) {
-        NKikimrConsole::TConfigItem::EKind value {};
+        NKikimrConsole::TConfigItem::EKind value{};
         if (!NKikimrConsole::TConfigItem::EKind_Parse(name, &value)) {
             failedItemNames.push_back(name);
             continue;
@@ -55,7 +55,8 @@ void SetupConfigDispatcher(
     }
 
     if (!failedItemNames.empty()) {
-        ReportConfigDispatcherItemParseError(TStringBuilder()
+        ReportConfigDispatcherItemParseError(
+            TStringBuilder()
             << "Failed to parse: ("
             << JoinRange(",", failedItemNames.begin(), failedItemNames.end())
             << ") as NKikimrConsole::TConfigItem::EKind value");

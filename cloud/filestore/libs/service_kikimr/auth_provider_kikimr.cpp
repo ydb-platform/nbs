@@ -6,10 +6,10 @@
 #include <cloud/filestore/libs/storage/api/components.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
 
+#include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/api/authorizer.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 
-#include <cloud/storage/core/libs/actors/helpers.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
@@ -27,8 +27,7 @@ LWTRACE_USING(FILESTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRequestActor final
-    : public TActorBootstrapped<TRequestActor>
+class TRequestActor final: public TActorBootstrapped<TRequestActor>
 {
     using TThis = TRequestActor;
     using TBase = TActorBootstrapped<TThis>;
@@ -45,11 +44,11 @@ private:
 
 public:
     TRequestActor(
-            const TPermissionList& permissions,
-            TString authToken,
-            TPromise<NProto::TError> response,
-            TCallContextPtr callContext,
-            TDuration requestTimeout)
+        const TPermissionList& permissions,
+        TString authToken,
+        TPromise<NProto::TError> response,
+        TCallContextPtr callContext,
+        TDuration requestTimeout)
         : Permissions(permissions)
         , AuthToken(std::move(authToken))
         , Response(std::move(response))
@@ -83,7 +82,9 @@ public:
 private:
     void AuthorizeRequest(const TActorContext& ctx)
     {
-        LOG_TRACE_S(ctx, TFileStoreComponents::SERVICE_PROXY,
+        LOG_TRACE_S(
+            ctx,
+            TFileStoreComponents::SERVICE_PROXY,
             CallContext->LogString() << " authorizing request");
 
         auto request = std::make_unique<TEvAuth::TEvAuthorizationRequest>(
@@ -95,10 +96,7 @@ private:
             CallContext,
             GetFileStoreRequestName(CallContext->RequestType));
 
-        NCloud::Send(
-            ctx,
-            MakeAuthorizerServiceId(),
-            std::move(request));
+        NCloud::Send(ctx, MakeAuthorizerServiceId(), std::move(request));
 
         if (RequestTimeout && RequestTimeout != TDuration::Max()) {
             ctx.Schedule(RequestTimeout, new TEvents::TEvWakeup());
@@ -110,10 +108,11 @@ private:
         try {
             Response.SetValue(std::move(response));
         } catch (...) {
-            LOG_ERROR_S(ctx, TFileStoreComponents::SERVICE_PROXY,
-                CallContext->LogString() <<
-                " exception in callback: " <<
-                CurrentExceptionMessage());
+            LOG_ERROR_S(
+                ctx,
+                TFileStoreComponents::SERVICE_PROXY,
+                CallContext->LogString()
+                    << " exception in callback: " << CurrentExceptionMessage());
         }
 
         RequestCompleted = true;
@@ -148,7 +147,9 @@ private:
             GetFileStoreRequestName(CallContext->RequestType));
 
         if (FAILED(msg->GetStatus())) {
-            LOG_ERROR_S(ctx, TFileStoreComponents::SERVICE_PROXY,
+            LOG_ERROR_S(
+                ctx,
+                TFileStoreComponents::SERVICE_PROXY,
                 CallContext->LogString() << " unauthorized request");
         }
 
@@ -161,11 +162,13 @@ private:
     {
         Y_UNUSED(ev);
 
-        LOG_ERROR_S(ctx, TFileStoreComponents::SERVICE_PROXY,
+        LOG_ERROR_S(
+            ctx,
+            TFileStoreComponents::SERVICE_PROXY,
             CallContext->LogString() << " request timed out");
 
         NProto::TError error;
-        error.SetCode(E_REJECTED);  // TODO: E_TIMEOUT
+        error.SetCode(E_REJECTED);   // TODO: E_TIMEOUT
         error.SetMessage("Timeout");
 
         CompleteRequest(ctx, error);
@@ -174,8 +177,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAuthProvider final
-    : public IAuthProvider
+class TAuthProvider final: public IAuthProvider
 {
 private:
     const IActorSystemPtr ActorSystem;
@@ -192,8 +194,7 @@ public:
         // Data channel does not need IAM authorization:
         // all requests are allowed if authorized with mount tokens.
         return requestSource != NCloud::NProto::SOURCE_FD_CONTROL_CHANNEL &&
-            !IsDataChannel(requestSource) &&
-            !permissions.Empty();
+               !IsDataChannel(requestSource) && !permissions.Empty();
     }
 
     TFuture<NProto::TError> CheckRequest(

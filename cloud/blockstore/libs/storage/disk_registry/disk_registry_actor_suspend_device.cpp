@@ -27,23 +27,19 @@ void TDiskRegistryActor::HandleSuspendDevice(
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     if (deviceId.empty()) {
-        auto response = std::make_unique<TEvDiskRegistry::TEvSuspendDeviceResponse>(
-            MakeError(E_ARGUMENT, "empty device id"));
+        auto response =
+            std::make_unique<TEvDiskRegistry::TEvSuspendDeviceResponse>(
+                MakeError(E_ARGUMENT, "empty device id"));
 
         NCloud::Reply(ctx, *ev, std::move(response));
 
         return;
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-    ExecuteTx<TSuspendDevice>(
-        ctx,
-        std::move(requestInfo),
-        deviceId);
+    ExecuteTx<TSuspendDevice>(ctx, std::move(requestInfo), deviceId);
 }
 
 bool TDiskRegistryActor::PrepareSuspendDevice(

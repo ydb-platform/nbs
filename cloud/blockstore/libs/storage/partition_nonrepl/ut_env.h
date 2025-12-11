@@ -13,6 +13,7 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
+
 #include <cloud/storage/core/libs/common/sglist_test.h>
 #include <cloud/storage/core/libs/kikimr/helpers.h>
 
@@ -56,8 +57,7 @@ public:
     TStorageStatsServiceMock(TStorageStatsServiceStatePtr state)
         : TActor(&TThis::StateWork)
         , State(std::move(state))
-    {
-    }
+    {}
 
 private:
     STFUNC(StateWork)
@@ -65,7 +65,9 @@ private:
         switch (ev->GetTypeRewrite()) {
             HFunc(NActors::TEvents::TEvPoisonPill, HandlePoisonPill);
 
-            HFunc(TEvStatsService::TEvVolumePartCounters, HandleVolumePartCounters);
+            HFunc(
+                TEvStatsService::TEvVolumePartCounters,
+                HandleVolumePartCounters);
 
             HFunc(
                 TEvStatsServicePrivate::TEvRegisterTrafficSourceRequest,
@@ -123,8 +125,7 @@ using TMigrationStatePtr = std::shared_ptr<TMigrationState>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDummyActor final
-    : public NActors::TActor<TDummyActor>
+class TDummyActor final: public NActors::TActor<TDummyActor>
 {
 private:
     TMigrationStatePtr MigrationState;
@@ -133,8 +134,7 @@ public:
     TDummyActor(TMigrationStatePtr migrationState = nullptr)
         : TActor(&TThis::StateWork)
         , MigrationState(std::move(migrationState))
-    {
-    }
+    {}
 
 private:
     STFUNC(StateWork)
@@ -153,10 +153,16 @@ private:
 
             HFunc(TEvVolume::TEvResyncFinished, HandleResyncFinished);
 
-            HFunc(TEvDiskRegistry::TEvFinishMigrationRequest, HandleFinishMigration);
+            HFunc(
+                TEvDiskRegistry::TEvFinishMigrationRequest,
+                HandleFinishMigration);
 
-            HFunc(TEvVolume::TEvPreparePartitionMigrationRequest, HandlePreparePartitionMigration);
-            HFunc(TEvVolume::TEvUpdateMigrationState, HandleUpdateMigrationState);
+            HFunc(
+                TEvVolume::TEvPreparePartitionMigrationRequest,
+                HandlePreparePartitionMigration);
+            HFunc(
+                TEvVolume::TEvUpdateMigrationState,
+                HandleUpdateMigrationState);
 
             IgnoreFunc(TEvVolume::TEvReacquireDisk);
 
@@ -208,7 +214,6 @@ private:
         Y_UNUSED(ctx);
     }
 
-
     void HandleRdmaUnavailable(
         const TEvVolume::TEvRdmaUnavailable::TPtr& ev,
         const NActors::TActorContext& ctx)
@@ -221,7 +226,9 @@ private:
         const TEvVolume::TEvUpdateResyncState::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
-        NCloud::Reply(ctx, *ev,
+        NCloud::Reply(
+            ctx,
+            *ev,
             std::make_unique<TEvVolume::TEvResyncStateUpdated>());
     }
 
@@ -237,7 +244,9 @@ private:
         const TEvDiskRegistry::TEvFinishMigrationRequest::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
-        NCloud::Reply(ctx, *ev,
+        NCloud::Reply(
+            ctx,
+            *ev,
             std::make_unique<TEvDiskRegistry::TEvFinishMigrationResponse>());
     }
 
@@ -270,8 +279,7 @@ class TStorageServiceMock final: public NActors::TActor<TStorageServiceMock>
 public:
     TStorageServiceMock()
         : TActor(&TThis::StateWork)
-    {
-    }
+    {}
 
 private:
     STFUNC(StateWork)
@@ -307,8 +315,7 @@ private:
         auto requestInfo =
             CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-        auto response =
-            std::make_unique<TEvService::TEvAddTagsResponse>();
+        auto response = std::make_unique<TEvService::TEvAddTagsResponse>();
 
         NCloud::Reply(ctx, *requestInfo, std::move(response));
     }
@@ -328,9 +335,9 @@ private:
 
 public:
     TPartitionClient(
-            NActors::TTestActorRuntime& runtime,
-            NActors::TActorId actorId,
-            ui32 blockSize = DefaultBlockSize)
+        NActors::TTestActorRuntime& runtime,
+        NActors::TActorId actorId,
+        ui32 blockSize = DefaultBlockSize)
         : Runtime(runtime)
         , NodeIdx(0)
         , ActorId(actorId)
@@ -353,7 +360,7 @@ public:
             recipient,
             Sender,
             request.release(),
-            0,          // flags
+            0,   // flags
             cookie);
 
         Runtime.Send(ev, NodeIdx);
@@ -369,7 +376,8 @@ public:
         if (cookie) {
             UNIT_ASSERT_VALUES_EQUAL(cookie, handle->Cookie);
         }
-        return std::unique_ptr<TResponse>(handle->Release<TResponse>().Release());
+        return std::unique_ptr<TResponse>(
+            handle->Release<TResponse>().Release());
     }
 
     auto CreateReadBlocksRequest(
@@ -400,10 +408,9 @@ public:
         request->Record.SetStartIndex(blockRange.Start);
         for (ui32 i = 0; i < blockRange.Size(); i += blocksInBuffer) {
             auto& b = *request->Record.MutableBlocks()->AddBuffers();
-            b.resize(Min<ui32>(
-                blocksInBuffer,
-                (blockRange.Size() - i)
-            ) * BlockSize, fill);
+            b.resize(
+                Min<ui32>(blocksInBuffer, (blockRange.Size() - i)) * BlockSize,
+                fill);
         }
 
         return request;
@@ -442,11 +449,16 @@ public:
         return request;
     }
 
-    auto CreateWriteBlocksLocalRequest(TBlockRange64 range, const TString& content)
+    auto CreateWriteBlocksLocalRequest(
+        TBlockRange64 range,
+        const TString& content)
     {
-        TSgList sglist(range.Size(), TBlockDataRef{ content.data(), content.size() });
+        TSgList sglist(
+            range.Size(),
+            TBlockDataRef{content.data(), content.size()});
 
-        auto request = std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
+        auto request =
+            std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
         request->Record.Sglist = TGuardedSgList(std::move(sglist));
         request->Record.SetStartIndex(range.Start);
         request->Record.BlocksCount = range.Size();
@@ -456,9 +468,12 @@ public:
         return request;
     }
 
-    auto CreateReadBlocksLocalRequest(TBlockRange64 range, TGuardedSgList sglist)
+    auto CreateReadBlocksLocalRequest(
+        TBlockRange64 range,
+        TGuardedSgList sglist)
     {
-        auto request = std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
+        auto request =
+            std::make_unique<TEvService::TEvReadBlocksLocalRequest>();
         request->Record.Sglist = std::move(sglist);
         request->Record.SetStartIndex(range.Start);
         request->Record.SetBlocksCount(range.Size());
@@ -469,7 +484,8 @@ public:
 
     auto CreateChecksumBlocksRequest(TBlockRange64 range)
     {
-        auto request = std::make_unique<TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest>();
+        auto request = std::make_unique<
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest>();
         request->Record.SetStartIndex(range.Start);
         request->Record.SetBlocksCount(range.Size());
         request->Record.SetBlockSize(BlockSize);
@@ -487,8 +503,11 @@ public:
         return request;
     }
 
-    std::unique_ptr<TEvVolume::TEvCheckRangeRequest>
-    CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size, ui32 replicaCount)
+    std::unique_ptr<TEvVolume::TEvCheckRangeRequest> CreateCheckRangeRequest(
+        TString id,
+        ui32 startIndex,
+        ui32 size,
+        ui32 replicaCount)
     {
         auto request = std::make_unique<TEvVolume::TEvCheckRangeRequest>();
         request->Record.SetDiskId(id);
@@ -527,32 +546,32 @@ public:
         SendRequest(ActorId, std::move(msg), ++RequestId);
     }
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
-    template <typename... Args>                                                \
-    void Send##name##Request(Args&&... args)                                   \
-    {                                                                          \
-        auto request = Create##name##Request(std::forward<Args>(args)...);     \
-        SendRequest(ActorId, std::move(request), ++RequestId);                 \
-    }                                                                          \
-                                                                               \
-    std::unique_ptr<ns::TEv##name##Response> Recv##name##Response()            \
-    {                                                                          \
-        return RecvResponse<ns::TEv##name##Response>();                        \
-    }                                                                          \
-                                                                               \
-    template <typename... Args>                                                \
-    std::unique_ptr<ns::TEv##name##Response> name(Args&&... args)              \
-    {                                                                          \
-        auto request = Create##name##Request(std::forward<Args>(args)...);     \
-        SendRequest(ActorId, std::move(request), ++RequestId);                 \
-                                                                               \
-        auto response = RecvResponse<ns::TEv##name##Response>();               \
-        UNIT_ASSERT_C(                                                         \
-            SUCCEEDED(response->GetStatus()),                                  \
-            response->GetErrorReason());                                       \
-        return response;                                                       \
-    }                                                                          \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ns)                                \
+    template <typename... Args>                                            \
+    void Send##name##Request(Args&&... args)                               \
+    {                                                                      \
+        auto request = Create##name##Request(std::forward<Args>(args)...); \
+        SendRequest(ActorId, std::move(request), ++RequestId);             \
+    }                                                                      \
+                                                                           \
+    std::unique_ptr<ns::TEv##name##Response> Recv##name##Response()        \
+    {                                                                      \
+        return RecvResponse<ns::TEv##name##Response>();                    \
+    }                                                                      \
+                                                                           \
+    template <typename... Args>                                            \
+    std::unique_ptr<ns::TEv##name##Response> name(Args&&... args)          \
+    {                                                                      \
+        auto request = Create##name##Request(std::forward<Args>(args)...); \
+        SendRequest(ActorId, std::move(request), ++RequestId);             \
+                                                                           \
+        auto response = RecvResponse<ns::TEv##name##Response>();           \
+        UNIT_ASSERT_C(                                                     \
+            SUCCEEDED(response->GetStatus()),                              \
+            response->GetErrorReason());                                   \
+        return response;                                                   \
+    }                                                                      \
+    // BLOCKSTORE_DECLARE_METHOD
 
     BLOCKSTORE_DECLARE_METHOD(ReadBlocks, TEvService);
     BLOCKSTORE_DECLARE_METHOD(WriteBlocks, TEvService);
@@ -591,27 +610,27 @@ inline void WaitForMigrations(
     ui32 rangeCount)
 {
     ui32 migratedRanges = 0;
-    auto old = runtime.SetObserverFunc([&] (auto& event) {
-        switch (event->GetTypeRewrite()) {
-            case TEvNonreplPartitionPrivate::EvRangeMigrated: {
-                auto* msg =
-                    event->template Get<TEvNonreplPartitionPrivate::TEvRangeMigrated>();
-                if (!HasError(msg->Error)) {
-                    ++migratedRanges;
+    auto old = runtime.SetObserverFunc(
+        [&](auto& event)
+        {
+            switch (event->GetTypeRewrite()) {
+                case TEvNonreplPartitionPrivate::EvRangeMigrated: {
+                    auto* msg = event->template Get<
+                        TEvNonreplPartitionPrivate::TEvRangeMigrated>();
+                    if (!HasError(msg->Error)) {
+                        ++migratedRanges;
+                    }
+                    break;
                 }
-                break;
             }
-        }
-        return NActors::TTestActorRuntime::DefaultObserverFunc(event);
-    });
+            return NActors::TTestActorRuntime::DefaultObserverFunc(event);
+        });
 
     ui32 i = 0;
     while (migratedRanges < rangeCount && i++ < 6) {
         NActors::TDispatchOptions options;
-        options.FinalEvents = {
-            NActors::TDispatchOptions::TFinalEventCondition(
-                TEvNonreplPartitionPrivate::EvRangeMigrated)
-        };
+        options.FinalEvents = {NActors::TDispatchOptions::TFinalEventCondition(
+            TEvNonreplPartitionPrivate::EvRangeMigrated)};
 
         runtime.DispatchEvents(options);
     }
@@ -620,28 +639,30 @@ inline void WaitForMigrations(
     runtime.SetObserverFunc(std::move(old));
 }
 
-inline void WaitForNoMigrations(NActors::TTestBasicRuntime& runtime, TDuration timeout)
+inline void WaitForNoMigrations(
+    NActors::TTestBasicRuntime& runtime,
+    TDuration timeout)
 {
     ui32 migratedRanges = 0;
-    auto old = runtime.SetObserverFunc([&] (auto& event) {
-        switch (event->GetTypeRewrite()) {
-            case TEvNonreplPartitionPrivate::EvRangeMigrated: {
-                auto* msg =
-                    event->template Get<TEvNonreplPartitionPrivate::TEvRangeMigrated>();
-                if (!HasError(msg->Error)) {
-                    ++migratedRanges;
+    auto old = runtime.SetObserverFunc(
+        [&](auto& event)
+        {
+            switch (event->GetTypeRewrite()) {
+                case TEvNonreplPartitionPrivate::EvRangeMigrated: {
+                    auto* msg = event->template Get<
+                        TEvNonreplPartitionPrivate::TEvRangeMigrated>();
+                    if (!HasError(msg->Error)) {
+                        ++migratedRanges;
+                    }
+                    break;
                 }
-                break;
             }
-        }
-        return NActors::TTestActorRuntime::DefaultObserverFunc(event);
-    });
+            return NActors::TTestActorRuntime::DefaultObserverFunc(event);
+        });
 
     NActors::TDispatchOptions options;
-    options.FinalEvents = {
-        NActors::TDispatchOptions::TFinalEventCondition(
-            TEvNonreplPartitionPrivate::EvRangeMigrated)
-    };
+    options.FinalEvents = {NActors::TDispatchOptions::TFinalEventCondition(
+        TEvNonreplPartitionPrivate::EvRangeMigrated)};
 
     runtime.DispatchEvents(options, timeout);
 

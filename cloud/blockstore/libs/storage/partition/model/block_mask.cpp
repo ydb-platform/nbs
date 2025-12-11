@@ -9,9 +9,11 @@ TBlockMask BlockMaskFromString(TStringBuf s)
     TBlockMask mask;
 
     if (s) {
-        Y_ABORT_UNLESS(mask.GetChunkCount() * sizeof(TBlockMask::TChunk) == MaxBlocksCount/8);
-        Y_ABORT_UNLESS(s.length() == MaxBlocksCount/8);
-        memcpy((char*)mask.GetChunks(), s.data(), s.length());  // TODO
+        Y_ABORT_UNLESS(
+            mask.GetChunkCount() * sizeof(TBlockMask::TChunk) ==
+            MaxBlocksCount / 8);
+        Y_ABORT_UNLESS(s.length() == MaxBlocksCount / 8);
+        memcpy((char*)mask.GetChunks(), s.data(), s.length());   // TODO
     }
 
     return mask;
@@ -19,8 +21,12 @@ TBlockMask BlockMaskFromString(TStringBuf s)
 
 TStringBuf BlockMaskAsString(const TBlockMask& mask)
 {
-    Y_ABORT_UNLESS(mask.GetChunkCount() * sizeof(TBlockMask::TChunk) == MaxBlocksCount/8);
-    return { reinterpret_cast<const char*>(mask.GetChunks()), MaxBlocksCount/8 };
+    Y_ABORT_UNLESS(
+        mask.GetChunkCount() * sizeof(TBlockMask::TChunk) ==
+        MaxBlocksCount / 8);
+    return {
+        reinterpret_cast<const char*>(mask.GetChunks()),
+        MaxBlocksCount / 8};
 }
 
 bool IsBlockMaskFull(const TBlockMask& mask, ui32 blockCount)

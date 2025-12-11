@@ -1,6 +1,7 @@
 #include "external_endpoint_stats.h"
 
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
+
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/max_calculator.h>
 
@@ -46,22 +47,20 @@ void BatchCompleted(
     const TString& clientId,
     const TString& diskId)
 {
-    TMetricRequest request {kind};
+    TMetricRequest request{kind};
     serverStats.PrepareMetricRequest(
         request,
         clientId,
         diskId,
-        0,      // startIndex
-        0,      // requestBytes
-        false); // unaligned
+        0,        // startIndex
+        0,        // requestBytes
+        false);   // unaligned
 
-    auto times = GetHist(requestStats["times"], [] (ui64 us) {
-        return TDuration::MicroSeconds(us);
-    });
+    auto times = GetHist(
+        requestStats["times"],
+        [](ui64 us) { return TDuration::MicroSeconds(us); });
 
-    auto sizes = GetHist(requestStats["sizes"], [] (ui64 size) {
-        return size;
-    });
+    auto sizes = GetHist(requestStats["sizes"], [](ui64 size) { return size; });
 
     serverStats.BatchCompleted(
         request,

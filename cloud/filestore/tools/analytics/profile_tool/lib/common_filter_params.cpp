@@ -59,26 +59,24 @@ TCommonFilterParams::TCommonFilterParams(NLastGetopt::TOpts& opts)
             "FileSystemId, used for filtering")
         .RequiredArgument("STR");
 
-    opts.AddLongOption(
-            NodeIdLabel.data(),
-            "NodeId, used for filtering")
+    opts.AddLongOption(NodeIdLabel.data(), "NodeId, used for filtering")
         .RequiredArgument("NUM");
 
-    opts.AddLongOption(
-            HandleLabel.data(),
-            "Handle, used for filtering")
+    opts.AddLongOption(HandleLabel.data(), "Handle, used for filtering")
         .RequiredArgument("NUM");
 
     opts.AddLongOption(
             SinceLabel.data(),
             "Since timestamp, used for filtering. "
-            "Format: YYYY-MM-DDThh:mm:ss (https://www.iso.org/standard/40874.html)")
+            "Format: YYYY-MM-DDThh:mm:ss "
+            "(https://www.iso.org/standard/40874.html)")
         .RequiredArgument("STR");
 
     opts.AddLongOption(
             UntilLabel.data(),
             "Until timestamp, used for filtering. "
-            "Format: YYYY-MM-DDThh:mm:ss (https://www.iso.org/standard/40874.html)")
+            "Format: YYYY-MM-DDThh:mm:ss "
+            "(https://www.iso.org/standard/40874.html)")
         .RequiredArgument("STR");
 }
 

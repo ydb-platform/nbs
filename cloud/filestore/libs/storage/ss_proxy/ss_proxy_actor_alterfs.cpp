@@ -6,7 +6,6 @@
 #include <cloud/filestore/libs/storage/core/config.h>
 
 #include <contrib/ydb/core/base/path.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -53,10 +52,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TAlterFileStoreActor::TAlterFileStoreActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
-        TActorId storageSSProxy,
-        NKikimrFileStore::TConfig fileStoreConfig)
+    TRequestInfoPtr requestInfo,
+    TStorageConfigPtr config,
+    TActorId storageSSProxy,
+    NKikimrFileStore::TConfig fileStoreConfig)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , StorageSSProxy(std::move(storageSSProxy))
@@ -79,10 +78,7 @@ void TAlterFileStoreActor::ModifyScheme(const TActorContext& ctx)
     Y_ABORT_UNLESS(pathItems);
 
     auto name = pathItems.back();
-    auto workingDir = JoinRange(
-        "/",
-        pathItems.begin(),
-        pathItems.end() - 1);
+    auto workingDir = JoinRange("/", pathItems.begin(), pathItems.end() - 1);
 
     NKikimrSchemeOp::TModifyScheme modifyScheme;
     modifyScheme.SetOperationType(NKikimrSchemeOp::ESchemeOpAlterFileStore);
@@ -92,7 +88,9 @@ void TAlterFileStoreActor::ModifyScheme(const TActorContext& ctx)
     op->SetName(name);
     op->MutableConfig()->CopyFrom(FileStoreConfig);
 
-    LOG_DEBUG(ctx, TFileStoreComponents::SS_PROXY,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SS_PROXY,
         "FileStore %s: send alter request (dir: %s, name: %s)",
         FileStoreConfig.GetFileSystemId().Quote().c_str(),
         workingDir.Quote().c_str(),
@@ -118,17 +116,22 @@ void TAlterFileStoreActor::ReplyAndDie(
     const NProto::TError& error)
 {
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TFileStoreComponents::SS_PROXY,
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::SS_PROXY,
             "FileStore %s: alter failed - %s",
             FileStoreConfig.GetFileSystemId().Quote().c_str(),
             FormatError(error).c_str());
     } else {
-        LOG_DEBUG(ctx, TFileStoreComponents::SS_PROXY,
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::SS_PROXY,
             "FileStore %s: altered successfully",
             FileStoreConfig.GetFileSystemId().Quote().c_str());
     }
 
-    auto response = std::make_unique<TEvSSProxy::TEvAlterFileStoreResponse>(error);
+    auto response =
+        std::make_unique<TEvSSProxy::TEvAlterFileStoreResponse>(error);
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
     Die(ctx);
@@ -137,7 +140,9 @@ void TAlterFileStoreActor::ReplyAndDie(
 STFUNC(TAlterFileStoreActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvStorageSSProxy::TEvModifySchemeResponse, HandleModifySchemeResponse);
+        HFunc(
+            TEvStorageSSProxy::TEvModifySchemeResponse,
+            HandleModifySchemeResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -158,10 +163,8 @@ void TSSProxyActor::HandleAlterFileStore(
 {
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     auto actor = std::make_unique<TAlterFileStoreActor>(
         std::move(requestInfo),

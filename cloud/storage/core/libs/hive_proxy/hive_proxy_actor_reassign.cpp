@@ -25,12 +25,12 @@ private:
 
 public:
     TReassignRequestActor(
-            const TActorId& owner,
-            const int logComponent,
-            THiveProxyActor::TRequestInfo request,
-            ui64 tabletId,
-            TVector<ui32> channels,
-            TActorId clientId)
+        const TActorId& owner,
+        const int logComponent,
+        THiveProxyActor::TRequestInfo request,
+        ui64 tabletId,
+        TVector<ui32> channels,
+        TActorId clientId)
         : Owner(owner)
         , LogComponent(logComponent)
         , Request(std::move(request))
@@ -62,8 +62,7 @@ void TReassignRequestActor::Bootstrap(const TActorContext& ctx)
     NKikimr::NTabletPipe::SendData(
         ctx,
         ClientId,
-        new NKikimr::TEvHive::TEvReassignTabletSpace(TabletId, Channels)
-    );
+        new NKikimr::TEvHive::TEvReassignTabletSpace(TabletId, Channels));
 
     Become(&TThis::StateWork);
 }
@@ -76,7 +75,10 @@ void TReassignRequestActor::ReplyAndDie(
         std::move(error));
     NCloud::Reply(ctx, Request, std::move(response));
     NCloud::Send<TEvHiveProxyPrivate::TEvRequestFinished>(
-        ctx, Owner, TabletId, TabletId);
+        ctx,
+        Owner,
+        TabletId,
+        TabletId);
     Die(ctx);
 }
 
@@ -103,8 +105,12 @@ void TReassignRequestActor::HandleTabletCreationResult(
 STFUNC(TReassignRequestActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvHiveProxyPrivate::TEvChangeTabletClient, HandleChangeTabletClient);
-        HFunc(NKikimr::TEvHive::TEvTabletCreationResult, HandleTabletCreationResult);
+        HFunc(
+            TEvHiveProxyPrivate::TEvChangeTabletClient,
+            HandleChangeTabletClient);
+        HFunc(
+            NKikimr::TEvHive::TEvTabletCreationResult,
+            HandleTabletCreationResult);
 
         default:
             HandleUnexpectedEvent(ev, LogComponent, __PRETTY_FUNCTION__);
@@ -132,8 +138,7 @@ void THiveProxyActor::HandleReassignTablet(
         TRequestInfo(ev->Sender, ev->Cookie),
         msg->TabletId,
         msg->Channels,
-        clientId
-    ));
+        clientId));
 }
 
 }   // namespace NCloud::NStorage

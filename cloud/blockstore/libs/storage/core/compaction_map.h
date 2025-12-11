@@ -1,7 +1,8 @@
 #pragma once
 
-#include "compaction_policy.h"
 #include "public.h"
+
+#include "compaction_policy.h"
 
 #include <cloud/blockstore/libs/common/block_range.h>
 
@@ -24,8 +25,7 @@ struct TCompactionCounter
     TCompactionCounter(ui32 blockIndex, TRangeStat stat)
         : BlockIndex(blockIndex)
         , Stat(stat)
-    {
-    }
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////

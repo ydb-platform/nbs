@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <util/datetime/base.h>
@@ -119,7 +120,8 @@ struct IVolumeStats
         return nullptr;
     }
 
-    virtual TDowntimeHistory GetDowntimeHistory(const TString& diskId) const = 0;
+    virtual TDowntimeHistory GetDowntimeHistory(
+        const TString& diskId) const = 0;
 
     virtual bool HasStorageConfigPatch(const TString& diskId) const = 0;
 };

@@ -86,13 +86,11 @@ NProto::TGetNodeAttrResponse TLocalFileSystem::GetNodeAttr(
         stat = node->Stat(name);
         if (!session->LookupNode(stat.INode)) {
             auto child = TIndexNode::Create(*node, name);
-            // TODO: better? race between statting one child and creating another one
-            // but maybe too costly...
+            // TODO: better? race between statting one child and creating
+            // another one but maybe too costly...
             stat = child->Stat();
-            if (!session->TryInsertNode(
-                    std::move(child),
-                    node->GetNodeId(),
-                    name))
+            if (!session
+                     ->TryInsertNode(std::move(child), node->GetNodeId(), name))
             {
                 ReportLocalFsMaxSessionNodesInUse();
                 return TErrorResponse(ErrorNoSpaceLeft());

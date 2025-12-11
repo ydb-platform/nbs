@@ -51,8 +51,7 @@ TNonreplicatedPartitionMigrationCommonActor::
           Config->GetInitialRetryDelayForServiceRequests(),
           Config->GetMaxRetryDelayForServiceRequests())
     , PoisonPillHelper(this)
-{
-}
+{}
 
 TNonreplicatedPartitionMigrationCommonActor::
     TNonreplicatedPartitionMigrationCommonActor(
@@ -87,8 +86,7 @@ TNonreplicatedPartitionMigrationCommonActor::
           Config->GetInitialRetryDelayForServiceRequests(),
           Config->GetMaxRetryDelayForServiceRequests())
     , PoisonPillHelper(this)
-{
-}
+{}
 
 TNonreplicatedPartitionMigrationCommonActor::
     ~TNonreplicatedPartitionMigrationCommonActor() = default;
@@ -257,7 +255,9 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateWork)
         HFunc(TEvService::TEvReadBlocksLocalRequest, HandleReadBlocksLocal);
         HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteBlocksLocal);
 
-        HFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest, HandleChecksumBlocks);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest,
+            HandleChecksumBlocks);
 
         HFunc(
             NPartition::TEvPartition::TEvDrainRequest,
@@ -332,7 +332,9 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateZombie)
         HFunc(TEvService::TEvWriteBlocksRequest, RejectWriteBlocks);
         HFunc(TEvService::TEvZeroBlocksRequest, RejectZeroBlocks);
 
-        HFunc(TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest, RejectChecksumBlocks);
+        HFunc(
+            TEvNonreplPartitionPrivate::TEvChecksumBlocksRequest,
+            RejectChecksumBlocks);
 
         HFunc(TEvService::TEvReadBlocksLocalRequest, RejectReadBlocksLocal);
         HFunc(TEvService::TEvWriteBlocksLocalRequest, RejectWriteBlocksLocal);

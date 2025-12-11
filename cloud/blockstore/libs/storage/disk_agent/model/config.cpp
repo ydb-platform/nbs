@@ -19,56 +19,56 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_AGENT_CONFIG(xxx)                                           \
-    xxx(Enabled,                    bool,               false                 )\
-    xxx(AgentId,                    TString,            ""                    )\
-    xxx(SeqNumber,                  ui64,               0                     )\
-    xxx(DedicatedDiskAgent,         bool,               false                 )\
-    xxx(PageSize,                   ui32,               4_MB                  )\
-    xxx(MaxPageCount,               ui32,               256                   )\
-    xxx(PageDropSize,               ui32,               512_KB                )\
-    xxx(RegisterRetryTimeout,       TDuration,          1s                    )\
-    xxx(SecureEraseTimeout,         TDuration,          1min                  )\
-    xxx(DeviceIOTimeout,            TDuration,          1min                  )\
-    xxx(DeviceIOTimeoutsDisabled,   bool,               false                 )\
-    xxx(ShutdownTimeout,            TDuration,          5s                    )\
-    xxx(Backend,                                                               \
-        NProto::EDiskAgentBackendType,                                         \
-        NProto::DISK_AGENT_BACKEND_SPDK                                       )\
-    xxx(DeviceEraseMethod,                                                     \
-        NProto::EDeviceEraseMethod,                                            \
-        NProto::DEVICE_ERASE_METHOD_ZERO_FILL                                 )\
-                                                                               \
-    xxx(AcquireRequired,                    bool,       false                 )\
-    xxx(ReleaseInactiveSessionsTimeout,     TDuration,  10s                   )\
-    xxx(DirectIoFlagDisabled,               bool,       false                 )\
-    xxx(DeviceLockingEnabled,               bool,       false                 )\
-    xxx(DeviceHealthCheckDisabled,          bool,       false                 )\
-    xxx(CachedConfigPath,                   TString,    ""                    )\
-    xxx(CachedSessionsPath,                 TString,    ""                    )\
-    xxx(TemporaryAgent,                     bool,       false                 )\
-    xxx(IOParserActorCount,                 ui32,       0                     )\
-    xxx(OffloadAllIORequestsParsingEnabled, bool,       false                 )\
-    xxx(DisableNodeBrokerRegistrationOnDevicelessAgent, bool,          false  )\
-    xxx(EnableDataIntegrityValidationForDrBasedDisks,   bool,          false  )\
-    xxx(DataIntegrityValidationPolicyForDrBasedDisks,                          \
-        NProto::EDataIntegrityValidationPolicy,                                \
-        NProto::DIVP_DISABLED                                                 )\
-    xxx(MaxAIOContextEvents,                ui32,       1024                  )\
-    xxx(PathsPerFileIOService,              ui32,       0                     )\
-    xxx(DisableBrokenDevices,               bool,       false                 )\
-                                                                               \
-    xxx(IOParserActorAllocateStorageEnabled, bool,      false                 )\
-                                                                               \
-    xxx(MaxParallelSecureErasesAllowed,     ui32,       1                     )\
-    xxx(UseLocalStorageSubmissionThread,    bool,       true                  )\
-    xxx(KickOutOldClientsEnabled,           bool,       false                 )\
-    xxx(UseOneSubmissionThreadPerAIOServiceEnabled,     bool,       false     )\
-// BLOCKSTORE_AGENT_CONFIG
+#define BLOCKSTORE_AGENT_CONFIG(xxx)                                 \
+    xxx(Enabled, bool, false)                                        \
+    xxx(AgentId, TString, "")                                        \
+    xxx(SeqNumber, ui64, 0)                                          \
+    xxx(DedicatedDiskAgent, bool, false)                             \
+    xxx(PageSize, ui32, 4_MB)                                        \
+    xxx(MaxPageCount, ui32, 256)                                     \
+    xxx(PageDropSize, ui32, 512_KB)                                  \
+    xxx(RegisterRetryTimeout, TDuration, 1s)                         \
+    xxx(SecureEraseTimeout, TDuration, 1min)                         \
+    xxx(DeviceIOTimeout, TDuration, 1min)                            \
+    xxx(DeviceIOTimeoutsDisabled, bool, false)                       \
+    xxx(ShutdownTimeout, TDuration, 5s)                              \
+    xxx(Backend,                                                     \
+        NProto::EDiskAgentBackendType,                               \
+        NProto::DISK_AGENT_BACKEND_SPDK)                             \
+    xxx(DeviceEraseMethod,                                           \
+        NProto::EDeviceEraseMethod,                                  \
+        NProto::DEVICE_ERASE_METHOD_ZERO_FILL)                       \
+                                                                     \
+    xxx(AcquireRequired, bool, false)                                \
+    xxx(ReleaseInactiveSessionsTimeout, TDuration, 10s)              \
+    xxx(DirectIoFlagDisabled, bool, false)                           \
+    xxx(DeviceLockingEnabled, bool, false)                           \
+    xxx(DeviceHealthCheckDisabled, bool, false)                      \
+    xxx(CachedConfigPath, TString, "")                               \
+    xxx(CachedSessionsPath, TString, "")                             \
+    xxx(TemporaryAgent, bool, false)                                 \
+    xxx(IOParserActorCount, ui32, 0)                                 \
+    xxx(OffloadAllIORequestsParsingEnabled, bool, false)             \
+    xxx(DisableNodeBrokerRegistrationOnDevicelessAgent, bool, false) \
+    xxx(EnableDataIntegrityValidationForDrBasedDisks, bool, false)   \
+    xxx(DataIntegrityValidationPolicyForDrBasedDisks,                \
+        NProto::EDataIntegrityValidationPolicy,                      \
+        NProto::DIVP_DISABLED)                                       \
+    xxx(MaxAIOContextEvents, ui32, 1024)                             \
+    xxx(PathsPerFileIOService, ui32, 0)                              \
+    xxx(DisableBrokenDevices, bool, false)                           \
+                                                                     \
+    xxx(IOParserActorAllocateStorageEnabled, bool, false)            \
+                                                                     \
+    xxx(MaxParallelSecureErasesAllowed, ui32, 1)                     \
+    xxx(UseLocalStorageSubmissionThread, bool, true)                 \
+    xxx(KickOutOldClientsEnabled, bool, false)                       \
+    xxx(UseOneSubmissionThreadPerAIOServiceEnabled, bool, false)     \
+    // BLOCKSTORE_AGENT_CONFIG
 
-#define BLOCKSTORE_DECLARE_CONFIG(name, type, value)                           \
-    Y_DECLARE_UNUSED static const type Default##name = value;                  \
-// BLOCKSTORE_DECLARE_CONFIG
+#define BLOCKSTORE_DECLARE_CONFIG(name, type, value)          \
+    Y_DECLARE_UNUSED static const type Default##name = value; \
+    // BLOCKSTORE_DECLARE_CONFIG
 
 BLOCKSTORE_AGENT_CONFIG(BLOCKSTORE_DECLARE_CONFIG)
 
@@ -129,15 +129,15 @@ IOutputStream& operator<<(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
-type TDiskAgentConfig::Get##name() const                                       \
-{                                                                              \
-    if (Config.Has##name()) {                                                  \
-        return ConvertValue<type>(Config.Get##name());                         \
-    }                                                                          \
-    return Default##name;                                                      \
-}                                                                              \
-// BLOCKSTORE_CONFIG_GETTER
+#define BLOCKSTORE_CONFIG_GETTER(name, type, ...)          \
+    type TDiskAgentConfig::Get##name() const               \
+    {                                                      \
+        if (Config.Has##name()) {                          \
+            return ConvertValue<type>(Config.Get##name()); \
+        }                                                  \
+        return Default##name;                              \
+    }                                                      \
+    // BLOCKSTORE_CONFIG_GETTER
 
 BLOCKSTORE_AGENT_CONFIG(BLOCKSTORE_CONFIG_GETTER)
 
@@ -145,9 +145,9 @@ BLOCKSTORE_AGENT_CONFIG(BLOCKSTORE_CONFIG_GETTER)
 
 void TDiskAgentConfig::Dump(IOutputStream& out) const
 {
-#define BLOCKSTORE_CONFIG_DUMP(name, ...)                                      \
-    out << #name << ": " << Get##name() << Endl;                               \
-// BLOCKSTORE_CONFIG_DUMP
+#define BLOCKSTORE_CONFIG_DUMP(name, ...)        \
+    out << #name << ": " << Get##name() << Endl; \
+    // BLOCKSTORE_CONFIG_DUMP
 
     BLOCKSTORE_AGENT_CONFIG(BLOCKSTORE_CONFIG_DUMP);
 
@@ -156,16 +156,21 @@ void TDiskAgentConfig::Dump(IOutputStream& out) const
 
 void TDiskAgentConfig::DumpHtml(IOutputStream& out) const
 {
-#define BLOCKSTORE_CONFIG_DUMP(name, ...)                                      \
-    TABLER() {                                                                 \
-        TABLED() { out << #name; }                                             \
-        TABLED() { out << Get##name(); }                                       \
-    }                                                                          \
-// BLOCKSTORE_CONFIG_DUMP
+#define BLOCKSTORE_CONFIG_DUMP(name, ...) \
+    TABLER () {                           \
+        TABLED () {                       \
+            out << #name;                 \
+        }                                 \
+        TABLED () {                       \
+            out << Get##name();           \
+        }                                 \
+    }                                     \
+    // BLOCKSTORE_CONFIG_DUMP
 
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
+    HTML (out) {
+        TABLE_CLASS ("table table-condensed") {
+            TABLEBODY()
+            {
                 BLOCKSTORE_AGENT_CONFIG(BLOCKSTORE_CONFIG_DUMP);
             }
         }
@@ -219,7 +224,7 @@ NProto::TError SaveDiskAgentConfig(
         return MakeError(E_ARGUMENT, "empty path");
     }
 
-    const TString tmpPath {path + ".tmp"};
+    const TString tmpPath{path + ".tmp"};
 
     try {
         SerializeToTextFormat(proto, tmpPath);
@@ -236,9 +241,8 @@ NProto::TError SaveDiskAgentConfig(
 
         return MakeError(
             MAKE_SYSTEM_ERROR(ec),
-            TStringBuilder()
-                << "can't rename a file from " << tmpPath << " to " << path
-                << ::strerror_r(ec, buf, sizeof(buf)));
+            TStringBuilder() << "can't rename a file from " << tmpPath << " to "
+                             << path << ::strerror_r(ec, buf, sizeof(buf)));
     }
 
     return {};

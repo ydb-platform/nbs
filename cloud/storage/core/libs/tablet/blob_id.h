@@ -13,7 +13,9 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-inline NKikimr::TLogoBlobID MakeBlobId(ui64 tabletId, const TPartialBlobId& blobId)
+inline NKikimr::TLogoBlobID MakeBlobId(
+    ui64 tabletId,
+    const TPartialBlobId& blobId)
 {
     Y_DEBUG_ABORT_UNLESS(blobId.PartId() == 0);
     return NKikimr::TLogoBlobID(
@@ -25,7 +27,8 @@ inline NKikimr::TLogoBlobID MakeBlobId(ui64 tabletId, const TPartialBlobId& blob
         blobId.Cookie());
 }
 
-inline NKikimr::TLogoBlobID MakeBlobId(ui64 tabletId, ui64 commitId, ui64 uniqueId)
+inline NKikimr::TLogoBlobID
+MakeBlobId(ui64 tabletId, ui64 commitId, ui64 uniqueId)
 {
     return MakeBlobId(tabletId, TPartialBlobId(commitId, uniqueId));
 }

@@ -4,15 +4,14 @@
 #include <cloud/blockstore/private/api/protos/tablet.pb.h>
 
 #include <contrib/ydb/core/base/tablet.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
-#include <google/protobuf/util/json_util.h>
-
 #include <util/string/builder.h>
+
+#include <google/protobuf/util/json_util.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -36,9 +35,7 @@ private:
     ui64 TabletId = 0;
 
 public:
-    TKillTabletActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TKillTabletActionActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -56,8 +53,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TKillTabletActionActor::TKillTabletActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -103,7 +100,8 @@ void TKillTabletActionActor::HandleError(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(error);
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(error);
 
     LWTRACK(
         ResponseSent_Service,

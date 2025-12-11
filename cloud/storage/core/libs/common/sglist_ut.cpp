@@ -25,7 +25,8 @@ Y_UNIT_TEST_SUITE(TSgListTest)
             totalBlocksCount += blocksCount;
         }
 
-        auto sgListOrError = SgListNormalize(std::move(sglist), DefaultBlockSize);
+        auto sgListOrError =
+            SgListNormalize(std::move(sglist), DefaultBlockSize);
         UNIT_ASSERT(!HasError(sgListOrError));
         auto normalizedSglist = sgListOrError.ExtractResult();
 
@@ -54,7 +55,7 @@ Y_UNIT_TEST_SUITE(TSgListTest)
         size_t blocksCount = 12;
 
         TString buffer(blocksCount * DefaultBlockSize, 'a');
-        TBlockDataRef blockDataRef{ buffer.data(), buffer.size() };
+        TBlockDataRef blockDataRef{buffer.data(), buffer.size()};
 
         auto sgListOrError = SgListNormalize(blockDataRef, DefaultBlockSize);
         UNIT_ASSERT(!HasError(sgListOrError));

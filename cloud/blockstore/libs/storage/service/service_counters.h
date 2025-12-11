@@ -13,30 +13,30 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_SERVICE_STATS_COUNTERS(xxx, ...)                            \
-    xxx(BlockBufferBytes,               __VA_ARGS__)                           \
-// BLOCKSTORE_SERVICE_STATS_COUNTERS
+#define BLOCKSTORE_SERVICE_STATS_COUNTERS(xxx, ...) \
+    xxx(BlockBufferBytes, __VA_ARGS__)              \
+    // BLOCKSTORE_SERVICE_STATS_COUNTERS
 
-#define BLOCKSTORE_SERVICE_YDB_COUNTERS(xxx, ...)                              \
-    xxx(FailedRequests,               __VA_ARGS__)                             \
-// BLOCKSTORE_SERVICE_STATS_COUNTERS
+#define BLOCKSTORE_SERVICE_YDB_COUNTERS(xxx, ...) \
+    xxx(FailedRequests, __VA_ARGS__)              \
+    // BLOCKSTORE_SERVICE_STATS_COUNTERS
 
-#define BLOCKSTORE_SERVICE_ACTOR_COUNTERS(xxx, ...)                            \
-    xxx(ActorQueue,                     __VA_ARGS__)                           \
-    xxx(MailboxQueue,                   __VA_ARGS__)                           \
-// BLOCKSTORE_SERVICE_ACTOR_COUNTERS
+#define BLOCKSTORE_SERVICE_ACTOR_COUNTERS(xxx, ...) \
+    xxx(ActorQueue, __VA_ARGS__)                    \
+    xxx(MailboxQueue, __VA_ARGS__)                  \
+    // BLOCKSTORE_SERVICE_ACTOR_COUNTERS
 
-#define BLOCKSTORE_SERVICE_SIMPLE_COUNTERS(xxx)                                \
-    BLOCKSTORE_SERVICE_STATS_COUNTERS(xxx, Stats)                              \
-// BLOCKSTORE_SERVICE_SIMPLE_COUNTERS
+#define BLOCKSTORE_SERVICE_SIMPLE_COUNTERS(xxx)   \
+    BLOCKSTORE_SERVICE_STATS_COUNTERS(xxx, Stats) \
+    // BLOCKSTORE_SERVICE_SIMPLE_COUNTERS
 
-#define BLOCKSTORE_SERVICE_CUMULATIVE_COUNTERS(xxx)                            \
-    BLOCKSTORE_SERVICE_YDB_COUNTERS(xxx, Ydb)                                  \
-// BLOCKSTORE_SERVICE_CUMULATIVE_COUNTERS
+#define BLOCKSTORE_SERVICE_CUMULATIVE_COUNTERS(xxx) \
+    BLOCKSTORE_SERVICE_YDB_COUNTERS(xxx, Ydb)       \
+    // BLOCKSTORE_SERVICE_CUMULATIVE_COUNTERS
 
-#define BLOCKSTORE_SERVICE_PERCENTILE_COUNTERS(xxx)                            \
-    BLOCKSTORE_SERVICE_ACTOR_COUNTERS(xxx, Actor)                              \
-// BLOCKSTORE_SERVICE_PERCENTILE_COUNTERS
+#define BLOCKSTORE_SERVICE_PERCENTILE_COUNTERS(xxx) \
+    BLOCKSTORE_SERVICE_ACTOR_COUNTERS(xxx, Actor)   \
+    // BLOCKSTORE_SERVICE_PERCENTILE_COUNTERS
 
 ////////////////////////////////////////////////////////////////////////////////
 

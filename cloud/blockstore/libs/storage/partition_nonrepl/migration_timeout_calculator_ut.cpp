@@ -384,10 +384,7 @@ Y_UNIT_TEST_SUITE(TMigrationCalculatorTest)
 
     Y_UNIT_TEST(ShouldWorkWithEmptyPartitionConfig)
     {
-        TMigrationTimeoutCalculator timeoutCalculator(
-            16,
-            100500,
-            nullptr);
+        TMigrationTimeoutCalculator timeoutCalculator(16, 100500, nullptr);
 
         // Calculate timeout with inital bandwidth
         UNIT_ASSERT_VALUES_EQUAL(

@@ -1,7 +1,6 @@
 #include "healthcheck.h"
 
 #include "config.h"
-
 #include "ping.h"
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -21,10 +20,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TInstanceInfo* FindInstance(
-    TInstanceList& instances,
-    const TString& host,
-    ui16 port)
+TInstanceInfo*
+FindInstance(TInstanceList& instances, const TString& host, ui16 port)
 {
     for (auto& ii: instances.Instances) {
         if (ii.Host == host && ii.Port == port) {
@@ -58,8 +55,7 @@ struct THealthCheckCounters
         const auto& percentiles = GetDefaultPercentiles();
         for (ui32 i = 0; i < percentiles.size(); ++i) {
             PingTimePercentiles.emplace_back(
-                percentileGroup->GetCounter(percentiles[i].second)
-            );
+                percentileGroup->GetCounter(percentiles[i].second));
         }
     }
 
@@ -102,8 +98,7 @@ struct THealthCheckCounters
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class THealthChecker final
-    : public IHealthChecker
+class THealthChecker final: public IHealthChecker
 {
 private:
     TDiscoveryConfigPtr Config;
@@ -118,22 +113,20 @@ private:
 
 public:
     THealthChecker(
-            TDiscoveryConfigPtr config,
-            ILoggingServicePtr logging,
-            IMonitoringServicePtr monitoring,
-            IPingClientPtr insecureClient,
-            IPingClientPtr secureClient)
+        TDiscoveryConfigPtr config,
+        ILoggingServicePtr logging,
+        IMonitoringServicePtr monitoring,
+        IPingClientPtr insecureClient,
+        IPingClientPtr secureClient)
         : Config(std::move(config))
         , Logging(std::move(logging))
         , Monitoring(std::move(monitoring))
         , InsecureClient(std::move(insecureClient))
         , SecureClient(std::move(secureClient))
-    {
-    }
+    {}
 
     ~THealthChecker()
-    {
-    }
+    {}
 
 public:
     void Start() override
@@ -142,8 +135,10 @@ public:
         auto counters = Monitoring->GetCounters();
         auto rootGroup = counters->GetSubgroup("counters", "blockstore");
 
-        auto discoveryCounters = rootGroup->GetSubgroup("component", "discovery");
-        auto healthCheckCounters = discoveryCounters->GetSubgroup("subcomponent", "healthcheck");
+        auto discoveryCounters =
+            rootGroup->GetSubgroup("component", "discovery");
+        auto healthCheckCounters =
+            discoveryCounters->GetSubgroup("subcomponent", "healthcheck");
         Counters.Register(*healthCheckCounters);
 
         InsecureClient->Start();
@@ -177,22 +172,19 @@ public:
                 NthElement(
                     byLastPingTs.begin(),
                     byLastPingTs.begin() + limit,
-                    byLastPingTs.end()
-                );
+                    byLastPingTs.end());
 
                 byLastPingTs.resize(limit);
             }
 
             for (auto& x: byLastPingTs) {
-                auto& client = x.second->IsSecurePort
-                    ? SecureClient
-                    : InsecureClient;
+                auto& client =
+                    x.second->IsSecurePort ? SecureClient : InsecureClient;
 
                 auto ping = client->Ping(
                     x.second->Host,
                     x.second->Port,
-                    Config->GetPingRequestTimeout()
-                );
+                    Config->GetPingRequestTimeout());
 
                 pings.push_back(std::move(ping));
             }
@@ -201,33 +193,37 @@ public:
         }
 
         for (auto& ping: pings) {
-            ping.Subscribe([=, this, &instances] (TFuture<TPingResponseInfo> f) mutable {
-                bool done = false;
+            ping.Subscribe(
+                [=, this, &instances](TFuture<TPingResponseInfo> f) mutable
+                {
+                    bool done = false;
 
-                with_lock (instances.Lock) {
-                    OnPingResponse(f.GetValue(), instances);
+                    with_lock (instances.Lock) {
+                        OnPingResponse(f.GetValue(), instances);
 
-                    done = --*countdown == 0;
-                    if (done) {
-                        int reachable = 0;
-                        int unreachable = 0;
-                        for (const auto& ii: instances.Instances) {
-                            if (ii.Status == TInstanceInfo::EStatus::Unreachable) {
-                                ++unreachable;
-                            } else {
-                                ++reachable;
+                        done = --*countdown == 0;
+                        if (done) {
+                            int reachable = 0;
+                            int unreachable = 0;
+                            for (const auto& ii: instances.Instances) {
+                                if (ii.Status ==
+                                    TInstanceInfo::EStatus::Unreachable)
+                                {
+                                    ++unreachable;
+                                } else {
+                                    ++reachable;
+                                }
                             }
+                            Counters.SetReachableCount(reachable);
+                            Counters.SetUnreachableCount(unreachable);
+                            Counters.UpdatePingTimePercentiles();
                         }
-                        Counters.SetReachableCount(reachable);
-                        Counters.SetUnreachableCount(unreachable);
-                        Counters.UpdatePingTimePercentiles();
                     }
-                }
 
-                if (done) {
-                    promise.SetValue();
-                }
-            });
+                    if (done) {
+                        promise.SetValue();
+                    }
+                });
         }
 
         if (pings.empty()) {
@@ -242,18 +238,15 @@ private:
         const TPingResponseInfo& response,
         TInstanceList& instances)
     {
-        auto ii = FindInstance(
-            instances,
-            response.Host,
-            response.Port
-        );
+        auto ii = FindInstance(instances, response.Host, response.Port);
 
         if (ii) {
             if (HasError(response.Record)) {
                 Counters.OnHealthCheckError();
-                STORAGE_WARN("unreachable instance: "
-                    << ii->Host << ":" << ii->Port
-                    << " " << FormatError(response.Record.GetError()));
+                STORAGE_WARN(
+                    "unreachable instance: "
+                    << ii->Host << ":" << ii->Port << " "
+                    << FormatError(response.Record.GetError()));
                 ii->Status = TInstanceInfo::EStatus::Unreachable;
             } else {
                 ii->Status = TInstanceInfo::EStatus::Reachable;
@@ -261,10 +254,8 @@ private:
 
             ii->PrevStat = ii->LastStat;
             ii->LastStat.Ts = Now();
-            ii->LastStat.Bytes =
-                response.Record.GetLastByteCount();
-            ii->LastStat.Requests =
-                response.Record.GetLastRequestCount();
+            ii->LastStat.Bytes = response.Record.GetLastByteCount();
+            ii->LastStat.Requests = response.Record.GetLastRequestCount();
         }
 
         Counters.OnPingResult(response.Time);
@@ -273,15 +264,15 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class THealthCheckerStub final
-    : public IHealthChecker
+class THealthCheckerStub final: public IHealthChecker
 {
 public:
     TFuture<void> UpdateStatus(TInstanceList& instances) override
     {
         with_lock (instances.Lock) {
             for (ui32 i = 0; i < instances.Instances.size(); ++i) {
-                instances.Instances[i].Status = TInstanceInfo::EStatus::Reachable;
+                instances.Instances[i].Status =
+                    TInstanceInfo::EStatus::Reachable;
             }
         }
 
@@ -289,12 +280,10 @@ public:
     }
 
     void Start() override
-    {
-    }
+    {}
 
     void Stop() override
-    {
-    }
+    {}
 };
 
 }   // namespace
@@ -313,8 +302,7 @@ IHealthCheckerPtr CreateHealthChecker(
         std::move(logging),
         std::move(monitoring),
         std::move(insecurePingClient),
-        std::move(securePingClient)
-    );
+        std::move(securePingClient));
 }
 
 IHealthCheckerPtr CreateHealthCheckerStub()

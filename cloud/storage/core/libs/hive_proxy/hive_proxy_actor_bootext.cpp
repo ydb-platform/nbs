@@ -28,8 +28,7 @@ TString PrintChannels(const TVector<TTabletChannelInfo>& channels)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TBootRequestActor final
-    : public TActorBootstrapped<TBootRequestActor>
+class TBootRequestActor final: public TActorBootstrapped<TBootRequestActor>
 {
 private:
     const TActorId Owner;
@@ -43,13 +42,13 @@ private:
 
 public:
     TBootRequestActor(
-            const TActorId& owner,
-            int logComponent,
-            THiveProxyActor::TRequestInfo request,
-            ui64 tabletId,
-            TActorId clientId,
-            TActorId tabletBootInfoBackup,
-            TDuration externalBootRequestTimeout)
+        const TActorId& owner,
+        int logComponent,
+        THiveProxyActor::TRequestInfo request,
+        ui64 tabletId,
+        TActorId clientId,
+        TActorId tabletBootInfoBackup,
+        TDuration externalBootRequestTimeout)
         : Owner(owner)
         , LogComponent(logComponent)
         , Request(request)
@@ -62,7 +61,7 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    template<class... TArgs>
+    template <class... TArgs>
     void ReplyAndDie(const TActorContext& ctx, TArgs&&... args);
 
     void HandleChangeTabletClient(
@@ -100,14 +99,17 @@ void TBootRequestActor::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 }
 
-template<class... TArgs>
+template <class... TArgs>
 void TBootRequestActor::ReplyAndDie(const TActorContext& ctx, TArgs&&... args)
 {
     auto response = std::make_unique<TEvHiveProxy::TEvBootExternalResponse>(
         std::forward<TArgs>(args)...);
     NCloud::Reply(ctx, Request, std::move(response));
     NCloud::Send<TEvHiveProxyPrivate::TEvRequestFinished>(
-        ctx, Owner, TabletId, TabletId);
+        ctx,
+        Owner,
+        TabletId,
+        TabletId);
     Die(ctx);
 }
 
@@ -122,7 +124,8 @@ void TBootRequestActor::HandleChangeTabletClient(
     LOG_ERROR(
         ctx,
         LogComponent,
-        "Pipe to Hive has been reset. New client: %s", ToString(ClientId).c_str());
+        "Pipe to Hive has been reset. New client: %s",
+        ToString(ClientId).c_str());
 
     Bootstrap(ctx);
 }
@@ -147,11 +150,10 @@ void TBootRequestActor::HandleBoot(
         PrintChannels(storageInfo->Channels).c_str());
 
     if (TabletBootInfoBackup) {
-        auto updateRequest =
-            std::make_unique<TEvHiveProxyPrivate::TEvUpdateTabletBootInfoBackupRequest>(
-                storageInfo,
-                suggestedGeneration
-            );
+        auto updateRequest = std::make_unique<
+            TEvHiveProxyPrivate::TEvUpdateTabletBootInfoBackupRequest>(
+            storageInfo,
+            suggestedGeneration);
         NCloud::Send(ctx, TabletBootInfoBackup, std::move(updateRequest));
     }
 
@@ -164,7 +166,9 @@ void TBootRequestActor::HandleBoot(
             bootMode = EBootMode::SLAVE;
             break;
         default:
-            LOG_ERROR(ctx, LogComponent,
+            LOG_ERROR(
+                ctx,
+                LogComponent,
                 "Received unexpected BootMode=%u from hive",
                 msg->Record.GetBootMode());
             bootMode = EBootMode::MASTER;
@@ -200,8 +204,7 @@ void TBootRequestActor::HandleWakeup(
         return;
     }
 
-    LOG_ERROR(ctx, LogComponent,
-        "External boot request has timed out");
+    LOG_ERROR(ctx, LogComponent, "External boot request has timed out");
 
     ReplyAndDie(
         ctx,
@@ -215,7 +218,9 @@ void TBootRequestActor::HandleWakeup(
 STFUNC(TBootRequestActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvHiveProxyPrivate::TEvChangeTabletClient, HandleChangeTabletClient);
+        HFunc(
+            TEvHiveProxyPrivate::TEvChangeTabletClient,
+            HandleChangeTabletClient);
 
         HFunc(NKikimr::TEvLocal::TEvBootTablet, HandleBoot);
         HFunc(NKikimr::TEvHive::TEvBootTabletReply, HandleError);
@@ -250,8 +255,7 @@ void THiveProxyActor::HandleBootExternal(
         tabletId,
         clientId,
         TabletBootInfoBackup,
-        msg->RequestTimeout
-    );
+        msg->RequestTimeout);
     HiveStates[hive].Actors.insert(requestId);
 }
 

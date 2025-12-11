@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -13,8 +14,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TResumeDeviceCommand final
-    : public TCommand
+class TResumeDeviceCommand final: public TCommand
 {
 private:
     TString AgentId;
@@ -33,9 +33,7 @@ public:
             .RequiredArgument("STR")
             .StoreResult(&Path);
 
-        Opts.AddLongOption("dry-run", "dry run")
-            .NoArgument()
-            .SetFlag(&DryRun);
+        Opts.AddLongOption("dry-run", "dry run").NoArgument().SetFlag(&DryRun);
     }
 
 protected:

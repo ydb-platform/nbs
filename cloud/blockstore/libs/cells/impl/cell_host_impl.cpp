@@ -25,9 +25,8 @@ TResultOrError<TCellHostEndpoint> TCellHost::GetHostEndpoint(
     if (transport == NProto::CELL_DATA_TRANSPORT_UNSET) {
         return MakeError(
             E_REJECTED,
-            TStringBuilder()
-                << "Invalid requested trasport "
-                << NProto::ECellDataTransport_Name(transport));
+            TStringBuilder() << "Invalid requested trasport "
+                             << NProto::ECellDataTransport_Name(transport));
     };
 
     with_lock (StateLock) {
@@ -86,9 +85,8 @@ TFuture<TResultOrError<TCellHostConfig>> TCellHost::Start()
     {
         TResultOrError<TCellHostConfig> result{MakeError(
             E_REJECTED,
-            TStringBuilder()
-                << "Invalid requested trasport "
-                << NProto::ECellDataTransport_Name(transport))};
+            TStringBuilder() << "Invalid requested trasport "
+                             << NProto::ECellDataTransport_Name(transport))};
         return MakeFuture(result);
     }
 
@@ -101,20 +99,16 @@ TFuture<TResultOrError<TCellHostConfig>> TCellHost::Start()
         }
         if (State == EState::DEACTIVATING) {
             return StopPromise.GetFuture().Apply(
-                [weak = weak, fqdn = GetConfig().GetFqdn()] (const auto& future)
+                [weak = weak, fqdn = GetConfig().GetFqdn()](const auto& future)
                 {
                     Y_UNUSED(future);
                     if (auto self = weak.lock(); self) {
                         return self->Start();
                     }
-                    return MakeFuture(
-                        TResultOrError<TCellHostConfig>(
-                            MakeError(
-                                E_INVALID_STATE,
-                                TStringBuilder()
-                                    <<"Host "
-                                    << fqdn
-                                    << " is deactivated")));
+                    return MakeFuture(TResultOrError<TCellHostConfig>(MakeError(
+                        E_INVALID_STATE,
+                        TStringBuilder()
+                            << "Host " << fqdn << " is deactivated")));
                 });
         }
         State = EState::ACTIVATING;

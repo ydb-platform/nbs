@@ -18,7 +18,7 @@ namespace NCloud::NBlockStore::NStorage {
 // start and finish. It also allows retrieval of statistical information in JSON
 // format.
 
-class TTransactionTimeTracker : public ITransactionTracker
+class TTransactionTimeTracker: public ITransactionTracker
 {
 public:
     enum class EStatus

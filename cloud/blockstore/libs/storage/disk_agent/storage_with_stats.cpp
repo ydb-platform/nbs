@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/storage.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -25,17 +26,16 @@ EErrorKind GetResponseErrorKind(const TFuture<T>& future)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TStorageWithIoStats final
-    : public IStorage
+struct TStorageWithIoStats final: public IStorage
 {
     IStoragePtr Storage;
     TStorageIoStatsPtr Stats;
     ui32 BlockSize;
 
     TStorageWithIoStats(
-            IStoragePtr storage,
-            TStorageIoStatsPtr stats,
-            ui32 blockSize)
+        IStoragePtr storage,
+        TStorageIoStatsPtr stats,
+        ui32 blockSize)
         : Storage(std::move(storage))
         , Stats(std::move(stats))
         , BlockSize(blockSize)
@@ -47,22 +47,24 @@ struct TStorageWithIoStats final
     {
         Stats->OnZeroStart();
 
-        const ui64 requestBytes = static_cast<ui64>(request->GetBlocksCount()) * BlockSize;
+        const ui64 requestBytes =
+            static_cast<ui64>(request->GetBlocksCount()) * BlockSize;
 
         const auto started = Now();
         auto stats = Stats;
 
-        auto result = Storage->ZeroBlocks(
-            std::move(callContext),
-            std::move(request));
+        auto result =
+            Storage->ZeroBlocks(std::move(callContext), std::move(request));
 
-        return result.Subscribe([=, this] (const auto& future) {
-            if (HandleIoError(GetResponseErrorKind(future))) {
-                return;
-            }
+        return result.Subscribe(
+            [=, this](const auto& future)
+            {
+                if (HandleIoError(GetResponseErrorKind(future))) {
+                    return;
+                }
 
-            stats->OnZeroComplete(Now() - started, requestBytes);
-        });
+                stats->OnZeroComplete(Now() - started, requestBytes);
+            });
     }
 
     TFuture<NProto::TReadBlocksLocalResponse> ReadBlocksLocal(
@@ -71,7 +73,8 @@ struct TStorageWithIoStats final
     {
         Stats->OnReadStart();
 
-        const ui64 requestBytes = static_cast<ui64>(request->GetBlocksCount()) * BlockSize;
+        const ui64 requestBytes =
+            static_cast<ui64>(request->GetBlocksCount()) * BlockSize;
         const auto started = Now();
         auto stats = Stats;
 
@@ -79,13 +82,15 @@ struct TStorageWithIoStats final
             std::move(callContext),
             std::move(request));
 
-        return result.Subscribe([=, this] (const auto& future) {
-            if (HandleIoError(GetResponseErrorKind(future))) {
-                return;
-            }
+        return result.Subscribe(
+            [=, this](const auto& future)
+            {
+                if (HandleIoError(GetResponseErrorKind(future))) {
+                    return;
+                }
 
-            stats->OnReadComplete(Now() - started, requestBytes);
-        });
+                stats->OnReadComplete(Now() - started, requestBytes);
+            });
     }
 
     TFuture<NProto::TWriteBlocksLocalResponse> WriteBlocksLocal(
@@ -94,7 +99,8 @@ struct TStorageWithIoStats final
     {
         Stats->OnWriteStart();
 
-        const ui64 requestBytes = static_cast<ui64>(request->BlocksCount) * BlockSize;
+        const ui64 requestBytes =
+            static_cast<ui64>(request->BlocksCount) * BlockSize;
         const auto started = Now();
         auto stats = Stats;
 
@@ -102,13 +108,15 @@ struct TStorageWithIoStats final
             std::move(callContext),
             std::move(request));
 
-        return result.Subscribe([=, this] (const auto& future) {
-            if (HandleIoError(GetResponseErrorKind(future))) {
-                return;
-            }
+        return result.Subscribe(
+            [=, this](const auto& future)
+            {
+                if (HandleIoError(GetResponseErrorKind(future))) {
+                    return;
+                }
 
-            stats->OnWriteComplete(Now() - started, requestBytes);
-        });
+                stats->OnWriteComplete(Now() - started, requestBytes);
+            });
     }
 
     TFuture<NProto::TError> EraseDevice(
@@ -121,13 +129,15 @@ struct TStorageWithIoStats final
 
         auto result = Storage->EraseDevice(method);
 
-        return result.Subscribe([=] (const auto& future) {
-            if (future.HasException() || HasError(future.GetValue())) {
-                stats->OnError();
-            } else {
-                stats->OnEraseComplete(Now() - started);
-            }
-        });
+        return result.Subscribe(
+            [=](const auto& future)
+            {
+                if (future.HasException() || HasError(future.GetValue())) {
+                    stats->OnError();
+                } else {
+                    stats->OnEraseComplete(Now() - started);
+                }
+            });
     }
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override

@@ -101,16 +101,14 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NRdma::TClientConfigPtr CreateRdmaClientConfig(
-    const NRdma::TRdmaConfig& config)
+NRdma::TClientConfigPtr CreateRdmaClientConfig(const NRdma::TRdmaConfig& config)
 {
     return std::make_shared<NRdma::TClientConfig>(config.GetClient());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFakeRdmaClientProxy
-    : public NRdma::IClient
+class TFakeRdmaClientProxy: public NRdma::IClient
 {
 private:
     IActorSystemPtr ActorSystem;
@@ -137,8 +135,9 @@ public:
         Impl.reset();
     }
 
-    auto StartEndpoint(TString host, ui32 port)
-        -> NThreading::TFuture<NRdma::IClientEndpointPtr> override
+    auto StartEndpoint(
+        TString host,
+        ui32 port) -> NThreading::TFuture<NRdma::IClientEndpointPtr> override
     {
         return Impl->StartEndpoint(std::move(host), port);
     }
@@ -172,9 +171,9 @@ private:
 
 public:
     TWarmupBSGroupConnectionsActor(
-            NThreading::TPromise<void> promise,
-            TDuration timeout,
-            ui32 groupsPerChannelToWarmup)
+        NThreading::TPromise<void> promise,
+        TDuration timeout,
+        ui32 groupsPerChannelToWarmup)
         : Promise(std::move(promise))
         , Timeout(timeout)
         , GroupsPerChannelToWarmup(groupsPerChannelToWarmup)
@@ -226,7 +225,7 @@ private:
         {
             Promise.SetValue();
             Die(ctx);
-        };
+        }
 
         if (HasError(ev->Get()->GetError())) {
             LOG_ERROR(
@@ -314,10 +313,9 @@ TServerModuleFactories::TServerModuleFactories()
         };
     };
 
-    RdmaClientFactory = [] (
-        NCloud::ILoggingServicePtr logging,
-        NCloud::IMonitoringServicePtr monitoring,
-        NRdma::TClientConfigPtr config)
+    RdmaClientFactory = [](NCloud::ILoggingServicePtr logging,
+                           NCloud::IMonitoringServicePtr monitoring,
+                           NRdma::TClientConfigPtr config)
     {
         return NRdma::CreateClient(
             NRdma::NVerbs::CreateVerbs(),
@@ -326,10 +324,9 @@ TServerModuleFactories::TServerModuleFactories()
             std::move(config));
     };
 
-    RdmaServerFactory = [] (
-        NCloud::ILoggingServicePtr logging,
-        NCloud::IMonitoringServicePtr monitoring,
-        NRdma::TServerConfigPtr config)
+    RdmaServerFactory = [](NCloud::ILoggingServicePtr logging,
+                           NCloud::IMonitoringServicePtr monitoring,
+                           NRdma::TServerConfigPtr config)
     {
         return NRdma::CreateServer(
             NRdma::NVerbs::CreateVerbs(),
@@ -347,9 +344,9 @@ TServerModuleFactories::TServerModuleFactories()
 ////////////////////////////////////////////////////////////////////////////////
 
 TBootstrapYdb::TBootstrapYdb(
-        std::shared_ptr<NKikimr::TModuleFactories> moduleFactories,
-        std::shared_ptr<TServerModuleFactories> serverModuleFactories,
-        IDeviceHandlerFactoryPtr deviceHandlerFactory)
+    std::shared_ptr<NKikimr::TModuleFactories> moduleFactories,
+    std::shared_ptr<TServerModuleFactories> serverModuleFactories,
+    IDeviceHandlerFactoryPtr deviceHandlerFactory)
     : TBootstrapBase(std::move(deviceHandlerFactory))
     , ModuleFactories(std::move(moduleFactories))
     , ServerModuleFactories(std::move(serverModuleFactories))
@@ -368,23 +365,58 @@ TConfigInitializerCommonPtr TBootstrapYdb::InitConfigs(int argc, char** argv)
 
 TProgramShouldContinue& TBootstrapYdb::GetShouldContinue()
 {
-    return ActorSystem
-        ? ActorSystem->GetProgramShouldContinue()
-        : ShouldContinue;
+    return ActorSystem ? ActorSystem->GetProgramShouldContinue()
+                       : ShouldContinue;
 }
 
-IStartable* TBootstrapYdb::GetActorSystem()        { return ActorSystem.Get(); }
-IStartable* TBootstrapYdb::GetAsyncLogger()        { return AsyncLogger.get(); }
-IStartable* TBootstrapYdb::GetStatsAggregator()    { return StatsAggregator.get(); }
-IStartable* TBootstrapYdb::GetClientPercentiles()  { return ClientPercentiles.get(); }
-IStartable* TBootstrapYdb::GetStatsUploader()      { return StatsUploader.get(); }
-IStartable* TBootstrapYdb::GetYdbStorage()         { return AsStartable(YdbStorage); }
-IStartable* TBootstrapYdb::GetLogbrokerService()   { return LogbrokerService.get(); }
-IStartable* TBootstrapYdb::GetNotifyService()      { return NotifyService.get(); }
-IStartable* TBootstrapYdb::GetIamTokenClient()     { return IamTokenClient.get(); }
-IStartable* TBootstrapYdb::GetComputeClient()      { return ComputeClient.get(); }
-IStartable* TBootstrapYdb::GetKmsClient()          { return KmsClient.get(); }
-IStartable* TBootstrapYdb::GetRootKmsClient()      { return RootKmsClient.get(); }
+IStartable* TBootstrapYdb::GetActorSystem()
+{
+    return ActorSystem.Get();
+}
+IStartable* TBootstrapYdb::GetAsyncLogger()
+{
+    return AsyncLogger.get();
+}
+IStartable* TBootstrapYdb::GetStatsAggregator()
+{
+    return StatsAggregator.get();
+}
+IStartable* TBootstrapYdb::GetClientPercentiles()
+{
+    return ClientPercentiles.get();
+}
+IStartable* TBootstrapYdb::GetStatsUploader()
+{
+    return StatsUploader.get();
+}
+IStartable* TBootstrapYdb::GetYdbStorage()
+{
+    return AsStartable(YdbStorage);
+}
+IStartable* TBootstrapYdb::GetLogbrokerService()
+{
+    return LogbrokerService.get();
+}
+IStartable* TBootstrapYdb::GetNotifyService()
+{
+    return NotifyService.get();
+}
+IStartable* TBootstrapYdb::GetIamTokenClient()
+{
+    return IamTokenClient.get();
+}
+IStartable* TBootstrapYdb::GetComputeClient()
+{
+    return ComputeClient.get();
+}
+IStartable* TBootstrapYdb::GetKmsClient()
+{
+    return KmsClient.get();
+}
+IStartable* TBootstrapYdb::GetRootKmsClient()
+{
+    return RootKmsClient.get();
+}
 ITraceSerializerPtr TBootstrapYdb::GetTraceSerializer()
 {
     return TraceSerializer;
@@ -426,9 +458,9 @@ void TBootstrapYdb::InitSpdk()
         Configs->ServerConfig->GetNVMeEndpointEnabled() ||
         Configs->ServerConfig->GetSCSIEndpointEnabled();
 
-    const bool needSpdkForDiskAgent =
-        Configs->DiskAgentConfig->GetEnabled() &&
-        Configs->DiskAgentConfig->GetBackend() == NProto::DISK_AGENT_BACKEND_SPDK;
+    const bool needSpdkForDiskAgent = Configs->DiskAgentConfig->GetEnabled() &&
+                                      Configs->DiskAgentConfig->GetBackend() ==
+                                          NProto::DISK_AGENT_BACKEND_SPDK;
 
     if (needSpdkForInitiator || needSpdkForTarget || needSpdkForDiskAgent) {
         auto spdkParts =
@@ -453,7 +485,8 @@ void TBootstrapYdb::InitRdmaClient()
             STORAGE_INFO("RDMA client initialized");
         }
     } catch (...) {
-        STORAGE_ERROR("Failed to initialize RDMA client: "
+        STORAGE_ERROR(
+            "Failed to initialize RDMA client: "
             << CurrentExceptionMessage().c_str());
 
         RdmaClient = nullptr;
@@ -508,19 +541,26 @@ void TBootstrapYdb::InitKikimrService()
 
     const auto& cert = Configs->StorageConfig->GetNodeRegistrationCert();
 
-    NCloud::NStorage::TNodeRegistrationSettings settings {
-        .MaxAttempts =
-            Configs->StorageConfig->GetNodeRegistrationMaxAttempts(),
-        .ErrorTimeout = Configs->StorageConfig->GetNodeRegistrationErrorTimeout(),
-        .LegacyRegistrationTimeout = Configs->StorageConfig->GetNodeRegistrationTimeout(),
-        .DynamicNodeRegistrationTimeout = Configs->StorageConfig->GetDynamicNodeRegistrationTimeout(),
-        .LoadConfigsFromCmsRetryMinDelay = Configs->StorageConfig->GetLoadConfigsFromCmsRetryMinDelay(),
-        .LoadConfigsFromCmsRetryMaxDelay = Configs->StorageConfig->GetLoadConfigsFromCmsRetryMaxDelay(),
-        .LoadConfigsFromCmsTotalTimeout = Configs->StorageConfig->GetLoadConfigsFromCmsTotalTimeout(),
-        .PathToGrpcCaFile = Configs->StorageConfig->GetNodeRegistrationRootCertsFile(),
+    NCloud::NStorage::TNodeRegistrationSettings settings{
+        .MaxAttempts = Configs->StorageConfig->GetNodeRegistrationMaxAttempts(),
+        .ErrorTimeout =
+            Configs->StorageConfig->GetNodeRegistrationErrorTimeout(),
+        .LegacyRegistrationTimeout =
+            Configs->StorageConfig->GetNodeRegistrationTimeout(),
+        .DynamicNodeRegistrationTimeout =
+            Configs->StorageConfig->GetDynamicNodeRegistrationTimeout(),
+        .LoadConfigsFromCmsRetryMinDelay =
+            Configs->StorageConfig->GetLoadConfigsFromCmsRetryMinDelay(),
+        .LoadConfigsFromCmsRetryMaxDelay =
+            Configs->StorageConfig->GetLoadConfigsFromCmsRetryMaxDelay(),
+        .LoadConfigsFromCmsTotalTimeout =
+            Configs->StorageConfig->GetLoadConfigsFromCmsTotalTimeout(),
+        .PathToGrpcCaFile =
+            Configs->StorageConfig->GetNodeRegistrationRootCertsFile(),
         .PathToGrpcCertFile = cert.CertFile,
         .PathToGrpcPrivateKeyFile = cert.CertPrivateKeyFile,
-        .NodeRegistrationToken = Configs->StorageConfig->GetNodeRegistrationToken(),
+        .NodeRegistrationToken =
+            Configs->StorageConfig->GetNodeRegistrationToken(),
         .NodeType = Configs->StorageConfig->GetNodeType(),
     };
 
@@ -691,36 +731,33 @@ void TBootstrapYdb::InitKikimrService()
     STORAGE_INFO("RootKmsKeyProvider initialized");
 
     auto discoveryConfig = Configs->DiscoveryConfig;
-    if (discoveryConfig->GetConductorGroups()
-            || discoveryConfig->GetInstanceListFile())
+    if (discoveryConfig->GetConductorGroups() ||
+        discoveryConfig->GetInstanceListFile())
     {
         auto banList = discoveryConfig->GetBannedInstanceListFile()
-            ? CreateBanList(discoveryConfig, logging, monitoring)
-            : CreateBanListStub();
+                           ? CreateBanList(discoveryConfig, logging, monitoring)
+                           : CreateBanListStub();
         auto staticFetcher = discoveryConfig->GetInstanceListFile()
-            ? CreateStaticInstanceFetcher(
-                discoveryConfig,
-                logging,
-                monitoring
-            )
-            : CreateInstanceFetcherStub();
+                                 ? CreateStaticInstanceFetcher(
+                                       discoveryConfig,
+                                       logging,
+                                       monitoring)
+                                 : CreateInstanceFetcherStub();
         auto conductorFetcher = discoveryConfig->GetConductorGroups()
-            ? CreateConductorInstanceFetcher(
-                discoveryConfig,
-                logging,
-                monitoring,
-                Timer,
-                Scheduler
-            )
-            : CreateInstanceFetcherStub();
+                                    ? CreateConductorInstanceFetcher(
+                                          discoveryConfig,
+                                          logging,
+                                          monitoring,
+                                          Timer,
+                                          Scheduler)
+                                    : CreateInstanceFetcherStub();
 
         auto healthChecker = CreateHealthChecker(
-                discoveryConfig,
-                logging,
-                monitoring,
-                CreateInsecurePingClient(),
-                CreateSecurePingClient(Configs->ServerConfig->GetRootCertsFile())
-        );
+            discoveryConfig,
+            logging,
+            monitoring,
+            CreateInsecurePingClient(),
+            CreateSecurePingClient(Configs->ServerConfig->GetRootCertsFile()));
 
         auto balancingPolicy = CreateBalancingPolicy();
 
@@ -734,14 +771,12 @@ void TBootstrapYdb::InitKikimrService()
             std::move(staticFetcher),
             std::move(conductorFetcher),
             std::move(healthChecker),
-            std::move(balancingPolicy)
-        );
+            std::move(balancingPolicy));
     } else {
         DiscoveryService = CreateDiscoveryServiceStub(
             FQDNHostName(),
             discoveryConfig->GetConductorInstancePort(),
-            discoveryConfig->GetConductorSecureInstancePort()
-        );
+            discoveryConfig->GetConductorSecureInstancePort());
     }
 
     STORAGE_INFO("DiscoveryService initialized");
@@ -831,17 +866,18 @@ void TBootstrapYdb::InitKikimrService()
     args.PreemptedVolumes = std::move(preemptedVolumes);
     args.NvmeManager = NvmeManager;
     args.UserCounterProviders = {VolumeStats->GetUserCounters()};
-    args.IsDiskRegistrySpareNode = [&] {
-            if (!Configs->StorageConfig->GetDisableLocalService()) {
-                return false;
-            }
+    args.IsDiskRegistrySpareNode = [&]
+    {
+        if (!Configs->StorageConfig->GetDisableLocalService()) {
+            return false;
+        }
 
-            const auto& nodes = Configs->StorageConfig->GetKnownSpareNodes();
-            const auto& fqdn = FQDNHostName();
-            const ui32 p = Configs->StorageConfig->GetSpareNodeProbability();
+        const auto& nodes = Configs->StorageConfig->GetKnownSpareNodes();
+        const auto& fqdn = FQDNHostName();
+        const ui32 p = Configs->StorageConfig->GetSpareNodeProbability();
 
-            return FindPtr(nodes, fqdn) || CityHash64(fqdn) % 100 < p;
-        }();
+        return FindPtr(nodes, fqdn) || CityHash64(fqdn) % 100 < p;
+    }();
     args.VolumeBalancerSwitch = VolumeBalancerSwitch;
     args.EndpointEventHandler = EndpointEventHandler;
     args.RootKmsKeyProvider = RootKmsKeyProvider;
@@ -864,8 +900,8 @@ void TBootstrapYdb::InitKikimrService()
     }
 
     if (args.IsDiskRegistrySpareNode) {
-        auto rootGroup = Monitoring->GetCounters()
-            ->GetSubgroup("counters", "blockstore");
+        auto rootGroup =
+            Monitoring->GetCounters()->GetSubgroup("counters", "blockstore");
 
         auto serverGroup = rootGroup->GetSubgroup("component", "server");
         auto isSpareNode = serverGroup->GetCounter("IsSpareNode", false);
@@ -895,8 +931,8 @@ void TBootstrapYdb::InitKikimrService()
     }
 
     const auto& config = Configs->ServerConfig->GetKikimrServiceConfig()
-        ? *Configs->ServerConfig->GetKikimrServiceConfig()
-        : NProto::TKikimrServiceConfig();
+                             ? *Configs->ServerConfig->GetKikimrServiceConfig()
+                             : NProto::TKikimrServiceConfig();
 
     Service = CreateKikimrService(ActorSystem, config);
 }

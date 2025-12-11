@@ -22,25 +22,17 @@ void THiveProxyActor::SendNextCreateOrLookupRequest(
             queue.front().Event->Get<TEvHiveProxy::TEvCreateTabletRequest>();
 
         hiveRequest->Record = msg->Request;
-        ClientCache->Send(
-            ctx,
-            msg->HiveId,
-            hiveRequest.release(),
-            msg->HiveId);
+        ClientCache->Send(ctx, msg->HiveId, hiveRequest.release(), msg->HiveId);
 
     } else {
         const auto* msg =
             queue.front().Event->Get<TEvHiveProxy::TEvLookupTabletRequest>();
 
         auto hiveRequest = std::make_unique<TEvHive::TEvLookupTablet>(
-            msg->Owner, msg->OwnerIdx);
+            msg->Owner,
+            msg->OwnerIdx);
 
-        ClientCache->Send(
-            ctx,
-            msg->HiveId,
-            hiveRequest.release(),
-            msg->HiveId);
-
+        ClientCache->Send(ctx, msg->HiveId, hiveRequest.release(), msg->HiveId);
     }
 }
 
@@ -49,9 +41,8 @@ void THiveProxyActor::HandleCreateTablet(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    const auto key = std::make_pair(
-        msg->Request.GetOwner(),
-        msg->Request.GetOwnerIdx());
+    const auto key =
+        std::make_pair(msg->Request.GetOwner(), msg->Request.GetOwnerIdx());
 
     auto& queue = HiveStates[msg->HiveId].CreateRequests[key];
     queue.emplace_back(false, ev.Release());
@@ -82,12 +73,12 @@ void THiveProxyActor::HandleCreateTabletReply(
     const auto hiveId = ev->Cookie;
     auto& state = HiveStates[hiveId];
 
-    const auto key = std::make_pair(
-         msg->Record.GetOwner(),
-         msg->Record.GetOwnerIdx());
+    const auto key =
+        std::make_pair(msg->Record.GetOwner(), msg->Record.GetOwnerIdx());
 
     auto status = msg->Record.GetStatus();
-    bool isOk = (status == NKikimrProto::OK) || (status == NKikimrProto::ALREADY);
+    bool isOk =
+        (status == NKikimrProto::OK) || (status == NKikimrProto::ALREADY);
 
     const auto error = MakeError(isOk ? S_OK : E_NOT_FOUND);
 

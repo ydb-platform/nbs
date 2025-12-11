@@ -24,8 +24,8 @@ TString Dump(const TVector<TFileRingBuffer::TBrokenFileEntry>& entries)
         }
 
         sb << "data=" << entries[i].Data
-            << " ecsum=" << entries[i].ExpectedChecksum
-            << " csum=" << entries[i].ActualChecksum;
+           << " ecsum=" << entries[i].ExpectedChecksum
+           << " csum=" << entries[i].ActualChecksum;
     }
 
     return sb;
@@ -184,13 +184,13 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     }
 
     template <typename TRingBuffer>
-    void DoTestShouldPushPop(TRingBuffer& rb)
+    void DoTestShouldPushPop(TRingBuffer & rb)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, rb.Size());
         UNIT_ASSERT(rb.Empty());
 
         UNIT_ASSERT(!rb.PushBack(GenerateData(rb.Size())));   // too long
-        UNIT_ASSERT(!rb.PushBack(""));              // empty
+        UNIT_ASSERT(!rb.PushBack(""));                        // empty
 
         UNIT_ASSERT(rb.PushBack("vasya"));
         UNIT_ASSERT_VALUES_EQUAL("vasya", rb.Back());
@@ -202,7 +202,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT_VALUES_EQUAL("vasya2", rb.Back());
 
         UNIT_ASSERT(rb.PushBack("petya2"));
-        UNIT_ASSERT(!rb.PushBack("vasya3"));        // out of space
+        UNIT_ASSERT(!rb.PushBack("vasya3"));   // out of space
 
         UNIT_ASSERT_VALUES_EQUAL("", Dump(rb.Validate()));
         UNIT_ASSERT_VALUES_EQUAL(4, rb.Size());
@@ -261,9 +261,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
     {
         const auto f = TTempFileHandle();
         const ui32 len = 64;
-        auto rb = std::make_unique<TFileRingBuffer>(
-            f.GetName(),
-            len);
+        auto rb = std::make_unique<TFileRingBuffer>(f.GetName(), len);
 
         UNIT_ASSERT(rb->PushBack("vasya"));
         UNIT_ASSERT(rb->PushBack("petya"));
@@ -274,9 +272,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(rb->PushBack("vasya3"));
         UNIT_ASSERT(rb->PushBack("xxx"));
 
-        rb = std::make_unique<TFileRingBuffer>(
-            f.GetName(),
-            len);
+        rb = std::make_unique<TFileRingBuffer>(f.GetName(), len);
 
         UNIT_ASSERT_VALUES_EQUAL("", Dump(rb->Validate()));
         UNIT_ASSERT_VALUES_EQUAL(4, rb->Size());
@@ -343,10 +339,9 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         std::unique_ptr<TFileRingBuffer> rb;
         TReferenceImplementation ri(len);
 
-        auto restore = [&] () {
-            rb = std::make_unique<TFileRingBuffer>(
-                f.GetName(),
-                len);
+        auto restore = [&]()
+        {
+            rb = std::make_unique<TFileRingBuffer>(f.GetName(), len);
         };
 
         restore();
@@ -444,7 +439,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         TFileRingBuffer rb(f.GetName(), len);
 
         TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
-        m.Map(0, len + 40); // len + sizeof(THeader)
+        m.Map(0, len + 40);   // len + sizeof(THeader)
         char* data = static_cast<char*>(m.Ptr());
         data[len + 40] = 'A';
 
@@ -469,7 +464,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT(RingBuffer.PushBack("bb"));
 
             TFileMap m(FileHandle.GetName(), TMemoryMapCommon::oRdWr);
-            m.Map(0, Len + 40); // len + sizeof(THeader)
+            m.Map(0, Len + 40);   // len + sizeof(THeader)
             char* data = static_cast<char*>(m.Ptr());
             UNIT_ASSERT_VALUES_EQUAL(2, data[51]);
             data[51] = newLength;
@@ -490,7 +485,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         for (int i = 0; i <= 32; i++) {
             TStateWithCorruptedEntryLength s(i);
             UNIT_ASSERT(!s.RingBuffer.IsCorrupted());
-            s.RingBuffer.Visit([] (ui32, TStringBuf) {});
+            s.RingBuffer.Visit([](ui32, TStringBuf) {});
             UNIT_ASSERT_VALUES_EQUAL(i != 2, s.RingBuffer.IsCorrupted());
         }
     }
@@ -535,15 +530,15 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             TFileRingBuffer rb(s.FileHandle.GetName(), s.Len);
 
             TVector<TString> afterVisit;
-            rb.Visit([&] (ui32 checksum, TStringBuf entry)
-            {
-                Y_UNUSED(checksum);
-                afterVisit.push_back(TString(entry));
-            });
+            rb.Visit(
+                [&](ui32 checksum, TStringBuf entry)
+                {
+                    Y_UNUSED(checksum);
+                    afterVisit.push_back(TString(entry));
+                });
 
             TVector<TString> afterPopBack;
-            while (!rb.Empty())
-            {
+            while (!rb.Empty()) {
                 afterPopBack.push_back(TString(rb.Front()));
                 rb.PopFront();
             }

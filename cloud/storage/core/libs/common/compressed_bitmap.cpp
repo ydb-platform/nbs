@@ -57,16 +57,15 @@ private:
 
         TPlainChunkData()
             : Data()
-        {
-        }
+        {}
 
         static ui16 PopCount(ui64 x)
         {
             // 64-bit SWAR
             // https://www.playingwithpointers.com/blog/swar.html
             ui64 byteSums = x - ((x & 0xAAAAAAAAAAAAAAAAULL) >> 1);
-            byteSums = (byteSums & 0x3333333333333333ULL)
-                + ((byteSums >> 2) & 0x3333333333333333ULL);
+            byteSums = (byteSums & 0x3333333333333333ULL) +
+                       ((byteSums >> 2) & 0x3333333333333333ULL);
             byteSums = (byteSums + (byteSums >> 4)) & 0x0F0F0F0F0F0F0F0FULL;
 
             return byteSums * 0x0101010101010101ULL >> 56;
@@ -162,8 +161,8 @@ private:
             auto rangeInfo = NPrivate::RangeInfo<ui16, 64>(b, e);
 
             const auto firstG = Data[rangeInfo.First];
-            const auto firstEnd = rangeInfo.First == rangeInfo.Last
-                ? rangeInfo.EndBit : 64;
+            const auto firstEnd =
+                rangeInfo.First == rangeInfo.Last ? rangeInfo.EndBit : 64;
             ui16 c = 0;
             for (ui16 i = b % 64; i < firstEnd; ++i) {
                 c += !!(firstG & 1ULL << i);
@@ -664,11 +663,11 @@ private:
             return c;
         }
 
-#define VERIFY_RANGE(b, e)                      \
-        Y_DEBUG_ABORT_UNLESS(b < CHUNK_SIZE);         \
-        Y_DEBUG_ABORT_UNLESS(e <= CHUNK_SIZE);        \
-        Y_DEBUG_ABORT_UNLESS(b < e);                  \
-// VERIFY_RANGE
+#define VERIFY_RANGE(b, e)                 \
+    Y_DEBUG_ABORT_UNLESS(b < CHUNK_SIZE);  \
+    Y_DEBUG_ABORT_UNLESS(e <= CHUNK_SIZE); \
+    Y_DEBUG_ABORT_UNLESS(b < e);           \
+    // VERIFY_RANGE
 
         ui16 Set(ui32 b, ui32 e, ui64& compressedChunkCount)
         {
@@ -777,11 +776,7 @@ public:
         switch (chunk.Type()) {
             case PLAIN: {
                 auto& plain = chunk.Data.Plain;
-                memcpy(
-                    buffer + 1,
-                    plain.Data->Data,
-                    sizeof(TPlainChunkData)
-                );
+                memcpy(buffer + 1, plain.Data->Data, sizeof(TPlainChunkData));
 
                 return 1 + sizeof(TPlainChunkData);
             }
@@ -791,8 +786,7 @@ public:
                 memcpy(
                     buffer + 1,
                     compressed.Data.Runs,
-                    sizeof(TCompressedChunkData)
-                );
+                    sizeof(TCompressedChunkData));
 
                 return 1 + sizeof(TCompressedChunkData);
             }
@@ -801,21 +795,22 @@ public:
         BAD_CHUNK_TYPE(chunk.Type());
     }
 
-    static void Parse(const TStringBuf data, TChunk* chunk, ui64& compressedChunkCount)
+    static void
+    Parse(const TStringBuf data, TChunk* chunk, ui64& compressedChunkCount)
     {
         // TODO: endianness
         chunk->UnsetAll(compressedChunkCount);
         Y_DEBUG_ABORT_UNLESS(data.size() > 0);
         switch (chunk->Type() = data[0]) {
             case PLAIN: {
-                Y_DEBUG_ABORT_UNLESS(data.size() >= sizeof(TPlainChunkData) + 1);
+                Y_DEBUG_ABORT_UNLESS(
+                    data.size() >= sizeof(TPlainChunkData) + 1);
                 auto& plain = chunk->Data.Plain;
                 plain.Data = new TPlainChunkData;
                 memcpy(
                     plain.Data->Data,
                     data.data() + 1,
-                    sizeof(TPlainChunkData)
-                );
+                    sizeof(TPlainChunkData));
                 chunk->Count() = plain.Data->Count();
                 --compressedChunkCount;
 
@@ -823,13 +818,13 @@ public:
             }
 
             case RLE: {
-                Y_DEBUG_ABORT_UNLESS(data.size() >= sizeof(TCompressedChunkData) + 1);
+                Y_DEBUG_ABORT_UNLESS(
+                    data.size() >= sizeof(TCompressedChunkData) + 1);
                 auto& compressed = chunk->Data.Compressed;
                 memcpy(
                     compressed.Data.Runs,
                     data.data() + 1,
-                    sizeof(TCompressedChunkData)
-                );
+                    sizeof(TCompressedChunkData));
                 chunk->Count() = compressed.Data.Count();
 
                 return;
@@ -871,8 +866,7 @@ public:
         : ChunkCount(ComputeChunkCount(size))
         , CompressedChunkCount(ChunkCount)
         , Chunks(std::make_unique<TChunk[]>(ChunkCount))
-    {
-    }
+    {}
 
     ~TImpl() = default;
 
@@ -904,15 +898,13 @@ public:
         c += Chunks[rangeInfo.First].Set(
             b % CHUNK_SIZE,
             rangeInfo.First == rangeInfo.Last ? rangeInfo.EndBit : CHUNK_SIZE,
-            CompressedChunkCount
-        );
+            CompressedChunkCount);
 
         if (rangeInfo.First != rangeInfo.Last) {
             c += Chunks[rangeInfo.Last].Set(
                 0,
                 rangeInfo.EndBit,
-                CompressedChunkCount
-            );
+                CompressedChunkCount);
 
             for (ui64 k = rangeInfo.First + 1; k < rangeInfo.Last; ++k) {
                 c += Chunks[k].SetAll(CompressedChunkCount);
@@ -935,15 +927,13 @@ public:
         c += Chunks[rangeInfo.First].Unset(
             b % CHUNK_SIZE,
             rangeInfo.First == rangeInfo.Last ? rangeInfo.EndBit : CHUNK_SIZE,
-            CompressedChunkCount
-        );
+            CompressedChunkCount);
 
         if (rangeInfo.First != rangeInfo.Last) {
             c += Chunks[rangeInfo.Last].Unset(
                 0,
                 rangeInfo.EndBit,
-                CompressedChunkCount
-            );
+                CompressedChunkCount);
 
             for (ui64 k = rangeInfo.First + 1; k < rangeInfo.Last; ++k) {
                 c += Chunks[k].UnsetAll(CompressedChunkCount);
@@ -1004,14 +994,10 @@ public:
 
         ui64 c = Chunks[rangeInfo.First].Count(
             b % CHUNK_SIZE,
-            rangeInfo.First == rangeInfo.Last ? rangeInfo.EndBit : CHUNK_SIZE
-        );
+            rangeInfo.First == rangeInfo.Last ? rangeInfo.EndBit : CHUNK_SIZE);
 
         if (rangeInfo.First != rangeInfo.Last) {
-            c += Chunks[rangeInfo.Last].Count(
-                0,
-                rangeInfo.EndBit
-            );
+            c += Chunks[rangeInfo.Last].Count(0, rangeInfo.EndBit);
 
             for (ui64 k = rangeInfo.First + 1; k < rangeInfo.Last; ++k) {
                 c += Chunks[k].Count();
@@ -1027,11 +1013,12 @@ public:
         return Chunks[i / CHUNK_SIZE].Test(i % CHUNK_SIZE);
     }
 
-    [[nodiscard]] ui64 MemSize() const {
+    [[nodiscard]] ui64 MemSize() const
+    {
         Y_DEBUG_ABORT_UNLESS(ChunkCount >= CompressedChunkCount);
         const auto plainChunkCount = ChunkCount - CompressedChunkCount;
-        return ChunkCount * sizeof(TChunk)
-            + plainChunkCount * sizeof(TPlainChunkData);
+        return ChunkCount * sizeof(TChunk) +
+               plainChunkCount * sizeof(TPlainChunkData);
     }
 
 private:
@@ -1043,9 +1030,9 @@ private:
 };
 
 TCompressedBitmap::TRangeSerializer::TRangeSerializer(
-        const TCompressedBitmap::TImpl& parent,
-        ui64 first,
-        ui64 last)
+    const TCompressedBitmap::TImpl& parent,
+    ui64 first,
+    ui64 last)
     : Parent(&parent)
     , First(first)
     , Last(last)
@@ -1073,7 +1060,8 @@ bool TCompressedBitmap::TRangeSerializer::Next(TSerializedChunk* sc)
     Y_DEBUG_ABORT_UNLESS(First < Parent->ChunkCount);
     const auto& chunk = Parent->Chunks[First];
     sc->ChunkIdx = First;
-    auto len = TCompressedBitmap::TImpl::Serialize(chunk, Buffer.get() + BufferPos);
+    auto len =
+        TCompressedBitmap::TImpl::Serialize(chunk, Buffer.get() + BufferPos);
     sc->Data = TStringBuf(Buffer.get() + BufferPos, len);
     BufferPos += len;
     ++First;
@@ -1175,7 +1163,8 @@ ui64 TCompressedBitmap::MemSize() const
 }
 
 TCompressedBitmap::TRangeSerializer TCompressedBitmap::RangeSerializer(
-    ui64 b, ui64 e) const
+    ui64 b,
+    ui64 e) const
 {
     if (!Impl) {
         return TCompressedBitmap::TRangeSerializer();

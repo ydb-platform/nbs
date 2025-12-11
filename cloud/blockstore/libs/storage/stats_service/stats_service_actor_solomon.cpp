@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+
 #include <cloud/storage/core/libs/diagnostics/histogram.h>
 #include <cloud/storage/core/libs/diagnostics/weighted_percentile.h>
 
@@ -87,7 +88,7 @@ void UnregisterIsLocalMountCounter(
     volume.IsLocalMountCounter = nullptr;
 }
 
-}    // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -102,10 +103,9 @@ void TStatsServiceActor::RegisterServiceVolumeCounters(
         return;
     }
 
-    auto head =
-        counters->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "service_volume")
-            ->GetSubgroup("host", "cluster");
+    auto head = counters->GetSubgroup("counters", "blockstore")
+                    ->GetSubgroup("component", "service_volume")
+                    ->GetSubgroup("host", "cluster");
 
     volume.ServiceVolumeCounters =
         RegisterChain(head, BuildVolumeChain(volume.VolumeInfo));
@@ -132,10 +132,9 @@ void TStatsServiceActor::UnregisterServiceVolumeCounters(
         return;
     }
 
-    auto head =
-        counters->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "service_volume")
-            ->GetSubgroup("host", "cluster");
+    auto head = counters->GetSubgroup("counters", "blockstore")
+                    ->GetSubgroup("component", "service_volume")
+                    ->GetSubgroup("host", "cluster");
 
     head->RemoveSubgroupChain(BuildVolumeChain(volume.VolumeInfo));
 
@@ -236,14 +235,13 @@ void TStatsServiceActor::UpdateVolumeSelfCounters(const TActorContext& ctx)
         serviceTotal.TotalDiskCount.Increment(1);
         serviceTotal.TotalDiskCountLast15Min.Increment(1);
         serviceTotal.TotalDiskCountLastHour.Increment(1);
-        serviceTotal.TotalPartitionCount.Increment(vol.VolumeInfo.GetPartitionsCount());
+        serviceTotal.TotalPartitionCount.Increment(
+            vol.VolumeInfo.GetPartitionsCount());
         tempBlobMetrics += vol.OffsetBlobMetrics;
     }
 
     for (const auto& rv: State.UpdateAndGetRecentVolumes(ctx.Now())) {
-        auto& tc = State.GetCounters(
-            rv.IsSystem,
-            rv.StorageMediaKind);
+        auto& tc = State.GetCounters(rv.IsSystem, rv.StorageMediaKind);
         if (rv.RemoveTs + TDuration::Minutes(15) >= ctx.Now()) {
             tc.TotalDiskCountLast15Min.Increment(1);
             serviceTotal.TotalDiskCountLast15Min.Increment(1);
@@ -274,7 +272,7 @@ void TStatsServiceActor::HandleRegisterVolume(
     Y_UNUSED(ctx);
     const auto* msg = ev->Get();
 
-    auto *volume = State.GetOrAddVolume(msg->DiskId, msg->Config);
+    auto* volume = State.GetOrAddVolume(msg->DiskId, msg->Config);
     volume->VolumeTabletId = msg->TabletId;
 
     if (volume->IsDiskRegistryBased()) {
@@ -294,9 +292,11 @@ void TStatsServiceActor::HandleVolumeConfigUpdated(
 {
     const auto* msg = ev->Get();
 
-    auto *volume = State.GetVolume(msg->DiskId);
+    auto* volume = State.GetVolume(msg->DiskId);
     if (!volume) {
-        LOG_WARN(ctx, TBlockStoreComponents::STATS_SERVICE,
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::STATS_SERVICE,
             "Volume %s not found",
             msg->DiskId.Quote().data());
         return;
@@ -304,7 +304,7 @@ void TStatsServiceActor::HandleVolumeConfigUpdated(
 
     const bool updateCounters =
         (volume->VolumeInfo.GetCloudId() != msg->Config.GetCloudId() ||
-            volume->VolumeInfo.GetFolderId() != msg->Config.GetFolderId());
+         volume->VolumeInfo.GetFolderId() != msg->Config.GetFolderId());
 
     if (updateCounters) {
         UnregisterIsLocalMountCounter(AppData(ctx)->Counters, *volume);
@@ -341,7 +341,7 @@ void TStatsServiceActor::HandlePartitionBootExternalCompleted(
 {
     auto* msg = ev->Get();
 
-    auto *volume = State.GetVolume(msg->DiskId);
+    auto* volume = State.GetVolume(msg->DiskId);
     if (!volume) {
         LOG_WARN(
             ctx,
@@ -351,8 +351,7 @@ void TStatsServiceActor::HandlePartitionBootExternalCompleted(
         return;
     }
 
-    volume->ChannelInfos[msg->PartitionTabletId] =
-        std::move(msg->ChannelInfos);
+    volume->ChannelInfos[msg->PartitionTabletId] = std::move(msg->ChannelInfos);
 }
 
 void TStatsServiceActor::HandleVolumePartCounters(
@@ -364,7 +363,9 @@ void TStatsServiceActor::HandleVolumePartCounters(
     auto* volume = State.GetVolume(msg->DiskId);
 
     if (!volume) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::STATS_SERVICE,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::STATS_SERVICE,
             "Volume %s for counters not found",
             msg->DiskId.Quote().data());
         return;
@@ -380,7 +381,8 @@ void TStatsServiceActor::HandleVolumePartCounters(
 
     State.GetTotalCounters().UpdatePartCounters(*msg->DiskCounters);
 
-    State.GetCounters(volume->VolumeInfo).UpdatePartCounters(*msg->DiskCounters);
+    State.GetCounters(volume->VolumeInfo)
+        .UpdatePartCounters(*msg->DiskCounters);
 
     if (ev->Sender.NodeId() == SelfId().NodeId()) {
         State.GetLocalVolumesCounters().UpdateCounters(*msg->DiskCounters);
@@ -398,7 +400,9 @@ void TStatsServiceActor::HandleVolumeSelfCounters(
     auto* volume = State.GetVolume(msg->DiskId);
 
     if (!volume) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::STATS_SERVICE,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::STATS_SERVICE,
             "Volume %s for counters not found",
             msg->DiskId.Quote().data());
         return;
@@ -417,8 +421,7 @@ void TStatsServiceActor::HandleVolumeSelfCounters(
     auto& startTimeNew = selfSimpleNew.LastVolumeStartTime.Value;
     const auto bootstrapTimeNew =
         TDuration::MicroSeconds(loadTimeNew + startTimeNew);
-    if (volume->ApproximateBootstrapTime != bootstrapTimeNew)
-    {
+    if (volume->ApproximateBootstrapTime != bootstrapTimeNew) {
         // it's the first time we are getting stats for this volume or the
         // volume restarted recently
         volume->ApproximateStartTs = ctx.Now();

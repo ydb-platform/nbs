@@ -16,8 +16,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TUndeliveredHandlerActor final
-    : public TActor<TUndeliveredHandlerActor>
+class TUndeliveredHandlerActor final: public TActor<TUndeliveredHandlerActor>
 {
 public:
     TUndeliveredHandlerActor()
@@ -63,13 +62,13 @@ void TUndeliveredHandlerActor::CancelRequest(
 bool TUndeliveredHandlerActor::HandleRequests(STFUNC_SIG)
 {
     auto ctx(ActorContext());
-#define BLOCKSTORE_HANDLE_METHOD(name, ns)                                     \
-    case ns::TEv##name##Request::EventType: {                                  \
-        auto* x = reinterpret_cast<ns::TEv##name##Request::TPtr*>(&ev);        \
-        CancelRequest<ns::T##name##Method>(ctx, *x);                           \
-        break;                                                                 \
-    }                                                                          \
-// BLOCKSTORE_HANDLE_METHOD
+#define BLOCKSTORE_HANDLE_METHOD(name, ns)                              \
+    case ns::TEv##name##Request::EventType: {                           \
+        auto* x = reinterpret_cast<ns::TEv##name##Request::TPtr*>(&ev); \
+        CancelRequest<ns::T##name##Method>(ctx, *x);                    \
+        break;                                                          \
+    }                                                                   \
+        // BLOCKSTORE_HANDLE_METHOD
 
     switch (ev->GetTypeRewrite()) {
         BLOCKSTORE_STORAGE_SERVICE(BLOCKSTORE_HANDLE_METHOD, TEvService)
@@ -110,4 +109,4 @@ IActorPtr CreateUndeliveredHandler()
     return std::make_unique<TUndeliveredHandlerActor>();
 }
 
-}    // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NBlockStore::NStorage

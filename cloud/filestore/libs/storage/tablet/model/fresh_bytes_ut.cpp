@@ -11,8 +11,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFreshBytesVisitor final
-    : public IFreshBytesVisitor
+struct TFreshBytesVisitor final: public IFreshBytesVisitor
 {
     TVector<TBytes> Bytes;
     TString Data;
@@ -42,19 +41,19 @@ TString GenerateData(ui32 len)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define COMPARE_BYTES(expected, actual)                                        \
-    for (ui32 i = 0; i < Max(expected.size(), actual.size()); ++i) {           \
-        TString actualStr = "(none)";                                          \
-        if (i < actual.size()) {                                               \
-            actualStr = actual[i].Describe();                                  \
-        }                                                                      \
-        TString expectedStr = "(none)";                                        \
-        if (i < expectedStr.size()) {                                          \
-            expectedStr = expected[i].Describe();                              \
-        }                                                                      \
-        UNIT_ASSERT_VALUES_EQUAL(expectedStr, actualStr);                      \
-    }                                                                          \
-// COMPARE_BYTES
+#define COMPARE_BYTES(expected, actual)                              \
+    for (ui32 i = 0; i < Max(expected.size(), actual.size()); ++i) { \
+        TString actualStr = "(none)";                                \
+        if (i < actual.size()) {                                     \
+            actualStr = actual[i].Describe();                        \
+        }                                                            \
+        TString expectedStr = "(none)";                              \
+        if (i < expectedStr.size()) {                                \
+            expectedStr = expected[i].Describe();                    \
+        }                                                            \
+        UNIT_ASSERT_VALUES_EQUAL(expectedStr, actualStr);            \
+    }                                                                \
+    // COMPARE_BYTES
 
 }   // namespace
 
@@ -89,7 +88,8 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
                     {1, 50, 3, 13, InvalidCommitId},
                     {1, 100, 1, 10, InvalidCommitId},
                     {1, 101, 4, 11, InvalidCommitId},
-                }), visitor.Bytes);
+                }),
+                visitor.Bytes);
 
             UNIT_ASSERT_VALUES_EQUAL("dDd|a|bBbB", visitor.Data);
         }
@@ -101,7 +101,8 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
             COMPARE_BYTES(
                 TVector<TBytes>({
                     {2, 103, 2, 14, InvalidCommitId},
-                }), visitor.Bytes);
+                }),
+                visitor.Bytes);
 
             UNIT_ASSERT_VALUES_EQUAL("Ee", visitor.Data);
         }
@@ -118,29 +119,32 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
                 {1, 50, 3, 13, InvalidCommitId},
                 {2, 100, 5, 14, InvalidCommitId},
                 {2, 1000, 3, 15, InvalidCommitId},
-            }), bytes);
+            }),
+            bytes);
         COMPARE_BYTES(
             TVector<TBytes>({
                 {2, 100, 3, 16, InvalidCommitId},
-            }), deletionMarkers);
+            }),
+            deletionMarkers);
         UNIT_ASSERT_VALUES_EQUAL(17, info.ClosingCommitId);
 
         TVector<TBytes> visitedBytes;
         TVector<TBytes> visitedDeletionMarkers;
-        auto visitTop = [&] () {
+        auto visitTop = [&]()
+        {
             visitedBytes.clear();
             visitedDeletionMarkers.clear();
             constexpr ui64 itemLimit = 100;
             freshBytes.VisitTop(
                 itemLimit,
-                [&] (const TBytes& bytes, bool isDel) {
+                [&](const TBytes& bytes, bool isDel)
+                {
                     if (isDel) {
                         visitedDeletionMarkers.push_back(bytes);
                     } else {
                         visitedBytes.push_back(bytes);
                     }
-                }
-            );
+                });
         };
 
         visitTop();
@@ -178,7 +182,8 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
             TVector<TBytes>({
                 {2, 100, 1024, 18, InvalidCommitId},
                 {3, 1000, 200, 19, InvalidCommitId},
-            }), deletionMarkers);
+            }),
+            deletionMarkers);
         UNIT_ASSERT_VALUES_EQUAL(19, info.ClosingCommitId);
 
         visitTop();
@@ -210,7 +215,8 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
                     {1, 0, 4, 10, InvalidCommitId},
                     {1, 4, 4, 11, InvalidCommitId},
                     {1, 8, 1655, 10, InvalidCommitId},
-                }), visitor.Bytes);
+                }),
+                visitor.Bytes);
 
             TString expected = data;
             expected[4] = '1';
@@ -231,7 +237,8 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
         ui32 commitId = 1;
         TString data = GenerateData(dataSize);
 
-        freshBytes.AddBytes(465, 0, TStringBuf(data.data(), dataSize), commitId);
+        freshBytes
+            .AddBytes(465, 0, TStringBuf(data.data(), dataSize), commitId);
 
         TVector<TBytes> entries;
         TVector<TBytes> deletionMarkers;
@@ -266,11 +273,13 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
                 {1, 50, 3, 13, InvalidCommitId},
                 {2, 100, 5, 14, InvalidCommitId},
                 {2, 1000, 3, 15, InvalidCommitId},
-            }), bytes);
+            }),
+            bytes);
         COMPARE_BYTES(
             TVector<TBytes>({
                 {2, 100, 3, 16, InvalidCommitId},
-            }), deletionMarkers);
+            }),
+            deletionMarkers);
         UNIT_ASSERT_VALUES_EQUAL(17, info.ClosingCommitId);
 
         TVector<TBytes> visitedBytes;
@@ -278,23 +287,24 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
 
         constexpr ui64 itemsLimit = 2;
 
-        auto visitTop = [&] () {
+        auto visitTop = [&]()
+        {
             visitedBytes.clear();
             visitedDeletionMarkers.clear();
             freshBytes.VisitTop(
                 itemsLimit,
-                [&] (const TBytes& bytes, bool isDel) {
+                [&](const TBytes& bytes, bool isDel)
+                {
                     if (isDel) {
                         visitedDeletionMarkers.push_back(bytes);
                     } else {
                         visitedBytes.push_back(bytes);
                     }
-                }
-            );
+                });
         };
 
         {
-            TVector<TBytes> expectedBytes {
+            TVector<TBytes> expectedBytes{
                 {1, 100, 3, 10, InvalidCommitId},
                 {1, 101, 4, 11, InvalidCommitId},
             };
@@ -311,7 +321,7 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
         }
 
         {
-            TVector<TBytes> expectedBytes {
+            TVector<TBytes> expectedBytes{
                 {1, 50, 3, 12, InvalidCommitId},
                 {1, 50, 3, 13, InvalidCommitId},
             };
@@ -328,7 +338,7 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
         }
 
         {
-            TVector<TBytes> expectedBytes {
+            TVector<TBytes> expectedBytes{
                 {2, 100, 5, 14, InvalidCommitId},
                 {2, 1000, 3, 15, InvalidCommitId},
             };
@@ -346,7 +356,7 @@ Y_UNIT_TEST_SUITE(TFreshBytesTest)
 
         {
             TVector<TBytes> expectedBytes;
-            TVector<TBytes> expectedDeletionMarkers {
+            TVector<TBytes> expectedDeletionMarkers{
                 {2, 100, 3, 16, InvalidCommitId},
             };
 

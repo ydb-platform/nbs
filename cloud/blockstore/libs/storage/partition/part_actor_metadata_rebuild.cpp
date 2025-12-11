@@ -44,10 +44,8 @@ void TPartitionActor::HandleHttpInfo_RebuildMetadata(
     }
 
     if (!HasError(result)) {
-        result = DoHandleMetadataRebuildBatch(
-            ctx,
-            NProto::USED_BLOCKS,
-            batchSize);
+        result =
+            DoHandleMetadataRebuildBatch(ctx, NProto::USED_BLOCKS, batchSize);
     }
 
     auto alertType = EAlertLevel::SUCCESS;
@@ -73,7 +71,8 @@ void TPartitionActor::HandleRebuildMetadata(
         msg->Record.GetMetadataType(),
         msg->Record.GetBatchSize());
 
-    auto response = std::make_unique<TEvVolume::TEvRebuildMetadataResponse>(result);
+    auto response =
+        std::make_unique<TEvVolume::TEvRebuildMetadataResponse>(result);
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
@@ -81,11 +80,13 @@ void TPartitionActor::HandleGetRebuildMetadataStatus(
     const TEvVolume::TEvGetRebuildMetadataStatusRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto response = std::make_unique<TEvVolume::TEvGetRebuildMetadataStatusResponse>();
+    auto response =
+        std::make_unique<TEvVolume::TEvGetRebuildMetadataStatusResponse>();
     NProto::TError result;
 
     if (State) {
-        if (State->GetMetadataRebuildType() == EMetadataRebuildType::NoOperation)
+        if (State->GetMetadataRebuildType() ==
+            EMetadataRebuildType::NoOperation)
         {
             result = MakeError(E_NOT_FOUND, "No operation found");
         } else {
@@ -118,9 +119,12 @@ NProto::TError TPartitionActor::DoHandleMetadataRebuildBatch(
 
     switch (type) {
         case NProto::USED_BLOCKS: {
-            if (State->GetMetadataRebuildType() == EMetadataRebuildType::UsedBlocks)
+            if (State->GetMetadataRebuildType() ==
+                EMetadataRebuildType::UsedBlocks)
             {
-                return MakeError(S_ALREADY, "Used blocks are already calculated");
+                return MakeError(
+                    S_ALREADY,
+                    "Used blocks are already calculated");
             }
             State->StartRebuildUsedBlocks();
 
@@ -128,18 +132,24 @@ NProto::TError TPartitionActor::DoHandleMetadataRebuildBatch(
                 ctx,
                 CreateMetadataRebuildUsedBlocksActor(
                     SelfId(),
-                    static_cast<ui64>(batchSize) * State->GetUsedBlocks().CHUNK_SIZE,
+                    static_cast<ui64>(batchSize) *
+                        State->GetUsedBlocks().CHUNK_SIZE,
                     State->GetBlocksCount(),
                     Config->GetCompactionRetryTimeout()));
 
             Actors.Insert(actorId);
 
-            return MakeError(S_OK, "Metadata rebuild(used blocks) has been started");
+            return MakeError(
+                S_OK,
+                "Metadata rebuild(used blocks) has been started");
         }
         case NProto::BLOCK_COUNT: {
-            if (State->GetMetadataRebuildType() == EMetadataRebuildType::BlockCount)
+            if (State->GetMetadataRebuildType() ==
+                EMetadataRebuildType::BlockCount)
             {
-                return MakeError(S_ALREADY, "Block count is already calculated");
+                return MakeError(
+                    S_ALREADY,
+                    "Block count is already calculated");
             }
 
             State->StartRebuildBlockCount();
@@ -161,7 +171,8 @@ NProto::TError TPartitionActor::DoHandleMetadataRebuildBatch(
         default: {
             return MakeError(
                 E_ARGUMENT,
-                TStringBuilder() << "Unknown metadata type: " << static_cast<ui32>(type));
+                TStringBuilder()
+                    << "Unknown metadata type: " << static_cast<ui32>(type));
         }
     }
 }

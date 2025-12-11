@@ -24,7 +24,7 @@ private:
 public:
     TDeviceGenerator(TLog log, TString agentId);
 
-    NProto::TError operator () (
+    NProto::TError operator()(
         const TString& path,
         const NProto::TStorageDiscoveryConfig::TPoolConfig& poolConfig,
         ui32 deviceNumber,

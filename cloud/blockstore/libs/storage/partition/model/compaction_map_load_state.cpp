@@ -5,8 +5,8 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 ////////////////////////////////////////////////////////////////////////////////
 
 TCompactionMapLoadState::TCompactionMapLoadState(
-        ui32 maxRangesPerChunk,
-        ui32 maxOutOfOrderChunksInflight)
+    ui32 maxRangesPerChunk,
+    ui32 maxOutOfOrderChunksInflight)
     : MaxRangesPerChunk(maxRangesPerChunk)
     , MaxOutOfOrderChunksInflight(maxOutOfOrderChunksInflight)
 {}

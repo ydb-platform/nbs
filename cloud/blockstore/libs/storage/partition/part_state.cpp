@@ -70,10 +70,9 @@ double CalculateChannelSpaceScore(
 
     if (ch.ApproximateFreeSpaceShare != 0) {
         return 1 - Normalize(
-            ch.ApproximateFreeSpaceShare,
-            fsc.ChannelMinFreeSpace,
-            fsc.ChannelFreeSpaceThreshold
-        );
+                       ch.ApproximateFreeSpaceShare,
+                       fsc.ChannelMinFreeSpace,
+                       fsc.ChannelFreeSpaceThreshold);
     }
 
     return 0;
@@ -86,10 +85,12 @@ double CalculateDiskSpaceScore(
     double freshChannelSpaceScoreSum,
     ui32 freshChannelCount)
 {
-    return 1 / (1 - Min(0.99, systemChannelSpaceScoreSum
-            + dataChannelSpaceScoreSum / dataChannelCount
-            + (freshChannelCount ?
-            freshChannelSpaceScoreSum / freshChannelCount : 0)));
+    return 1 / (1 - Min(0.99,
+                        systemChannelSpaceScoreSum +
+                            dataChannelSpaceScoreSum / dataChannelCount +
+                            (freshChannelCount
+                                 ? freshChannelSpaceScoreSum / freshChannelCount
+                                 : 0)));
 }
 
 }   // namespace
@@ -97,25 +98,25 @@ double CalculateDiskSpaceScore(
 ////////////////////////////////////////////////////////////////////////////////
 
 TPartitionState::TPartitionState(
-        NProto::TPartitionMeta meta,
-        ui32 generation,
-        ICompactionPolicyPtr compactionPolicy,
-        ui32 compactionScoreHistorySize,
-        ui32 cleanupScoreHistorySize,
-        const TBackpressureFeaturesConfig& bpConfig,
-        const TFreeSpaceConfig& freeSpaceConfig,
-        ui32 maxIORequestsInFlight,
-        ui32 reassignChannelsPercentageThreshold,
-        ui32 reassignFreshChannelsPercentageThreshold,
-        ui32 reassignMixedChannelsPercentageThreshold,
-        bool reassignSystemChannelsImmediately,
-        ui32 lastCommitId,
-        ui32 channelCount,
-        ui32 mixedIndexCacheSize,
-        ui64 allocationUnit,
-        ui32 maxBlobsPerUnit,
-        ui32 maxBlobsPerRange,
-        ui32 compactionRangeCountPerRun)
+    NProto::TPartitionMeta meta,
+    ui32 generation,
+    ICompactionPolicyPtr compactionPolicy,
+    ui32 compactionScoreHistorySize,
+    ui32 cleanupScoreHistorySize,
+    const TBackpressureFeaturesConfig& bpConfig,
+    const TFreeSpaceConfig& freeSpaceConfig,
+    ui32 maxIORequestsInFlight,
+    ui32 reassignChannelsPercentageThreshold,
+    ui32 reassignFreshChannelsPercentageThreshold,
+    ui32 reassignMixedChannelsPercentageThreshold,
+    bool reassignSystemChannelsImmediately,
+    ui32 lastCommitId,
+    ui32 channelCount,
+    ui32 mixedIndexCacheSize,
+    ui64 allocationUnit,
+    ui32 maxBlobsPerUnit,
+    ui32 maxBlobsPerRange,
+    ui32 compactionRangeCountPerRun)
     : Meta(std::move(meta))
     , Generation(generation)
     , CompactionPolicy(compactionPolicy)
@@ -125,8 +126,10 @@ TPartitionState::TPartitionState(
     , ChannelCount(channelCount)
     , MaxIORequestsInFlight(maxIORequestsInFlight)
     , ReassignChannelsPercentageThreshold(reassignChannelsPercentageThreshold)
-    , ReassignFreshChannelsPercentageThreshold(reassignFreshChannelsPercentageThreshold)
-    , ReassignMixedChannelsPercentageThreshold(reassignMixedChannelsPercentageThreshold)
+    , ReassignFreshChannelsPercentageThreshold(
+          reassignFreshChannelsPercentageThreshold)
+    , ReassignMixedChannelsPercentageThreshold(
+          reassignMixedChannelsPercentageThreshold)
     , ReassignSystemChannelsImmediately(reassignSystemChannelsImmediately)
     , LastCommitId(lastCommitId)
     , MixedIndexCache(mixedIndexCacheSize, &MixedIndexCacheAllocator)
@@ -134,8 +137,10 @@ TPartitionState::TPartitionState(
     , CompactionScoreHistory(compactionScoreHistorySize)
     , UsedBlocks(Config.GetBlocksCount())
     , LogicalUsedBlocks(Config.GetBlocksCount())
-    , MaxBlobsPerDisk(Max(Config.GetBlocksCount() * Config.GetBlockSize()
-        / allocationUnit, 1ul) * maxBlobsPerUnit)
+    , MaxBlobsPerDisk(
+          Max(Config.GetBlocksCount() * Config.GetBlockSize() / allocationUnit,
+              1ul) *
+          maxBlobsPerUnit)
     , MaxBlobsPerRange(maxBlobsPerRange)
     , CompactionRangeCountPerRun(compactionRangeCountPerRun)
     , CleanupQueue(GetBlockSize())
@@ -224,7 +229,9 @@ const TChannelState* TPartitionState::GetChannel(ui32 channel) const
     return nullptr;
 }
 
-bool TPartitionState::UpdatePermissions(ui32 channel, EChannelPermissions permissions)
+bool TPartitionState::UpdatePermissions(
+    ui32 channel,
+    EChannelPermissions permissions)
 {
     auto& channelState = GetChannel(channel);
     if (channelState.Permissions != permissions) {
@@ -236,7 +243,9 @@ bool TPartitionState::UpdatePermissions(ui32 channel, EChannelPermissions permis
     return false;
 }
 
-bool TPartitionState::CheckPermissions(ui32 channel, EChannelPermissions permissions) const
+bool TPartitionState::CheckPermissions(
+    ui32 channel,
+    EChannelPermissions permissions) const
 {
     const auto* ch = GetChannel(channel);
     return ch ? ch->Permissions.HasFlags(permissions) : true;
@@ -276,10 +285,11 @@ bool TPartitionState::UpdateChannelFreeSpaceScore(
 
     EChannelPermissions requiredPermissions =
         kind == EChannelDataKind::Mixed || kind == EChannelDataKind::Merged
-        ? EChannelPermission::UserWritesAllowed
-        : EChannelPermission::SystemWritesAllowed;
+            ? EChannelPermission::UserWritesAllowed
+            : EChannelPermission::SystemWritesAllowed;
 
-    double& scoreSum = [this, kind]() -> auto& {
+    double& scoreSum = [this, kind]() -> auto&
+    {
         switch (kind) {
             case EChannelDataKind::Fresh:
                 return FreshChannelSpaceScoreSum;
@@ -295,8 +305,7 @@ bool TPartitionState::UpdateChannelFreeSpaceScore(
     channelState.FreeSpaceScore = CalculateChannelSpaceScore(
         channelState,
         FreeSpaceConfig,
-        requiredPermissions
-    );
+        requiredPermissions);
     scoreSum += channelState.FreeSpaceScore;
 
     const auto diskSpaceScore = CalculateDiskSpaceScore(
@@ -551,21 +560,21 @@ ui32 TPartitionState::GetIORequestsQueued() const
     return count;
 }
 
-ui32 TPartitionState::PickNextChannel(EChannelDataKind kind, EChannelPermissions permissions)
+ui32 TPartitionState::PickNextChannel(
+    EChannelDataKind kind,
+    EChannelPermissions permissions)
 {
-    Y_ABORT_UNLESS(kind == EChannelDataKind::Fresh ||
-        kind == EChannelDataKind::Mixed ||
+    Y_ABORT_UNLESS(
+        kind == EChannelDataKind::Fresh || kind == EChannelDataKind::Mixed ||
         kind == EChannelDataKind::Merged);
 
-    const auto& channels =
-        kind == EChannelDataKind::Fresh ? FreshChannels
-        : kind == EChannelDataKind::Mixed ? MixedChannels
-        : MergedChannels;
+    const auto& channels = kind == EChannelDataKind::Fresh   ? FreshChannels
+                           : kind == EChannelDataKind::Mixed ? MixedChannels
+                                                             : MergedChannels;
 
-    auto& selector =
-        kind == EChannelDataKind::Fresh ? FreshChannelSelector
-        : kind == EChannelDataKind::Mixed ? MixedChannelSelector
-        : MergedChannelSelector;
+    auto& selector = kind == EChannelDataKind::Fresh   ? FreshChannelSelector
+                     : kind == EChannelDataKind::Mixed ? MixedChannelSelector
+                                                       : MergedChannelSelector;
 
     ++selector;
 
@@ -579,7 +588,8 @@ ui32 TPartitionState::PickNextChannel(EChannelDataKind kind, EChannelPermissions
                 return channel;
             }
 
-            const auto spaceShare = GetChannel(channel).ApproximateFreeSpaceShare;
+            const auto spaceShare =
+                GetChannel(channel).ApproximateFreeSpaceShare;
             if (spaceShare > bestSpaceShare) {
                 bestSpaceShare = spaceShare;
                 bestChannel = channel;
@@ -626,7 +636,7 @@ TPartialBlobId TPartitionState::GenerateBlobId(
         channel,
         blobSize,
         blobIndex,
-        0); // partId - should always be zero
+        0);   // partId - should always be zero
 }
 
 ui64 TPartitionState::GetCleanupCommitId() const
@@ -682,8 +692,7 @@ bool TPartitionState::OverlapsConfirmedBlobs(
     return Overlaps(ConfirmedBlobs, lowCommitId, highCommitId, blockRange);
 }
 
-void TPartitionState::InitUnconfirmedBlobs(
-    TCommitIdToBlobsToConfirm blobs)
+void TPartitionState::InitUnconfirmedBlobs(TCommitIdToBlobsToConfirm blobs)
 {
     UnconfirmedBlobs = std::move(blobs);
     UnconfirmedBlobCount = 0;
@@ -706,9 +715,7 @@ void TPartitionState::WriteUnconfirmedBlob(
     UnconfirmedBlobCount++;
 }
 
-void TPartitionState::ConfirmedBlobsAdded(
-    TPartitionDatabase& db,
-    ui64 commitId)
+void TPartitionState::ConfirmedBlobsAdded(TPartitionDatabase& db, ui64 commitId)
 {
     auto it = ConfirmedBlobs.find(commitId);
     if (it == ConfirmedBlobs.end()) {
@@ -768,9 +775,10 @@ void TPartitionState::ConfirmBlobs(
         db.DeleteUnconfirmedBlob(blobId);
 
         auto& blobs = UnconfirmedBlobs[blobId.CommitId()];
-        EraseIf(blobs, [&] (const auto& blob) {
-            return blob.UniqueId == blobId.UniqueId();
-        });
+        EraseIf(
+            blobs,
+            [&](const auto& blob)
+            { return blob.UniqueId == blobId.UniqueId(); });
 
         if (blobs.empty()) {
             UnconfirmedBlobs.erase(blobId.CommitId());
@@ -787,23 +795,23 @@ void TPartitionState::ConfirmBlobs(
     UnconfirmedBlobCount = 0;
 }
 
-#define BLOCKSTORE_PARTITION_IMPLEMENT_COUNTER(name)                           \
-    ui64 TPartitionState::Increment##name(size_t value)                        \
-    {                                                                          \
-        auto& stats = AccessStats();                                           \
-        ui64 counter = SafeIncrement(stats.Get##name(), value);                \
-        stats.Set##name(counter);                                              \
-        return counter;                                                        \
-    }                                                                          \
-                                                                               \
-    ui64 TPartitionState::Decrement##name(size_t value)                        \
-    {                                                                          \
-        auto& stats = AccessStats();                                           \
-        ui64 counter = SafeDecrement(stats.Get##name(), value);                \
-        stats.Set##name(counter);                                              \
-        return counter;                                                        \
-    }                                                                          \
-// BLOCKSTORE_PARTITION_IMPLEMENT_COUNTER
+#define BLOCKSTORE_PARTITION_IMPLEMENT_COUNTER(name)            \
+    ui64 TPartitionState::Increment##name(size_t value)         \
+    {                                                           \
+        auto& stats = AccessStats();                            \
+        ui64 counter = SafeIncrement(stats.Get##name(), value); \
+        stats.Set##name(counter);                               \
+        return counter;                                         \
+    }                                                           \
+                                                                \
+    ui64 TPartitionState::Decrement##name(size_t value)         \
+    {                                                           \
+        auto& stats = AccessStats();                            \
+        ui64 counter = SafeDecrement(stats.Get##name(), value); \
+        stats.Set##name(counter);                               \
+        return counter;                                         \
+    }                                                           \
+    // BLOCKSTORE_PARTITION_IMPLEMENT_COUNTER
 
 BLOCKSTORE_PARTITION_PROTO_COUNTERS(BLOCKSTORE_PARTITION_IMPLEMENT_COUNTER)
 
@@ -821,8 +829,7 @@ void TPartitionState::TrimFreshBlobs(ui64 commitId)
 {
     auto& blobs = UntrimmedFreshBlobs;
 
-    while (blobs && blobs.begin()->CommitId <= commitId)
-    {
+    while (blobs && blobs.begin()->CommitId <= commitId) {
         Y_ABORT_UNLESS(UntrimmedFreshBlobByteCount >= blobs.begin()->BlobSize);
         UntrimmedFreshBlobByteCount -= blobs.begin()->BlobSize;
         blobs.erase(blobs.begin());
@@ -845,20 +852,20 @@ ui32 TPartitionState::DecrementUnflushedFreshBlocksFromDbCount(size_t value)
     return counter;
 }
 
-ui32 TPartitionState::IncrementUnflushedFreshBlocksFromChannelCount(size_t value)
+ui32 TPartitionState::IncrementUnflushedFreshBlocksFromChannelCount(
+    size_t value)
 {
-    UnflushedFreshBlocksFromChannelCount = SafeIncrement(
-        UnflushedFreshBlocksFromChannelCount,
-        value);
+    UnflushedFreshBlocksFromChannelCount =
+        SafeIncrement(UnflushedFreshBlocksFromChannelCount, value);
 
     return UnflushedFreshBlocksFromChannelCount;
 }
 
-ui32 TPartitionState::DecrementUnflushedFreshBlocksFromChannelCount(size_t value)
+ui32 TPartitionState::DecrementUnflushedFreshBlocksFromChannelCount(
+    size_t value)
 {
-    UnflushedFreshBlocksFromChannelCount = SafeDecrement(
-        UnflushedFreshBlocksFromChannelCount,
-        value);
+    UnflushedFreshBlocksFromChannelCount =
+        SafeDecrement(UnflushedFreshBlocksFromChannelCount, value);
 
     return UnflushedFreshBlocksFromChannelCount;
 }
@@ -875,7 +882,8 @@ ui32 TPartitionState::DecrementFreshBlocksInFlight(size_t value)
     return FreshBlocksInFlight;
 }
 
-void TPartitionState::InitFreshBlocks(const TVector<TOwningFreshBlock>& freshBlocks)
+void TPartitionState::InitFreshBlocks(
+    const TVector<TOwningFreshBlock>& freshBlocks)
 {
     for (const auto& freshBlock: freshBlocks) {
         const auto& meta = freshBlock.Meta;
@@ -886,7 +894,9 @@ void TPartitionState::InitFreshBlocks(const TVector<TOwningFreshBlock>& freshBlo
             meta.IsStoredInDb,
             freshBlock.Content);
 
-        Y_ABORT_UNLESS(added, "Duplicate block detected: %u @%lu",
+        Y_ABORT_UNLESS(
+            added,
+            "Duplicate block detected: %u @%lu",
             meta.BlockIndex,
             meta.CommitId);
     }
@@ -912,8 +922,7 @@ void TPartitionState::WriteFreshBlocks(
         db,
         writeRange,
         commitId,
-        [&](ui32 index) { return sglist[index]; }
-    );
+        [&](ui32 index) { return sglist[index]; });
 }
 
 void TPartitionState::WriteFreshBlocks(
@@ -926,10 +935,8 @@ void TPartitionState::WriteFreshBlocks(
     WriteFreshBlocksImpl(
         writeRange,
         commitId,
-        [&](ui32 index) { return sglist[index]; }
-    );
+        [&](ui32 index) { return sglist[index]; });
 }
-
 
 void TPartitionState::ZeroFreshBlocks(
     TPartitionDatabase& db,
@@ -940,8 +947,7 @@ void TPartitionState::ZeroFreshBlocks(
         db,
         zeroRange,
         commitId,
-        [](ui32) { return TBlockDataRef(); }
-    );
+        [](ui32) { return TBlockDataRef(); });
 }
 
 void TPartitionState::ZeroFreshBlocks(
@@ -951,8 +957,7 @@ void TPartitionState::ZeroFreshBlocks(
     WriteFreshBlocksImpl(
         zeroRange,
         commitId,
-        [](ui32) { return TBlockDataRef(); }
-    );
+        [](ui32) { return TBlockDataRef(); });
 }
 
 void TPartitionState::DeleteFreshBlock(
@@ -963,7 +968,7 @@ void TPartitionState::DeleteFreshBlock(
     bool removed = Blocks.RemoveBlock(
         blockIndex,
         commitId,
-        true);  // isStoredInDb
+        true);   // isStoredInDb
 
     Y_ABORT_UNLESS(removed);
 
@@ -971,14 +976,12 @@ void TPartitionState::DeleteFreshBlock(
     DecrementUnflushedFreshBlocksFromDbCount(1);
 }
 
-void TPartitionState::DeleteFreshBlock(
-    ui32 blockIndex,
-    ui64 commitId)
+void TPartitionState::DeleteFreshBlock(ui32 blockIndex, ui64 commitId)
 {
     bool removed = Blocks.RemoveBlock(
         blockIndex,
         commitId,
-        false);  // isStoredInDb
+        false);   // isStoredInDb
 
     Y_ABORT_UNLESS(removed);
 
@@ -988,9 +991,7 @@ void TPartitionState::DeleteFreshBlock(
 ////////////////////////////////////////////////////////////////////////////////
 // Mixed blocks
 
-void TPartitionState::WriteMixedBlock(
-    TPartitionDatabase& db,
-    TMixedBlock block)
+void TPartitionState::WriteMixedBlock(TPartitionDatabase& db, TMixedBlock block)
 {
     const ui32 rangeIdx = CompactionMap.GetRangeIndex(block.BlockIndex);
     MixedIndexCache.InsertBlockIfHot(rangeIdx, block);
@@ -1007,12 +1008,9 @@ void TPartitionState::WriteMixedBlocks(
 
     for (const ui32 blockIndex: blockIndices) {
         const ui32 rangeIdx = CompactionMap.GetRangeIndex(blockIndex);
-        MixedIndexCache.InsertBlockIfHot(rangeIdx, {
-            blobId,
-            commitId,
-            blockIndex,
-            blobOffset
-        });
+        MixedIndexCache.InsertBlockIfHot(
+            rangeIdx,
+            {blobId, commitId, blockIndex, blobOffset});
         ++blobOffset;
     }
 
@@ -1025,7 +1023,7 @@ void TPartitionState::DeleteMixedBlock(
     ui64 commitId)
 {
     const ui32 rangeIdx = CompactionMap.GetRangeIndex(blockIndex);
-    MixedIndexCache.EraseBlockIfHot(rangeIdx, { blockIndex, commitId });
+    MixedIndexCache.EraseBlockIfHot(rangeIdx, {blockIndex, commitId});
     db.DeleteMixedBlock(blockIndex, commitId);
 }
 
@@ -1041,15 +1039,14 @@ bool TPartitionState::FindMixedBlocksForCompaction(
 
     auto cacheInserter = MixedIndexCache.GetInserterForRange(rangeIdx);
 
-    struct TVisitorAndCacheInserter final
-        : public IBlocksIndexVisitor
+    struct TVisitorAndCacheInserter final: public IBlocksIndexVisitor
     {
         IBlocksIndexVisitor& Visitor;
         TMixedIndexCache::TInserterPtr CacheInserter;
 
         TVisitorAndCacheInserter(
-                IBlocksIndexVisitor& visitor,
-                TMixedIndexCache::TInserterPtr cacheInserter)
+            IBlocksIndexVisitor& visitor,
+            TMixedIndexCache::TInserterPtr cacheInserter)
             : Visitor(visitor)
             , CacheInserter(std::move(cacheInserter))
         {}
@@ -1072,7 +1069,7 @@ bool TPartitionState::FindMixedBlocksForCompaction(
     return db.FindMixedBlocks(
         visitorAndCacheInserter,
         CompactionMap.GetBlockRange(rangeIdx),
-        true);  // precharge
+        true);   // precharge
 }
 
 void TPartitionState::RaiseRangeTemperature(ui32 rangeIdx)
@@ -1090,9 +1087,8 @@ ui64 TPartitionState::GetMixedIndexCacheMemSize() const
 
 TOperationState& TPartitionState::GetCompactionState(ECompactionType type)
 {
-    return type == ECompactionType::Forced ?
-        ForcedCompactionState.State :
-        CompactionState;
+    return type == ECompactionType::Forced ? ForcedCompactionState.State
+                                           : CompactionState;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1102,11 +1098,13 @@ void TPartitionState::SetUsedBlocks(
     const TBlockRange32& range,
     ui32 skipCount)
 {
-    auto blockCount = GetUsedBlocks().Set(range.Start, range.End + 1) - skipCount;
+    auto blockCount =
+        GetUsedBlocks().Set(range.Start, range.End + 1) - skipCount;
     ui32 logicalBlockCount = 0;
 
     if (GetBaseDiskId()) {
-        logicalBlockCount = GetLogicalUsedBlocks().Set(range.Start, range.End + 1) - skipCount;
+        logicalBlockCount =
+            GetLogicalUsedBlocks().Set(range.Start, range.End + 1) - skipCount;
     } else {
         logicalBlockCount = blockCount;
     }
@@ -1169,7 +1167,8 @@ void TPartitionState::UnsetUsedBlocks(
     ui32 logicalBlockCount = 0;
 
     if (GetBaseDiskId()) {
-        logicalBlockCount = GetLogicalUsedBlocks().Unset(range.Start, range.End + 1);
+        logicalBlockCount =
+            GetLogicalUsedBlocks().Unset(range.Start, range.End + 1);
     } else {
         logicalBlockCount = blockCount;
     }
@@ -1236,7 +1235,8 @@ void TPartitionState::WriteUsedBlocksToDB(
     }
 
     if (GetBaseDiskId()) {
-        auto serializerLogical = GetLogicalUsedBlocks().RangeSerializer(begin, end);
+        auto serializerLogical =
+            GetLogicalUsedBlocks().RangeSerializer(begin, end);
         while (serializerLogical.Next(&sc)) {
             db.WriteLogicalUsedBlocks(sc);
         }
@@ -1257,12 +1257,14 @@ void TPartitionState::DecrementUnflushedFreshBlobCount(ui32 value)
 
 void TPartitionState::IncrementUnflushedFreshBlobByteCount(ui64 value)
 {
-    UnflushedFreshBlobByteCount = SafeIncrement(UnflushedFreshBlobByteCount, value);
+    UnflushedFreshBlobByteCount =
+        SafeIncrement(UnflushedFreshBlobByteCount, value);
 }
 
 void TPartitionState::DecrementUnflushedFreshBlobByteCount(ui64 value)
 {
-    UnflushedFreshBlobByteCount = SafeDecrement(UnflushedFreshBlobByteCount, value);
+    UnflushedFreshBlobByteCount =
+        SafeDecrement(UnflushedFreshBlobByteCount, value);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1287,16 +1289,23 @@ void TPartitionState::RegisterSuccess(TInstant now, ui32 groupId)
 
 void TPartitionState::DumpHtml(IOutputStream& out) const
 {
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
-                TABLER() {
-                    TABLED() { out << "LastCommitId"; }
-                    TABLED() { out << GetLastCommitId(); }
+    HTML (out) {
+        TABLE_CLASS ("table table-condensed") {
+            TABLEBODY()
+            {
+                TABLER () {
+                    TABLED () {
+                        out << "LastCommitId";
+                    }
+                    TABLED () {
+                        out << GetLastCommitId();
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "FreshBlocks"; }
-                    TABLED() {
+                TABLER () {
+                    TABLED () {
+                        out << "FreshBlocks";
+                    }
+                    TABLED () {
                         out << "Total: " << GetUnflushedFreshBlocksCount()
                             << ", FromDb: " << GetStats().GetFreshBlocksCount()
                             << ", FromChannel: "
@@ -1307,29 +1316,53 @@ void TPartitionState::DumpHtml(IOutputStream& out) const
                             << GetUntrimmedFreshBlobByteCount();
                     }
                 }
-                TABLER() {
-                    TABLED() { out << "Flush"; }
-                    TABLED() { DumpOperationState(out, FlushState); }
+                TABLER () {
+                    TABLED () {
+                        out << "Flush";
+                    }
+                    TABLED () {
+                        DumpOperationState(out, FlushState);
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "Compaction"; }
-                    TABLED() { DumpOperationState(out, CompactionState); }
+                TABLER () {
+                    TABLED () {
+                        out << "Compaction";
+                    }
+                    TABLED () {
+                        DumpOperationState(out, CompactionState);
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "CompactionDelay"; }
-                    TABLED() { out << CompactionDelay; }
+                TABLER () {
+                    TABLED () {
+                        out << "CompactionDelay";
+                    }
+                    TABLED () {
+                        out << CompactionDelay;
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "Cleanup"; }
-                    TABLED() { DumpOperationState(out, CleanupState); }
+                TABLER () {
+                    TABLED () {
+                        out << "Cleanup";
+                    }
+                    TABLED () {
+                        DumpOperationState(out, CleanupState);
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "CleanupDelay"; }
-                    TABLED() { out << CleanupDelay; }
+                TABLER () {
+                    TABLED () {
+                        out << "CleanupDelay";
+                    }
+                    TABLED () {
+                        out << CleanupDelay;
+                    }
                 }
-                TABLER() {
-                    TABLED() { out << "CollectGarbage"; }
-                    TABLED() { DumpOperationState(out, CollectGarbageState); }
+                TABLER () {
+                    TABLED () {
+                        out << "CollectGarbage";
+                    }
+                    TABLED () {
+                        DumpOperationState(out, CollectGarbageState);
+                    }
                 }
             }
         }
@@ -1363,14 +1396,16 @@ TJsonValue TPartitionState::AsJson() const
         try {
             NProtobufJson::Proto2Json(GetStats(), stats);
             json["Stats"] = std::move(stats);
-        } catch (...) {}
+        } catch (...) {
+        }
     }
     {
         TJsonValue config;
         try {
             NProtobufJson::Proto2Json(Config, config);
             json["Config"] = std::move(config);
-        } catch (...) {}
+        } catch (...) {
+        }
     }
 
     return json;

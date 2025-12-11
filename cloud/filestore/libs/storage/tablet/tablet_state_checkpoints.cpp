@@ -18,7 +18,8 @@ TVector<TCheckpoint*> TIndexTabletState::GetCheckpoints() const
     return Impl->Checkpoints.GetCheckpoints();
 }
 
-TCheckpoint* TIndexTabletState::FindCheckpoint(const TString& checkpointId) const
+TCheckpoint* TIndexTabletState::FindCheckpoint(
+    const TString& checkpointId) const
 {
     return Impl->Checkpoints.FindCheckpoint(checkpointId);
 }

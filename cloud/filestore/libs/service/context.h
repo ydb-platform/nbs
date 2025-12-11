@@ -1,6 +1,7 @@
 #pragma once
 
 #include "public.h"
+
 #include "request.h"
 
 #include <cloud/storage/core/libs/common/context.h>
@@ -12,8 +13,7 @@ namespace NCloud::NFileStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCallContext final
-    : public TCallContextBase
+struct TCallContext final: public TCallContextBase
 {
 public:
     TString FileSystemId;
@@ -34,12 +34,7 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 #define FILESTORE_TRACK(probe, context, type, ...)                             \
-    LWTRACK(                                                                   \
-        probe,                                                                 \
-        context->LWOrbit,                                                      \
-        type,                                                                  \
-        context->RequestId,                                                    \
-        ##__VA_ARGS__);                                                        \
-// FILESTORE_TRACK
+    LWTRACK(probe, context->LWOrbit, type, context->RequestId, ##__VA_ARGS__); \
+    // FILESTORE_TRACK
 
 }   // namespace NCloud::NFileStore

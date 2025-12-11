@@ -59,9 +59,8 @@ public:
         Y_ABORT_UNLESS(State != EOperationState::Idle);
         ChangeState(EOperationState::Idle);
 
-        Backoff = Min(
-            Backoff + TDuration::MilliSeconds(100),
-            TDuration::Seconds(5));
+        Backoff =
+            Min(Backoff + TDuration::MilliSeconds(100), TDuration::Seconds(5));
         ++Failed;
     }
 

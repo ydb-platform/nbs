@@ -12,8 +12,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TForcedCompactionCommand final
-    : public TFileStoreCommand
+class TForcedCompactionCommand final: public TFileStoreCommand
 {
 private:
     ui32 MinRangeId = 0;
@@ -49,14 +48,15 @@ private:
         }
 
         auto parsed = google::protobuf::util::JsonStringToMessage(
-            result.GetOutput(),
-            responseProto).ok();
+                          result.GetOutput(),
+                          responseProto)
+                          .ok();
 
         if (!parsed) {
             responseProto->MutableError()->CopyFrom(MakeError(
                 E_FAIL,
                 TStringBuilder() << "failed to parse response json: "
-                    << result.GetOutput()));
+                                 << result.GetOutput()));
         }
     }
 
@@ -114,8 +114,9 @@ public:
             }
 
             Cerr << "progress: " << statusResponse.GetProcessedRangeCount()
-                << "/" << statusResponse.GetRangeCount() << ", last="
-                << statusResponse.GetLastProcessedRangeId() << Endl;
+                 << "/" << statusResponse.GetRangeCount()
+                 << ", last=" << statusResponse.GetLastProcessedRangeId()
+                 << Endl;
 
             MinRangeId = statusResponse.GetLastProcessedRangeId();
 

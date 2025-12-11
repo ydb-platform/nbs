@@ -5,14 +5,13 @@
 #include <cloud/storage/core/libs/api/authorizer.h>
 
 #include <contrib/ydb/core/base/ticket_parser.h>
-
-#include <contrib/ydb/core/testlib/basics/runtime.h>
 #include <contrib/ydb/core/testlib/basics/appdata.h>
 #include <contrib/ydb/core/testlib/basics/helpers.h>
+#include <contrib/ydb/core/testlib/basics/runtime.h>
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
-
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/events.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NStorage {
@@ -55,8 +54,7 @@ TEvTicketParser::TError RetriableError()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestTicketParser final
-    : public TActor<TTestTicketParser>
+class TTestTicketParser final: public TActor<TTestTicketParser>
 {
 public:
     std::function<void(const TEvTicketParser::TEvAuthorizeTicket::TPtr&)>
@@ -70,8 +68,7 @@ public:
 private:
     STRICT_STFUNC(
         StateWork,
-        HFunc(TEvTicketParser::TEvAuthorizeTicket, HandleAuthorizeTicket);
-    )
+        HFunc(TEvTicketParser::TEvAuthorizeTicket, HandleAuthorizeTicket);)
 
     void HandleAuthorizeTicket(
         const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev,
@@ -93,7 +90,8 @@ TParseTicketResultPtr CreateSuccessfulParseTicketResult(
     const TString& token,
     TVector<TString> sids)
 {
-    auto userToken = MakeIntrusive<NACLib::TUserToken>(TString(), std::move(sids));
+    auto userToken =
+        MakeIntrusive<NACLib::TUserToken>(TString(), std::move(sids));
     userToken->SaveSerializationInfo();
     return std::make_unique<TEvTicketParser::TEvAuthorizeTicketResult>(
         token,
@@ -123,7 +121,7 @@ public:
         return actorId;
     }
 
-    void Send(const TActorId &recipient, IEventBasePtr event)
+    void Send(const TActorId& recipient, IEventBasePtr event)
     {
         Runtime.Send(new IEventHandle(recipient, Sender, event.release()));
     }
@@ -142,8 +140,8 @@ public:
 
     THolder<TEvAuth::TEvAuthorizationResponse> GrabAuthorizationResponse()
     {
-        return Runtime.
-            GrabEdgeEvent<TEvAuth::TEvAuthorizationResponse>(TDuration());
+        return Runtime.GrabEdgeEvent<TEvAuth::TEvAuthorizationResponse>(
+            TDuration());
     }
 
     const TDynamicCountersPtr& GetCounters()
@@ -169,10 +167,7 @@ IActorPtr CreateAuthorizerActor(
 
 IActorPtr CreateAuthorizerActor()
 {
-    return CreateAuthorizerActor(
-        true,
-        NProto::AUTHORIZATION_REQUIRE,
-        FolderId);
+    return CreateAuthorizerActor(true, NProto::AUTHORIZATION_REQUIRE, FolderId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -181,20 +176,19 @@ void AssertAuthCounters(
     const TDynamicCountersPtr& actualCounters,
     std::map<EAuthorizationStatus, int> expectedCounters)
 {
-    for (int i = 0; i < (int)EAuthorizationStatus::MAX; ++i)
-    {
+    for (int i = 0; i < (int)EAuthorizationStatus::MAX; ++i) {
         const EAuthorizationStatus status = (EAuthorizationStatus)i;
-        const TAtomicBase actualCounter = actualCounters
-            ->GetSubgroup("counters", "blockstorefilestore")
-            ->GetSubgroup("component", "auth")
-            ->GetCounter(ToString(status))
-            ->Val();
+        const TAtomicBase actualCounter =
+            actualCounters->GetSubgroup("counters", "blockstorefilestore")
+                ->GetSubgroup("component", "auth")
+                ->GetCounter(ToString(status))
+                ->Val();
         const TAtomicBase expectedCounter = expectedCounters[status];
         UNIT_ASSERT_VALUES_EQUAL(expectedCounter, actualCounter);
     }
 }
 
-}  // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -207,9 +201,10 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         std::vector<TEvTicketParser::TEvAuthorizeTicket::TPtr> authorizeEvents;
         auto ticketParser = std::make_unique<TTestTicketParser>();
         ticketParser->AuthorizeTicketHandler =
-            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
-                authorizeEvents.push_back(ev);
-            };
+            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev)
+        {
+            authorizeEvents.push_back(ev);
+        };
         testEnv.RegisterTestTicketParser(std::move(ticketParser));
 
         auto authorizerActorID = testEnv.Register(CreateAuthorizerActor(
@@ -223,9 +218,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
                 AuthToken1,
-                CreatePermissionList({
-                    EPermission::Read,
-                    EPermission::Write})));
+                CreatePermissionList({EPermission::Read, EPermission::Write})));
 
         testEnv.DispatchEvents();
 
@@ -239,8 +232,12 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         UNIT_ASSERT_EQUAL(event.Entries[0].Attributes[1].first, "database_id");
         UNIT_ASSERT_EQUAL(event.Entries[0].Attributes[1].second, "NBS");
         UNIT_ASSERT_EQUAL(event.Entries[0].Permissions.size(), 2);
-        UNIT_ASSERT_EQUAL(event.Entries[0].Permissions[0].Permission, "nbsInternal.disks.read");
-        UNIT_ASSERT_EQUAL(event.Entries[0].Permissions[1].Permission, "nbsInternal.disks.write");
+        UNIT_ASSERT_EQUAL(
+            event.Entries[0].Permissions[0].Permission,
+            "nbsInternal.disks.read");
+        UNIT_ASSERT_EQUAL(
+            event.Entries[0].Permissions[1].Permission,
+            "nbsInternal.disks.write");
     }
 
     Y_UNIT_TEST(AuthorizeWithAuthorizerDisabledWhenIgnoring)
@@ -250,9 +247,10 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         std::vector<TEvTicketParser::TEvAuthorizeTicket::TPtr> authorizeEvents;
         auto ticketParser = std::make_unique<TTestTicketParser>();
         ticketParser->AuthorizeTicketHandler =
-            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
-                authorizeEvents.push_back(ev);
-            };
+            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev)
+        {
+            authorizeEvents.push_back(ev);
+        };
         testEnv.RegisterTestTicketParser(std::move(ticketParser));
 
         auto authorizerActorID = testEnv.Register(CreateAuthorizerActor(
@@ -266,9 +264,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
                 AuthToken1,
-                CreatePermissionList({
-                    EPermission::Read,
-                    EPermission::Write})));
+                CreatePermissionList({EPermission::Read, EPermission::Write})));
 
         auto event = testEnv.GrabAuthorizationResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, event->GetStatus());
@@ -285,9 +281,10 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         std::vector<TEvTicketParser::TEvAuthorizeTicket::TPtr> authorizeEvents;
         auto ticketParser = std::make_unique<TTestTicketParser>();
         ticketParser->AuthorizeTicketHandler =
-            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
-                authorizeEvents.push_back(ev);
-            };
+            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev)
+        {
+            authorizeEvents.push_back(ev);
+        };
         testEnv.RegisterTestTicketParser(std::move(ticketParser));
 
         auto authorizerActorID = testEnv.Register(CreateAuthorizerActor(
@@ -301,9 +298,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
                 AuthToken1,
-                CreatePermissionList({
-                    EPermission::Read,
-                    EPermission::Write})));
+                CreatePermissionList({EPermission::Read, EPermission::Write})));
 
         auto event = testEnv.GrabAuthorizationResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, event->GetStatus());
@@ -322,9 +317,10 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         std::vector<TEvTicketParser::TEvAuthorizeTicket::TPtr> authorizeEvents;
         auto ticketParser = std::make_unique<TTestTicketParser>();
         ticketParser->AuthorizeTicketHandler =
-            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
-                authorizeEvents.push_back(ev);
-            };
+            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev)
+        {
+            authorizeEvents.push_back(ev);
+        };
         testEnv.RegisterTestTicketParser(std::move(ticketParser));
 
         auto authorizerActorID = testEnv.Register(CreateAuthorizerActor(
@@ -338,9 +334,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
                 AuthToken1,
-                CreatePermissionList({
-                    EPermission::Read,
-                    EPermission::Write})));
+                CreatePermissionList({EPermission::Read, EPermission::Write})));
 
         auto event = testEnv.GrabAuthorizationResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_UNAUTHORIZED, event->GetStatus());
@@ -359,9 +353,10 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         std::vector<TEvTicketParser::TEvAuthorizeTicket::TPtr> authorizeEvents;
         auto ticketParser = std::make_unique<TTestTicketParser>();
         ticketParser->AuthorizeTicketHandler =
-            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
-                authorizeEvents.push_back(ev);
-            };
+            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev)
+        {
+            authorizeEvents.push_back(ev);
+        };
         testEnv.RegisterTestTicketParser(std::move(ticketParser));
 
         auto authorizerActorID = testEnv.Register(CreateAuthorizerActor(
@@ -375,9 +370,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
                 TString(),
-                CreatePermissionList({
-                    EPermission::Read,
-                    EPermission::Write})));
+                CreatePermissionList({EPermission::Read, EPermission::Write})));
 
         auto event = testEnv.GrabAuthorizationResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, event->GetStatus());
@@ -394,9 +387,10 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         std::vector<TEvTicketParser::TEvAuthorizeTicket::TPtr> authorizeEvents;
         auto ticketParser = std::make_unique<TTestTicketParser>();
         ticketParser->AuthorizeTicketHandler =
-            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
-                authorizeEvents.push_back(ev);
-            };
+            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev)
+        {
+            authorizeEvents.push_back(ev);
+        };
         testEnv.RegisterTestTicketParser(std::move(ticketParser));
 
         auto authorizerActorID = testEnv.Register(CreateAuthorizerActor(
@@ -410,9 +404,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
                 TString(),
-                CreatePermissionList({
-                    EPermission::Read,
-                    EPermission::Write})));
+                CreatePermissionList({EPermission::Read, EPermission::Write})));
 
         auto event = testEnv.GrabAuthorizationResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, event->GetStatus());
@@ -431,9 +423,10 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         std::vector<TEvTicketParser::TEvAuthorizeTicket::TPtr> authorizeEvents;
         auto ticketParser = std::make_unique<TTestTicketParser>();
         ticketParser->AuthorizeTicketHandler =
-            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
-                authorizeEvents.push_back(ev);
-            };
+            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev)
+        {
+            authorizeEvents.push_back(ev);
+        };
         testEnv.RegisterTestTicketParser(std::move(ticketParser));
 
         auto authorizerActorID = testEnv.Register(CreateAuthorizerActor(
@@ -447,9 +440,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
                 TString(),
-                CreatePermissionList({
-                    EPermission::Read,
-                    EPermission::Write})));
+                CreatePermissionList({EPermission::Read, EPermission::Write})));
 
         auto event = testEnv.GrabAuthorizationResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_UNAUTHORIZED, event->GetStatus());
@@ -468,15 +459,14 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         std::vector<TEvTicketParser::TEvAuthorizeTicket::TPtr> authorizeEvents;
         auto ticketParser = std::make_unique<TTestTicketParser>();
         ticketParser->AuthorizeTicketHandler =
-            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
-                authorizeEvents.push_back(ev);
-            };
+            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev)
+        {
+            authorizeEvents.push_back(ev);
+        };
         testEnv.RegisterTestTicketParser(std::move(ticketParser));
 
-        auto authorizerActorID = testEnv.Register(CreateAuthorizerActor(
-            true,
-            NProto::AUTHORIZATION_IGNORE,
-            {}));
+        auto authorizerActorID = testEnv.Register(
+            CreateAuthorizerActor(true, NProto::AUTHORIZATION_IGNORE, {}));
 
         testEnv.DispatchEvents();
 
@@ -484,9 +474,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
                 AuthToken1,
-                CreatePermissionList({
-                    EPermission::Read,
-                    EPermission::Write})));
+                CreatePermissionList({EPermission::Read, EPermission::Write})));
 
         auto event = testEnv.GrabAuthorizationResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, event->GetStatus());
@@ -503,15 +491,14 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         std::vector<TEvTicketParser::TEvAuthorizeTicket::TPtr> authorizeEvents;
         auto ticketParser = std::make_unique<TTestTicketParser>();
         ticketParser->AuthorizeTicketHandler =
-            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
-                authorizeEvents.push_back(ev);
-            };
+            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev)
+        {
+            authorizeEvents.push_back(ev);
+        };
         testEnv.RegisterTestTicketParser(std::move(ticketParser));
 
-        auto authorizerActorID = testEnv.Register(CreateAuthorizerActor(
-            true,
-            NProto::AUTHORIZATION_ACCEPT,
-            {}));
+        auto authorizerActorID = testEnv.Register(
+            CreateAuthorizerActor(true, NProto::AUTHORIZATION_ACCEPT, {}));
 
         testEnv.DispatchEvents();
 
@@ -519,9 +506,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
                 AuthToken1,
-                CreatePermissionList({
-                    EPermission::Read,
-                    EPermission::Write})));
+                CreatePermissionList({EPermission::Read, EPermission::Write})));
 
         auto event = testEnv.GrabAuthorizationResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_UNAUTHORIZED, event->GetStatus());
@@ -540,15 +525,14 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         std::vector<TEvTicketParser::TEvAuthorizeTicket::TPtr> authorizeEvents;
         auto ticketParser = std::make_unique<TTestTicketParser>();
         ticketParser->AuthorizeTicketHandler =
-            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
-                authorizeEvents.push_back(ev);
-            };
+            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev)
+        {
+            authorizeEvents.push_back(ev);
+        };
         testEnv.RegisterTestTicketParser(std::move(ticketParser));
 
-        auto authorizerActorID = testEnv.Register(CreateAuthorizerActor(
-            true,
-            NProto::AUTHORIZATION_REQUIRE,
-            {}));
+        auto authorizerActorID = testEnv.Register(
+            CreateAuthorizerActor(true, NProto::AUTHORIZATION_REQUIRE, {}));
 
         testEnv.DispatchEvents();
 
@@ -556,9 +540,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
                 AuthToken1,
-                CreatePermissionList({
-                    EPermission::Read,
-                    EPermission::Write})));
+                CreatePermissionList({EPermission::Read, EPermission::Write})));
 
         auto event = testEnv.GrabAuthorizationResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_UNAUTHORIZED, event->GetStatus());
@@ -577,9 +559,10 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         std::vector<TEvTicketParser::TEvAuthorizeTicket::TPtr> authorizeEvents;
         auto ticketParser = std::make_unique<TTestTicketParser>();
         ticketParser->AuthorizeTicketHandler =
-            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
-                authorizeEvents.push_back(ev);
-            };
+            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev)
+        {
+            authorizeEvents.push_back(ev);
+        };
         testEnv.RegisterTestTicketParser(std::move(ticketParser));
 
         auto authorizerActorID = testEnv.Register(CreateAuthorizerActor(
@@ -593,9 +576,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
                 AuthToken1,
-                CreatePermissionList({
-                    EPermission::Read,
-                    EPermission::Write})));
+                CreatePermissionList({EPermission::Read, EPermission::Write})));
 
         testEnv.DispatchEvents();
 
@@ -622,9 +603,10 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         std::vector<TEvTicketParser::TEvAuthorizeTicket::TPtr> authorizeEvents;
         auto ticketParser = std::make_unique<TTestTicketParser>();
         ticketParser->AuthorizeTicketHandler =
-            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
-                authorizeEvents.push_back(ev);
-            };
+            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev)
+        {
+            authorizeEvents.push_back(ev);
+        };
         testEnv.RegisterTestTicketParser(std::move(ticketParser));
 
         auto authorizerActorID = testEnv.Register(CreateAuthorizerActor(
@@ -638,9 +620,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
                 AuthToken1,
-                CreatePermissionList({
-                    EPermission::Read,
-                    EPermission::Write})));
+                CreatePermissionList({EPermission::Read, EPermission::Write})));
 
         testEnv.DispatchEvents();
 
@@ -667,9 +647,10 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         std::vector<TEvTicketParser::TEvAuthorizeTicket::TPtr> authorizeEvents;
         auto ticketParser = std::make_unique<TTestTicketParser>();
         ticketParser->AuthorizeTicketHandler =
-            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
-                authorizeEvents.push_back(ev);
-            };
+            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev)
+        {
+            authorizeEvents.push_back(ev);
+        };
         testEnv.RegisterTestTicketParser(std::move(ticketParser));
 
         auto authorizerActorID = testEnv.Register(CreateAuthorizerActor(
@@ -683,9 +664,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
                 AuthToken1,
-                CreatePermissionList({
-                    EPermission::Read,
-                    EPermission::Write})));
+                CreatePermissionList({EPermission::Read, EPermission::Write})));
 
         testEnv.DispatchEvents();
 
@@ -712,13 +691,13 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         std::vector<TEvTicketParser::TEvAuthorizeTicket::TPtr> authorizeEvents;
         auto ticketParser = std::make_unique<TTestTicketParser>();
         ticketParser->AuthorizeTicketHandler =
-            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
-                authorizeEvents.push_back(ev);
-            };
+            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev)
+        {
+            authorizeEvents.push_back(ev);
+        };
         testEnv.RegisterTestTicketParser(std::move(ticketParser));
 
-        auto authorizerActorID = testEnv.Register(
-            CreateAuthorizerActor());
+        auto authorizerActorID = testEnv.Register(CreateAuthorizerActor());
 
         testEnv.DispatchEvents();
 
@@ -726,9 +705,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
                 AuthToken1,
-                CreatePermissionList({
-                    EPermission::Read,
-                    EPermission::Write})));
+                CreatePermissionList({EPermission::Read, EPermission::Write})));
 
         testEnv.DispatchEvents();
 
@@ -757,13 +734,13 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         std::vector<TEvTicketParser::TEvAuthorizeTicket::TPtr> authorizeEvents;
         auto ticketParser = std::make_unique<TTestTicketParser>();
         ticketParser->AuthorizeTicketHandler =
-            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
-                authorizeEvents.push_back(ev);
-            };
+            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev)
+        {
+            authorizeEvents.push_back(ev);
+        };
         testEnv.RegisterTestTicketParser(std::move(ticketParser));
 
-        auto authorizerActorID = testEnv.Register(
-            CreateAuthorizerActor());
+        auto authorizerActorID = testEnv.Register(CreateAuthorizerActor());
 
         testEnv.DispatchEvents();
 
@@ -771,9 +748,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
                 AuthToken1,
-                CreatePermissionList({
-                    EPermission::Read,
-                    EPermission::Write})));
+                CreatePermissionList({EPermission::Read, EPermission::Write})));
 
         testEnv.DispatchEvents();
 
@@ -802,13 +777,13 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         std::vector<TEvTicketParser::TEvAuthorizeTicket::TPtr> authorizeEvents;
         auto ticketParser = std::make_unique<TTestTicketParser>();
         ticketParser->AuthorizeTicketHandler =
-            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
-                authorizeEvents.push_back(ev);
-            };
+            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev)
+        {
+            authorizeEvents.push_back(ev);
+        };
         testEnv.RegisterTestTicketParser(std::move(ticketParser));
 
-        auto authorizerActorID = testEnv.Register(
-            CreateAuthorizerActor());
+        auto authorizerActorID = testEnv.Register(CreateAuthorizerActor());
 
         testEnv.DispatchEvents();
 
@@ -816,9 +791,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
                 AuthToken1,
-                CreatePermissionList({
-                    EPermission::Read,
-                    EPermission::Write})));
+                CreatePermissionList({EPermission::Read, EPermission::Write})));
 
         testEnv.DispatchEvents();
 
@@ -848,9 +821,10 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         std::vector<TEvTicketParser::TEvAuthorizeTicket::TPtr> authorizeEvents;
         auto ticketParser = std::make_unique<TTestTicketParser>();
         ticketParser->AuthorizeTicketHandler =
-            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
-                authorizeEvents.push_back(ev);
-            };
+            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev)
+        {
+            authorizeEvents.push_back(ev);
+        };
         testEnv.RegisterTestTicketParser(std::move(ticketParser));
 
         auto authorizerActorID = testEnv.Register(CreateAuthorizerActor(
@@ -864,9 +838,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
                 AuthToken1,
-                CreatePermissionList({
-                    EPermission::Read,
-                    EPermission::Write})));
+                CreatePermissionList({EPermission::Read, EPermission::Write})));
 
         testEnv.DispatchEvents();
 
@@ -891,9 +863,10 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         std::vector<TEvTicketParser::TEvAuthorizeTicket::TPtr> authorizeEvents;
         auto ticketParser = std::make_unique<TTestTicketParser>();
         ticketParser->AuthorizeTicketHandler =
-            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
-                authorizeEvents.push_back(ev);
-            };
+            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev)
+        {
+            authorizeEvents.push_back(ev);
+        };
         testEnv.RegisterTestTicketParser(std::move(ticketParser));
 
         auto authorizerActorID = testEnv.Register(CreateAuthorizerActor(
@@ -907,9 +880,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
                 AuthToken1,
-                CreatePermissionList({
-                    EPermission::Read,
-                    EPermission::Write})));
+                CreatePermissionList({EPermission::Read, EPermission::Write})));
 
         testEnv.DispatchEvents();
 
@@ -934,9 +905,10 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         std::vector<TEvTicketParser::TEvAuthorizeTicket::TPtr> authorizeEvents;
         auto ticketParser = std::make_unique<TTestTicketParser>();
         ticketParser->AuthorizeTicketHandler =
-            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
-                authorizeEvents.push_back(ev);
-            };
+            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev)
+        {
+            authorizeEvents.push_back(ev);
+        };
         testEnv.RegisterTestTicketParser(std::move(ticketParser));
 
         auto authorizerActorID = testEnv.Register(CreateAuthorizerActor(
@@ -950,9 +922,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
                 AuthToken1,
-                CreatePermissionList({
-                    EPermission::Read,
-                    EPermission::Write})));
+                CreatePermissionList({EPermission::Read, EPermission::Write})));
 
         testEnv.DispatchEvents();
 
@@ -979,9 +949,10 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         std::vector<TEvTicketParser::TEvAuthorizeTicket::TPtr> authorizeEvents;
         auto ticketParser = std::make_unique<TTestTicketParser>();
         ticketParser->AuthorizeTicketHandler =
-            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
-                authorizeEvents.push_back(ev);
-            };
+            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev)
+        {
+            authorizeEvents.push_back(ev);
+        };
         testEnv.RegisterTestTicketParser(std::move(ticketParser));
 
         auto authorizerActorID = testEnv.Register(CreateAuthorizerActor(
@@ -995,9 +966,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
                 AuthToken1,
-                CreatePermissionList({
-                    EPermission::Read,
-                    EPermission::Write})));
+                CreatePermissionList({EPermission::Read, EPermission::Write})));
 
         testEnv.DispatchEvents();
 
@@ -1024,9 +993,10 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         std::vector<TEvTicketParser::TEvAuthorizeTicket::TPtr> authorizeEvents;
         auto ticketParser = std::make_unique<TTestTicketParser>();
         ticketParser->AuthorizeTicketHandler =
-            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
-                authorizeEvents.push_back(ev);
-            };
+            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev)
+        {
+            authorizeEvents.push_back(ev);
+        };
         testEnv.RegisterTestTicketParser(std::move(ticketParser));
 
         auto authorizerActorID = testEnv.Register(CreateAuthorizerActor(
@@ -1041,9 +1011,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
 
                 AuthToken1,
-                CreatePermissionList({
-                    EPermission::Read,
-                    EPermission::Write})));
+                CreatePermissionList({EPermission::Read, EPermission::Write})));
 
         testEnv.DispatchEvents();
 
@@ -1072,9 +1040,10 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         std::vector<TEvTicketParser::TEvAuthorizeTicket::TPtr> authorizeEvents;
         auto ticketParser = std::make_unique<TTestTicketParser>();
         ticketParser->AuthorizeTicketHandler =
-            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
-                authorizeEvents.push_back(ev);
-            };
+            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev)
+        {
+            authorizeEvents.push_back(ev);
+        };
         testEnv.RegisterTestTicketParser(std::move(ticketParser));
 
         auto authorizerActorID = testEnv.Register(CreateAuthorizerActor(
@@ -1088,9 +1057,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
                 AuthToken1,
-                CreatePermissionList({
-                    EPermission::Read,
-                    EPermission::Write})));
+                CreatePermissionList({EPermission::Read, EPermission::Write})));
 
         testEnv.DispatchEvents();
 
@@ -1119,13 +1086,13 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         std::vector<TEvTicketParser::TEvAuthorizeTicket::TPtr> authorizeEvents;
         auto ticketParser = std::make_unique<TTestTicketParser>();
         ticketParser->AuthorizeTicketHandler =
-            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
-                authorizeEvents.push_back(ev);
-            };
+            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev)
+        {
+            authorizeEvents.push_back(ev);
+        };
         testEnv.RegisterTestTicketParser(std::move(ticketParser));
 
-        auto authorizerActorID = testEnv.Register(
-            CreateAuthorizerActor());
+        auto authorizerActorID = testEnv.Register(CreateAuthorizerActor());
 
         testEnv.DispatchEvents();
 
@@ -1163,7 +1130,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
             authorizeEvents[2]->Sender,
             CreateSuccessfulParseTicketResult(
                 AuthToken1,
-                TVector<TString>{ "nbsInternal.disks.write-NBS@as"}));
+                TVector<TString>{"nbsInternal.disks.write-NBS@as"}));
 
         auto event1 = testEnv.GrabAuthorizationResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, event1->GetStatus());
@@ -1182,9 +1149,10 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
         std::vector<TEvTicketParser::TEvAuthorizeTicket::TPtr> authorizeEvents;
         auto ticketParser = std::make_unique<TTestTicketParser>();
         ticketParser->AuthorizeTicketHandler =
-            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev) {
-                authorizeEvents.push_back(ev);
-            };
+            [&](const TEvTicketParser::TEvAuthorizeTicket::TPtr& ev)
+        {
+            authorizeEvents.push_back(ev);
+        };
         testEnv.RegisterTestTicketParser(std::move(ticketParser));
 
         auto authorizerActorID = testEnv.Register(CreateAuthorizerActor(
@@ -1198,9 +1166,7 @@ Y_UNIT_TEST_SUITE(TAuthorizerActorTest)
             authorizerActorID,
             std::make_unique<TEvAuth::TEvAuthorizationRequest>(
                 AuthToken1,
-                CreatePermissionList({
-                    EPermission::Read,
-                    EPermission::Write})));
+                CreatePermissionList({EPermission::Read, EPermission::Write})));
 
         testEnv.DispatchEvents();
 

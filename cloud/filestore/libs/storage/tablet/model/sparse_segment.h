@@ -41,7 +41,8 @@ public:
         }
     };
 
-    using TConstIterator = typename TSet<TRange, TRangeLess, TStlAllocator>::const_iterator;
+    using TConstIterator =
+        typename TSet<TRange, TRangeLess, TStlAllocator>::const_iterator;
 
     TSparseSegment(IAllocator* alloc, ui64 start, ui64 end);
 

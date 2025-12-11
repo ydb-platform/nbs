@@ -6,7 +6,6 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
-
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -29,7 +28,8 @@ public:
     TVector<TString> ExtractExpiredKeys(const TInstant& now);
     TMaybe<TDuration> GetNextExpirationDelay(const TInstant& now) const;
 
-    TDuration GetMaxTimedOutDeviceStateDurationOverride(const TInstant& now) const;
+    TDuration GetMaxTimedOutDeviceStateDurationOverride(
+        const TInstant& now) const;
 
 private:
     THashMap<TString, TRuntimeVolumeParamsValue> VolumeParams;

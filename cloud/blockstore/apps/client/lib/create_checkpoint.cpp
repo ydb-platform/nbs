@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -14,8 +15,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCreateCheckpointCommand final
-    : public TCommand
+class TCreateCheckpointCommand final: public TCommand
 {
 private:
     TString DiskId;
@@ -37,18 +37,20 @@ public:
         Opts.AddLongOption("checkpoint-type", "Checkpoint type")
             .RequiredArgument("{normal, light, without-data}")
             .DefaultValue("normal")
-            .Handler1T<TString>([this] (const TString& s) {
-                if (s == "normal") {
-                    CheckpointType = NProto::ECheckpointType::NORMAL;
-                } else if (s == "light") {
-                    CheckpointType = NProto::ECheckpointType::LIGHT;
-                } else if (s == "without-data") {
-                    CheckpointType = NProto::ECheckpointType::WITHOUT_DATA;
-                } else {
-                    ythrow yexception()
-                        << "unknown checkpoint type: " << s.Quote();
-                }
-            });
+            .Handler1T<TString>(
+                [this](const TString& s)
+                {
+                    if (s == "normal") {
+                        CheckpointType = NProto::ECheckpointType::NORMAL;
+                    } else if (s == "light") {
+                        CheckpointType = NProto::ECheckpointType::LIGHT;
+                    } else if (s == "without-data") {
+                        CheckpointType = NProto::ECheckpointType::WITHOUT_DATA;
+                    } else {
+                        ythrow yexception()
+                            << "unknown checkpoint type: " << s.Quote();
+                    }
+                });
     }
 
 protected:
@@ -101,7 +103,8 @@ private:
             return false;
         }
 
-        const auto* checkpointId = ParseResultPtr->FindLongOptParseResult("checkpoint-id");
+        const auto* checkpointId =
+            ParseResultPtr->FindLongOptParseResult("checkpoint-id");
         if (!checkpointId) {
             STORAGE_ERROR("Checkpoint id is required");
             return false;
@@ -111,7 +114,7 @@ private:
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

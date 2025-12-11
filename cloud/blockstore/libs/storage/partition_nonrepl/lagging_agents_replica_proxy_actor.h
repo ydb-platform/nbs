@@ -73,7 +73,8 @@ private:
     };
     THashMap<TString, TAgentState> AgentState;
 
-    struct TBlockRangeData {
+    struct TBlockRangeData
+    {
         TString LaggingAgentId;
         bool IsTargetMigration = false;
     };

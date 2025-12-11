@@ -8,8 +8,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TKmsClientStub
-    : public IKmsClient
+class TKmsClientStub: public IKmsClient
 {
 public:
     void Start() override

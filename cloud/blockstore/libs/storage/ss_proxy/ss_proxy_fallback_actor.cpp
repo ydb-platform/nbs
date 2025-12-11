@@ -58,9 +58,9 @@ private:
 
 template <class TResponse>
 TReadPathDescriptionBackupActor<TResponse>::TReadPathDescriptionBackupActor(
-        TRequestInfoPtr requestInfo,
-        TActorId pathDescriptionCache,
-        TVector<TString> paths)
+    TRequestInfoPtr requestInfo,
+    TActorId pathDescriptionCache,
+    TVector<TString> paths)
     : RequestInfo(std::move(requestInfo))
     , PathDescriptionBackup(std::move(pathDescriptionCache))
     , Paths(std::move(paths))
@@ -104,14 +104,15 @@ void TReadPathDescriptionBackupActor<TResponse>::HandleReadCacheResponse(
             // should not return fatal error to client
             error = MakeError(
                 E_REJECTED,
-                "E_NOT_FOUND from PathDescriptionBackup converted to E_REJECTED"
-            );
+                "E_NOT_FOUND from PathDescriptionBackup converted to "
+                "E_REJECTED");
         }
 
         response = std::make_unique<TResponse>(std::move(error));
     } else {
         response = std::make_unique<TResponse>(
-            std::move(msg->Path), std::move(msg->PathDescription));
+            std::move(msg->Path),
+            std::move(msg->PathDescription));
     }
 
     ReplyAndDie(ctx, std::move(response));
@@ -164,7 +165,9 @@ void TSSProxyFallbackActor::Bootstrap(const TActorContext& ctx)
             /*readOnlyMode=*/true);
 
         PathDescriptionBackup = ctx.Register(
-            cache.release(), TMailboxType::HTSwap, AppData()->IOPoolId);
+            cache.release(),
+            TMailboxType::HTSwap,
+            AppData()->IOPoolId);
     }
 }
 
@@ -226,10 +229,8 @@ void TSSProxyFallbackActor::HandleDescribeScheme(
 
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     NCloud::Register<TReadPathDescriptionBackupActor<TResponse>>(
         ctx,
@@ -254,16 +255,14 @@ void TSSProxyFallbackActor::HandleDescribeVolume(
 
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     TString dir = TStringBuilder() << Config->GetSchemeShardDir() << '/';
     TString path = TStringBuilder() << dir << DiskIdToPath(msg->DiskId);
     // path for volumes with old layout
-    TString fallbackPath =
-        TStringBuilder() << dir << DiskIdToPathDeprecated(msg->DiskId);
+    TString fallbackPath = TStringBuilder()
+                           << dir << DiskIdToPathDeprecated(msg->DiskId);
 
     NCloud::Register<TReadPathDescriptionBackupActor<TResponse>>(
         ctx,

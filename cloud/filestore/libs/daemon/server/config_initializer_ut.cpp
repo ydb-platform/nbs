@@ -1,4 +1,5 @@
 #include "config_initializer.h"
+
 #include "options.h"
 
 #include <cloud/filestore/libs/diagnostics/config.h>
@@ -66,7 +67,8 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         auto nbsComponentConfigPath = dir.Path() / "nfs-component.txt";
 
         TOFStream(logConfigPath.GetPath()).Write(logConfigStr);
-        TOFStream(nbsComponentConfigPath.GetPath()).Write(nfsComponentConfigStr);
+        TOFStream(nbsComponentConfigPath.GetPath())
+            .Write(nfsComponentConfigStr);
 
         auto options = CreateOptions();
         options->LogConfig = logConfigPath.GetPath();
@@ -156,9 +158,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "xyz",
             ci.DiagnosticsConfig->GetBastionNameSuffix());
-        UNIT_ASSERT_VALUES_EQUAL(
-            "xyz",
-            ci.StorageConfig->GetNodeType());
+        UNIT_ASSERT_VALUES_EQUAL("xyz", ci.StorageConfig->GetNodeType());
 
         const auto& features = ci.FeaturesConfig->CollectAllFeatures();
         UNIT_ASSERT_VALUES_EQUAL(1, features.size());
@@ -169,9 +169,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             "abc",
             ci.FeaturesConfig->GetFeatureValue("", "", "fs2", "xyz"));
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            "abc",
-            ci.ServerConfig->GetHost());
+        UNIT_ASSERT_VALUES_EQUAL("abc", ci.ServerConfig->GetHost());
     }
 }
 

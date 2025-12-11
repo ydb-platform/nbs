@@ -23,8 +23,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class THttpGarbageActor final
-    : public TActorBootstrapped<THttpGarbageActor>
+class THttpGarbageActor final: public TActorBootstrapped<THttpGarbageActor>
 {
 public:
     enum EAction
@@ -79,12 +78,12 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 THttpGarbageActor::THttpGarbageActor(
-        TRequestInfoPtr requestInfo,
-        const TActorId& tablet,
-        ui64 tabletId,
-        EAction action,
-        TChildLogTitle logTitle,
-        TVector<TPartialBlobId> blobIds)
+    TRequestInfoPtr requestInfo,
+    const TActorId& tablet,
+    ui64 tabletId,
+    EAction action,
+    TChildLogTitle logTitle,
+    TVector<TPartialBlobId> blobIds)
     : RequestInfo(std::move(requestInfo))
     , Tablet(tablet)
     , TabletId(tabletId)
@@ -97,16 +96,17 @@ void THttpGarbageActor::Bootstrap(const TActorContext& ctx)
 {
     switch (Action) {
         case AddGarbage: {
-            auto request = std::make_unique<TEvPartitionPrivate::TEvAddGarbageRequest>(
-                MakeIntrusive<TCallContext>(),
-                BlobIds);
+            auto request =
+                std::make_unique<TEvPartitionPrivate::TEvAddGarbageRequest>(
+                    MakeIntrusive<TCallContext>(),
+                    BlobIds);
 
             NCloud::SendWithUndeliveryTracking(ctx, Tablet, std::move(request));
             break;
         }
         case CollectGarbage: {
-            auto request =
-                std::make_unique<TEvPartitionPrivate::TEvCollectGarbageRequest>();
+            auto request = std::make_unique<
+                TEvPartitionPrivate::TEvCollectGarbageRequest>();
 
             NCloud::SendWithUndeliveryTracking(ctx, Tablet, std::move(request));
             break;
@@ -196,11 +196,19 @@ void THttpGarbageActor::HandleCollectGarbageRequest(
 STFUNC(THttpGarbageActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvPartitionPrivate::TEvAddGarbageResponse, HandleAddGarbageResponse);
-        HFunc(TEvPartitionPrivate::TEvCollectGarbageResponse, HandleCollectGarbageResponse);
+        HFunc(
+            TEvPartitionPrivate::TEvAddGarbageResponse,
+            HandleAddGarbageResponse);
+        HFunc(
+            TEvPartitionPrivate::TEvCollectGarbageResponse,
+            HandleCollectGarbageResponse);
 
-        HFunc(TEvPartitionPrivate::TEvAddGarbageRequest, HandleAddGarbageRequest);
-        HFunc(TEvPartitionPrivate::TEvCollectGarbageRequest, HandleCollectGarbageRequest);
+        HFunc(
+            TEvPartitionPrivate::TEvAddGarbageRequest,
+            HandleAddGarbageRequest);
+        HFunc(
+            TEvPartitionPrivate::TEvCollectGarbageRequest,
+            HandleCollectGarbageRequest);
 
         default:
             HandleUnexpectedEvent(
@@ -222,10 +230,12 @@ void TPartitionActor::HandleHttpInfo_AddGarbage(
 {
     TStringBuilder errors;
 
-    TVector<ui32> allowedChannels = State->GetChannelsByKind([](auto kind) {
-        return kind == EChannelDataKind::Mixed
-            || kind == EChannelDataKind::Merged;
-    });
+    TVector<ui32> allowedChannels = State->GetChannelsByKind(
+        [](auto kind)
+        {
+            return kind == EChannelDataKind::Mixed ||
+                   kind == EChannelDataKind::Merged;
+        });
 
     TVector<TPartialBlobId> blobIds;
     for (const auto& it:
@@ -238,7 +248,10 @@ void TPartitionActor::HandleHttpInfo_AddGarbage(
         if (TLogoBlobID::Parse(blobId, part, errorExplanation)) {
             if (blobId.TabletID() != TabletID()) {
                 errorExplanation = "tablet does not match";
-            } else if (Find(allowedChannels, blobId.Channel()) == allowedChannels.end()) {
+            } else if (
+                Find(allowedChannels, blobId.Channel()) ==
+                allowedChannels.end())
+            {
                 errorExplanation = "channel does not match";
             } else if (blobId.Generation() >= Executor()->Generation()) {
                 errorExplanation = "generation does not match";
@@ -248,15 +261,16 @@ void TPartitionActor::HandleHttpInfo_AddGarbage(
             }
         }
 
-        errors << "Invalid blob " << part.Quote() << ": " << errorExplanation << Endl;
+        errors << "Invalid blob " << part.Quote() << ": " << errorExplanation
+               << Endl;
     }
 
     if (!blobIds || errors) {
         TStringStream out;
-        HTML(out) {
+        HTML (out) {
             if (errors) {
-                out << "Could not parse some blob IDs: "
-                    << "<pre>" << errors << "</pre>";
+                out << "Could not parse some blob IDs: " << "<pre>" << errors
+                    << "</pre>";
             } else {
                 out << "You should specify some blob IDs to add";
             }

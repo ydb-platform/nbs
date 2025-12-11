@@ -32,8 +32,7 @@ void MergeStripedBitMask(
                 blocksPerStripe,
                 stripeRange.Start + i * 8 + bitIdx,
                 partitionsCount,
-                partitionId
-            );
+                partitionId);
 
             int blockIdx = index - originalRange.Start;
             int maskChunk = blockIdx / 8;
@@ -113,10 +112,7 @@ void SplitFreshBlockRangeFromRelativeToGlobalIndices(
         const ui64 bytesCount = rangeBlocksCount * blockSize;
         dstRange.MutableBlocksContent()->resize(bytesCount);
         char* dstRangePtr = dstRange.MutableBlocksContent()->begin();
-        std::memcpy(
-            dstRangePtr,
-            srcRangePtr,
-            bytesCount);
+        std::memcpy(dstRangePtr, srcRangePtr, bytesCount);
 
         srcRangePtr += bytesCount;
         blocksCount += rangeBlocksCount;

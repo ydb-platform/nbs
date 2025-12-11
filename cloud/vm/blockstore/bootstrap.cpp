@@ -25,8 +25,8 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
-#include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/diagnostics/trace_processor.h>
+#include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/grpc/init.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
 #include <cloud/storage/core/libs/grpc/utils.h>
@@ -47,7 +47,8 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 const TString DefaultClientConfigPath = "/etc/yc/nbs/client/client.txt";
-const TString FallbackClientConfigPath = "/etc/yc/nbs/client/client-default.txt";
+const TString FallbackClientConfigPath =
+    "/etc/yc/nbs/client/client-default.txt";
 const TString TraceLoggerId = "st_trace_logger";
 const TString SlowRequestsFilterId = "st_slow_requests_filter";
 
@@ -61,8 +62,7 @@ struct TLWTraceSafeManager
 
     TLWTraceSafeManager()
         : Manager(*Singleton<NLWTrace::TProbeRegistry>(), true)
-    {
-    }
+    {}
 
     static NLWTrace::TManager& Instance()
     {
@@ -72,9 +72,8 @@ struct TLWTraceSafeManager
 
 bool IsHostVersionNewer(const BlockPluginHost* host, ui32 major, ui32 minor)
 {
-    return
-        (host->version_major > major) ||
-        (host->version_major == major && host->version_minor >= minor);
+    return (host->version_major > major) ||
+           (host->version_major == major && host->version_minor >= minor);
 }
 
 }   // namespace
@@ -103,16 +102,15 @@ void TBootstrap::Init()
     logSettings.SuppressNewLine = true;   // host will do it for us
 
     if (logConfig.HasLogLevel()) {
-        logSettings.FiltrationLevel = static_cast<ELogPriority>(
-            logConfig.GetLogLevel());
+        logSettings.FiltrationLevel =
+            static_cast<ELogPriority>(logConfig.GetLogLevel());
     }
 
     std::shared_ptr<TLogBackend> logBackend;
     if (logConfig.HasSysLogService()) {
-        logBackend = CreateMultiLogBackend({
-            CreateHostLogBackend(Host),
-            CreateSysLogBackend(logConfig.GetSysLogService())
-        });
+        logBackend = CreateMultiLogBackend(
+            {CreateHostLogBackend(Host),
+             CreateSysLogBackend(logConfig.GetSysLogService())});
     } else {
         logBackend = CreateHostLogBackend(Host);
     }
@@ -148,14 +146,13 @@ void TBootstrap::Init()
                 TraceReaders));
     }
 
-    auto rootGroup = Monitoring->GetCounters()
-        ->GetSubgroup("counters", "blockstore");
+    auto rootGroup =
+        Monitoring->GetCounters()->GetSubgroup("counters", "blockstore");
 
     auto clientGroup = rootGroup->GetSubgroup("component", "client");
-    auto revisionGroup = rootGroup->GetSubgroup("revision", GetFullVersionString());
-    auto versionCounter = revisionGroup->GetCounter(
-        "version",
-        false);
+    auto revisionGroup =
+        rootGroup->GetSubgroup("revision", GetFullVersionString());
+    auto versionCounter = revisionGroup->GetCounter("version", false);
     *versionCounter = 1;
 
     RequestStats = CreateClientRequestStats(
@@ -188,9 +185,8 @@ void TBootstrap::Init()
     Client = std::move(client);
 
     if (ClientConfig->GetIpcType() == NProto::IPC_NBD) {
-        NbdClient = NBD::CreateClient(
-            Logging,
-            ClientConfig->GetNbdThreadsCount());
+        NbdClient =
+            NBD::CreateClient(Logging, ClientConfig->GetNbdThreadsCount());
     }
 
     IThrottlerPolicyPtr throttlerPolicy;
@@ -202,15 +198,12 @@ void TBootstrap::Init()
             performanceProfile))
     {
         STORAGE_INFO(
-            "Throttler configured: " << performanceProfile.DebugString().Quote()
-        );
+            "Throttler configured: "
+            << performanceProfile.DebugString().Quote());
 
         Throttler = CreateThrottler(
             CreateClientThrottlerLogger(RequestStats, Logging),
-            CreateThrottlerMetrics(
-                Timer,
-                rootGroup,
-                "client"),
+            CreateThrottlerMetrics(Timer, rootGroup, "client"),
             CreateClientThrottlerPolicy(std::move(performanceProfile)),
             CreateClientThrottlerTracker(),
             Timer,
@@ -235,9 +228,7 @@ void TBootstrap::Init()
     StatsUpdater = CreateStatsUpdater(
         Timer,
         Scheduler,
-        CreateIncompleteRequestProcessor(
-            ClientStats,
-            {Plugin}));
+        CreateIncompleteRequestProcessor(ClientStats, {Plugin}));
 
     STORAGE_INFO("NBS plugin version: " << GetFullVersionString());
 }
@@ -257,9 +248,7 @@ void TBootstrap::InitLWTrace()
     auto traceLog = CreateUnifiedAgentLoggingService(
         Logging,
         tracingConfig.GetTracesUnifiedAgentEndpoint(),
-        tracingConfig.GetTracesSyslogIdentifier()
-    );
-
+        tracingConfig.GetTracesSyslogIdentifier());
 
     if (auto samplingRate = tracingConfig.GetSamplingRate()) {
         NLWTrace::TQuery query = ProbabilisticQuery(desc, samplingRate);
@@ -268,8 +257,7 @@ void TBootstrap::InitLWTrace()
             TraceLoggerId,
             traceLog,
             "BLOCKSTORE_TRACE",
-            "AllRequests"
-        ));
+            "AllRequests"));
     }
 
     if (auto samplingRate = tracingConfig.GetSlowRequestSamplingRate()) {
@@ -294,11 +282,14 @@ void TBootstrap::InitClientConfig()
             // Legacy branch: parsing Options as config file path
             // see CLOUD-42448
             if (!TryParseFromTextFormat(Options, PluginConfig)) {
-                // Legacy branch: parsing config as TClientConfig/TClientAppConfig
-                // see NBS-503
+                // Legacy branch: parsing config as
+                // TClientConfig/TClientAppConfig see NBS-503
                 if (TryParseFromTextFormat(Options, appConfig)) {
                     clientConfigParsed = true;
-                } else if (TryParseFromTextFormat(Options, *appConfig.MutableClientConfig())) {
+                } else if (TryParseFromTextFormat(
+                               Options,
+                               *appConfig.MutableClientConfig()))
+                {
                     clientConfigParsed = true;
                 } else {
                     ythrow yexception() << "invalid config specified";

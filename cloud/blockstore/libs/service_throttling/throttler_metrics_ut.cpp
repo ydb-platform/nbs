@@ -27,8 +27,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TThrottlerPolicy final
-    : public IThrottlerPolicy
+class TThrottlerPolicy final: public IThrottlerPolicy
 {
 public:
     TDuration PostponeTimeout;
@@ -91,8 +90,8 @@ struct TRequestCountingPolicy
 
 struct TVolumeProcessingPolicy
 {
-    std::shared_ptr<TTestVolumeInfo<TRequestCountingPolicy>> VolumeInfo
-        = std::make_shared<TTestVolumeInfo<TRequestCountingPolicy>>();
+    std::shared_ptr<TTestVolumeInfo<TRequestCountingPolicy>> VolumeInfo =
+        std::make_shared<TTestVolumeInfo<TRequestCountingPolicy>>();
 
     bool MountVolume(
         const NProto::TVolume& volume,
@@ -106,9 +105,7 @@ struct TVolumeProcessingPolicy
         return true;
     }
 
-    void UnmountVolume(
-        const TString& diskId,
-        const TString& clientId)
+    void UnmountVolume(const TString& diskId, const TString& clientId)
     {
         Y_UNUSED(diskId);
         Y_UNUSED(clientId);
@@ -130,9 +127,7 @@ struct TVolumeProcessingPolicy
     {
         Y_UNUSED(clientId);
 
-        return diskId == VolumeInfo->Volume.GetDiskId()
-            ? VolumeInfo
-            : nullptr;
+        return diskId == VolumeInfo->Volume.GetDiskId() ? VolumeInfo : nullptr;
     }
 };
 
@@ -145,8 +140,8 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
     Y_UNIT_TEST(ShouldRegisterCountersOnlyAfterFirstNonZeroQuotaValue)
     {
         const TString clientId = "test_client";
-        auto volumeStats = std::make_shared<
-            TTestVolumeStats<TVolumeProcessingPolicy>>();
+        auto volumeStats =
+            std::make_shared<TTestVolumeStats<TVolumeProcessingPolicy>>();
 
         auto timer = CreateWallClockTimer();
         auto scheduler = std::make_shared<TTestScheduler>();
@@ -158,10 +153,7 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         auto monitoring = CreateMonitoringServiceStub();
         auto totalCounters = monitoring->GetCounters();
 
-        auto metrics = CreateThrottlerMetrics(
-            timer,
-            totalCounters,
-            "server");
+        auto metrics = CreateThrottlerMetrics(timer, totalCounters, "server");
 
         auto throttler = CreateThrottler(
             CreateThrottlerLoggerStub(),
@@ -174,63 +166,63 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
 
         auto client = std::make_shared<TTestService>();
 
-#define SET_HANDLER(name)                                                      \
-        client->name##Handler =                                                \
-            [&] (std::shared_ptr<NProto::T##name##Request> request) {          \
-                Y_UNUSED(request);                                             \
-                return MakeFuture(NProto::T##name##Response());                \
-            };                                                                 \
-// SET_HANDLER
+#define SET_HANDLER(name)                                      \
+    client->name##Handler =                                    \
+        [&](std::shared_ptr<NProto::T##name##Request> request) \
+    {                                                          \
+        Y_UNUSED(request);                                     \
+        return MakeFuture(NProto::T##name##Response());        \
+    };                                                         \
+    // SET_HANDLER
 
         SET_HANDLER(UnmountVolume);
 
 #undef SET_HANDLER
 
         client->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                NProto::TVolume volume;
-                volume.SetDiskId(request->GetDiskId());
-                volume.SetBlockSize(100);
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            NProto::TVolume volume;
+            volume.SetDiskId(request->GetDiskId());
+            volume.SetBlockSize(100);
 
-                NProto::TMountVolumeResponse r;
-                r.MutableVolume()->SetDiskId(request->GetDiskId());
+            NProto::TMountVolumeResponse r;
+            r.MutableVolume()->SetDiskId(request->GetDiskId());
 
-                return MakeFuture(std::move(r));
-            };
+            return MakeFuture(std::move(r));
+        };
 
         const TString usedQuota = "UsedQuota";
         const TString maxUsedQuota = "MaxUsedQuota";
 
-        auto getDiskGroupFunction = [&] (const TString& diskId)
+        auto getDiskGroupFunction = [&](const TString& diskId)
         {
-            return totalCounters
-                ->GetSubgroup("component", "server_volume")
+            return totalCounters->GetSubgroup("component", "server_volume")
                 ->GetSubgroup("host", "cluster")
                 ->FindSubgroup("volume", diskId);
         };
 
-        auto getClientGroupFunction = [&] (
-            const TString& diskId,
-            const TString& clientId)
+        auto getClientGroupFunction =
+            [&](const TString& diskId, const TString& clientId)
         {
             auto diskGroup = getDiskGroupFunction(diskId);
             UNIT_ASSERT_C(
                 diskGroup,
                 TStringBuilder() << "Subgroup volume:" << diskId
-                    << " should be initialized");
+                                 << " should be initialized");
             return diskGroup->FindSubgroup("instance", clientId);
         };
 
-        auto getCounterFunction = [&] (
-            const TString& diskId,
-            const TString& clientId,
-            const TString& sensor)
+        auto getCounterFunction = [&](const TString& diskId,
+                                      const TString& clientId,
+                                      const TString& sensor)
         {
             auto clientGroup = getClientGroupFunction(diskId, clientId);
             UNIT_ASSERT_C(
                 clientGroup,
-                TStringBuilder() << "Subgroup volume:" << diskId
-                    << ", instance:" << clientId << " should be initialized");
+                TStringBuilder()
+                    << "Subgroup volume:" << diskId << ", instance:" << clientId
+                    << " should be initialized");
             return clientGroup->FindCounter(sensor);
         };
 
@@ -245,13 +237,11 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
             mountRequest);
 
         UNIT_ASSERT_C(
-            totalCounters
-                ->GetSubgroup("component", "server")
+            totalCounters->GetSubgroup("component", "server")
                 ->FindCounter(usedQuota),
             "UsedQuota should be initialized");
         UNIT_ASSERT_C(
-            totalCounters
-                ->GetSubgroup("component", "server")
+            totalCounters->GetSubgroup("component", "server")
                 ->FindCounter(maxUsedQuota),
             "MaxUsedQuota should be initialized");
 
@@ -259,32 +249,30 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         metrics->UpdateMaxUsedQuota();
 
         UNIT_ASSERT_VALUES_EQUAL(
-            totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota)->Val(), 0);
+            totalCounters->GetSubgroup("component", "server")
+                ->FindCounter(usedQuota)
+                ->Val(),
+            0);
         UNIT_ASSERT_VALUES_EQUAL(
-            totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota)->Val(), 0);
+            totalCounters->GetSubgroup("component", "server")
+                ->FindCounter(maxUsedQuota)
+                ->Val(),
+            0);
 
         metrics->UpdateUsedQuota(12);
         metrics->UpdateMaxUsedQuota();
 
         {
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto usedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                clientId,
-                usedQuota);
-            auto maxUsedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                clientId,
-                maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto usedQuotaVolumeCounter =
+                getCounterFunction(volumeId, clientId, usedQuota);
+            auto maxUsedQuotaVolumeCounter =
+                getCounterFunction(volumeId, clientId, maxUsedQuota);
 
             UNIT_ASSERT_C(
                 usedQuotaCounter,
@@ -319,20 +307,16 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
             totalCounters->GetSubgroup("component", "server")->ReadSnapshot();
             getClientGroupFunction(volumeId, clientId)->ReadSnapshot();
 
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
-            auto usedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                clientId,
-                usedQuota);
-            auto maxUsedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                clientId,
-                maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
+            auto usedQuotaVolumeCounter =
+                getCounterFunction(volumeId, clientId, usedQuota);
+            auto maxUsedQuotaVolumeCounter =
+                getCounterFunction(volumeId, clientId, maxUsedQuota);
 
             UNIT_ASSERT_C(
                 !usedQuotaCounter,
@@ -352,8 +336,8 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
     Y_UNIT_TEST(ShouldTrimCountersAfterTimeout)
     {
         const TString clientId = "test_client";
-        auto volumeStats = std::make_shared<
-            TTestVolumeStats<TVolumeProcessingPolicy>>();
+        auto volumeStats =
+            std::make_shared<TTestVolumeStats<TVolumeProcessingPolicy>>();
 
         auto timer = std::make_shared<TTestTimer>();
         auto scheduler = std::make_shared<TTestScheduler>();
@@ -365,10 +349,7 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         auto monitoring = CreateMonitoringServiceStub();
         auto totalCounters = monitoring->GetCounters();
 
-        auto metrics = CreateThrottlerMetrics(
-            timer,
-            totalCounters,
-            "server");
+        auto metrics = CreateThrottlerMetrics(timer, totalCounters, "server");
 
         auto throttler = CreateThrottler(
             CreateThrottlerLoggerStub(),
@@ -382,50 +363,49 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         auto client = std::make_shared<TTestService>();
 
         client->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                NProto::TVolume volume;
-                volume.SetDiskId(request->GetDiskId());
-                volume.SetBlockSize(100);
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            NProto::TVolume volume;
+            volume.SetDiskId(request->GetDiskId());
+            volume.SetBlockSize(100);
 
-                NProto::TMountVolumeResponse r;
-                r.MutableVolume()->SetDiskId(request->GetDiskId());
+            NProto::TMountVolumeResponse r;
+            r.MutableVolume()->SetDiskId(request->GetDiskId());
 
-                return MakeFuture(std::move(r));
-            };
+            return MakeFuture(std::move(r));
+        };
 
         const TString usedQuota = "UsedQuota";
         const TString maxUsedQuota = "MaxUsedQuota";
 
-        auto getDiskGroupFunction = [&] (const TString& diskId)
+        auto getDiskGroupFunction = [&](const TString& diskId)
         {
-            return totalCounters
-                ->GetSubgroup("component", "server_volume")
+            return totalCounters->GetSubgroup("component", "server_volume")
                 ->GetSubgroup("host", "cluster")
                 ->FindSubgroup("volume", diskId);
         };
 
-        auto getClientGroupFunction = [&] (
-            const TString& diskId,
-            const TString& clientId)
+        auto getClientGroupFunction =
+            [&](const TString& diskId, const TString& clientId)
         {
             auto diskGroup = getDiskGroupFunction(diskId);
             UNIT_ASSERT_C(
                 diskGroup,
                 TStringBuilder() << "Subgroup volume:" << diskId
-                    << " should be initialized");
+                                 << " should be initialized");
             return diskGroup->FindSubgroup("instance", clientId);
         };
 
-        auto getCounterFunction = [&] (
-            const TString& diskId,
-            const TString& clientId,
-            const TString& sensor)
+        auto getCounterFunction = [&](const TString& diskId,
+                                      const TString& clientId,
+                                      const TString& sensor)
         {
             auto clientGroup = getClientGroupFunction(diskId, clientId);
             UNIT_ASSERT_C(
                 clientGroup,
-                TStringBuilder() << "Subgroup volume:" << diskId
-                    << ", instance:" << clientId << " should be initialized");
+                TStringBuilder()
+                    << "Subgroup volume:" << diskId << ", instance:" << clientId
+                    << " should be initialized");
             return clientGroup->FindCounter(sensor);
         };
 
@@ -446,20 +426,16 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         metrics->Trim(timer->Now());
 
         {
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
-            auto usedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                clientId,
-                usedQuota);
-            auto maxUsedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                clientId,
-                maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
+            auto usedQuotaVolumeCounter =
+                getCounterFunction(volumeId, clientId, usedQuota);
+            auto maxUsedQuotaVolumeCounter =
+                getCounterFunction(volumeId, clientId, maxUsedQuota);
 
             UNIT_ASSERT_C(
                 usedQuotaCounter,
@@ -489,20 +465,16 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         metrics->Trim(timer->Now());
 
         {
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
-            auto usedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                clientId,
-                usedQuota);
-            auto maxUsedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                clientId,
-                maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
+            auto usedQuotaVolumeCounter =
+                getCounterFunction(volumeId, clientId, usedQuota);
+            auto maxUsedQuotaVolumeCounter =
+                getCounterFunction(volumeId, clientId, maxUsedQuota);
 
             UNIT_ASSERT_C(
                 usedQuotaCounter,
@@ -531,20 +503,16 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
             totalCounters->GetSubgroup("component", "server")->ReadSnapshot();
             getClientGroupFunction(volumeId, clientId)->ReadSnapshot();
 
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
-            auto usedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                clientId,
-                usedQuota);
-            auto maxUsedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                clientId,
-                maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
+            auto usedQuotaVolumeCounter =
+                getCounterFunction(volumeId, clientId, usedQuota);
+            auto maxUsedQuotaVolumeCounter =
+                getCounterFunction(volumeId, clientId, maxUsedQuota);
 
             UNIT_ASSERT_C(
                 !usedQuotaCounter,
@@ -564,8 +532,8 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
     Y_UNIT_TEST(ShouldTrimCountersAfterTimeoutWithZeroQuota)
     {
         const TString clientId = "test_client";
-        auto volumeStats = std::make_shared<
-            TTestVolumeStats<TVolumeProcessingPolicy>>();
+        auto volumeStats =
+            std::make_shared<TTestVolumeStats<TVolumeProcessingPolicy>>();
 
         auto timer = std::make_shared<TTestTimer>();
         auto scheduler = std::make_shared<TTestScheduler>();
@@ -577,10 +545,7 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         auto monitoring = CreateMonitoringServiceStub();
         auto totalCounters = monitoring->GetCounters();
 
-        auto metrics = CreateThrottlerMetrics(
-            timer,
-            totalCounters,
-            "server");
+        auto metrics = CreateThrottlerMetrics(timer, totalCounters, "server");
 
         auto throttler = CreateThrottler(
             CreateThrottlerLoggerStub(),
@@ -593,50 +558,49 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
 
         auto client = std::make_shared<TTestService>();
         client->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                NProto::TVolume volume;
-                volume.SetDiskId(request->GetDiskId());
-                volume.SetBlockSize(100);
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            NProto::TVolume volume;
+            volume.SetDiskId(request->GetDiskId());
+            volume.SetBlockSize(100);
 
-                NProto::TMountVolumeResponse r;
-                r.MutableVolume()->SetDiskId(request->GetDiskId());
+            NProto::TMountVolumeResponse r;
+            r.MutableVolume()->SetDiskId(request->GetDiskId());
 
-                return MakeFuture(std::move(r));
-            };
+            return MakeFuture(std::move(r));
+        };
 
         const TString usedQuota = "UsedQuota";
         const TString maxUsedQuota = "MaxUsedQuota";
 
-        auto getDiskGroupFunction = [&] (const TString& diskId)
+        auto getDiskGroupFunction = [&](const TString& diskId)
         {
-            return totalCounters
-                ->GetSubgroup("component", "server_volume")
+            return totalCounters->GetSubgroup("component", "server_volume")
                 ->GetSubgroup("host", "cluster")
                 ->FindSubgroup("volume", diskId);
         };
 
-        auto getClientGroupFunction = [&] (
-            const TString& diskId,
-            const TString& clientId)
+        auto getClientGroupFunction =
+            [&](const TString& diskId, const TString& clientId)
         {
             auto diskGroup = getDiskGroupFunction(diskId);
             UNIT_ASSERT_C(
                 diskGroup,
                 TStringBuilder() << "Subgroup volume:" << diskId
-                    << " should be initialized");
+                                 << " should be initialized");
             return diskGroup->FindSubgroup("instance", clientId);
         };
 
-        auto getCounterFunction = [&] (
-            const TString& diskId,
-            const TString& clientId,
-            const TString& sensor)
+        auto getCounterFunction = [&](const TString& diskId,
+                                      const TString& clientId,
+                                      const TString& sensor)
         {
             auto clientGroup = getClientGroupFunction(diskId, clientId);
             UNIT_ASSERT_C(
                 clientGroup,
-                TStringBuilder() << "Subgroup volume:" << diskId
-                    << ", instance:" << clientId << " should be initialized");
+                TStringBuilder()
+                    << "Subgroup volume:" << diskId << ", instance:" << clientId
+                    << " should be initialized");
             return clientGroup->FindCounter(sensor);
         };
 
@@ -657,20 +621,16 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         metrics->Trim(timer->Now());
 
         {
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
-            auto usedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                clientId,
-                usedQuota);
-            auto maxUsedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                clientId,
-                maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
+            auto usedQuotaVolumeCounter =
+                getCounterFunction(volumeId, clientId, usedQuota);
+            auto maxUsedQuotaVolumeCounter =
+                getCounterFunction(volumeId, clientId, maxUsedQuota);
 
             UNIT_ASSERT_C(
                 usedQuotaCounter,
@@ -703,20 +663,16 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         metrics->Trim(timer->Now());
 
         {
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
-            auto usedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                clientId,
-                usedQuota);
-            auto maxUsedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                clientId,
-                maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
+            auto usedQuotaVolumeCounter =
+                getCounterFunction(volumeId, clientId, usedQuota);
+            auto maxUsedQuotaVolumeCounter =
+                getCounterFunction(volumeId, clientId, maxUsedQuota);
 
             UNIT_ASSERT_C(
                 usedQuotaCounter,
@@ -745,20 +701,16 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
             totalCounters->GetSubgroup("component", "server")->ReadSnapshot();
             getClientGroupFunction(volumeId, clientId)->ReadSnapshot();
 
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
-            auto usedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                clientId,
-                usedQuota);
-            auto maxUsedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                clientId,
-                maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
+            auto usedQuotaVolumeCounter =
+                getCounterFunction(volumeId, clientId, usedQuota);
+            auto maxUsedQuotaVolumeCounter =
+                getCounterFunction(volumeId, clientId, maxUsedQuota);
 
             UNIT_ASSERT_C(
                 !usedQuotaCounter,
@@ -777,8 +729,8 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
 
     Y_UNIT_TEST(ShouldCorrectlyMultipleMountMultipleUnmount)
     {
-        auto volumeStats = std::make_shared<
-            TTestVolumeStats<TVolumeProcessingPolicy>>();
+        auto volumeStats =
+            std::make_shared<TTestVolumeStats<TVolumeProcessingPolicy>>();
 
         auto timer = std::make_shared<TTestTimer>();
         auto scheduler = std::make_shared<TTestScheduler>();
@@ -790,10 +742,7 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         auto monitoring = CreateMonitoringServiceStub();
         auto totalCounters = monitoring->GetCounters();
 
-        auto metrics = CreateThrottlerMetrics(
-            timer,
-            totalCounters,
-            "server");
+        auto metrics = CreateThrottlerMetrics(timer, totalCounters, "server");
 
         auto throttler = CreateThrottler(
             CreateThrottlerLoggerStub(),
@@ -806,44 +755,48 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
 
         auto client = std::make_shared<TTestService>();
 
-#define SET_HANDLER(name)                                                      \
-        client->name##Handler =                                                \
-            [&] (std::shared_ptr<NProto::T##name##Request> request) {          \
-                Y_UNUSED(request);                                             \
-                return MakeFuture(NProto::T##name##Response());                \
-            };                                                                 \
-// SET_HANDLER
+#define SET_HANDLER(name)                                      \
+    client->name##Handler =                                    \
+        [&](std::shared_ptr<NProto::T##name##Request> request) \
+    {                                                          \
+        Y_UNUSED(request);                                     \
+        return MakeFuture(NProto::T##name##Response());        \
+    };                                                         \
+    // SET_HANDLER
 
         SET_HANDLER(UnmountVolume);
 
 #undef SET_HANDLER
 
         client->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                NProto::TVolume volume;
-                volume.SetDiskId(request->GetDiskId());
-                volume.SetBlockSize(100);
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            NProto::TVolume volume;
+            volume.SetDiskId(request->GetDiskId());
+            volume.SetBlockSize(100);
 
-                NProto::TMountVolumeResponse r;
-                r.MutableVolume()->SetDiskId(request->GetDiskId());
+            NProto::TMountVolumeResponse r;
+            r.MutableVolume()->SetDiskId(request->GetDiskId());
 
-                return MakeFuture(std::move(r));
-            };
+            return MakeFuture(std::move(r));
+        };
 
         const TVector<std::pair<TString, TString>> diskIds = {
-            { "first_test_disk_id" , "first_client"  },   // common first_client
-            { "second_test_disk_id", "first_client"  },   // common first_client
-            { "second_test_disk_id", "second_client" },   // common second_test_disk_id and second_client
-            { "third_test_disk_id" , "second_client" },   // common third_test_disk_id
-            { "third_test_disk_id" , "third_client"  },   // common third_test_disk_id
-            { "fourth_test_disk_id", "fourh_client"  }    // single disk and client
+            {"first_test_disk_id", "first_client"},    // common first_client
+            {"second_test_disk_id", "first_client"},   // common first_client
+            {"second_test_disk_id",
+             "second_client"},   // common second_test_disk_id and second_client
+            {"third_test_disk_id",
+             "second_client"},   // common third_test_disk_id
+            {"third_test_disk_id",
+             "third_client"},   // common third_test_disk_id
+            {"fourth_test_disk_id", "fourh_client"}   // single disk and client
         };
 
         const TString usedQuota = "UsedQuota";
         const TString maxUsedQuota = "MaxUsedQuota";
-        auto mountVolumeFunction = [&] (
-            const TString& diskId,
-            const TString& clientId)
+        auto mountVolumeFunction =
+            [&](const TString& diskId, const TString& clientId)
         {
             auto mountRequest = std::make_shared<NProto::TMountVolumeRequest>();
             mountRequest->MutableHeaders()->SetClientId(clientId);
@@ -861,42 +814,39 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
             metrics->UpdateMaxUsedQuota();
         };
 
-        auto getDiskGroupFunction = [&] (const TString& diskId)
+        auto getDiskGroupFunction = [&](const TString& diskId)
         {
-            return totalCounters
-                ->GetSubgroup("component", "server_volume")
+            return totalCounters->GetSubgroup("component", "server_volume")
                 ->GetSubgroup("host", "cluster")
                 ->FindSubgroup("volume", diskId);
         };
 
-        auto getClientGroupFunction = [&] (
-            const TString& diskId,
-            const TString& clientId)
+        auto getClientGroupFunction =
+            [&](const TString& diskId, const TString& clientId)
         {
             auto diskGroup = getDiskGroupFunction(diskId);
             UNIT_ASSERT_C(
                 diskGroup,
                 TStringBuilder() << "Subgroup volume:" << diskId
-                    << " should be initialized");
+                                 << " should be initialized");
             return diskGroup->FindSubgroup("instance", clientId);
         };
 
-        auto getCounterFunction = [&] (
-            const TString& diskId,
-            const TString& clientId,
-            const TString& sensor)
+        auto getCounterFunction = [&](const TString& diskId,
+                                      const TString& clientId,
+                                      const TString& sensor)
         {
             auto clientGroup = getClientGroupFunction(diskId, clientId);
             UNIT_ASSERT_C(
                 clientGroup,
-                TStringBuilder() << "Subgroup volume:" << diskId
-                    << ", instance:" << clientId << " should be initialized");
+                TStringBuilder()
+                    << "Subgroup volume:" << diskId << ", instance:" << clientId
+                    << " should be initialized");
             return clientGroup->FindCounter(sensor);
         };
 
-        auto unmountVolumeFunction = [&] (
-            const TString& diskId,
-            const TString& clientId)
+        auto unmountVolumeFunction =
+            [&](const TString& diskId, const TString& clientId)
         {
             auto unmountRequest =
                 std::make_shared<NProto::TUnmountVolumeRequest>();
@@ -927,23 +877,23 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         UNIT_ASSERT_C(
             !getDiskGroupFunction(diskIds[1].first),
             TStringBuilder() << "Subgroup volume:" << diskIds[1].first
-                << " should not be initialized");
+                             << " should not be initialized");
         UNIT_ASSERT_C(
             !getDiskGroupFunction(diskIds[3].first),
             TStringBuilder() << "Subgroup volume:" << diskIds[3].first
-                << " should not be initialized");
+                             << " should not be initialized");
         UNIT_ASSERT_C(
             !getDiskGroupFunction(diskIds[5].first),
             TStringBuilder() << "Subgroup volume:" << diskIds[5].first
-                << " should not be initialized");
+                             << " should not be initialized");
 
         {
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
             auto usedQuotaVolumeCounter0 = getCounterFunction(
                 diskIds[0].first,
                 diskIds[0].second,
@@ -965,19 +915,19 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         UNIT_ASSERT_C(
             !getDiskGroupFunction(diskIds[3].first),
             TStringBuilder() << "Subgroup volume:" << diskIds[3].first
-                << " should not be initialized");
+                             << " should not be initialized");
         UNIT_ASSERT_C(
             !getDiskGroupFunction(diskIds[5].first),
             TStringBuilder() << "Subgroup volume:" << diskIds[5].first
-                << " should not be initialized");
+                             << " should not be initialized");
 
         {
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
             auto usedQuotaVolumeCounter0 = getCounterFunction(
                 diskIds[0].first,
                 diskIds[0].second,
@@ -1009,19 +959,19 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         UNIT_ASSERT_C(
             !getDiskGroupFunction(diskIds[3].first),
             TStringBuilder() << "Subgroup volume:" << diskIds[3].first
-                << " should not be initialized");
+                             << " should not be initialized");
         UNIT_ASSERT_C(
             !getDiskGroupFunction(diskIds[5].first),
             TStringBuilder() << "Subgroup volume:" << diskIds[5].first
-                << " should not be initialized");
+                             << " should not be initialized");
 
         {
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
             auto usedQuotaVolumeCounter0 = getCounterFunction(
                 diskIds[0].first,
                 diskIds[0].second,
@@ -1063,15 +1013,15 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         UNIT_ASSERT_C(
             !getDiskGroupFunction(diskIds[5].first),
             TStringBuilder() << "Subgroup volume:" << diskIds[5].first
-                << " should not be initialized");
+                             << " should not be initialized");
 
         {
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
             auto usedQuotaVolumeCounter0 = getCounterFunction(
                 diskIds[0].first,
                 diskIds[0].second,
@@ -1123,15 +1073,15 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         UNIT_ASSERT_C(
             !getDiskGroupFunction(diskIds[5].first),
             TStringBuilder() << "Subgroup volume:" << diskIds[5].first
-                << " should not be initialized");
+                             << " should not be initialized");
 
         {
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
             auto usedQuotaVolumeCounter0 = getCounterFunction(
                 diskIds[0].first,
                 diskIds[0].second,
@@ -1169,7 +1119,9 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
                 diskIds[4].second,
                 usedQuota);
             auto maxUsedQuotaVolumeCounter4 = getCounterFunction(
-                diskIds[4].first, diskIds[4].second, maxUsedQuota);
+                diskIds[4].first,
+                diskIds[4].second,
+                maxUsedQuota);
 
             UNIT_ASSERT_VALUES_EQUAL(10, usedQuotaCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaCounter->Val());
@@ -1189,12 +1141,12 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         mountVolumeFunction(diskIds[5].first, diskIds[5].second);
 
         {
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
             auto usedQuotaVolumeCounter0 = getCounterFunction(
                 diskIds[0].first,
                 diskIds[0].second,
@@ -1264,12 +1216,12 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         unmountVolumeFunction(diskIds[4].first, diskIds[4].second);
 
         {
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
             auto usedQuotaVolumeCounter0 = getCounterFunction(
                 diskIds[0].first,
                 diskIds[0].second,
@@ -1329,12 +1281,12 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         unmountVolumeFunction(diskIds[3].first, diskIds[3].second);
 
         {
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
             auto usedQuotaVolumeCounter0 = getCounterFunction(
                 diskIds[0].first,
                 diskIds[0].second,
@@ -1384,12 +1336,12 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         unmountVolumeFunction(diskIds[0].first, diskIds[0].second);
 
         {
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
             auto usedQuotaVolumeCounter1 = getCounterFunction(
                 diskIds[1].first,
                 diskIds[1].second,
@@ -1429,15 +1381,16 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         unmountVolumeFunction(diskIds[5].first, diskIds[5].second);
 
         {
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
             auto usedQuotaVolumeCounter1 = getCounterFunction(
                 diskIds[1].first,
-                diskIds[1].second, usedQuota);
+                diskIds[1].second,
+                usedQuota);
             auto maxUsedQuotaVolumeCounter1 = getCounterFunction(
                 diskIds[1].first,
                 diskIds[1].second,
@@ -1463,12 +1416,12 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         unmountVolumeFunction(diskIds[1].first, diskIds[1].second);
 
         {
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
             auto usedQuotaVolumeCounter2 = getCounterFunction(
                 diskIds[2].first,
                 diskIds[2].second,
@@ -1488,12 +1441,12 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         unmountVolumeFunction(diskIds[2].first, "not_instance");
 
         {
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
             auto usedQuotaVolumeCounter2 = getCounterFunction(
                 diskIds[2].first,
                 diskIds[2].second,
@@ -1513,12 +1466,12 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
         unmountVolumeFunction("not_disk", diskIds[2].second);
 
         {
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
             auto usedQuotaVolumeCounter2 = getCounterFunction(
                 diskIds[2].first,
                 diskIds[2].second,
@@ -1539,14 +1492,12 @@ Y_UNIT_TEST_SUITE(TServiceThrotterMetricsTest)
 
         {
             UNIT_ASSERT_C(
-                !totalCounters
-                    ->GetSubgroup("component", "server")
-                    ->FindCounter(usedQuota),
+                !totalCounters->GetSubgroup("component", "server")
+                     ->FindCounter(usedQuota),
                 "UsedQuota should not be initialized");
             UNIT_ASSERT_C(
-                !totalCounters
-                    ->GetSubgroup("component", "server")
-                    ->FindCounter(maxUsedQuota),
+                !totalCounters->GetSubgroup("component", "server")
+                     ->FindCounter(maxUsedQuota),
                 "MaxUsedQuota should not be initialized");
         }
     }

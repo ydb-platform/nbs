@@ -72,9 +72,7 @@ TDynamicCountersPtr TTestActorSystem::GetCounters()
     return {};
 }
 
-TActorId TTestActorSystem::Register(
-    IActorPtr actor,
-    TStringBuf executorName)
+TActorId TTestActorSystem::Register(IActorPtr actor, TStringBuf executorName)
 {
     Y_UNUSED(executorName);
 
@@ -82,7 +80,7 @@ TActorId TTestActorSystem::Register(
     Runtime->EnableScheduleForActor(actorId);
 
     return actorId;
-};
+}
 
 bool TTestActorSystem::Send(const TActorId& recipient, IEventBasePtr event)
 {
@@ -113,6 +111,5 @@ void TTestActorSystem::RegisterTestAuthorizer(IActorPtr authorizer)
         NCloud::NStorage::MakeAuthorizerServiceId(),
         Register(std::move(authorizer)));
 }
-
 
 }   // namespace NCloud::NFileStore

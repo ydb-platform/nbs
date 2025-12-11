@@ -1,4 +1,5 @@
 #include "service_actor.h"
+
 #include "service.h"
 
 #include <cloud/blockstore/libs/service/context.h>
@@ -51,10 +52,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 THttpUnmountVolumeActor::THttpUnmountVolumeActor(
-        TRequestInfoPtr requestInfo,
-        TString diskId,
-        TString clientId,
-        TString sessionId)
+    TRequestInfoPtr requestInfo,
+    TString diskId,
+    TString clientId,
+    TString sessionId)
     : RequestInfo(std::move(requestInfo))
     , DiskId(std::move(diskId))
     , ClientId(std::move(clientId))
@@ -66,14 +67,12 @@ void THttpUnmountVolumeActor::Bootstrap(const TActorContext& ctx)
     auto request = std::make_unique<TEvService::TEvUnmountVolumeRequest>();
     auto& headers = *request->Record.MutableHeaders();
     headers.SetClientId(ClientId);
-    headers.MutableInternal()->SetControlSource(NProto::SOURCE_SERVICE_MONITORING);
+    headers.MutableInternal()->SetControlSource(
+        NProto::SOURCE_SERVICE_MONITORING);
     request->Record.SetDiskId(DiskId);
     request->Record.SetSessionId(SessionId);
 
-    NCloud::Send(
-        ctx,
-        MakeStorageServiceId(),
-        std::move(request));
+    NCloud::Send(ctx, MakeStorageServiceId(), std::move(request));
 
     Become(&TThis::StateWork);
 }
@@ -87,8 +86,8 @@ void THttpUnmountVolumeActor::Notify(
     BuildNotifyPageWithRedirect(
         out,
         std::move(message),
-        TStringBuilder()
-            << "../blockstore/service?Volume=" << DiskId << "&action=listclients",
+        TStringBuilder() << "../blockstore/service?Volume=" << DiskId
+                         << "&action=listclients",
         alertLevel);
 
     LWTRACK(
@@ -114,9 +113,8 @@ void THttpUnmountVolumeActor::HandleUnmountVolumeResponse(
     } else {
         Notify(
             ctx,
-            TStringBuilder() << "failed to unmount volume "
-                << DiskId.Quote()
-                << ": " << FormatError(response->GetError()),
+            TStringBuilder() << "failed to unmount volume " << DiskId.Quote()
+                             << ": " << FormatError(response->GetError()),
             EAlertLevel::DANGER);
     }
 
@@ -128,7 +126,9 @@ void THttpUnmountVolumeActor::HandleUnmountVolumeResponse(
 STFUNC(THttpUnmountVolumeActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvService::TEvUnmountVolumeResponse, HandleUnmountVolumeResponse);
+        HFunc(
+            TEvService::TEvUnmountVolumeResponse,
+            HandleUnmountVolumeResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -160,15 +160,18 @@ void TServiceActor::HandleHttpInfo_Unmount(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-        "Unmounting volume per action from monitoring page: volume %s, client %s",
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "Unmounting volume per action from monitoring page: volume %s, client "
+        "%s",
         diskId.Quote().data(),
         clientId.Quote().data());
 
     auto volume = State.GetVolume(diskId);
     if (!volume) {
-        TString error = TStringBuilder()
-            << "Failed to unmount volume: volume " << diskId << " not found";
+        TString error = TStringBuilder() << "Failed to unmount volume: volume "
+                                         << diskId << " not found";
 
         RejectHttpRequest(ctx, *requestInfo, std::move(error));
         return;

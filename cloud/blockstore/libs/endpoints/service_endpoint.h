@@ -3,7 +3,6 @@
 #include "public.h"
 
 #include <cloud/blockstore/config/client.pb.h>
-
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 

@@ -114,8 +114,7 @@ struct INodeLoader
     virtual TString ToString() const = 0;
 };
 
-class TNodeLoader
-    : public INodeLoader
+class TNodeLoader: public INodeLoader
 {
 private:
     TFileHandle RootHandle;
@@ -137,7 +136,7 @@ private:
     struct THash
     {
         template <typename T>
-        size_t operator ()(const T& value) const
+        size_t operator()(const T& value) const
         {
             return IntHash(GetNodeId(value));
         }
@@ -146,7 +145,7 @@ private:
     struct TEqual
     {
         template <typename T1, typename T2>
-        bool operator ()(const T1& l, const T2& r) const
+        bool operator()(const T1& l, const T2& r) const
         {
             return GetNodeId(l) == GetNodeId(r);
         }
@@ -181,13 +180,13 @@ private:
 
 public:
     TLocalIndex(
-            TFsPath root,
-            TFsPath statePath,
-            ui32 maxNodeCount,
-            bool openNodeByHandleEnabled,
-            ui32 nodeCleanupBatchSize,
-            TLog log,
-            std::shared_ptr<INodeLoader> nodeLoader = nullptr)
+        TFsPath root,
+        TFsPath statePath,
+        ui32 maxNodeCount,
+        bool openNodeByHandleEnabled,
+        ui32 nodeCleanupBatchSize,
+        TLog log,
+        std::shared_ptr<INodeLoader> nodeLoader = nullptr)
         : RootPath(std::move(root))
         , StatePath(std::move(statePath))
         , MaxNodeCount(maxNodeCount)
@@ -299,9 +298,8 @@ private:
     {
         auto root = TIndexNode::CreateRoot(RootPath);
         STORAGE_INFO(
-            "Init index, Root=" << RootPath <<
-            ", StatePath=" << StatePath <<
-            ", MaxNodeCount=" << MaxNodeCount);
+            "Init index, Root=" << RootPath << ", StatePath=" << StatePath
+                                << ", MaxNodeCount=" << MaxNodeCount);
 
         if (OpenNodeByHandleEnabled) {
             try {
@@ -310,13 +308,13 @@ private:
                 }
 
                 STORAGE_INFO(
-                    "Inititialize NodeLoader, Root=" << RootPath <<
-                    ", Inode=" << root->Stat().INode <<
-                    ", NodeLoader=" << NodeLoader->ToString());
+                    "Inititialize NodeLoader, Root="
+                    << RootPath << ", Inode=" << root->Stat().INode
+                    << ", NodeLoader=" << NodeLoader->ToString());
             } catch (...) {
                 STORAGE_ERROR(
-                    "Failed to initialize NodeLoader" <<
-                    ", Exception=" << CurrentExceptionMessage());
+                    "Failed to initialize NodeLoader"
+                    << ", Exception=" << CurrentExceptionMessage());
             }
         }
 
@@ -329,7 +327,6 @@ private:
 
             RecoverNodesFromPersistentTable();
         }
-
     }
 
     void RecoverNodesFromPersistentTable()
@@ -401,8 +398,9 @@ private:
                 // parent already resolved so we can create node and resolve
                 // this entry
                 try {
-                    auto node =
-                        TIndexNode::Create(**parentNodeIt, pathElemRecord->Name);
+                    auto node = TIndexNode::Create(
+                        **parentNodeIt,
+                        pathElemRecord->Name);
                     node->SetRecordIndex(pathElemIndex);
                     NodeInsertOrderList.PushBack(node.get());
                     Nodes.insert(node);
@@ -464,7 +462,7 @@ private:
     }
 
     // called under read or write lock
-    template<typename TLockGuard>
+    template <typename TLockGuard>
     void CleanupNodesIfNeeded()
     {
         // Clean nodes only if we can safely load them
@@ -497,7 +495,8 @@ private:
         ShouldCleanupNodes = Nodes.size() > (MaxNodeCount / 2);
 
         if (ShouldCleanupNodes) {
-            ui32 maxNodesToClean = isNodeLimitReached ? NodeCleanupBatchSize : 1;
+            ui32 maxNodesToClean =
+                isNodeLimitReached ? NodeCleanupBatchSize : 1;
             auto it = NodeInsertOrderList.begin();
             while (maxNodesToClean && it != NodeInsertOrderList.end()) {
                 auto nodeId = it->GetNodeId();

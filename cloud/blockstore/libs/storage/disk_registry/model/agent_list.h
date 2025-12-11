@@ -58,7 +58,8 @@ private:
     THashMap<TAgentId, size_t> AgentIdToIdx;
     THashMap<TNodeId, size_t> NodeIdToIdx;
 
-    THashMap<TString, NProto::TDiskRegistryAgentParams> DiskRegistryAgentListParams;
+    THashMap<TString, NProto::TDiskRegistryAgentParams>
+        DiskRegistryAgentListParams;
 
     TLog Log;
 
@@ -67,7 +68,8 @@ public:
         const TAgentListConfig& config,
         NMonitoring::TDynamicCountersPtr counters,
         TVector<NProto::TAgentConfig> configs,
-        THashMap<TString, NProto::TDiskRegistryAgentParams> diskRegistryAgentListParams,
+        THashMap<TString, NProto::TDiskRegistryAgentParams>
+            diskRegistryAgentListParams,
         TLog log);
 
     const TVector<NProto::TAgentConfig>& GetAgents() const
@@ -123,14 +125,16 @@ public:
     TDuration GetRejectAgentTimeout(TInstant now, const TString& agentId) const;
     void OnAgentDisconnected(TInstant now, const TString& agentId);
 
-    const THashMap<TString, NProto::TDiskRegistryAgentParams>& GetDiskRegistryAgentListParams() const
+    const THashMap<TString, NProto::TDiskRegistryAgentParams>&
+    GetDiskRegistryAgentListParams() const
     {
         return DiskRegistryAgentListParams;
     }
     const NProto::TDiskRegistryAgentParams* GetDiskRegistryAgentListParams(
         const TString& agentId) const;
     void SetDiskRegistryAgentListParams(
-        const TString& agentId, const NProto::TDiskRegistryAgentParams& params);
+        const TString& agentId,
+        const NProto::TDiskRegistryAgentParams& params);
     TVector<TString> CleanupExpiredAgentListParams(TInstant now);
     TVector<TString> GetAgentIdsWithOverriddenListParams() const;
 
@@ -142,9 +146,7 @@ private:
         TInstant timestamp,
         const TKnownAgent& knownAgent);
 
-    void TransferAgent(
-        NProto::TAgentConfig& agent,
-        TNodeId newNodeId);
+    void TransferAgent(NProto::TAgentConfig& agent, TNodeId newNodeId);
 
     void RemoveAgentByIdx(size_t index);
 

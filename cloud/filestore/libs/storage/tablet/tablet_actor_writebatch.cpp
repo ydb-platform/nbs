@@ -1,5 +1,6 @@
-#include "helpers.h"
 #include "tablet_actor.h"
+
+#include "helpers.h"
 
 #include <cloud/filestore/libs/storage/tablet/model/blob_builder.h>
 #include <cloud/filestore/libs/storage/tablet/model/split_range.h>
@@ -49,8 +50,7 @@ const NProto::TError& PickError(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TWriteBatchActor final
-    : public TActorBootstrapped<TWriteBatchActor>
+class TWriteBatchActor final: public TActorBootstrapped<TWriteBatchActor>
 {
 private:
     const TString LogTag;
@@ -98,13 +98,13 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TWriteBatchActor::TWriteBatchActor(
-        TString logTag,
-        TActorId tablet,
-        TRequestInfoPtr requestInfo,
-        ui64 commitId,
-        TWriteRequestList writeBatch,
-        TVector<TMixedBlob> blobs,
-        TVector<TWriteRange> writeRanges)
+    TString logTag,
+    TActorId tablet,
+    TRequestInfoPtr requestInfo,
+    ui64 commitId,
+    TWriteRequestList writeBatch,
+    TVector<TMixedBlob> blobs,
+    TVector<TWriteRange> writeRanges)
     : LogTag(std::move(logTag))
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
@@ -123,8 +123,7 @@ void TWriteBatchActor::Bootstrap(const TActorContext& ctx)
 void TWriteBatchActor::WriteBlob(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvIndexTabletPrivate::TEvWriteBlobRequest>(
-        RequestInfo->CallContext
-    );
+        RequestInfo->CallContext);
 
     for (auto& blob: Blobs) {
         request->Blobs.emplace_back(blob.BlobId, std::move(blob.BlobContent));
@@ -150,8 +149,7 @@ void TWriteBatchActor::HandleWriteBlobResponse(
 void TWriteBatchActor::AddBlob(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvIndexTabletPrivate::TEvAddBlobRequest>(
-        RequestInfo->CallContext
-    );
+        RequestInfo->CallContext);
     request->Mode = EAddBlobMode::WriteBatch;
     request->WriteRanges = std::move(WriteRanges);
 
@@ -238,38 +236,42 @@ void TIndexTabletActor::HandleWriteBatch(
 
     auto writeBatch = DequeueWriteBatch();
     if (!writeBatch) {
-        LOG_TRACE(ctx, TFileStoreComponents::TABLET,
+        LOG_TRACE(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s WriteBatch completed (nothing to do)",
             LogTag.c_str());
 
         if (ev->Sender != ctx.SelfID) {
             // reply to caller
-            auto response =
-                std::make_unique<TEvIndexTabletPrivate::TEvWriteBatchResponse>();
+            auto response = std::make_unique<
+                TEvIndexTabletPrivate::TEvWriteBatchResponse>();
             NCloud::Reply(ctx, *ev, std::move(response));
         }
         return;
     }
 
     for (const auto& request: writeBatch) {
-        AddTransaction(*request.RequestInfo, request.RequestInfo->CancelRoutine);
+        AddTransaction(
+            *request.RequestInfo,
+            request.RequestInfo->CancelRoutine);
     }
 
     auto batchInfo = GetBatchInfo(writeBatch);
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s WriteBatch started (%u bytes, %s)",
         LogTag.c_str(),
         batchInfo.Size,
         batchInfo.IsAligned ? "aligned" : "unaligned");
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    bool skipFresh = batchInfo.Size >= Config->GetWriteBlobThreshold()
-        && batchInfo.IsAligned;
+    bool skipFresh = batchInfo.Size >= Config->GetWriteBlobThreshold() &&
+                     batchInfo.IsAligned;
     ExecuteTx<TWriteBatch>(
         ctx,
         std::move(requestInfo),
@@ -284,12 +286,16 @@ void TIndexTabletActor::HandleWriteBatchCompleted(
     const auto* msg = ev->Get();
 
     if (FAILED(msg->GetError().GetCode())) {
-        LOG_ERROR(ctx, TFileStoreComponents::TABLET,
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s WriteBatch failed (%s)",
             LogTag.c_str(),
             FormatError(msg->GetError()).c_str());
     } else {
-        LOG_TRACE(ctx, TFileStoreComponents::TABLET,
+        LOG_TRACE(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s WriteBatch completed (%s)",
             LogTag.c_str(),
             FormatError(msg->GetError()).c_str());
@@ -319,10 +325,8 @@ bool TIndexTabletActor::PrepareTx_WriteBatch(
 
     TSet<ui32> rangeIds;
     for (auto& write: args.WriteBatch) {
-        auto* session = FindSession(
-            write.ClientId,
-            write.SessionId,
-            write.SessionSeqNo);
+        auto* session =
+            FindSession(write.ClientId, write.SessionId, write.SessionSeqNo);
         if (!session) {
             write.Error = ErrorInvalidSession(
                 write.ClientId,
@@ -345,7 +349,8 @@ bool TIndexTabletActor::PrepareTx_WriteBatch(
             write.ByteRange.FirstBlock(),
             write.ByteRange.BlockCount(),
             BlockGroupSize,
-            [&] (ui32 blockOffset, ui32 blocksCount) {
+            [&](ui32 blockOffset, ui32 blocksCount)
+            {
                 rangeIds.insert(GetMixedRangeIndex(
                     write.NodeId,
                     write.ByteRange.FirstBlock() + blockOffset,
@@ -431,7 +436,8 @@ void TIndexTabletActor::ExecuteTx_WriteBatch(
             write.ByteRange.FirstAlignedBlock(),
             write.ByteRange.AlignedBlockCount(),
             BlockGroupSize,
-            [&] (ui32 blockOffset, ui32 blocksCount) {
+            [&](ui32 blockOffset, ui32 blocksCount)
+            {
                 MarkMixedBlocksDeleted(
                     db,
                     write.NodeId,
@@ -441,15 +447,17 @@ void TIndexTabletActor::ExecuteTx_WriteBatch(
             });
 
         for (ui64 b = write.ByteRange.FirstAlignedBlock();
-                b < write.ByteRange.FirstAlignedBlock() + write.ByteRange.AlignedBlockCount();
-                ++b)
+             b < write.ByteRange.FirstAlignedBlock() +
+                     write.ByteRange.AlignedBlockCount();
+             ++b)
         {
             WriteFreshBlock(
                 db,
                 write.NodeId,
                 args.CommitId,
                 b,
-                write.Buffer->GetBlock(b - write.ByteRange.FirstAlignedBlock()));
+                write.Buffer->GetBlock(
+                    b - write.ByteRange.FirstAlignedBlock()));
         }
 
         if (write.ByteRange.UnalignedHeadLength()) {
@@ -458,8 +466,7 @@ void TIndexTabletActor::ExecuteTx_WriteBatch(
                 write.NodeId,
                 args.CommitId,
                 write.ByteRange.Offset,
-                write.Buffer->GetUnalignedHead()
-            );
+                write.Buffer->GetUnalignedHead());
         }
 
         if (write.ByteRange.UnalignedTailLength()) {
@@ -468,8 +475,7 @@ void TIndexTabletActor::ExecuteTx_WriteBatch(
                 write.NodeId,
                 args.CommitId,
                 write.ByteRange.UnalignedTailOffset(),
-                write.Buffer->GetUnalignedTail()
-            );
+                write.Buffer->GetUnalignedTail());
         }
     }
 
@@ -483,13 +489,7 @@ void TIndexTabletActor::ExecuteTx_WriteBatch(
             attrs.SetSize(maxOffset);
         }
 
-        UpdateNode(
-            db,
-            id,
-            it->MinCommitId,
-            args.CommitId,
-            attrs,
-            it->Attrs);
+        UpdateNode(db, id, it->MinCommitId, args.CommitId, attrs, it->Attrs);
     }
 }
 
@@ -501,9 +501,7 @@ void TIndexTabletActor::CompleteTx_WriteBatch(
         RemoveTransaction(*request.RequestInfo);
     }
 
-    auto reply = [] (
-        const TActorContext& ctx,
-        TTxIndexTablet::TWriteBatch& args)
+    auto reply = [](const TActorContext& ctx, TTxIndexTablet::TWriteBatch& args)
     {
         FILESTORE_TRACK(
             ResponseSent_Tablet,
@@ -512,7 +510,8 @@ void TIndexTabletActor::CompleteTx_WriteBatch(
 
         if (args.RequestInfo->Sender != ctx.SelfID) {
             // reply to caller
-            auto response = std::make_unique<TEvIndexTabletPrivate::TEvWriteBatchResponse>();
+            auto response = std::make_unique<
+                TEvIndexTabletPrivate::TEvWriteBatchResponse>();
             NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
         }
 
@@ -523,13 +522,16 @@ void TIndexTabletActor::CompleteTx_WriteBatch(
                 "WriteData");
 
             // reply to original request
-            auto response = std::make_unique<TEvService::TEvWriteDataResponse>(write.Error);
+            auto response =
+                std::make_unique<TEvService::TEvWriteDataResponse>(write.Error);
             NCloud::Reply(ctx, *write.RequestInfo, std::move(response));
         }
     };
 
     if (!args.SkipFresh) {
-        LOG_TRACE(ctx, TFileStoreComponents::TABLET,
+        LOG_TRACE(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s WriteBatch completed (fresh)",
             LogTag.c_str());
 
@@ -545,21 +547,21 @@ void TIndexTabletActor::CompleteTx_WriteBatch(
         TABLET_VERIFY(write.ByteRange.IsAligned());
 
         for (ui64 b = write.ByteRange.FirstAlignedBlock();
-                b < write.ByteRange.FirstAlignedBlock() + write.ByteRange.AlignedBlockCount();
-                ++b)
+             b < write.ByteRange.FirstAlignedBlock() +
+                     write.ByteRange.AlignedBlockCount();
+             ++b)
         {
-            TBlock block {
+            TBlock block{
                 write.NodeId,
                 IntegerCast<ui32>(b),
                 // correct CommitId will be assigned later in AddBlobs
                 InvalidCommitId,
-                InvalidCommitId
-            };
+                InvalidCommitId};
 
             blocks.push_back(TFreshBlock{
                 block,
-                write.Buffer->GetBlock(b - write.ByteRange.FirstAlignedBlock())
-            });
+                write.Buffer->GetBlock(
+                    b - write.ByteRange.FirstAlignedBlock())});
         }
     }
 

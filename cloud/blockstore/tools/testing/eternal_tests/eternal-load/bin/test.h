@@ -6,7 +6,8 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct ITest {
+struct ITest
+{
     virtual ~ITest() = default;
 
     virtual int Run() = 0;

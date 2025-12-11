@@ -9,10 +9,10 @@ namespace NCloud::NBlockStore::NStorage {
 constexpr TDuration TIME_INCREMENT = TDuration::Seconds(1);
 constexpr TDuration TIME_MAX = TDuration::Seconds(5);
 
-#define CHECK_TIMEOUT_AND_DEADLINE(timeout, deadline, policy)                  \
-    UNIT_ASSERT_VALUES_EQUAL(timeout, policy.GetCurrentTimeout());             \
-    UNIT_ASSERT_VALUES_EQUAL(deadline, policy.GetCurrentDeadline());           \
-// CHECK_TIMEOUT_AND_DEADLINE
+#define CHECK_TIMEOUT_AND_DEADLINE(timeout, deadline, policy)        \
+    UNIT_ASSERT_VALUES_EQUAL(timeout, policy.GetCurrentTimeout());   \
+    UNIT_ASSERT_VALUES_EQUAL(deadline, policy.GetCurrentDeadline()); \
+    // CHECK_TIMEOUT_AND_DEADLINE
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -32,7 +32,9 @@ Y_UNIT_TEST_SUITE(TRetryPolicy)
         TRetryPolicy retryPolicy(TIME_INCREMENT, TIME_MAX);
 
         auto now = TInstant::Zero();
-        for (auto timeout = TDuration::Zero(); timeout < TIME_MAX; timeout += TIME_INCREMENT) {
+        for (auto timeout = TDuration::Zero(); timeout < TIME_MAX;
+             timeout += TIME_INCREMENT)
+        {
             CHECK_TIMEOUT_AND_DEADLINE(timeout, now, retryPolicy);
 
             retryPolicy.Update(now);

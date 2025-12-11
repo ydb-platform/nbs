@@ -8,15 +8,13 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TValue
-    : TLFUListItemBase<TValue>
+struct TValue: TLFUListItemBase<TValue>
 {
     ui32 X;
 
     TValue(ui32 x)
         : X(x)
-    {
-    }
+    {}
 
     ui32 Weight() const
     {

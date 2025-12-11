@@ -10,36 +10,27 @@ namespace NCloud::NBlockStore::NSpdk {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestSpdkDevice
-    : public ISpdkDevice
+struct TTestSpdkDevice: public ISpdkDevice
 {
     std::function<NThreading::TFuture<void>()> StartHandler;
     std::function<NThreading::TFuture<void>()> StopHandler;
 
-    using TBufferRequestHandler = std::function<
-        NThreading::TFuture<NProto::TError>(
-            void* buf,
-            ui64 fileOffset,
-            ui32 bytesCount)>;
+    using TBufferRequestHandler = std::function<NThreading::TFuture<
+        NProto::TError>(void* buf, ui64 fileOffset, ui32 bytesCount)>;
     TBufferRequestHandler ReadBufferHandler;
     TBufferRequestHandler WriteBufferHandler;
 
-    using TSgListRequestHandler = std::function<
-        NThreading::TFuture<NProto::TError>(
-            TSgList sglist,
-            ui64 fileOffset,
-            ui32 bytesCount)>;
+    using TSgListRequestHandler = std::function<NThreading::TFuture<
+        NProto::TError>(TSgList sglist, ui64 fileOffset, ui32 bytesCount)>;
     TSgListRequestHandler ReadSgListHandler;
     TSgListRequestHandler WriteSgListHandler;
 
     using TZeroRequestHandler = std::function<
-        NThreading::TFuture<NProto::TError>(
-            ui64 fileOffset,
-            ui32 bytesCount)>;
+        NThreading::TFuture<NProto::TError>(ui64 fileOffset, ui32 bytesCount)>;
     TZeroRequestHandler WriteZeroesHandler;
 
-    using TEraseRequestHandler = std::function<
-        NThreading::TFuture<NProto::TError>(
+    using TEraseRequestHandler =
+        std::function<NThreading::TFuture<NProto::TError>(
             NProto::EDeviceEraseMethod method)>;
     TEraseRequestHandler EraseHandler;
 
@@ -63,34 +54,26 @@ struct TTestSpdkDevice
         return StopHandler();
     }
 
-    NThreading::TFuture<NProto::TError> Read(
-        void* buf,
-        ui64 fileOffset,
-        ui32 bytesCount) override
+    NThreading::TFuture<NProto::TError>
+    Read(void* buf, ui64 fileOffset, ui32 bytesCount) override
     {
         return ReadBufferHandler(buf, fileOffset, bytesCount);
     }
 
-    NThreading::TFuture<NProto::TError> Write(
-        void* buf,
-        ui64 fileOffset,
-        ui32 bytesCount) override
+    NThreading::TFuture<NProto::TError>
+    Write(void* buf, ui64 fileOffset, ui32 bytesCount) override
     {
         return WriteBufferHandler(buf, fileOffset, bytesCount);
     }
 
-    NThreading::TFuture<NProto::TError> Read(
-        TSgList sglist,
-        ui64 fileOffset,
-        ui32 bytesCount) override
+    NThreading::TFuture<NProto::TError>
+    Read(TSgList sglist, ui64 fileOffset, ui32 bytesCount) override
     {
         return ReadSgListHandler(std::move(sglist), fileOffset, bytesCount);
     }
 
-    NThreading::TFuture<NProto::TError> Write(
-        TSgList sglist,
-        ui64 fileOffset,
-        ui32 bytesCount) override
+    NThreading::TFuture<NProto::TError>
+    Write(TSgList sglist, ui64 fileOffset, ui32 bytesCount) override
     {
         return WriteSgListHandler(std::move(sglist), fileOffset, bytesCount);
     }
@@ -111,16 +94,13 @@ struct TTestSpdkDevice
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestSpdkTarget
-    : public ISpdkTarget
+struct TTestSpdkTarget: public ISpdkTarget
 {
     void Start() override
-    {
-    }
+    {}
 
     void Stop() override
-    {
-    }
+    {}
 
     NThreading::TFuture<void> StartAsync() override
     {
@@ -142,16 +122,13 @@ struct TTestSpdkTarget
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestSpdkEnv
-    : public ISpdkEnv
+struct TTestSpdkEnv: public ISpdkEnv
 {
     void Start() override
-    {
-    }
+    {}
 
     void Stop() override
-    {
-    }
+    {}
 
     NThreading::TFuture<void> StartAsync() override
     {
@@ -226,8 +203,7 @@ struct TTestSpdkEnv
         Y_ABORT("Not implemented");
     }
 
-    NThreading::TFuture<void> UnregisterDevice(
-        const TString& name) override
+    NThreading::TFuture<void> UnregisterDevice(const TString& name) override
     {
         Y_UNUSED(name);
 
@@ -303,7 +279,8 @@ struct TTestSpdkEnv
     }
 
     NThreading::TFuture<void> EnableHistogram(
-        const TString& deviceName, bool enable) override
+        const TString& deviceName,
+        bool enable) override
     {
         Y_UNUSED(deviceName);
         Y_UNUSED(enable);
@@ -319,16 +296,14 @@ struct TTestSpdkEnv
         Y_ABORT("Not implemented");
     }
 
-    NThreading::TFuture<void> AddTransport(
-        const TString& transportId) override
+    NThreading::TFuture<void> AddTransport(const TString& transportId) override
     {
         Y_UNUSED(transportId);
 
         Y_ABORT("Not implemented");
     }
 
-    NThreading::TFuture<void> StartListen(
-        const TString& transportId) override
+    NThreading::TFuture<void> StartListen(const TString& transportId) override
     {
         Y_UNUSED(transportId);
 
@@ -380,4 +355,4 @@ struct TTestSpdkEnv
     }
 };
 
-}   // namespace NCloud::NBlockStore::NServer
+}   // namespace NCloud::NBlockStore::NSpdk

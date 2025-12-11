@@ -52,8 +52,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TGetStorageConfigFieldsActionActor::TGetStorageConfigFieldsActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -62,9 +62,7 @@ void TGetStorageConfigFieldsActionActor::Bootstrap(const TActorContext& ctx)
 {
     NProtoPrivate::TGetStorageConfigFieldsRequest request;
     if (!google::protobuf::util::JsonStringToMessage(Input, &request).ok()) {
-        ReplyAndDie(
-            ctx,
-            TErrorResponse(E_ARGUMENT, "Failed to parse input"));
+        ReplyAndDie(ctx, TErrorResponse(E_ARGUMENT, "Failed to parse input"));
         return;
     }
 
@@ -132,7 +130,7 @@ STFUNC(TGetStorageConfigFieldsActionActor::StateWork)
     }
 }
 
-} // namespace
+}   // namespace
 
 IActorPtr TStorageServiceActor::CreateGetStorageConfigFieldsActionActor(
     TRequestInfoPtr requestInfo,

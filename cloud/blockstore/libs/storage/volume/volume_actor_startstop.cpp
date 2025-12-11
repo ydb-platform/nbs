@@ -134,7 +134,8 @@ void TVolumeActor::StartPartitionsIfNeeded(const TActorContext& ctx)
                 return;
             }
             case EPartitionsStartedReason::STARTED_FOR_GC: {
-                PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_USE;
+                PartitionsStartedReason =
+                    EPartitionsStartedReason::STARTED_FOR_USE;
                 return;
             }
             case EPartitionsStartedReason::STARTED_FOR_USE: {
@@ -161,10 +162,12 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
 
     auto maxTimedOutDeviceStateDuration =
         volumeParams.GetMaxTimedOutDeviceStateDurationOverride(ctx.Now());
-    const auto maxTimedOutDeviceStateDurationOverridden = !!maxTimedOutDeviceStateDuration;
+    const auto maxTimedOutDeviceStateDurationOverridden =
+        !!maxTimedOutDeviceStateDuration;
 
     if (!maxTimedOutDeviceStateDuration) {
-        maxTimedOutDeviceStateDuration = State->GetMaxTimedOutDeviceStateDuration();
+        maxTimedOutDeviceStateDuration =
+            State->GetMaxTimedOutDeviceStateDuration();
     }
 
     if (!maxTimedOutDeviceStateDuration) {
@@ -298,7 +301,8 @@ void TVolumeActor::SetupDiskRegistryBasedPartitions(const TActorContext& ctx)
         ctx,
         std::move(actorStack),
         nonreplicatedConfig);
-    actorStack = WrapWithFollowerActorIfNeeded(ctx, std::move(actorStack), false);
+    actorStack =
+        WrapWithFollowerActorIfNeeded(ctx, std::move(actorStack), false);
 
     State->SetDiskRegistryBasedPartitionActor(
         std::move(actorStack),
@@ -430,7 +434,8 @@ void TVolumeActor::StartPartitionsImpl(const TActorContext& ctx)
 
     // Request storage info for partitions
     for (auto& partition: State->GetPartitions()) {
-        partition.ExternalBootTimeout = Config->GetMinExternalBootRequestTimeout();
+        partition.ExternalBootTimeout =
+            Config->GetMinExternalBootRequestTimeout();
         SendBootExternalRequest(ctx, partition);
     }
 
@@ -507,7 +512,10 @@ void TVolumeActor::StopPartitions(
 {
     if (!State) {
         if (onPartitionStopped) {
-            std::invoke(std::move(onPartitionStopped), ctx, MakeError(S_ALREADY));
+            std::invoke(
+                std::move(onPartitionStopped),
+                ctx,
+                MakeError(S_ALREADY));
         }
         return;
     }
@@ -536,9 +544,7 @@ void TVolumeActor::StopPartitions(
 
         // Stop any currently booting or running tablet
         if (part.Bootstrapper) {
-            NCloud::Send<TEvBootstrapper::TEvStop>(
-                ctx,
-                part.Bootstrapper);
+            NCloud::Send<TEvBootstrapper::TEvStop>(ctx, part.Bootstrapper);
             // Should clear bootstrapper before partitions start
             part.Bootstrapper = {};
         }
@@ -649,7 +655,10 @@ void TVolumeActor::HandleRetryStartPartition(
     if (msg->Cookie.DetachEvent()) {
         auto* part = State->GetPartition(msg->TabletId);
 
-        Y_ABORT_UNLESS(part, "Scheduled retry for missing partition %lu", msg->TabletId);
+        Y_ABORT_UNLESS(
+            part,
+            "Scheduled retry for missing partition %lu",
+            msg->TabletId);
 
         part->RetryCookie.Detach();
 
@@ -688,13 +697,15 @@ void TVolumeActor::HandleBootExternalResponse(
             partTabletId,
             FormatError(error).c_str());
 
-        part->ExternalBootTimeout = Min(
-            part->ExternalBootTimeout + Config->GetExternalBootRequestTimeoutIncrement(),
-            Config->GetMaxExternalBootRequestTimeout());
+        part->ExternalBootTimeout =
+            Min(part->ExternalBootTimeout +
+                    Config->GetExternalBootRequestTimeoutIncrement(),
+                Config->GetMaxExternalBootRequestTimeout());
 
         ++FailedBoots;
 
-        part->SetFailed(TStringBuilder()
+        part->SetFailed(
+            TStringBuilder()
             << "BootExternalRequest failed: " << FormatError(error));
         ScheduleRetryStartPartition(ctx, *part);
         return;
@@ -708,7 +719,8 @@ void TVolumeActor::HandleBootExternalResponse(
         partTabletId);
 
     if (msg->StorageInfo->TabletType != TTabletTypes::BlockStorePartition &&
-        msg->StorageInfo->TabletType != TTabletTypes::BlockStorePartition2) {
+        msg->StorageInfo->TabletType != TTabletTypes::BlockStorePartition2)
+    {
         // Partitions use specific tablet factory
         LOG_ERROR(
             ctx,
@@ -719,19 +731,20 @@ void TVolumeActor::HandleBootExternalResponse(
             ToString(msg->StorageInfo->TabletType).c_str());
         part->SetFailed(
             TStringBuilder()
-                << "Unexpected tablet type: "
-                << msg->StorageInfo->TabletType);
+            << "Unexpected tablet type: " << msg->StorageInfo->TabletType);
         // N.B.: this is a fatal error, don't retry
         return;
     }
 
-    Y_ABORT_UNLESS(msg->StorageInfo->TabletID == partTabletId,
+    Y_ABORT_UNLESS(
+        msg->StorageInfo->TabletID == partTabletId,
         "Tablet IDs mismatch: %lu vs %lu",
         msg->StorageInfo->TabletID,
         partTabletId);
 
     {
-        auto request = std::make_unique<TEvStatsService::TEvPartitionBootExternalCompleted>(
+        auto request = std::make_unique<
+            TEvStatsService::TEvPartitionBootExternalCompleted>(
             State->GetDiskId(),
             partTabletId,
             msg->StorageInfo->Channels);
@@ -756,9 +769,8 @@ void TVolumeActor::HandleBootExternalResponse(
     auto selfId = SelfId();
     auto volumeTabletId = TabletID();
 
-    auto factory = [=](
-                       const TActorId& owner,
-                       TTabletStorageInfo* storage) mutable
+    auto factory =
+        [=](const TActorId& owner, TTabletStorageInfo* storage) mutable
     {
         Y_ABORT_UNLESS(
             storage->TabletType == TTabletTypes::BlockStorePartition ||
@@ -807,11 +819,13 @@ void TVolumeActor::HandleBootExternalResponse(
     bootConfig.SuggestedGeneration = part->SuggestedGeneration;
     bootConfig.BootAttemptsThreshold = 1;
 
-    auto bootstrapper = NCloud::RegisterLocal(ctx, CreateBootstrapper(
-        bootConfig,
-        SelfId(),
-        part->StorageInfo,
-        std::move(setupInfo)));
+    auto bootstrapper = NCloud::RegisterLocal(
+        ctx,
+        CreateBootstrapper(
+            bootConfig,
+            SelfId(),
+            part->StorageInfo,
+            std::move(setupInfo)));
 
     part->Init(bootstrapper);
 
@@ -822,7 +836,11 @@ void TVolumeActor::HandleBootExternalResponse(
         TBlockStoreComponents::VOLUME,
         "%s Starting partition [%s g:%u] with bootstrapper %s",
         LogTitle.GetWithTime().c_str(),
-        TLogTitle::GetPartitionPrefix(partTabletId, partitionIndex, siblingCount).c_str(),
+        TLogTitle::GetPartitionPrefix(
+            partTabletId,
+            partitionIndex,
+            siblingCount)
+            .c_str(),
         bootConfig.SuggestedGeneration,
         ToString(bootstrapper).c_str());
 }
@@ -929,8 +947,7 @@ void TVolumeActor::HandleWaitReadyResponse(
     auto* partition = State->GetPartition(tabletId);
 
     // Drop unexpected responses in case of restart races
-    if (partition &&
-        partition->State == TPartitionInfo::STARTED &&
+    if (partition && partition->State == TPartitionInfo::STARTED &&
         partition->IsKnownActorId(ev->Sender))
     {
         partition->SetReady();

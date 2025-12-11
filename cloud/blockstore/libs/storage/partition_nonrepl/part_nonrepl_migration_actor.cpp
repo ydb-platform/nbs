@@ -16,18 +16,18 @@ constexpr TDuration PrepareMigrationInterval = TDuration::Seconds(5);
 ////////////////////////////////////////////////////////////////////////////////
 
 TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticsConfig,
-        IProfileLogPtr profileLog,
-        IBlockDigestGeneratorPtr digestGenerator,
-        ui64 initialMigrationIndex,
-        TString rwClientId,
-        TNonreplicatedPartitionConfigPtr srcConfig,
-        google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
-        NRdma::IClientPtr rdmaClient,
-        NActors::TActorId volumeActorId,
-        NActors::TActorId statActorId,
-        NActors::TActorId migrationSrcActorId)
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
+    IProfileLogPtr profileLog,
+    IBlockDigestGeneratorPtr digestGenerator,
+    ui64 initialMigrationIndex,
+    TString rwClientId,
+    TNonreplicatedPartitionConfigPtr srcConfig,
+    google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
+    NRdma::IClientPtr rdmaClient,
+    NActors::TActorId volumeActorId,
+    NActors::TActorId statActorId,
+    NActors::TActorId migrationSrcActorId)
     : TNonreplicatedPartitionMigrationCommonActor(
           static_cast<IMigrationOwner*>(this),
           config,
@@ -286,7 +286,9 @@ void TNonreplicatedPartitionMigrationActor::HandleFinishMigrationResponse(
     const auto& error = ev->Get()->Record.GetError();
 
     if (HasError(error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::PARTITION,
             "[%s] Finish migration failed, error: %s",
             SrcConfig->GetName().c_str(),
             FormatError(error).c_str());
@@ -310,24 +312,23 @@ void TNonreplicatedPartitionMigrationActor::PrepareForMigration(
     auto request =
         std::make_unique<TEvVolume::TEvPreparePartitionMigrationRequest>();
 
-    NCloud::Send(
-        ctx,
-        SrcConfig->GetParentActorId(),
-        std::move(request));
+    NCloud::Send(ctx, SrcConfig->GetParentActorId(), std::move(request));
 }
 
-void TNonreplicatedPartitionMigrationActor::HandlePreparePartitionMigrationRequest(
-    const TEvVolume::TEvPreparePartitionMigrationRequest::TPtr& ev,
-    const TActorContext& ctx)
+void TNonreplicatedPartitionMigrationActor::
+    HandlePreparePartitionMigrationRequest(
+        const TEvVolume::TEvPreparePartitionMigrationRequest::TPtr& ev,
+        const TActorContext& ctx)
 {
     Y_UNUSED(ev);
 
     PrepareForMigration(ctx);
 }
 
-void TNonreplicatedPartitionMigrationActor::HandlePreparePartitionMigrationResponse(
-    const TEvVolume::TEvPreparePartitionMigrationResponse::TPtr& ev,
-    const TActorContext& ctx)
+void TNonreplicatedPartitionMigrationActor::
+    HandlePreparePartitionMigrationResponse(
+        const TEvVolume::TEvPreparePartitionMigrationResponse::TPtr& ev,
+        const TActorContext& ctx)
 {
     bool isMigrationAllowed = ev->Get()->IsMigrationAllowed;
     if (!isMigrationAllowed) {

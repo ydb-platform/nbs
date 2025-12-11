@@ -54,7 +54,7 @@ struct TRequestDetails
 {
     void* Context = nullptr;
     TStringBuf Out;
-    TStringBuf DataBuffer; // if non empty, zero copy is possible
+    TStringBuf DataBuffer;   // if non empty, zero copy is possible
     TString DeviceUUID;
     TString ClientId;
 
@@ -156,12 +156,12 @@ private:
 
 public:
     TRequestHandler(
-            TVector<TString> devices,
-            ITaskQueuePtr taskQueue,
-            TDeviceClientPtr deviceClient,
-            IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
-            TOldRequestCounters oldRequestCounters,
-            bool rejectLateRequests)
+        TVector<TString> devices,
+        ITaskQueuePtr taskQueue,
+        TDeviceClientPtr deviceClient,
+        IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
+        TOldRequestCounters oldRequestCounters,
+        bool rejectLateRequests)
         : Devices(
               MakeDevices(std::move(devices), std::move(oldRequestCounters)))
         , TaskQueue(std::move(taskQueue))
@@ -278,7 +278,8 @@ private:
                 return HandleWriteBlocksRequest(
                     context,
                     std::move(callContext),
-                    static_cast<NProto::TWriteDeviceBlocksRequest&>(*request.Proto),
+                    static_cast<NProto::TWriteDeviceBlocksRequest&>(
+                        *request.Proto),
                     isZeroCopyDataSupported,
                     request.Data,
                     out);
@@ -287,7 +288,8 @@ private:
                 return HandleZeroBlocksRequest(
                     context,
                     std::move(callContext),
-                    static_cast<NProto::TZeroDeviceBlocksRequest&>(*request.Proto),
+                    static_cast<NProto::TZeroDeviceBlocksRequest&>(
+                        *request.Proto),
                     request.Data,
                     out);
 
@@ -295,7 +297,8 @@ private:
                 return HandleChecksumBlocksRequest(
                     context,
                     std::move(callContext),
-                    static_cast<NProto::TChecksumDeviceBlocksRequest&>(*request.Proto),
+                    static_cast<NProto::TChecksumDeviceBlocksRequest&>(
+                        *request.Proto),
                     request.Data,
                     out);
 
@@ -364,10 +367,10 @@ private:
         TRequestDetails requestDetails,
         THandleResponseMethod handleResponseMethod) const
     {
-        auto handleResponse =
-            [self = shared_from_this(),
-             requestDetails = std::move(requestDetails),
-             handleResponseMethod = handleResponseMethod](TFuture future) mutable
+        auto handleResponse = [self = shared_from_this(),
+                               requestDetails = std::move(requestDetails),
+                               handleResponseMethod =
+                                   handleResponseMethod](TFuture future) mutable
         {
             self->TaskQueue->ExecuteSimple(
                 [self = self,
@@ -425,8 +428,8 @@ private:
             return ECheckRange::DelayRequest;
         }
 
-        const bool overlapped = IsOverlapped(
-            synchronizedData.RecentBlocksTracker.CheckRecorded(
+        const bool overlapped =
+            IsOverlapped(synchronizedData.RecentBlocksTracker.CheckRecorded(
                 requestDetails.VolumeRequestId,
                 requestDetails.Range,
                 overlapDetails));
@@ -455,7 +458,8 @@ private:
         TList<T>* postponedRequests) const
     {
         TList<T> readyToExecute;
-        auto executeNotOverlappedRequests = [&](T& postponedRequest) {
+        auto executeNotOverlappedRequests = [&](T& postponedRequest)
+        {
             TString overlapDetails;
             const ECheckRange checkResult = CheckRangeIntersection(
                 postponedRequest.RequestDetails,
@@ -882,7 +886,8 @@ private:
         const TRequestDetails& requestDetails,
         NThreading::TFuture<TMultiAgentWriteDeviceBlocksResponse> future) const
     {
-        const TMultiAgentWriteDeviceBlocksResponse& response = future.GetValue();
+        const TMultiAgentWriteDeviceBlocksResponse& response =
+            future.GetValue();
         const NProto::TError& error = response.GetError();
 
         if (HasError(error)) {
@@ -1112,8 +1117,7 @@ private:
 
 ///////////////////////////////////////////////////////////////////////////////
 
-class TRdmaTarget final
-    : public IRdmaTarget
+class TRdmaTarget final: public IRdmaTarget
 {
 private:
     const TRdmaTargetConfigPtr Config;
@@ -1127,14 +1131,14 @@ private:
 
 public:
     TRdmaTarget(
-            TRdmaTargetConfigPtr config,
-            TOldRequestCounters oldRequestCounters,
-            ILoggingServicePtr logging,
-            NRdma::IServerPtr server,
-            TDeviceClientPtr deviceClient,
-            IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
-            TVector<TString> devices,
-            ITaskQueuePtr taskQueue)
+        TRdmaTargetConfigPtr config,
+        TOldRequestCounters oldRequestCounters,
+        ILoggingServicePtr logging,
+        NRdma::IServerPtr server,
+        TDeviceClientPtr deviceClient,
+        IMultiAgentWriteHandlerPtr multiAgentWriteHandler,
+        TVector<TString> devices,
+        ITaskQueuePtr taskQueue)
         : Config(std::move(config))
         , Logging(std::move(logging))
         , Server(std::move(server))
@@ -1153,10 +1157,8 @@ public:
     {
         Log = Logging->CreateLog("BLOCKSTORE_DISK_AGENT");
 
-        auto endpoint = Server->StartEndpoint(
-            Config->Host,
-            Config->Port,
-            Handler);
+        auto endpoint =
+            Server->StartEndpoint(Config->Host, Config->Port, Handler);
 
         if (endpoint == nullptr) {
             STORAGE_ERROR("unable to set up RDMA endpoint");

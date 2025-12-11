@@ -1,10 +1,10 @@
 #include "poison_pill_helper.h"
 
-#include <library/cpp/testing/unittest/registar.h>
-
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/testlib/test_runtime.h>
+
+#include <library/cpp/testing/unittest/registar.h>
 
 using namespace NActors;
 
@@ -138,7 +138,6 @@ private:
                 ctx,
                 ctx.Register(new TChildActor()));
         }
-
     }
 };
 

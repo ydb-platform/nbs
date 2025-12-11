@@ -4,9 +4,9 @@
 #include <util/system/event.h>
 
 #if defined(_linux_)
-#   include <errno.h>
-#   include <linux/futex.h>
-#   include <sys/syscall.h>
+#include <errno.h>
+#include <linux/futex.h>
+#include <sys/syscall.h>
 #endif
 
 namespace NCloud {
@@ -29,10 +29,19 @@ public:
                 return;
             }
 
-            int ret = syscall(SYS_futex, &Signaled, FUTEX_WAIT_PRIVATE, 0, nullptr, nullptr, 0);
+            int ret = syscall(
+                SYS_futex,
+                &Signaled,
+                FUTEX_WAIT_PRIVATE,
+                0,
+                nullptr,
+                nullptr,
+                0);
             if (ret == -1) {
-                Y_ABORT_UNLESS(errno == EAGAIN || errno == EINTR,
-                    "unable to wait on futex: %s", LastSystemErrorText(errno));
+                Y_ABORT_UNLESS(
+                    errno == EAGAIN || errno == EINTR,
+                    "unable to wait on futex: %s",
+                    LastSystemErrorText(errno));
             }
         }
     }
@@ -48,10 +57,19 @@ public:
         ts.tv_sec = timeout.Seconds();
         ts.tv_nsec = timeout.NanoSecondsOfSecond();
 
-        int ret = syscall(SYS_futex, &Signaled, FUTEX_WAIT_PRIVATE, 0, &ts, nullptr, 0);
+        int ret = syscall(
+            SYS_futex,
+            &Signaled,
+            FUTEX_WAIT_PRIVATE,
+            0,
+            &ts,
+            nullptr,
+            0);
         if (ret == -1) {
-            Y_ABORT_UNLESS(errno == EAGAIN || errno == EINTR || errno == ETIMEDOUT,
-                "unable to wait on futex: %s", LastSystemErrorText(errno));
+            Y_ABORT_UNLESS(
+                errno == EAGAIN || errno == EINTR || errno == ETIMEDOUT,
+                "unable to wait on futex: %s",
+                LastSystemErrorText(errno));
         }
 
         return __atomic_exchange_n(&Signaled, 0, __ATOMIC_SEQ_CST);
@@ -74,8 +92,18 @@ public:
     {
         int signaled = __atomic_exchange_n(&Signaled, 1, __ATOMIC_SEQ_CST);
         if (!signaled) {
-            int ret = syscall(SYS_futex, &Signaled, FUTEX_WAKE_PRIVATE, INT_MAX, nullptr, nullptr, 0);
-            Y_ABORT_UNLESS(ret >= 0, "unable to signal on futex: %s", LastSystemErrorText(errno));
+            int ret = syscall(
+                SYS_futex,
+                &Signaled,
+                FUTEX_WAKE_PRIVATE,
+                INT_MAX,
+                nullptr,
+                nullptr,
+                0);
+            Y_ABORT_UNLESS(
+                ret >= 0,
+                "unable to signal on futex: %s",
+                LastSystemErrorText(errno));
         }
     }
 };

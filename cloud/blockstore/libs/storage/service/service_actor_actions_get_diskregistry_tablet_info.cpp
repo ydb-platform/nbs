@@ -2,7 +2,6 @@
 
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
-
 #include <cloud/blockstore/private/api/protos/disk.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -35,6 +34,7 @@ public:
     TGetDiskRegistryTabletInfoActor(TRequestInfoPtr requestInfo);
 
     void Bootstrap(const TActorContext& ctx);
+
 private:
     void HandleSuccess(const TActorContext& ctx, const TString& output);
     void HandleError(const TActorContext& ctx, const NProto::TError& error);
@@ -50,7 +50,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TGetDiskRegistryTabletInfoActor::TGetDiskRegistryTabletInfoActor(
-        TRequestInfoPtr requestInfo)
+    TRequestInfoPtr requestInfo)
     : RequestInfo(std::move(requestInfo))
 {}
 
@@ -68,8 +68,8 @@ void TGetDiskRegistryTabletInfoActor::HandleError(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(
-        error);
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(error);
 
     LWTRACK(
         ResponseSent_Service,

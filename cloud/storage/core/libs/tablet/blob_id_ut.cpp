@@ -15,7 +15,8 @@ Y_UNIT_TEST_SUITE(TPartialBlobIdTest)
     Y_UNIT_TEST(ShouldCorrectlySplitBlobId)
     {
         {
-            TPartialBlobId blobId = MakePartialBlobId(TLogoBlobID(1, 2, 3, 4, 5, 6));
+            TPartialBlobId blobId =
+                MakePartialBlobId(TLogoBlobID(1, 2, 3, 4, 5, 6));
             UNIT_ASSERT_EQUAL(blobId.Generation(), 2);
             UNIT_ASSERT_EQUAL(blobId.Step(), 3);
             UNIT_ASSERT_EQUAL(blobId.Channel(), 4);
@@ -32,12 +33,14 @@ Y_UNIT_TEST_SUITE(TPartialBlobIdTest)
     Y_UNIT_TEST(ShouldUseBlobSizeAsDeletionMarkerIndicator)
     {
         {
-            TPartialBlobId blobId = MakePartialBlobId(TLogoBlobID(1, 2, 3, 4, 5, 6));
+            TPartialBlobId blobId =
+                MakePartialBlobId(TLogoBlobID(1, 2, 3, 4, 5, 6));
             UNIT_ASSERT(!IsDeletionMarker(blobId));
         }
 
         {
-            TPartialBlobId blobId = MakePartialBlobId(TLogoBlobID(1, 2, 3, 4, 0, 6));
+            TPartialBlobId blobId =
+                MakePartialBlobId(TLogoBlobID(1, 2, 3, 4, 0, 6));
             UNIT_ASSERT(IsDeletionMarker(blobId));
         }
     }

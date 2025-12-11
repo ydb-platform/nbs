@@ -47,8 +47,8 @@ public:
     TContext(TContext&&) = delete;
     TContext(const TContext&&) = delete;
 
-    TContext& operator = (TContext&&) = delete;
-    TContext& operator = (const TContext&&) = delete;
+    TContext& operator=(TContext&&) = delete;
+    TContext& operator=(const TContext&&) = delete;
 
     ~TContext();
 

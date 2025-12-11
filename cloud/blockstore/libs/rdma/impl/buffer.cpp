@@ -22,8 +22,7 @@ TPooledBuffer::operator TStringBuf() const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TBufferPool::TChunk
-    : public TIntrusiveListItem<TChunk>
+class TBufferPool::TChunk: public TIntrusiveListItem<TChunk>
 {
 private:
     NVerbs::TMemoryRegionPtr MemoryRegion;
@@ -259,7 +258,9 @@ void TBufferPool::Init(NVerbs::IVerbsPtr verbs, ibv_pd* pd, int flags)
     Impl.reset(new TImpl(std::move(verbs), pd, flags));
 }
 
-TBufferPool::TBuffer TBufferPool::AcquireBuffer(size_t bytesCount, bool ignoreCache)
+TBufferPool::TBuffer TBufferPool::AcquireBuffer(
+    size_t bytesCount,
+    bool ignoreCache)
 {
     return Impl->AcquireBuffer(bytesCount, ignoreCache);
 }

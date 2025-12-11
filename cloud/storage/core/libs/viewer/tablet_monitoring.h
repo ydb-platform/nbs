@@ -25,11 +25,8 @@ using TGetMonitoringYDBGroupUrl = std::function<TString(
 
 using TGetMonitoringDashboardYDBGroupUrl = std::function<TString(ui32 groupId)>;
 
-using TBuildReassignChannelButton = std::function<void(
-    IOutputStream& out,
-    ui64 hiveTabletId,
-    ui64 tabletId,
-    ui32 channel)>;
+using TBuildReassignChannelButton = std::function<
+    void(IOutputStream& out, ui64 hiveTabletId, ui64 tabletId, ui32 channel)>;
 
 void DumpChannels(
     IOutputStream& out,

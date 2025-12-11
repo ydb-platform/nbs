@@ -11,13 +11,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TString CreateInputDescription(
-    const TString& masterDiskId,
-    ui32 replicaCount)
+TString CreateInputDescription(const TString& masterDiskId, ui32 replicaCount)
 {
-    return TStringBuilder()
-        << "MasterDiskId=" << masterDiskId.c_str()
-        << ", ReplicaCount=" << replicaCount;
+    return TStringBuilder() << "MasterDiskId=" << masterDiskId.c_str()
+                            << ", ReplicaCount=" << replicaCount;
 }
 
 TString CreateInputDescription(
@@ -51,8 +48,7 @@ void TDiskRegistryActor::HandleUpdateDiskReplicaCount(
         CreateRequestInfo<TEvDiskRegistry::TUpdateDiskReplicaCountMethod>(
             ev->Sender,
             ev->Cookie,
-            ev->Get()->CallContext
-        ),
+            ev->Get()->CallContext),
         record.GetMasterDiskId(),
         record.GetReplicaCount());
 }
@@ -76,8 +72,8 @@ void TDiskRegistryActor::ExecuteUpdateDiskReplicaCount(
 {
     TDiskRegistryDatabase db(tx.DB);
 
-    args.Error = State->UpdateDiskReplicaCount(db, args.MasterDiskId,
-        args.ReplicaCount);
+    args.Error =
+        State->UpdateDiskReplicaCount(db, args.MasterDiskId, args.ReplicaCount);
 
     if (HasError(args.Error)) {
         LOG_ERROR(

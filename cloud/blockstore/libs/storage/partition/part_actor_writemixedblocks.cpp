@@ -19,8 +19,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename ...T>
-IEventBasePtr CreateWriteBlocksResponse(bool replyLocal, T&& ...args)
+template <typename... T>
+IEventBasePtr CreateWriteBlocksResponse(bool replyLocal, T&&... args)
 {
     if (replyLocal) {
         return std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
@@ -49,16 +49,15 @@ public:
             const bool ReplyLocal;
 
             TSubRequest(
-                    const TBlockRange32 writeRange,
-                    const bool empty,
-                    TRequestInfoPtr requestInfo,
-                    bool replyLocal)
+                const TBlockRange32 writeRange,
+                const bool empty,
+                TRequestInfoPtr requestInfo,
+                bool replyLocal)
                 : WriteRange(writeRange)
                 , Empty(empty)
                 , RequestInfo(std::move(requestInfo))
                 , ReplyLocal(replyLocal)
-            {
-            }
+            {}
         };
 
         TPartialBlobId BlobId;
@@ -128,13 +127,13 @@ private:
 };
 
 TWriteMixedBlocksActor::TWriteMixedBlocksActor(
-        const ui64 tabletId,
-        const TActorId& tablet,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
-        ui64 commitId,
-        TVector<TRequest> requests,
-        IWriteBlocksHandlerPtr writeHandler,
-        ui32 blockSizeForChecksums)
+    const ui64 tabletId,
+    const TActorId& tablet,
+    IBlockDigestGeneratorPtr blockDigestGenerator,
+    ui64 commitId,
+    TVector<TRequest> requests,
+    IWriteBlocksHandlerPtr writeHandler,
+    ui32 blockSizeForChecksums)
     : TabletId(tabletId)
     , Tablet(tablet)
     , BlockDigestGenerator(std::move(blockDigestGenerator))
@@ -170,9 +169,8 @@ TGuardedSgList TWriteMixedBlocksActor::BuildBlobContent(const TRequest& request)
                     const auto& block = sgList[index];
 
                     auto blockIndex = sr.WriteRange.Start + index;
-                    const auto digest = BlockDigestGenerator->ComputeDigest(
-                        blockIndex,
-                        block);
+                    const auto digest =
+                        BlockDigestGenerator->ComputeDigest(blockIndex, block);
 
                     if (digest.Defined()) {
                         AffectedBlockInfos.push_back({blockIndex, *digest});
@@ -229,14 +227,17 @@ void TWriteMixedBlocksActor::WriteBlobs(const TActorContext& ctx)
         const auto& req = Requests[i];
         auto guardedSglist = BuildBlobContent(req);
 
-        auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
-            req.BlobId,
-            std::move(guardedSglist),
-            BlockSizeForChecksums,
-            false); // async
+        auto request =
+            std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
+                req.BlobId,
+                std::move(guardedSglist),
+                BlockSizeForChecksums,
+                false);   // async
 
         for (const auto& sr: req.SubRequests) {
-            if (!sr.RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
+            if (!sr.RequestInfo->CallContext->LWOrbit.Fork(
+                    request->CallContext->LWOrbit))
+            {
                 LWTRACK(
                     ForkFailed,
                     sr.RequestInfo->CallContext->LWOrbit,
@@ -247,11 +248,7 @@ void TWriteMixedBlocksActor::WriteBlobs(const TActorContext& ctx)
 
         ForkedCallContexts.emplace_back(request->CallContext);
 
-        NCloud::Send(
-            ctx,
-            Tablet,
-            std::move(request),
-            i);
+        NCloud::Send(ctx, Tablet, std::move(request), i);
     }
 }
 
@@ -268,7 +265,9 @@ void TWriteMixedBlocksActor::AddBlobs(const TActorContext& ctx)
                     blocks.push_back(idx);
                 }
             }
-            if (!sr.RequestInfo->CallContext->LWOrbit.Fork(CombinedContext->LWOrbit)) {
+            if (!sr.RequestInfo->CallContext->LWOrbit.Fork(
+                    CombinedContext->LWOrbit))
+            {
                 LWTRACK(
                     ForkFailed,
                     sr.RequestInfo->CallContext->LWOrbit,
@@ -289,13 +288,9 @@ void TWriteMixedBlocksActor::AddBlobs(const TActorContext& ctx)
         std::move(blobs),
         TVector<TAddMergedBlob>(),
         TVector<TAddFreshBlob>(),
-        ADD_WRITE_RESULT
-    );
+        ADD_WRITE_RESULT);
 
-    NCloud::Send(
-        ctx,
-        Tablet,
-        std::move(request));
+    NCloud::Send(ctx, Tablet, std::move(request));
 }
 
 void TWriteMixedBlocksActor::NotifyCompleted(
@@ -312,12 +307,12 @@ void TWriteMixedBlocksActor::NotifyCompleted(
     ui64 waitCycles = 0;
 
     for (const auto& r: Requests) {
-        ev->ExecCycles = Max(
-            ev->ExecCycles,
-            r.SubRequests.front().RequestInfo->GetExecCycles());
-        ev->TotalCycles = Max(
-            ev->TotalCycles,
-            r.SubRequests.front().RequestInfo->GetTotalCycles());
+        ev->ExecCycles =
+            Max(ev->ExecCycles,
+                r.SubRequests.front().RequestInfo->GetExecCycles());
+        ev->TotalCycles =
+            Max(ev->TotalCycles,
+                r.SubRequests.front().RequestInfo->GetTotalCycles());
 
         for (const auto& sr: r.SubRequests) {
             if (!sr.Empty) {
@@ -325,9 +320,8 @@ void TWriteMixedBlocksActor::NotifyCompleted(
             }
         }
 
-        waitCycles = Max(
-            waitCycles,
-            r.SubRequests.front().RequestInfo->GetWaitCycles());
+        waitCycles =
+            Max(waitCycles, r.SubRequests.front().RequestInfo->GetWaitCycles());
     }
 
     ev->CommitId = CommitId;
@@ -415,7 +409,7 @@ void TWriteMixedBlocksActor::HandleWriteBlobResponse(
         return;
     }
 
-    for (ui32 i = 0; i < ForkedCallContexts.size(); ++i){
+    for (ui32 i = 0; i < ForkedCallContexts.size(); ++i) {
         auto& context = ForkedCallContexts[i];
         for (const auto& sr: Requests[i].SubRequests) {
             sr.RequestInfo->CallContext->LWOrbit.Join(context->LWOrbit);
@@ -463,7 +457,9 @@ STFUNC(TWriteMixedBlocksActor::StateWork)
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvPartitionPrivate::TEvWriteBlobResponse, HandleWriteBlobResponse);
+        HFunc(
+            TEvPartitionPrivate::TEvWriteBlobResponse,
+            HandleWriteBlobResponse);
         HFunc(TEvPartitionPrivate::TEvAddBlobsResponse, HandleAddBlobsResponse);
 
         default:
@@ -507,8 +503,7 @@ bool TPartitionActor::WriteMixedBlocks(
             if (request->Weight) {
                 parts.emplace_back(
                     request->Data.Handler,
-                    ConvertRangeSafe(request->Data.Range)
-                );
+                    ConvertRangeSafe(request->Data.Range));
             }
 
             LOG_DEBUG(
@@ -520,8 +515,8 @@ bool TPartitionActor::WriteMixedBlocks(
                 DescribeRange(request->Data.Range).c_str());
 
             const ui32 checksumBoundary =
-                Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs()
-                / State->GetBlockSize();
+                Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs() /
+                State->GetBlockSize();
             if (request->Data.Range.Start < checksumBoundary) {
                 checksumsEnabled = true;
             }
@@ -530,8 +525,7 @@ bool TPartitionActor::WriteMixedBlocks(
                 request->Data.Range,
                 !request->Weight,
                 request->Data.RequestInfo,
-                request->Data.ReplyLocal
-            );
+                request->Data.ReplyLocal);
         }
 
         requests.back().BlobId = State->GenerateBlobId(
@@ -539,8 +533,7 @@ bool TPartitionActor::WriteMixedBlocks(
             EChannelPermission::UserWritesAllowed,
             commitId,
             group.Weight * State->GetBlockSize(),
-            requests.size() - 1
-        );
+            requests.size() - 1);
     }
 
     auto writeHandler = CreateMixedWriteBlocksHandler(std::move(parts));
@@ -553,8 +546,7 @@ bool TPartitionActor::WriteMixedBlocks(
         commitId,
         std::move(requests),
         std::move(writeHandler),
-        checksumsEnabled ? State->GetBlockSize() : 0
-    );
+        checksumsEnabled ? State->GetBlockSize() : 0);
     Actors.Insert(actor);
 
     return true;

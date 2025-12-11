@@ -13,7 +13,6 @@ namespace NCloud::NFileStore::NFuse {
 
 using namespace NCloud::NFileStore::NVFS;
 
-
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -26,17 +25,17 @@ bool CheckDirectoryHandle(
     const char* funcName)
 {
     if (handle.Index != ino) {
-        STORAGE_ERROR("request #" << fuse_req_unique(req)
-            << " consistency violation: " << funcName
-            << " (handle.Index != ino) : "  <<
-            "(" << handle.Index << " != " << ino << ")");
+        STORAGE_ERROR(
+            "request #" << fuse_req_unique(req) << " consistency violation: "
+                        << funcName << " (handle.Index != ino) : " << "("
+                        << handle.Index << " != " << ino << ")");
 
         return false;
     }
     return true;
 }
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -57,13 +56,8 @@ public:
         const fuse_entry_param& entry,
         size_t offset)
     {
-        size_t entrySize = fuse_add_direntry_plus(
-            req,
-            nullptr,
-            0,
-            name.c_str(),
-            &entry,
-            0);
+        size_t entrySize =
+            fuse_add_direntry_plus(req, nullptr, 0, name.c_str(), &entry, 0);
 
         Buffer->Advance(entrySize);
 
@@ -82,13 +76,8 @@ public:
         const fuse_entry_param& entry,
         size_t offset)
     {
-        size_t entrySize = fuse_add_direntry(
-            req,
-            nullptr,
-            0,
-            name.c_str(),
-            &entry.attr,
-            0);
+        size_t entrySize =
+            fuse_add_direntry(req, nullptr, 0, name.c_str(), &entry.attr, 0);
 
         Buffer->Advance(entrySize);
 
@@ -108,13 +97,13 @@ public:
     }
 };
 
-
 ////////////////////////////////////////////////////////////////////////////////
 
 void TFileSystem::ClearDirectoryCache()
 {
     with_lock (DirectoryHandlesLock) {
-        STORAGE_DEBUG("clear directory cache of size %lu",
+        STORAGE_DEBUG(
+            "clear directory cache of size %lu",
             DirectoryHandles.size());
         DirectoryHandles.clear();
     }
@@ -139,7 +128,9 @@ void TFileSystem::OpenDir(
         } while (!DirectoryHandles.try_emplace(id, handle).second);
 
         if (DirectoryHandlesStorage) {
-            DirectoryHandlesStorage->StoreHandle(id, TDirectoryHandleChunk{.Index = ino});
+            DirectoryHandlesStorage->StoreHandle(
+                id,
+                TDirectoryHandleChunk{.Index = ino});
         }
     }
 
@@ -167,20 +158,15 @@ void TFileSystem::ReadDir(
     off_t offset,
     fuse_file_info* fi)
 {
-    STORAGE_DEBUG("ReadDir #" << ino
-        << " offset:" << offset
-        << " size:" << size
-        << " fh:" << fi->fh);
+    STORAGE_DEBUG(
+        "ReadDir #" << ino << " offset:" << offset << " size:" << size
+                    << " fh:" << fi->fh);
 
     std::shared_ptr<TDirectoryHandle> handle;
     with_lock (DirectoryHandlesLock) {
         auto it = DirectoryHandles.find(fi->fh);
         if (it == DirectoryHandles.end()) {
-            ReplyError(
-                *callContext,
-                ErrorInvalidHandle(fi->fh),
-                req,
-                EBADF);
+            ReplyError(*callContext, ErrorInvalidHandle(fi->fh), req, EBADF);
             return;
         }
 
@@ -194,7 +180,8 @@ void TFileSystem::ReadDir(
         return;
     }
 
-    auto reply = [=] (TFileSystem& fs, const TDirectoryContent& content) {
+    auto reply = [=](TFileSystem& fs, const TDirectoryContent& content)
+    {
         fs.ReplyBuf(
             *callContext,
             {},
@@ -339,11 +326,7 @@ bool TFileSystem::ValidateDirectoryHandle(
     with_lock (DirectoryHandlesLock) {
         auto it = DirectoryHandles.find(fh);
         if (it == DirectoryHandles.end()) {
-            ReplyError(
-                callContext,
-                ErrorInvalidHandle(fh),
-                req,
-                EBADF);
+            ReplyError(callContext, ErrorInvalidHandle(fh), req, EBADF);
             return false;
         }
 

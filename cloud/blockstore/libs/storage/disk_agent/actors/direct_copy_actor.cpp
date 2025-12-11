@@ -30,10 +30,10 @@ auto PrepareRequest(
 }   // namespace
 
 TDirectCopyActor::TDirectCopyActor(
-        const TActorId& source,
-        TRequestInfoPtr requestInfo,
-        NProto::TDirectCopyBlocksRequest request,
-        ui64 recommendedBandwidth)
+    const TActorId& source,
+    TRequestInfoPtr requestInfo,
+    NProto::TDirectCopyBlocksRequest request,
+    ui64 recommendedBandwidth)
     : Source(source)
     , RequestInfo(std::move(requestInfo))
     , Request(std::move(request))

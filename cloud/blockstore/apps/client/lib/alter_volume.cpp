@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -16,8 +17,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAlterVolumeCommand final
-    : public TCommand
+class TAlterVolumeCommand final: public TCommand
 {
 private:
     TVolumeId VolumeId;
@@ -93,7 +93,7 @@ private:
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

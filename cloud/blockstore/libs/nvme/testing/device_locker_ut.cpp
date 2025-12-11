@@ -128,7 +128,7 @@ Y_UNIT_TEST_SUITE(TDeviceLockerTest)
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
         }
 
-        locker1.ReleaseDevice(paths[0]);    // release nvme0n1
+        locker1.ReleaseDevice(paths[0]);   // release nvme0n1
 
         // locker2 is still exhausted
         {
@@ -136,7 +136,7 @@ Y_UNIT_TEST_SUITE(TDeviceLockerTest)
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
         }
 
-        locker1.ReleaseDevice(paths[1]);    // release nvme0n2
+        locker1.ReleaseDevice(paths[1]);   // release nvme0n2
 
         // acquire nvme0n2 with locker2
         {

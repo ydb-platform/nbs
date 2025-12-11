@@ -3,24 +3,25 @@
 #include "bootstrap.h"
 
 #include <cloud/blockstore/config/client.pb.h>
-#include <cloud/blockstore/public/api/protos/mount.pb.h>
-
 #include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/encryption/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/throttling/throttler.h>
+#include <cloud/blockstore/public/api/protos/mount.pb.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
 
 #include <contrib/ydb/library/actors/util/should_continue.h>
+
 #include <library/cpp/getopt/small/last_getopt.h>
 #include <library/cpp/logger/log.h>
 #include <library/cpp/threading/future/future.h>
 
-#include <util/generic/vector.h>
 #include <util/generic/ptr.h>
+#include <util/generic/vector.h>
 #include <util/system/progname.h>
 
 #include <memory>
@@ -29,8 +30,7 @@ namespace NCloud::NBlockStore::NClient {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCommand
-    : public TAtomicRefCount<TCommand>
+class TCommand: public TAtomicRefCount<TCommand>
 {
 protected:
     // When client attempts to read or write too many blocks, several read/write
@@ -108,7 +108,7 @@ public:
     virtual ~TCommand();
 
     TCommand(const TCommand& other) = delete;
-    TCommand & operator=(const TCommand& other) = delete;
+    TCommand& operator=(const TCommand& other) = delete;
 
     void Prepare(const int argc, const char* argv[]);
 

@@ -16,8 +16,7 @@ namespace NCloud::NFileStore::NFuse {
 ////////////////////////////////////////////////////////////////////////////////
 
 struct IWriteBackCacheStats;
-using IWriteBackCacheStatsPtr =
-    std::shared_ptr<IWriteBackCacheStats>;
+using IWriteBackCacheStatsPtr = std::shared_ptr<IWriteBackCacheStats>;
 
 class TWriteBackCache final
 {

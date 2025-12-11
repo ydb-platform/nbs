@@ -31,11 +31,11 @@ class TRequestCounters
 public:
     enum class EOption
     {
-        OnlyReadWriteRequests       = (1 << 0),
-        ReportDataPlaneHistogram    = (1 << 1),
+        OnlyReadWriteRequests = (1 << 0),
+        ReportDataPlaneHistogram = (1 << 1),
         ReportControlPlaneHistogram = (1 << 2),
-        AddSpecialCounters          = (1 << 3),
-        LazyRequestInitialization   = (1 << 4),
+        AddSpecialCounters = (1 << 3),
+        LazyRequestInitialization = (1 << 4),
     };
 
     using TRequestType = TDiagnosticsRequestType;
@@ -72,11 +72,9 @@ public:
 
     void Subscribe(TRequestCountersPtr subscriber);
 
-    ui64 RequestStarted(
-        TRequestType requestType,
-        ui64 requestBytes);
+    ui64 RequestStarted(TRequestType requestType, ui64 requestBytes);
 
-    //TODO: rollback commit after NBS-4239 is fixed
+    // TODO: rollback commit after NBS-4239 is fixed
     TRequestTime RequestCompleted(
         TRequestType requestType,
         ui64 requestStarted,
@@ -99,7 +97,7 @@ public:
     void RequestAdvancedServer(TRequestType requestType);
     void RequestFastPathHit(TRequestType requestType);
 
-    //TODO: rollback commit after NBS-4239 is fixed
+    // TODO: rollback commit after NBS-4239 is fixed
     void AddIncompleteStats(
         TRequestType requestType,
         TDuration executionTime,
@@ -115,15 +113,12 @@ public:
         ui64 bytes,
         ui64 errors,
         std::span<TTimeBucket> timeHist,
-        std::span<TSizeBucket> sizeHist
-    );
+        std::span<TSizeBucket> sizeHist);
 
     void UpdateStats(bool updatePercentiles = false);
 
 private:
-    void RequestStartedImpl(
-        TRequestType requestType,
-        ui64 requestBytes);
+    void RequestStartedImpl(TRequestType requestType, ui64 requestBytes);
 
     void RequestCompletedImpl(
         TRequestType requestType,
@@ -138,7 +133,7 @@ private:
 
     bool ShouldReport(TRequestType requestType) const;
 
-    template<typename TMethod, typename... TArgs>
+    template <typename TMethod, typename... TArgs>
     void NotifySubscribers(TMethod&& m, TArgs&&... args);
 
     TStatCounters& AccessRequestStats(TRequestType t);

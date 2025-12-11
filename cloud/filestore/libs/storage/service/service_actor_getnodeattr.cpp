@@ -70,19 +70,18 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TGetNodeAttrActor::TGetNodeAttrActor(
-        TRequestInfoPtr requestInfo,
-        NProto::TGetNodeAttrRequest getNodeAttrRequest,
-        IRequestStatsPtr requestStats,
-        IProfileLogPtr profileLog,
-        bool multiTabletForwardingEnabled)
+    TRequestInfoPtr requestInfo,
+    NProto::TGetNodeAttrRequest getNodeAttrRequest,
+    IRequestStatsPtr requestStats,
+    IProfileLogPtr profileLog,
+    bool multiTabletForwardingEnabled)
     : RequestInfo(std::move(requestInfo))
     , GetNodeAttrRequest(std::move(getNodeAttrRequest))
     , LogTag(GetNodeAttrRequest.GetFileSystemId())
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
     , MultiTabletForwardingEnabled(multiTabletForwardingEnabled)
-{
-}
+{}
 
 void TGetNodeAttrActor::Bootstrap(const TActorContext& ctx)
 {
@@ -159,8 +158,8 @@ void TGetNodeAttrActor::HandleGetNodeAttrResponse(
         msg->Record.GetNode().GetShardFileSystemId().c_str(),
         msg->Record.GetNode().GetShardNodeName().Quote().c_str());
 
-    if (!MultiTabletForwardingEnabled
-            || msg->Record.GetNode().GetShardFileSystemId().empty())
+    if (!MultiTabletForwardingEnabled ||
+        msg->Record.GetNode().GetShardFileSystemId().empty())
     {
         ReplyAndDie(ctx, std::move(msg->Record));
         return;
@@ -198,8 +197,8 @@ void TGetNodeAttrActor::HandleError(
     const TActorContext& ctx,
     NProto::TError error)
 {
-    auto response = std::make_unique<TEvService::TEvGetNodeAttrResponse>(
-        std::move(error));
+    auto response =
+        std::make_unique<TEvService::TEvGetNodeAttrResponse>(std::move(error));
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
 }
@@ -211,9 +210,7 @@ STFUNC(TGetNodeAttrActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(
-            TEvService::TEvGetNodeAttrResponse,
-            HandleGetNodeAttrResponse);
+        HFunc(TEvService::TEvGetNodeAttrResponse, HandleGetNodeAttrResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -290,8 +287,8 @@ void TStorageServiceActor::HandleGetNodeAttr(
     auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
     const bool multiTabletForwardingEnabled =
-        StorageConfig->GetMultiTabletForwardingEnabled()
-        && !msg->Record.GetHeaders().GetDisableMultiTabletForwarding();
+        StorageConfig->GetMultiTabletForwardingEnabled() &&
+        !msg->Record.GetHeaders().GetDisableMultiTabletForwarding();
     auto actor = std::make_unique<TGetNodeAttrActor>(
         std::move(requestInfo),
         std::move(msg->Record),

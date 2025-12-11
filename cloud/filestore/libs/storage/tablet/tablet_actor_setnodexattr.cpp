@@ -38,23 +38,22 @@ void TIndexTabletActor::HandleSetNodeXAttr(
     const TEvService::TEvSetNodeXAttrRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (!AcceptRequest<TEvService::TSetNodeXAttrMethod>(ev, ctx, ValidateRequest)) {
+    if (!AcceptRequest<TEvService::TSetNodeXAttrMethod>(
+            ev,
+            ctx,
+            ValidateRequest))
+    {
         return;
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TSetNodeXAttrMethod>(*requestInfo);
 
-    ExecuteTx<TSetNodeXAttr>(
-        ctx,
-        std::move(requestInfo),
-        msg->Record);
+    ExecuteTx<TSetNodeXAttr>(ctx, std::move(requestInfo), msg->Record);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -90,11 +89,15 @@ bool TIndexTabletActor::PrepareTx_SetNodeXAttr(
     }
 
     const auto flags = args.Request.GetFlags();
-    if (args.Attr && HasProtoFlag(flags, NProto::TSetNodeXAttrRequest::F_CREATE)) {
+    if (args.Attr &&
+        HasProtoFlag(flags, NProto::TSetNodeXAttrRequest::F_CREATE))
+    {
         args.Error = ErrorAttributeAlreadyExists(args.Name);
         return true;
     }
-    if (!args.Attr && HasProtoFlag(flags, NProto::TSetNodeXAttrRequest::F_REPLACE)) {
+    if (!args.Attr &&
+        HasProtoFlag(flags, NProto::TSetNodeXAttrRequest::F_REPLACE))
+    {
         args.Error = ErrorAttributeDoesNotExist(args.Name);
         return true;
     }
@@ -150,7 +153,8 @@ void TIndexTabletActor::CompleteTx_SetNodeXAttr(
         NotifySessionEvent(ctx, sessionEvent);
     }
 
-    auto response = std::make_unique<TEvService::TEvSetNodeXAttrResponse>(args.Error);
+    auto response =
+        std::make_unique<TEvService::TEvSetNodeXAttrResponse>(args.Error);
     response->Record.SetVersion(args.Version);
     CompleteResponse<TEvService::TSetNodeXAttrMethod>(
         response->Record,

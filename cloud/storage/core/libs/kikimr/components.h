@@ -3,9 +3,8 @@
 #include "public.h"
 
 #include <contrib/ydb/core/base/events.h>
-#include <contrib/ydb/library/services/services.pb.h>
-
 #include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/library/services/services.pb.h>
 
 #include <util/generic/string.h>
 
@@ -13,10 +12,10 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define STORAGE_ACTORS(xxx)                                                    \
-    xxx(HIVE_PROXY)                                                            \
-    xxx(SS_PROXY)                                                              \
-// STORAGE_ACTORS
+#define STORAGE_ACTORS(xxx) \
+    xxx(HIVE_PROXY)         \
+    xxx(SS_PROXY)           \
+    // STORAGE_ACTORS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -26,10 +25,10 @@ struct TStorageEvents
     {
         START = EventSpaceBegin(NKikimr::TKikimrEvents::ES_CLOUD_STORAGE),
 
-#define STORAGE_DECLARE_COMPONENT(component)                                   \
-        component##_START,                                                     \
-        component##_END = component##_START + 100,                             \
-// STORAGE_DECLARE_COMPONENT
+#define STORAGE_DECLARE_COMPONENT(component) \
+    component##_START,                       \
+        component##_END =                    \
+            component##_START + 100,   // STORAGE_DECLARE_COMPONENT
 
         STORAGE_ACTORS(STORAGE_DECLARE_COMPONENT)
 
@@ -41,8 +40,10 @@ struct TStorageEvents
         END
     };
 
-    static_assert(END < EventSpaceEnd(NKikimr::TKikimrEvents::ES_CLOUD_STORAGE),
-        "END expected to be < EventSpaceEnd(NKikimr::TKikimrEvents::ES_CLOUD_STORAGE)");
+    static_assert(
+        END < EventSpaceEnd(NKikimr::TKikimrEvents::ES_CLOUD_STORAGE),
+        "END expected to be < "
+        "EventSpaceEnd(NKikimr::TKikimrEvents::ES_CLOUD_STORAGE)");
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -51,12 +52,13 @@ struct TStoragePrivateEvents
 {
     enum
     {
-        START = EventSpaceBegin(NKikimr::TKikimrEvents::ES_CLOUD_STORAGE_PRIVATE),
+        START =
+            EventSpaceBegin(NKikimr::TKikimrEvents::ES_CLOUD_STORAGE_PRIVATE),
 
-#define STORAGE_DECLARE_COMPONENT(component)                                   \
-        component##_START,                                                     \
-        component##_END = component##_START + 100,                             \
-// STORAGE_DECLARE_COMPONENT
+#define STORAGE_DECLARE_COMPONENT(component) \
+    component##_START,                       \
+        component##_END =                    \
+            component##_START + 100,   // STORAGE_DECLARE_COMPONENT
 
         STORAGE_ACTORS(STORAGE_DECLARE_COMPONENT)
 
@@ -71,8 +73,10 @@ struct TStoragePrivateEvents
         END
     };
 
-    static_assert(END < EventSpaceEnd(NKikimr::TKikimrEvents::ES_CLOUD_STORAGE_PRIVATE),
-        "END expected to be < EventSpaceEnd(NKikimr::TKikimrEvents::ES_CLOUD_STORAGE_PRIVATE)");
+    static_assert(
+        END < EventSpaceEnd(NKikimr::TKikimrEvents::ES_CLOUD_STORAGE_PRIVATE),
+        "END expected to be < "
+        "EventSpaceEnd(NKikimr::TKikimrEvents::ES_CLOUD_STORAGE_PRIVATE)");
 };
 
 }   // namespace NCloud

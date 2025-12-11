@@ -21,20 +21,19 @@ int main(int argc, char** argv)
 
     auto serverModuleFactories =
         std::make_shared<NServer::TServerModuleFactories>();
-    serverModuleFactories->SpdkFactory = [] (
-        NSpdk::TSpdkEnvConfigPtr config)
+    serverModuleFactories->SpdkFactory = [](NSpdk::TSpdkEnvConfigPtr config)
     {
         Y_UNUSED(config);
-        return NServer::TSpdkParts {
+        return NServer::TSpdkParts{
             .Env = NSpdk::CreateEnvStub(),
             .LogInitializer = {},
         };
     };
 
-    serverModuleFactories->RdmaServerFactory = [] (
-        NCloud::ILoggingServicePtr logging,
-        NCloud::IMonitoringServicePtr monitoring,
-        NRdma::TServerConfigPtr config)
+    serverModuleFactories->RdmaServerFactory =
+        [](NCloud::ILoggingServicePtr logging,
+           NCloud::IMonitoringServicePtr monitoring,
+           NRdma::TServerConfigPtr config)
     {
         return NRdma::CreateServer(
             NRdma::NVerbs::CreateVerbs(),

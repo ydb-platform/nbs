@@ -111,17 +111,18 @@ private:
         const TActorContext& ctx);
 
     void HandleMetadataRebuildUsedBlocksResponse(
-        const TEvPartitionPrivate::TEvMetadataRebuildUsedBlocksResponse::TPtr& ev,
+        const TEvPartitionPrivate::TEvMetadataRebuildUsedBlocksResponse::TPtr&
+            ev,
         const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TMetadataRebuildUsedBlocksActor::TMetadataRebuildUsedBlocksActor(
-        const TActorId& tablet,
-        ui32 blocksPerBatch,
-        ui32 blockCount,
-        TDuration retryTimeout)
+    const TActorId& tablet,
+    ui32 blocksPerBatch,
+    ui32 blockCount,
+    TDuration retryTimeout)
     : Tablet(tablet)
     , BlocksPerBatch(blocksPerBatch)
     , BlockCount(blockCount)
@@ -134,9 +135,11 @@ void TMetadataRebuildUsedBlocksActor::Bootstrap(const TActorContext& ctx)
     Become(&TThis::StateWork);
 }
 
-void TMetadataRebuildUsedBlocksActor::SendMetadataRebuildRequest(const TActorContext& ctx)
+void TMetadataRebuildUsedBlocksActor::SendMetadataRebuildRequest(
+    const TActorContext& ctx)
 {
-    auto request = std::make_unique<TEvPartitionPrivate::TEvMetadataRebuildUsedBlocksRequest>(
+    auto request = std::make_unique<
+        TEvPartitionPrivate::TEvMetadataRebuildUsedBlocksRequest>(
         MakeIntrusive<TCallContext>(),
         CurrentBlock,
         CurrentBlock + BlocksPerBatch);
@@ -148,7 +151,9 @@ void TMetadataRebuildUsedBlocksActor::NotifyCompleted(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvPartitionPrivate::TEvMetadataRebuildCompleted>(error);
+    auto response =
+        std::make_unique<TEvPartitionPrivate::TEvMetadataRebuildCompleted>(
+            error);
 
     NCloud::Send(ctx, Tablet, std::move(response));
     Die(ctx);
@@ -161,7 +166,9 @@ STFUNC(TMetadataRebuildUsedBlocksActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvPartitionPrivate::TEvMetadataRebuildUsedBlocksResponse, HandleMetadataRebuildUsedBlocksResponse);
+        HFunc(
+            TEvPartitionPrivate::TEvMetadataRebuildUsedBlocksResponse,
+            HandleMetadataRebuildUsedBlocksResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -227,10 +234,8 @@ void TPartitionActor::HandleMetadataRebuildUsedBlocks(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -240,15 +245,14 @@ void TPartitionActor::HandleMetadataRebuildUsedBlocks(
         "MetadataRebuild",
         requestInfo->CallContext->RequestId);
 
-    auto replyError = [=] (
-        const TActorContext& ctx,
-        TRequestInfo& requestInfo,
-        ui32 errorCode,
-        TString errorReason)
+    auto replyError = [=](const TActorContext& ctx,
+                          TRequestInfo& requestInfo,
+                          ui32 errorCode,
+                          TString errorReason)
     {
-        auto response =
-            std::make_unique<TEvPartitionPrivate::TEvMetadataRebuildUsedBlocksResponse>(
-                MakeError(errorCode, std::move(errorReason)));
+        auto response = std::make_unique<
+            TEvPartitionPrivate::TEvMetadataRebuildUsedBlocksResponse>(
+            MakeError(errorCode, std::move(errorReason)));
 
         LWTRACK(
             ResponseSent_Partition,
@@ -259,8 +263,8 @@ void TPartitionActor::HandleMetadataRebuildUsedBlocks(
         NCloud::Reply(ctx, requestInfo, std::move(response));
     };
 
-    if (msg->Begin % State->GetUsedBlocks().CHUNK_SIZE != 0
-            || msg->End % State->GetUsedBlocks().CHUNK_SIZE != 0)
+    if (msg->Begin % State->GetUsedBlocks().CHUNK_SIZE != 0 ||
+        msg->End % State->GetUsedBlocks().CHUNK_SIZE != 0)
     {
         replyError(ctx, *requestInfo, E_ARGUMENT, "bad range");
         return;
@@ -303,14 +307,13 @@ bool TPartitionActor::PrepareMetadataRebuildUsedBlocks(
     auto ready = db.FindMixedBlocks(
         visitor,
         args.BlockRange,
-        true    // precharge
+        true   // precharge
     );
     ready &= db.FindMergedBlocks(
         visitor,
         args.BlockRange,
         true,   // precharge
-        State->GetMaxBlocksInBlob()
-    );
+        State->GetMaxBlocksInBlob());
 
     return ready;
 }
@@ -324,8 +327,8 @@ void TPartitionActor::ExecuteMetadataRebuildUsedBlocks(
 
     auto& usedBlocks = State->GetUsedBlocks();
 
-    if (args.FilledBlockCount
-            || usedBlocks.Count(args.BlockRange.Start, args.BlockRange.End + 1))
+    if (args.FilledBlockCount ||
+        usedBlocks.Count(args.BlockRange.Start, args.BlockRange.End + 1))
     {
         for (ui32 i = 0; i < args.BlockInfos.size(); ++i) {
             const auto& blockInfo = args.BlockInfos[i];
@@ -340,7 +343,8 @@ void TPartitionActor::ExecuteMetadataRebuildUsedBlocks(
         TPartitionDatabase db(tx.DB);
 
         auto serializer = usedBlocks.RangeSerializer(
-            args.BlockRange.Start, args.BlockRange.End + 1);
+            args.BlockRange.Start,
+            args.BlockRange.End + 1);
         TCompressedBitmap::TSerializedChunk sc;
         while (serializer.Next(&sc)) {
             db.WriteUsedBlocks(sc);
@@ -363,7 +367,8 @@ void TPartitionActor::CompleteMetadataRebuildUsedBlocks(
     NCloud::Reply(
         ctx,
         *args.RequestInfo,
-        std::make_unique<TEvPartitionPrivate::TEvMetadataRebuildUsedBlocksResponse>());
+        std::make_unique<
+            TEvPartitionPrivate::TEvMetadataRebuildUsedBlocksResponse>());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

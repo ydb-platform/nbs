@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/config/server.pb.h>
 #include <cloud/blockstore/config/storage.pb.h>
+
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/protos/media.pb.h>
 
@@ -43,7 +44,8 @@ public:
 
     void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig);
 
-    void SetVolumePreemptionType(NProto::EVolumePreemptionType volumePreemptionType);
+    void SetVolumePreemptionType(
+        NProto::EVolumePreemptionType volumePreemptionType);
 
     void Register(NKikimr::TControlBoard& controlBoard);
 
@@ -63,11 +65,14 @@ public:
         ENameStatus Status;
         TString Value;
 
-        explicit TValueByName(ENameStatus status) : Status(status) {}
+        explicit TValueByName(ENameStatus status)
+            : Status(status)
+        {}
 
         TValueByName(const TString& value)
             : Status(ENameStatus::FoundInProto)
-            , Value(value) {}
+            , Value(value)
+        {}
     };
 
     TValueByName GetValueByName(const TString& name) const;
@@ -367,12 +372,14 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
-    [[nodiscard]] bool IsEncryptionAtRestForDiskRegistryBasedDisksFeatureEnabled(
+    [[nodiscard]] bool
+    IsEncryptionAtRestForDiskRegistryBasedDisksFeatureEnabled(
         const TString& cloudId,
         const TString& folderId,
         const TString& diskId) const;
 
-    [[nodiscard]] bool IsRootKmsEncryptionForDiskRegistryBasedDisksFeatureEnabled(
+    [[nodiscard]] bool
+    IsRootKmsEncryptionForDiskRegistryBasedDisksFeatureEnabled(
         const TString& cloudId,
         const TString& folderId,
         const TString& diskId) const;
@@ -663,13 +670,16 @@ public:
     [[nodiscard]] ui32 GetMultiAgentWriteRequestSizeThreshold() const;
     [[nodiscard]] TDuration GetNetworkForwardingTimeout() const;
 
-    NCloud::NProto::TConfigDispatcherSettings GetConfigDispatcherSettings() const;
+    NCloud::NProto::TConfigDispatcherSettings
+    GetConfigDispatcherSettings() const;
 
     [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeoutHDD() const;
     [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeoutSSD() const;
 
-    [[nodiscard]] bool GetEncryptionAtRestForDiskRegistryBasedDisksEnabled() const;
-    [[nodiscard]] bool GetRootKmsEncryptionForDiskRegistryBasedDisksEnabled() const;
+    [[nodiscard]] bool
+    GetEncryptionAtRestForDiskRegistryBasedDisksEnabled() const;
+    [[nodiscard]] bool
+    GetRootKmsEncryptionForDiskRegistryBasedDisksEnabled() const;
 
     [[nodiscard]] bool GetDisableFullPlacementGroupCountCalculation() const;
     [[nodiscard]] double GetDiskRegistryInitialAgentRejectionThreshold() const;
@@ -742,7 +752,8 @@ public:
 
     [[nodiscard]] bool GetAttachDetachPathsEnabled() const;
 
-    [[nodiscard]] NProto::ENonreplAllocationPolicy GetNonreplAllocationPolicy() const;
+    [[nodiscard]] NProto::ENonreplAllocationPolicy
+    GetNonreplAllocationPolicy() const;
 
     [[nodiscard]] bool GetSendLocalTabletMetricsToHiveEnabled() const;
 };

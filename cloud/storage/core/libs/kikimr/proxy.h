@@ -8,8 +8,7 @@ namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TLoggingProxy final
-    : public ILoggingService
+class TLoggingProxy final: public ILoggingService
 {
 private:
     IActorSystemPtr ActorSystem;
@@ -35,8 +34,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TMonitoringProxy final
-    : public IMonitoringService
+class TMonitoringProxy final: public IMonitoringService
 {
 private:
     IActorSystemPtr ActorSystem;

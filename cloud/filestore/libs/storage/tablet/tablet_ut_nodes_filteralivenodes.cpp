@@ -1,4 +1,5 @@
 #include "tablet.h"
+
 #include "tablet_schema.h"
 
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
@@ -14,8 +15,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEnvironment
-    : public NUnitTest::TBaseFixture
+struct TEnvironment: public NUnitTest::TBaseFixture
 {
     TTestEnv Env;
     std::unique_ptr<TIndexTabletClient> Tablet;
@@ -33,8 +33,7 @@ struct TEnvironment
         Tablet = std::make_unique<TIndexTabletClient>(
             Env.GetRuntime(),
             nodeIdx,
-            tabletId
-        );
+            tabletId);
         Tablet->InitSession("client", "session");
     }
 

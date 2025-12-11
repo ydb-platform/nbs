@@ -5,6 +5,7 @@
 #include "instance.h"
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
+
 #include <cloud/storage/core/libs/common/startable.h>
 
 #include <library/cpp/threading/future/future.h>
@@ -15,8 +16,7 @@ namespace NCloud::NBlockStore::NDiscovery {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IInstanceFetcher
-    : IStartable
+struct IInstanceFetcher: IStartable
 {
     virtual ~IInstanceFetcher() = default;
 

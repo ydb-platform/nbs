@@ -1,8 +1,8 @@
 #include "disk_registry.h"
+
 #include "disk_registry_actor.h"
 
 #include <cloud/blockstore/config/disk.pb.h>
-
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
@@ -50,16 +50,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 Device("dev-3", "uuid-6", "rack-1", 10_GB),
             });
 
-        auto runtime = TTestRuntimeBuilder()
-            .WithAgents({ agent1, agent2 })
-            .Build();
+        auto runtime =
+            TTestRuntimeBuilder().WithAgents({agent1, agent2}).Build();
 
         TDiskRegistryClient diskRegistry(*runtime);
         diskRegistry.WaitReady();
         diskRegistry.SetWritableState(true);
 
-        diskRegistry.UpdateConfig(
-            CreateRegistryConfig(0, {agent1, agent2}));
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {agent1, agent2}));
 
         RegisterAgents(*runtime, 2);
         WaitForAgents(*runtime, 2);
@@ -77,7 +75,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         // Failed to create checkpoint from unknown disk.
         {
-            diskRegistry.SendAllocateCheckpointRequest("disk-2", "checkpoint-1");
+            diskRegistry.SendAllocateCheckpointRequest(
+                "disk-2",
+                "checkpoint-1");
             auto response = diskRegistry.RecvAllocateCheckpointResponse();
 
             UNIT_ASSERT_VALUES_EQUAL_C(
@@ -194,16 +194,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 Device("dev-3", "uuid-6", "rack-2", 10_GB),
             });
 
-        auto runtime = TTestRuntimeBuilder()
-            .WithAgents({ agent1, agent2 })
-            .Build();
+        auto runtime =
+            TTestRuntimeBuilder().WithAgents({agent1, agent2}).Build();
 
         TDiskRegistryClient diskRegistry(*runtime);
         diskRegistry.WaitReady();
         diskRegistry.SetWritableState(true);
 
-        diskRegistry.UpdateConfig(
-            CreateRegistryConfig(0, {agent1, agent2}));
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {agent1, agent2}));
 
         RegisterAgents(*runtime, 2);
         WaitForAgents(*runtime, 2);
@@ -270,16 +268,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 Device("dev-2", "uuid-5", "rack-1", 10_GB),
             });
 
-        auto runtime = TTestRuntimeBuilder()
-            .WithAgents({ agent1, agent2 })
-            .Build();
+        auto runtime =
+            TTestRuntimeBuilder().WithAgents({agent1, agent2}).Build();
 
         TDiskRegistryClient diskRegistry(*runtime);
         diskRegistry.WaitReady();
         diskRegistry.SetWritableState(true);
 
-        diskRegistry.UpdateConfig(
-            CreateRegistryConfig(0, {agent1, agent2}));
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {agent1, agent2}));
 
         RegisterAgents(*runtime, 2);
         WaitForAgents(*runtime, 2);
@@ -662,7 +658,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 response->GetStatus(),
                 response->GetError());
         }
-
     }
 }
 

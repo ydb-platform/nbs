@@ -21,7 +21,9 @@ void TMirrorPartitionActor::HandlePartCounters(
         NetworkBytes += msg->NetworkBytes;
         CpuUsage += CpuUsage;
     } else {
-        LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::PARTITION,
             "Partition %s for disk %s counters not found",
             ToString(ev->Sender).c_str(),
             State.GetReplicaInfos()[0].Config->GetName().Quote().c_str());
@@ -54,12 +56,12 @@ void TMirrorPartitionActor::SendStats(const TActorContext& ctx)
     stats->Simple.IORequestsInFlight.Reset();
     for (const auto& counters: ReplicaCounters) {
         if (counters) {
-            stats->Simple.BytesCount.Value = Max(
-                stats->Simple.BytesCount.Value,
-                counters->Simple.BytesCount.Value);
-            stats->Simple.IORequestsInFlight.Value = Max(
-                stats->Simple.IORequestsInFlight.Value,
-                counters->Simple.IORequestsInFlight.Value);
+            stats->Simple.BytesCount.Value =
+                Max(stats->Simple.BytesCount.Value,
+                    counters->Simple.BytesCount.Value);
+            stats->Simple.IORequestsInFlight.Value =
+                Max(stats->Simple.IORequestsInFlight.Value,
+                    counters->Simple.IORequestsInFlight.Value);
         }
     }
 
@@ -79,10 +81,7 @@ void TMirrorPartitionActor::SendStats(const TActorContext& ctx)
     CpuUsage = {};
     ScrubbingThroughput = 0;
 
-    NCloud::Send(
-        ctx,
-        StatActorId,
-        std::move(request));
+    NCloud::Send(ctx, StatActorId, std::move(request));
 
     const bool scrubbingEnabled =
         Config->GetDataScrubbingEnabled() && !ResyncActorId;

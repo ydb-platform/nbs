@@ -39,7 +39,8 @@ public:
 
     // IMigrationOwner implementation
     void OnBootstrap(const NActors::TActorContext& ctx) override;
-    bool OnMessage(const NActors::TActorContext& ctx,
+    bool OnMessage(
+        const NActors::TActorContext& ctx,
         TAutoPtr<NActors::IEventHandle>& ev) override;
     void OnMigrationProgress(
         const NActors::TActorContext& ctx,
@@ -53,8 +54,7 @@ private:
     {
         return AnyOf(
             Migrations,
-            [&](const NProto::TDeviceMigration& m)
-            {
+            [&](const NProto::TDeviceMigration& m) {
                 return m.GetTargetDevice().GetDeviceUUID() ==
                        device.GetDeviceUUID();
             });

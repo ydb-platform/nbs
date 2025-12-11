@@ -10,8 +10,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEnv
-    : public NUnitTest::TBaseFixture
+struct TEnv: public NUnitTest::TBaseFixture
 {
     TStringStream Data;
     IRegistryVisitorPtr Visitor;
@@ -50,17 +49,17 @@ Y_UNIT_TEST_SUITE(TVisitorTest)
             EMetricType::MT_ABSOLUTE);
         UNIT_ASSERT_VALUES_EQUAL(
             "{"
-                "time:'4253-05-31T22:20:37Z',"
-                "aggregation_type:'sum',"
-                "metric_type:'absolute',",
+            "time:'4253-05-31T22:20:37Z',"
+            "aggregation_type:'sum',"
+            "metric_type:'absolute',",
             Data.Str());
 
         Visitor->OnMetricEnd();
         UNIT_ASSERT_VALUES_EQUAL(
             "{"
-                "time:'4253-05-31T22:20:37Z',"
-                "aggregation_type:'sum',"
-                "metric_type:'absolute',"
+            "time:'4253-05-31T22:20:37Z',"
+            "aggregation_type:'sum',"
+            "metric_type:'absolute',"
             "},",
             Data.Str());
     }
@@ -73,17 +72,17 @@ Y_UNIT_TEST_SUITE(TVisitorTest)
             EMetricType::MT_ABSOLUTE);
         UNIT_ASSERT_VALUES_EQUAL(
             "{"
-                "time:'4253-05-31T22:20:37Z',"
-                "aggregation_type:'average',"
-                "metric_type:'absolute',",
+            "time:'4253-05-31T22:20:37Z',"
+            "aggregation_type:'average',"
+            "metric_type:'absolute',",
             Data.Str());
 
         Visitor->OnMetricEnd();
         UNIT_ASSERT_VALUES_EQUAL(
             "{"
-                "time:'4253-05-31T22:20:37Z',"
-                "aggregation_type:'average',"
-                "metric_type:'absolute',"
+            "time:'4253-05-31T22:20:37Z',"
+            "aggregation_type:'average',"
+            "metric_type:'absolute',"
             "},",
             Data.Str());
     }
@@ -96,17 +95,17 @@ Y_UNIT_TEST_SUITE(TVisitorTest)
             EMetricType::MT_ABSOLUTE);
         UNIT_ASSERT_VALUES_EQUAL(
             "{"
-                "time:'4253-05-31T22:20:37Z',"
-                "aggregation_type:'min',"
-                "metric_type:'absolute',",
+            "time:'4253-05-31T22:20:37Z',"
+            "aggregation_type:'min',"
+            "metric_type:'absolute',",
             Data.Str());
 
         Visitor->OnMetricEnd();
         UNIT_ASSERT_VALUES_EQUAL(
             "{"
-                 "time:'4253-05-31T22:20:37Z',"
-                 "aggregation_type:'min',"
-                 "metric_type:'absolute',"
+            "time:'4253-05-31T22:20:37Z',"
+            "aggregation_type:'min',"
+            "metric_type:'absolute',"
             "},",
             Data.Str());
     }
@@ -119,17 +118,17 @@ Y_UNIT_TEST_SUITE(TVisitorTest)
             EMetricType::MT_ABSOLUTE);
         UNIT_ASSERT_VALUES_EQUAL(
             "{"
-                "time:'4253-05-31T22:20:37Z',"
-                "aggregation_type:'max',"
-                "metric_type:'absolute',",
+            "time:'4253-05-31T22:20:37Z',"
+            "aggregation_type:'max',"
+            "metric_type:'absolute',",
             Data.Str());
 
         Visitor->OnMetricEnd();
         UNIT_ASSERT_VALUES_EQUAL(
             "{"
-                "time:'4253-05-31T22:20:37Z',"
-                "aggregation_type:'max',"
-                "metric_type:'absolute',"
+            "time:'4253-05-31T22:20:37Z',"
+            "aggregation_type:'max',"
+            "metric_type:'absolute',"
             "},",
             Data.Str());
     }
@@ -142,17 +141,17 @@ Y_UNIT_TEST_SUITE(TVisitorTest)
             EMetricType::MT_DERIVATIVE);
         UNIT_ASSERT_VALUES_EQUAL(
             "{"
-                "time:'4253-05-31T22:20:37Z',"
-                "aggregation_type:'sum',"
-                "metric_type:'derivative',",
+            "time:'4253-05-31T22:20:37Z',"
+            "aggregation_type:'sum',"
+            "metric_type:'derivative',",
             Data.Str());
 
         Visitor->OnMetricEnd();
         UNIT_ASSERT_VALUES_EQUAL(
             "{"
-                "time:'4253-05-31T22:20:37Z',"
-                "aggregation_type:'sum',"
-                "metric_type:'derivative',"
+            "time:'4253-05-31T22:20:37Z',"
+            "aggregation_type:'sum',"
+            "metric_type:'derivative',"
             "},",
             Data.Str());
     }
@@ -165,17 +164,17 @@ Y_UNIT_TEST_SUITE(TVisitorTest)
             EMetricType::MT_DERIVATIVE);
         UNIT_ASSERT_VALUES_EQUAL(
             "{"
-                "time:'4253-05-31T22:20:37Z',"
-                "aggregation_type:'average',"
-                "metric_type:'derivative',",
+            "time:'4253-05-31T22:20:37Z',"
+            "aggregation_type:'average',"
+            "metric_type:'derivative',",
             Data.Str());
 
         Visitor->OnMetricEnd();
         UNIT_ASSERT_VALUES_EQUAL(
             "{"
-                "time:'4253-05-31T22:20:37Z',"
-                "aggregation_type:'average',"
-                "metric_type:'derivative',"
+            "time:'4253-05-31T22:20:37Z',"
+            "aggregation_type:'average',"
+            "metric_type:'derivative',"
             "},",
             Data.Str());
     }
@@ -188,17 +187,17 @@ Y_UNIT_TEST_SUITE(TVisitorTest)
             EMetricType::MT_DERIVATIVE);
         UNIT_ASSERT_VALUES_EQUAL(
             "{"
-                "time:'4253-05-31T22:20:37Z',"
-                "aggregation_type:'min',"
-                "metric_type:'derivative',",
+            "time:'4253-05-31T22:20:37Z',"
+            "aggregation_type:'min',"
+            "metric_type:'derivative',",
             Data.Str());
 
         Visitor->OnMetricEnd();
         UNIT_ASSERT_VALUES_EQUAL(
             "{"
-                "time:'4253-05-31T22:20:37Z',"
-                "aggregation_type:'min',"
-                "metric_type:'derivative',"
+            "time:'4253-05-31T22:20:37Z',"
+            "aggregation_type:'min',"
+            "metric_type:'derivative',"
             "},",
             Data.Str());
     }
@@ -211,17 +210,17 @@ Y_UNIT_TEST_SUITE(TVisitorTest)
             EMetricType::MT_DERIVATIVE);
         UNIT_ASSERT_VALUES_EQUAL(
             "{"
-                "time:'4253-05-31T22:20:37Z',"
-                "aggregation_type:'max',"
-                "metric_type:'derivative',",
+            "time:'4253-05-31T22:20:37Z',"
+            "aggregation_type:'max',"
+            "metric_type:'derivative',",
             Data.Str());
 
         Visitor->OnMetricEnd();
         UNIT_ASSERT_VALUES_EQUAL(
             "{"
-                "time:'4253-05-31T22:20:37Z',"
-                "aggregation_type:'max',"
-                "metric_type:'derivative',"
+            "time:'4253-05-31T22:20:37Z',"
+            "aggregation_type:'max',"
+            "metric_type:'derivative',"
             "},",
             Data.Str());
     }
@@ -236,30 +235,30 @@ Y_UNIT_TEST_SUITE(TVisitorTest)
         Visitor->OnLabel("service", "test_service");
         UNIT_ASSERT_VALUES_EQUAL(
             "labels:["
-                "{name:'service',value:'test_service'},",
+            "{name:'service',value:'test_service'},",
             Data.Str());
 
         Visitor->OnLabel("volume", "test_fs");
         UNIT_ASSERT_VALUES_EQUAL(
             "labels:["
-                "{name:'service',value:'test_service'},"
-                "{name:'volume',value:'test_fs'},",
+            "{name:'service',value:'test_service'},"
+            "{name:'volume',value:'test_fs'},",
             Data.Str());
 
         Visitor->OnLabel("sensor", "test_sensor");
         UNIT_ASSERT_VALUES_EQUAL(
             "labels:["
-                "{name:'service',value:'test_service'},"
-                "{name:'volume',value:'test_fs'},"
-                "{name:'sensor',value:'test_sensor'},",
+            "{name:'service',value:'test_service'},"
+            "{name:'volume',value:'test_fs'},"
+            "{name:'sensor',value:'test_sensor'},",
             Data.Str());
 
         Visitor->OnLabelsEnd();
         UNIT_ASSERT_VALUES_EQUAL(
             "labels:["
-                "{name:'service',value:'test_service'},"
-                "{name:'volume',value:'test_fs'},"
-                "{name:'sensor',value:'test_sensor'},"
+            "{name:'service',value:'test_service'},"
+            "{name:'volume',value:'test_fs'},"
+            "{name:'sensor',value:'test_sensor'},"
             "],",
             Data.Str());
     }
@@ -317,29 +316,29 @@ Y_UNIT_TEST_SUITE(TVisitorTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             "metrics:["
-                "{"
-                    "time:'3111-09-16T23:10:18Z',"
-                    "aggregation_type:'sum',"
-                    "metric_type:'absolute',"
-                    "labels:["
-                        "{name:'service',value:'first_service'},"
-                        "{name:'volume',value:'first_fs'},"
-                        "{name:'sensor',value:'first_sensor'},"
-                    "],"
-                    "value:'42',"
-                "},"
-                "{"
-                    "time:'4253-05-31T22:20:37Z',"
-                    "aggregation_type:'average',"
-                    "metric_type:'derivative',"
-                    "labels:["
-                        "{name:'service',value:'second_service'},"
-                        "{name:'host',value:'second_host'},"
-                        "{name:'volume_service',value:'second_fs'},"
-                        "{name:'sensor',value:'second_sensor'},"
-                    "],"
-                    "value:'322',"
-                "},"
+            "{"
+            "time:'3111-09-16T23:10:18Z',"
+            "aggregation_type:'sum',"
+            "metric_type:'absolute',"
+            "labels:["
+            "{name:'service',value:'first_service'},"
+            "{name:'volume',value:'first_fs'},"
+            "{name:'sensor',value:'first_sensor'},"
+            "],"
+            "value:'42',"
+            "},"
+            "{"
+            "time:'4253-05-31T22:20:37Z',"
+            "aggregation_type:'average',"
+            "metric_type:'derivative',"
+            "labels:["
+            "{name:'service',value:'second_service'},"
+            "{name:'host',value:'second_host'},"
+            "{name:'volume_service',value:'second_fs'},"
+            "{name:'sensor',value:'second_sensor'},"
+            "],"
+            "value:'322',"
+            "},"
             "]",
             Data.Str());
     }

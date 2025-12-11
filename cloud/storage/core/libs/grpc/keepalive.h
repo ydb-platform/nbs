@@ -10,8 +10,7 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TKeepAliveOption final
-    : public grpc::ServerBuilderOption
+class TKeepAliveOption final: public grpc::ServerBuilderOption
 {
     class TMutator;
 
@@ -27,7 +26,8 @@ public:
 
     void UpdateArguments(grpc::ChannelArguments* args) override;
     void UpdatePlugins(
-        std::vector<std::unique_ptr<grpc::ServerBuilderPlugin>>* plugins) override;
+        std::vector<std::unique_ptr<grpc::ServerBuilderPlugin>>* plugins)
+        override;
 };
 
 }   // namespace NCloud

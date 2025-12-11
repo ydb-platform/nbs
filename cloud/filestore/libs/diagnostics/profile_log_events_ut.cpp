@@ -21,8 +21,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestProfileLog
-    : IProfileLog
+struct TTestProfileLog: IProfileLog
 {
     IProfileLog::TRecord Record;
 
@@ -242,7 +241,9 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         UNIT_ASSERT_VALUES_EQUAL(owner, lockInfo.GetOwner());
         UNIT_ASSERT_VALUES_EQUAL(offset, lockInfo.GetOffset());
         UNIT_ASSERT_VALUES_EQUAL(length, lockInfo.GetLength());
-        UNIT_ASSERT_VALUES_EQUAL(static_cast<ui32>(lockType), lockInfo.GetType());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(lockType),
+            lockInfo.GetType());
         UNIT_ASSERT(!lockInfo.HasConflictedOwner());
         UNIT_ASSERT(!lockInfo.HasConflictedOffset());
         UNIT_ASSERT(!lockInfo.HasConflictedLength());
@@ -314,7 +315,9 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         UNIT_ASSERT_VALUES_EQUAL(owner, lockInfo.GetOwner());
         UNIT_ASSERT_VALUES_EQUAL(offset, lockInfo.GetOffset());
         UNIT_ASSERT_VALUES_EQUAL(length, lockInfo.GetLength());
-        UNIT_ASSERT_VALUES_EQUAL(static_cast<ui32>(lockType), lockInfo.GetType());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(lockType),
+            lockInfo.GetType());
         UNIT_ASSERT(!lockInfo.HasConflictedOwner());
         UNIT_ASSERT(!lockInfo.HasConflictedOffset());
         UNIT_ASSERT(!lockInfo.HasConflictedLength());
@@ -823,7 +826,7 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         const std::array<TString, 3> names = {"name_1", "name_2", "name_3"};
 
         NProto::TListNodesResponse res;
-        for (const auto& name : names) {
+        for (const auto& name: names) {
             res.AddNames(name);
         }
 
@@ -963,7 +966,7 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         const std::array<TString, 2> names = {"name_1", "name_2"};
 
         NProto::TListNodeXAttrResponse res;
-        for (const auto& name : names) {
+        for (const auto& name: names) {
             res.AddNames(name);
         }
 
@@ -1076,7 +1079,9 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         UNIT_ASSERT_VALUES_EQUAL(
             error.GetCode(),
             profileLog->Record.Request.GetErrorCode());
-        UNIT_ASSERT_VALUES_EQUAL(0, profileLog->Record.Request.GetRanges().size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            profileLog->Record.Request.GetRanges().size());
         UNIT_ASSERT(!profileLog->Record.Request.HasNodeInfo());
         UNIT_ASSERT(!profileLog->Record.Request.HasLockInfo());
     }
@@ -1092,7 +1097,8 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         }
 
         using TRequest = NProto::TProfileLogRequestInfo;
-        auto addRange = [] (ui64 offset, ui32 sz, TRequest& request) {
+        auto addRange = [](ui64 offset, ui32 sz, TRequest& request)
+        {
             auto* range = request.AddRanges();
             range->SetOffset(offset);
             range->SetBytes(sz);

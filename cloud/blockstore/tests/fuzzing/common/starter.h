@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cloud/blockstore/libs/daemon/common/bootstrap.h>
+
 #include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
 
@@ -18,8 +19,7 @@ namespace NCloud::NBlockStore::NFuzzing {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TStarter
-    : public IStartable
+class TStarter: public IStartable
 {
 private:
     NServer::TBootstrapBase& Bootstrap;

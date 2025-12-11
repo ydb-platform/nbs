@@ -5,12 +5,12 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
-#include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
-#include <cloud/blockstore/libs/storage/api/volume_throttling_manager.h>
+#include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/api/volume_balancer.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
+#include <cloud/blockstore/libs/storage/api/volume_throttling_manager.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/disk_agent.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
@@ -22,14 +22,14 @@
 #include <cloud/blockstore/libs/storage/partition/part_actor.h>
 #include <cloud/blockstore/libs/storage/partition2/part2_actor.h>
 #include <cloud/blockstore/libs/storage/service/service.h>
-#include <cloud/blockstore/libs/storage/stats_service/stats_service.h>
-#include <cloud/blockstore/libs/storage/volume_throttling_manager/volume_throttling_manager.h>
 #include <cloud/blockstore/libs/storage/ss_proxy/ss_proxy.h>
+#include <cloud/blockstore/libs/storage/stats_service/stats_service.h>
 #include <cloud/blockstore/libs/storage/undelivered/undelivered.h>
 #include <cloud/blockstore/libs/storage/volume/volume.h>
 #include <cloud/blockstore/libs/storage/volume/volume_actor.h>
 #include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer.h>
 #include <cloud/blockstore/libs/storage/volume_proxy/volume_proxy.h>
+#include <cloud/blockstore/libs/storage/volume_throttling_manager/volume_throttling_manager.h>
 
 #include <cloud/storage/core/libs/api/authorizer.h>
 #include <cloud/storage/core/libs/api/hive_proxy.h>
@@ -73,15 +73,13 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCustomTabletStateClassifier final
-    : public TTabletStateClassifier
+struct TCustomTabletStateClassifier final: public TTabletStateClassifier
 {
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCustomTabletListRenderer final
-    : public TTabletListRenderer
+struct TCustomTabletListRenderer final: public TTabletListRenderer
 {
     TString GetUserStateName(const TTabletListElement& elem) override
     {
@@ -106,8 +104,7 @@ struct TCustomTabletListRenderer final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TStorageServicesInitializer final
-    : public IServiceInitializer
+class TStorageServicesInitializer final: public IServiceInitializer
 {
 private:
     const TServerActorSystemArgs Args;
@@ -154,7 +151,8 @@ public:
                         ? ""
                         : Args.StorageConfig->GetTabletBootInfoBackupFilePath(),
                 .UseBinaryFormatForTabletBootInfoBackup =
-                    Args.StorageConfig->GetUseBinaryFormatForTabletBootInfoBackup(),
+                    Args.StorageConfig
+                        ->GetUseBinaryFormatForTabletBootInfoBackup(),
                 .FallbackMode = Args.StorageConfig->GetHiveProxyFallbackMode(),
                 .TenantHiveTabletId =
                     Args.StorageConfig->GetTenantHiveTabletId(),
@@ -372,8 +370,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCustomLocalServiceInitializer final
-    : public IServiceInitializer
+class TCustomLocalServiceInitializer final: public IServiceInitializer
 {
 private:
     const NKikimrConfig::TAppConfig& AppConfig;
@@ -391,18 +388,18 @@ private:
 
 public:
     TCustomLocalServiceInitializer(
-            const NKikimrConfig::TAppConfig& appConfig,
-            ILoggingServicePtr logging,
-            TStorageConfigPtr storageConfig,
-            TDiagnosticsConfigPtr diagnosticsConfig,
-            IProfileLogPtr profileLog,
-            IBlockDigestGeneratorPtr blockDigestGenerator,
-            ITraceSerializerPtr traceSerializer,
-            NLogbroker::IServicePtr logbrokerService,
-            NNotify::IServicePtr notifyService,
-            NRdma::IClientPtr rdmaClient,
-            NServer::IEndpointEventHandlerPtr endpointEventHandler,
-            bool isDiskRegistrySpareNode)
+        const NKikimrConfig::TAppConfig& appConfig,
+        ILoggingServicePtr logging,
+        TStorageConfigPtr storageConfig,
+        TDiagnosticsConfigPtr diagnosticsConfig,
+        IProfileLogPtr profileLog,
+        IBlockDigestGeneratorPtr blockDigestGenerator,
+        ITraceSerializerPtr traceSerializer,
+        NLogbroker::IServicePtr logbrokerService,
+        NNotify::IServicePtr notifyService,
+        NRdma::IClientPtr rdmaClient,
+        NServer::IEndpointEventHandlerPtr endpointEventHandler,
+        bool isDiskRegistrySpareNode)
         : AppConfig(appConfig)
         , Logging(std::move(logging))
         , StorageConfig(std::move(storageConfig))
@@ -432,8 +429,11 @@ public:
         auto endpointEventHandler = EndpointEventHandler;
         auto logging = Logging;
 
-        auto volumeFactory = [=] (const TActorId& owner, TTabletStorageInfo* storage) {
-            Y_ABORT_UNLESS(storage->TabletType == TTabletTypes::BlockStoreVolume);
+        auto volumeFactory =
+            [=](const TActorId& owner, TTabletStorageInfo* storage)
+        {
+            Y_ABORT_UNLESS(
+                storage->TabletType == TTabletTypes::BlockStoreVolume);
 
             auto actor = CreateVolumeTablet(
                 owner,
@@ -451,8 +451,11 @@ public:
             return actor.release();
         };
 
-        auto diskRegistryFactory = [=] (const TActorId& owner, TTabletStorageInfo* storage) {
-            Y_ABORT_UNLESS(storage->TabletType == TTabletTypes::BlockStoreDiskRegistry);
+        auto diskRegistryFactory =
+            [=](const TActorId& owner, TTabletStorageInfo* storage)
+        {
+            Y_ABORT_UNLESS(
+                storage->TabletType == TTabletTypes::BlockStoreDiskRegistry);
 
             auto tablet = CreateDiskRegistry(
                 owner,
@@ -544,19 +547,20 @@ public:
 
 IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
 {
-    auto prepareKikimrRunConfig = [&] (TKikimrRunConfig& runConfig) {
+    auto prepareKikimrRunConfig = [&](TKikimrRunConfig& runConfig)
+    {
         if (sArgs.StorageConfig->GetConfigsDispatcherServiceEnabled()) {
             SetupConfigDispatcher(
                 sArgs.StorageConfig->GetConfigDispatcherSettings(),
                 sArgs.StorageConfig->GetSchemeShardDir(),
                 sArgs.StorageConfig->GetNodeType(),
                 &runConfig.ConfigsDispatcherInitInfo);
-            runConfig.ConfigsDispatcherInitInfo.InitialConfig = runConfig.AppConfig;
+            runConfig.ConfigsDispatcherInitInfo.InitialConfig =
+                runConfig.AppConfig;
         }
     };
-    auto onInitialize = [&] (
-        TKikimrRunConfig& runConfig,
-        TServiceInitializersList& initializers)
+    auto onInitialize =
+        [&](TKikimrRunConfig& runConfig, TServiceInitializersList& initializers)
     {
         initializers.AddServiceInitializer(
             new NStorage::TKikimrServicesInitializer(sArgs.AppConfig));
@@ -564,8 +568,8 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
             runConfig,
             MakeIntrusive<TCustomTabletStateClassifier>(),
             MakeIntrusive<TCustomTabletListRenderer>()));
-        initializers.AddServiceInitializer(new TStorageServicesInitializer(
-            sArgs));
+        initializers.AddServiceInitializer(
+            new TStorageServicesInitializer(sArgs));
         initializers.AddServiceInitializer(new TCustomLocalServiceInitializer(
             *sArgs.AppConfig,
             sArgs.Logging,
@@ -601,7 +605,7 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
     servicesMask.EnableSharedCache = 1;
     servicesMask.EnableTxProxy = 1;
     servicesMask.EnableIcbService = 1;
-    servicesMask.EnableLocalService = 0;    // configured manually
+    servicesMask.EnableLocalService = 0;   // configured manually
     servicesMask.EnableSchemeBoardMonitoring = 1;
     servicesMask.EnableConfigsDispatcher =
         storageConfig->GetConfigsDispatcherServiceEnabled();
@@ -609,7 +613,8 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
         storageConfig->GetYdbViewerServiceEnabled();
 
     auto nodeId = sArgs.NodeId;
-    auto onStart = [=] (IActorSystem& actorSystem) {
+    auto onStart = [=](IActorSystem& actorSystem)
+    {
         if (storageConfig->GetDisableLocalService()) {
             using namespace NNodeWhiteboard;
             const TActorId wb(MakeNodeWhiteboardServiceId(nodeId));

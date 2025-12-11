@@ -2,10 +2,10 @@
 
 #include <cloud/filestore/public/api/protos/fs.pb.h>
 
-#include <google/protobuf/util/message_differencer.h>
-
 #include <library/cpp/getopt/small/last_getopt.h>
 #include <library/cpp/testing/unittest/registar.h>
+
+#include <google/protobuf/util/message_differencer.h>
 
 #include <algorithm>
 #include <array>
@@ -17,8 +17,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TAppOpts
-    : public NUnitTest::TBaseFixture
+struct TAppOpts: public NUnitTest::TBaseFixture
 {
     const ui64 MaxReadBandwidth = 1;
     const ui32 MaxReadIops = 2;
@@ -86,8 +85,7 @@ struct TAppOpts
             "--performance-profile-max-postponed-time",
             std::to_string(MaxPostponedTime),
             "--performance-profile-max-postponed-count",
-            std::to_string(MaxPostponedCount)
-        };
+            std::to_string(MaxPostponedCount)};
 
         std::vector<const char*> vec;
         vec.reserve(arr.size());
@@ -108,7 +106,8 @@ struct TAppOpts
         TargetProfile.SetBoostRefillTime(BoostRefillTime);
         TargetProfile.SetBoostPercentage(BoostPercentage);
         TargetProfile.SetBurstPercentage(BurstPercentage);
-        TargetProfile.SetDefaultPostponedRequestWeight(DefaultPostponedRequestWeight);
+        TargetProfile.SetDefaultPostponedRequestWeight(
+            DefaultPostponedRequestWeight);
         TargetProfile.SetMaxPostponedWeight(MaxPostponedWeight);
         TargetProfile.SetMaxWriteCostMultiplier(MaxWriteCostMultiplier);
         TargetProfile.SetMaxPostponedTime(MaxPostponedTime);

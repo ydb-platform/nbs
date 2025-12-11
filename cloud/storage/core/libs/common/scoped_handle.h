@@ -10,11 +10,7 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <
-    std::integral T,
-    T InvalidValue,
-    typename UniqueTag
->
+template <std::integral T, T InvalidValue, typename UniqueTag>
 class TScopedHandle
 {
 private:
@@ -24,15 +20,15 @@ public:
     constexpr TScopedHandle() = default;
 
     constexpr explicit TScopedHandle(T value)
-        : Value {value}
+        : Value{value}
     {}
 
-    constexpr explicit operator T () const noexcept
+    constexpr explicit operator T() const noexcept
     {
         return Value;
     }
 
-    constexpr explicit operator bool () const noexcept
+    constexpr explicit operator bool() const noexcept
     {
         return Value != InvalidValue;
     }
@@ -43,7 +39,7 @@ public:
         return static_cast<T>(handle);
     }
 
-    friend constexpr auto operator <=> (TScopedHandle, TScopedHandle) = default;
+    friend constexpr auto operator<=>(TScopedHandle, TScopedHandle) = default;
 };
 
 }   // namespace NCloud
@@ -53,7 +49,7 @@ public:
 template <typename T, T V, typename Tag>
 struct std::hash<NCloud::TScopedHandle<T, V, Tag>>
 {
-    std::size_t operator () (NCloud::TScopedHandle<T, V, Tag> handle) const
+    std::size_t operator()(NCloud::TScopedHandle<T, V, Tag> handle) const
     {
         return std::hash<T>{}(ToUnderlying(handle));
     }
@@ -62,14 +58,15 @@ struct std::hash<NCloud::TScopedHandle<T, V, Tag>>
 template <typename T, T V, typename Tag>
 struct THash<NCloud::TScopedHandle<T, V, Tag>>
     : public std::hash<NCloud::TScopedHandle<T, V, Tag>>
-{};
+{
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T, T V, typename Tag>
 struct std::equal_to<NCloud::TScopedHandle<T, V, Tag>>
 {
-    bool operator () (
+    bool operator()(
         NCloud::TScopedHandle<T, V, Tag> lhs,
         NCloud::TScopedHandle<T, V, Tag> rhs) const
     {
@@ -80,7 +77,8 @@ struct std::equal_to<NCloud::TScopedHandle<T, V, Tag>>
 template <typename T, T V, typename Tag>
 struct TEqualTo<NCloud::TScopedHandle<T, V, Tag>>
     : public std::equal_to<NCloud::TScopedHandle<T, V, Tag>>
-{};
+{
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 

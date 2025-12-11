@@ -66,7 +66,8 @@ private:
     ui32 Responses = 0;
     typename TMethod::TResponse::ProtoRecordType Record;
 
-    using TBase = NActors::TActorBootstrapped<TMultiPartitionRequestActor<TMethod>>;
+    using TBase =
+        NActors::TActorBootstrapped<TMultiPartitionRequestActor<TMethod>>;
 
     TVector<TCallContextPtr> ChildCallContexts;
 
@@ -138,14 +139,14 @@ private:
                 BlocksPerStripe,
                 PartitionRequests[requestNo].BlockRange.Start + i,
                 PartitionsCount,
-                PartitionRequests[requestNo].PartitionId
-            );
+                PartitionRequests[requestNo].PartitionId);
 
             buffers[index - OriginalRange.Start] = std::move(srcBuffers[i]);
         }
 
         if (src.HasChecksum()) {
-            Checksums[requestNo] = std::move(*src.MutableChecksum());;
+            Checksums[requestNo] = std::move(*src.MutableChecksum());
+            ;
         }
     }
 
@@ -183,8 +184,7 @@ private:
             PartitionsCount,
             PartitionRequests[requestNo].PartitionId,
             src.GetMask(),
-            *dst.MutableMask()
-        );
+            *dst.MutableMask());
     }
 
     void Merge(
@@ -216,8 +216,7 @@ private:
 
             dst.MutableProgress()->SetProcessed(
                 s.GetProcessed() + d.GetProcessed());
-            dst.MutableProgress()->SetTotal(
-                s.GetTotal() + d.GetTotal());
+            dst.MutableProgress()->SetTotal(s.GetTotal() + d.GetTotal());
             dst.MutableProgress()->SetIsCompleted(
                 s.GetIsCompleted() && isCompleted);
         }
@@ -252,9 +251,8 @@ private:
             dst.MutableProgress()->SetTotal(
                 srcProgress.GetTotal() + dstProgress.GetTotal());
 
-            const bool dstIsCompleted = Responses
-                ? dstProgress.GetIsCompleted()
-                : true;
+            const bool dstIsCompleted =
+                Responses ? dstProgress.GetIsCompleted() : true;
             dst.MutableProgress()->SetIsCompleted(
                 srcProgress.GetIsCompleted() && dstIsCompleted);
 
@@ -311,10 +309,7 @@ private:
     }
 
     template <typename T>
-    void Merge(
-        T& src,
-        ui32 requestNo,
-        T& dst)
+    void Merge(T& src, ui32 requestNo, T& dst)
     {
         Y_UNUSED(requestNo);
         MergeCommonFields(src, dst);
@@ -346,13 +341,13 @@ private:
 
 template <typename TMethod>
 TMultiPartitionRequestActor<TMethod>::TMultiPartitionRequestActor(
-        TRequestInfoPtr requestInfo,
-        TBlockRange64 originalRange,
-        ui32 blocksPerStripe,
-        ui32 blockSize,
-        ui32 partitionsCount,
-        TVector<TPartitionRequest<TMethod>> partitionRequests,
-        TRequestTraceInfo traceInfo)
+    TRequestInfoPtr requestInfo,
+    TBlockRange64 originalRange,
+    ui32 blocksPerStripe,
+    ui32 blockSize,
+    ui32 partitionsCount,
+    TVector<TPartitionRequest<TMethod>> partitionRequests,
+    TRequestTraceInfo traceInfo)
     : RequestInfo(std::move(requestInfo))
     , OriginalRange(originalRange)
     , BlocksPerStripe(blocksPerStripe)
@@ -371,7 +366,6 @@ void TMultiPartitionRequestActor<TMethod>::Bootstrap(
     const NActors::TActorContext& ctx)
 {
     Prepare(ctx);
-
 
     ui32 requestNo = 0;
     for (auto& partitionRequest: PartitionRequests) {
@@ -400,7 +394,9 @@ void TMultiPartitionRequestActor<TMethod>::Prepare(
     const NActors::TActorContext& ctx)
 {
     Y_UNUSED(ctx);
-    if constexpr(std::is_same_v<TMethod, TEvVolume::TGetCompactionStatusMethod>) {
+    if constexpr (
+        std::is_same_v<TMethod, TEvVolume::TGetCompactionStatusMethod>)
+    {
         Record.SetIsCompleted(true);
     }
 }
@@ -421,7 +417,7 @@ void TMultiPartitionRequestActor<TMethod>::HandlePartitionResponse(
         if constexpr (
             std::is_same_v<TMethod, TEvService::TReadBlocksLocalMethod>)
         {
-            if (!msg->Record.FailInfo.FailedRanges.empty()){
+            if (!msg->Record.FailInfo.FailedRanges.empty()) {
                 Merge(msg->Record, requestNo, Record);
             }
         }
@@ -439,9 +435,7 @@ void TMultiPartitionRequestActor<TMethod>::HandlePartitionResponse(
             }
         }
 
-        auto response = std::make_unique<typename TMethod::TResponse>(
-            Record
-        );
+        auto response = std::make_unique<typename TMethod::TResponse>(Record);
 
         if (TraceInfo.IsTraced) {
             TraceInfo.TraceSerializer->BuildTraceInfo(
@@ -470,14 +464,10 @@ void TMultiPartitionRequestActor<TMethod>::HandleUndelivery(
 {
     Y_UNUSED(ev);
 
-    *Record.MutableError() = MakeError(
-        E_REJECTED,
-        "failed to deliver request to some partitions"
-    );
+    *Record.MutableError() =
+        MakeError(E_REJECTED, "failed to deliver request to some partitions");
 
-    auto response = std::make_unique<typename TMethod::TResponse>(
-        Record
-    );
+    auto response = std::make_unique<typename TMethod::TResponse>(Record);
 
     LWTRACK(
         ResponseSent_Volume,

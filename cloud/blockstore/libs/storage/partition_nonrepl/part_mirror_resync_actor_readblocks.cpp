@@ -1,4 +1,5 @@
 #include "part_mirror_resync_actor.h"
+
 #include "part_mirror_resync_fastpath_actor.h"
 #include "part_mirror_resync_util.h"
 
@@ -28,9 +29,8 @@ void TMirrorPartitionResyncActor::ProcessReadRequestSyncPath(
     const typename TMethod::TRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto range = BuildRequestBlockRange(
-        *ev->Get(),
-        PartConfig->GetBlockSize());
+    const auto range =
+        BuildRequestBlockRange(*ev->Get(), PartConfig->GetBlockSize());
 
     if (ResyncFinished || State.IsResynced(range)) {
         ForwardRequestWithNondeliveryTracking(ctx, MirrorActorId, *ev);
@@ -73,7 +73,9 @@ void TMirrorPartitionResyncActor::ProcessReadRequestFastPath(
     TBlockRange64 range,
     const TActorContext& ctx)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%s] Resync read fast path %s",
         PartConfig->GetName().c_str(),
         DescribeRange(range).c_str());
@@ -118,7 +120,9 @@ void TMirrorPartitionResyncActor::ProcessReadRequestFastPath(
     TBlockRange64 range,
     const TActorContext& ctx)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%s] Resync read local fast path %s",
         PartConfig->GetName().c_str(),
         DescribeRange(range).c_str());
@@ -153,7 +157,9 @@ void TMirrorPartitionResyncActor::ProcessReadRequestSlowPath(
     TBlockRange64 range,
     const TActorContext& ctx)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%s] Resync read slow path %s",
         PartConfig->GetName().c_str(),
         DescribeRange(range).c_str());
@@ -174,10 +180,7 @@ void TMirrorPartitionResyncActor::ProcessReadResponseFastPathLocal(
     const NActors::TActorContext& ctx)
 {
     // Send empty response, received blocks are already stored in the SgList
-    SendReadBlocksResponse(
-        NProto::TError(),
-        record,
-        ctx);
+    SendReadBlocksResponse(NProto::TError(), record, ctx);
 }
 
 void TMirrorPartitionResyncActor::ProcessReadResponseFastPath(
@@ -234,19 +237,17 @@ void TMirrorPartitionResyncActor::ProcessReadResponseFastPath(
 }
 
 void TMirrorPartitionResyncActor::SendReadBlocksResponse(
-        const NProto::TError& error,
-        const TFastPathRecord& record,
-        const NActors::TActorContext& ctx)
+    const NProto::TError& error,
+    const TFastPathRecord& record,
+    const NActors::TActorContext& ctx)
 {
     auto requestInfo = CreateRequestInfo(
         record.Ev->Sender,
         record.Ev->Cookie,
         record.Ev->Get<TEvService::TEvReadBlocksLocalRequest>()->CallContext);
 
-
-    auto response = std::make_unique<TEvService::TEvReadBlocksLocalResponse>(
-        error
-    );
+    auto response =
+        std::make_unique<TEvService::TEvReadBlocksLocalResponse>(error);
 
     LWTRACK(
         ResponseSent_PartitionWorker,
@@ -256,7 +257,6 @@ void TMirrorPartitionResyncActor::SendReadBlocksResponse(
 
     NCloud::Reply(ctx, *requestInfo, std::move(response));
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -280,10 +280,7 @@ void TMirrorPartitionResyncActor::HandleReadResyncFastPathResponse(
 {
     auto respMsg = ev->Get();
     auto* record = FastPathRecords.FindPtr(ev->Cookie);
-    STORAGE_VERIFY(
-        record,
-        TWellKnownEntityTypes::DISK,
-        PartConfig->GetName());
+    STORAGE_VERIFY(record, TWellKnownEntityTypes::DISK, PartConfig->GetName());
 
     if (HasError(respMsg->GetError())) {
         ProcessReadRequestSlowPath(
@@ -309,7 +306,8 @@ void TMirrorPartitionResyncActor::HandleReadResyncFastPathResponse(
                 false,
                 TWellKnownEntityTypes::DISK,
                 PartConfig->GetName(),
-                TStringBuilder() << "unexpected ev type: "
+                TStringBuilder()
+                    << "unexpected ev type: "
                     << static_cast<int>(record->Ev->GetTypeRewrite()));
             break;
     }

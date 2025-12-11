@@ -89,4 +89,4 @@ Y_UNIT_TEST_SUITE(THistogramTypesTest)
     }
 }
 
-}   // NCloud
+}   // namespace NCloud

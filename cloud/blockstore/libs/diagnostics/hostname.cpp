@@ -26,8 +26,10 @@ constexpr std::array<TStringBuf, 4> MergedAndMixedHandleClasses(
 ui32 GetServicePort(EHostService serviceType, const TDiagnosticsConfig& config)
 {
     switch (serviceType) {
-        case EHostService::Kikimr: return config.GetKikimrMonPort();
-        case EHostService::Nbs: return config.GetNbsMonPort();
+        case EHostService::Kikimr:
+            return config.GetKikimrMonPort();
+        case EHostService::Nbs:
+            return config.GetNbsMonPort();
 
         default:
             Y_ABORT("Wrong EHostService: %d", serviceType);
@@ -48,7 +50,7 @@ ui32 GetServicePort(EHostService serviceType, const TDiagnosticsConfig& config)
     return DefaultHandleClasses;
 }
 
-}    // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -71,9 +73,7 @@ TString GetExternalHostUrl(
     TStringBuilder out;
     switch (config.GetHostNameScheme()) {
         case NProto::HOSTNAME_BASTION:
-            out << "https://"
-                << GetShortHostName(hostName)
-                << '.'
+            out << "https://" << GetShortHostName(hostName) << '.'
                 << config.GetBastionNameSuffix();
 
             if (serviceType != EHostService::Kikimr) {
@@ -82,14 +82,13 @@ TString GetExternalHostUrl(
             break;
 
         case NProto::HOSTNAME_YDBVIEWER:
-            out << "https://" << config.GetViewerHostName()
-                << '/' << hostName
+            out << "https://" << config.GetViewerHostName() << '/' << hostName
                 << ':' << GetServicePort(serviceType, config);
             break;
 
         default:
-            out << "http://" << hostName
-                << ':' << GetServicePort(serviceType, config);
+            out << "http://" << hostName << ':'
+                << GetServicePort(serviceType, config);
             break;
     }
 

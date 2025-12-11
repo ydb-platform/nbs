@@ -22,24 +22,24 @@ TDuration Mins(ui32 x)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DISCOVERY_CONFIG(xxx)                                       \
-    xxx(ConductorApiUrl,                TString,          ""                  )\
-    xxx(InstanceListFile,               TString,          ""                  )\
-    xxx(BannedInstanceListFile,         TString,          ""                  )\
-    xxx(ConductorRequestInterval,       TDuration,        Mins(5)             )\
-    xxx(LocalFilesReloadInterval,       TDuration,        Secs(1)             )\
-    xxx(HealthCheckInterval,            TDuration,        Secs(1)             )\
-    xxx(ConductorGroups,                TVector<TString>, {}                  )\
-    xxx(ConductorInstancePort,          ui32,             9766                )\
-    xxx(ConductorSecureInstancePort,    ui32,             0                   )\
-    xxx(ConductorRequestTimeout,        TDuration,        Secs(15)            )\
-    xxx(PingRequestTimeout,             TDuration,        Secs(15)            )\
-    xxx(MaxPingRequestsPerHealthCheck,  ui32,        20                       )\
-// BLOCKSTORE_DISCOVERY_CONFIG
+#define BLOCKSTORE_DISCOVERY_CONFIG(xxx)              \
+    xxx(ConductorApiUrl, TString, "")                 \
+    xxx(InstanceListFile, TString, "")                \
+    xxx(BannedInstanceListFile, TString, "")          \
+    xxx(ConductorRequestInterval, TDuration, Mins(5)) \
+    xxx(LocalFilesReloadInterval, TDuration, Secs(1)) \
+    xxx(HealthCheckInterval, TDuration, Secs(1))      \
+    xxx(ConductorGroups, TVector<TString>, {})        \
+    xxx(ConductorInstancePort, ui32, 9766)            \
+    xxx(ConductorSecureInstancePort, ui32, 0)         \
+    xxx(ConductorRequestTimeout, TDuration, Secs(15)) \
+    xxx(PingRequestTimeout, TDuration, Secs(15))      \
+    xxx(MaxPingRequestsPerHealthCheck, ui32, 20)      \
+    // BLOCKSTORE_DISCOVERY_CONFIG
 
-#define BLOCKSTORE_DISCOVERY_DECLARE_CONFIG(name, type, value)                 \
-    Y_DECLARE_UNUSED static const type Default##name = value;                  \
-// BLOCKSTORE_DISCOVERY_DECLARE_CONFIG
+#define BLOCKSTORE_DISCOVERY_DECLARE_CONFIG(name, type, value) \
+    Y_DECLARE_UNUSED static const type Default##name = value;  \
+    // BLOCKSTORE_DISCOVERY_DECLARE_CONFIG
 
 BLOCKSTORE_DISCOVERY_CONFIG(BLOCKSTORE_DISCOVERY_DECLARE_CONFIG)
 
@@ -63,7 +63,7 @@ template <>
 TVector<TString> ConvertValue(google::protobuf::RepeatedPtrField<TString> value)
 {
     TVector<TString> v;
-    for (const auto& x : value) {
+    for (const auto& x: value) {
         v.push_back(x);
     }
     return v;
@@ -104,16 +104,15 @@ void DumpImpl(const TVector<TString>& value, IOutputStream& os)
 
 TDiscoveryConfig::TDiscoveryConfig(NProto::TDiscoveryServiceConfig config)
     : Config(std::move(config))
-{
-}
+{}
 
-#define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
-type TDiscoveryConfig::Get##name() const                                       \
-{                                                                              \
-    const auto value = Config.Get##name();                                     \
-    return IsEmpty(value) ? Default##name : ConvertValue<type>(value);         \
-}                                                                              \
-// BLOCKSTORE_CONFIG_GETTER
+#define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                          \
+    type TDiscoveryConfig::Get##name() const                               \
+    {                                                                      \
+        const auto value = Config.Get##name();                             \
+        return IsEmpty(value) ? Default##name : ConvertValue<type>(value); \
+    }                                                                      \
+    // BLOCKSTORE_CONFIG_GETTER
 
 BLOCKSTORE_DISCOVERY_CONFIG(BLOCKSTORE_CONFIG_GETTER)
 
@@ -121,11 +120,11 @@ BLOCKSTORE_DISCOVERY_CONFIG(BLOCKSTORE_CONFIG_GETTER)
 
 void TDiscoveryConfig::Dump(IOutputStream& out) const
 {
-#define BLOCKSTORE_CONFIG_DUMP(name, ...)                                      \
-    out << #name << ": ";                                                      \
-    DumpImpl(Get##name(), out);                                                \
-    out << Endl;                                                               \
-// BLOCKSTORE_CONFIG_DUMP
+#define BLOCKSTORE_CONFIG_DUMP(name, ...) \
+    out << #name << ": ";                 \
+    DumpImpl(Get##name(), out);           \
+    out << Endl;                          \
+    // BLOCKSTORE_CONFIG_DUMP
 
     BLOCKSTORE_DISCOVERY_CONFIG(BLOCKSTORE_CONFIG_DUMP);
 
@@ -134,16 +133,21 @@ void TDiscoveryConfig::Dump(IOutputStream& out) const
 
 void TDiscoveryConfig::DumpHtml(IOutputStream& out) const
 {
-#define BLOCKSTORE_CONFIG_DUMP(name, ...)                                      \
-    TABLER() {                                                                 \
-        TABLED() { out << #name; }                                             \
-        TABLED() { DumpImpl(Get##name(), out); }                               \
-    }                                                                          \
-// BLOCKSTORE_CONFIG_DUMP
+#define BLOCKSTORE_CONFIG_DUMP(name, ...) \
+    TABLER () {                           \
+        TABLED () {                       \
+            out << #name;                 \
+        }                                 \
+        TABLED () {                       \
+            DumpImpl(Get##name(), out);   \
+        }                                 \
+    }                                     \
+    // BLOCKSTORE_CONFIG_DUMP
 
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
+    HTML (out) {
+        TABLE_CLASS ("table table-condensed") {
+            TABLEBODY()
+            {
                 BLOCKSTORE_DISCOVERY_CONFIG(BLOCKSTORE_CONFIG_DUMP);
             }
         }

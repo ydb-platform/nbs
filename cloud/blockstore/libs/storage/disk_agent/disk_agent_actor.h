@@ -35,8 +35,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDiskAgentActor final
-    : public NActors::TActorBootstrapped<TDiskAgentActor>
+class TDiskAgentActor final: public NActors::TActorBootstrapped<TDiskAgentActor>
 {
     struct TPostponedRequest
     {
@@ -73,7 +72,7 @@ private:
     // Pending WaitReady requests
     TDeque<TPendingRequest> PendingRequests;
 
-    TBandwidthCalculator BandwidthCalculator {*AgentConfig};
+    TBandwidthCalculator BandwidthCalculator{*AgentConfig};
 
     ERegistrationState RegistrationState = ERegistrationState::NotStarted;
 
@@ -145,10 +144,8 @@ private:
     void SendRegisterRequest(const NActors::TActorContext& ctx);
 
     template <typename TMethod, typename TEv, typename TOp>
-    void PerformIO(
-        const NActors::TActorContext& ctx,
-        const TEv& ev,
-        TOp operation);
+    void
+    PerformIO(const NActors::TActorContext& ctx, const TEv& ev, TOp operation);
 
     template <typename TMethod, typename TRequestPtr>
     bool CheckIntersection(
@@ -253,17 +250,20 @@ private:
     bool RejectRequests(STFUNC_SIG);
 
     BLOCKSTORE_DISK_AGENT_REQUESTS(BLOCKSTORE_IMPLEMENT_REQUEST, TEvDiskAgent)
-    BLOCKSTORE_DISK_AGENT_REQUESTS_PRIVATE(BLOCKSTORE_IMPLEMENT_REQUEST, TEvDiskAgentPrivate)
+    BLOCKSTORE_DISK_AGENT_REQUESTS_PRIVATE(
+        BLOCKSTORE_IMPLEMENT_REQUEST,
+        TEvDiskAgentPrivate)
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DISK_AGENT_COUNTER(name)                                    \
-    if (Counters) {                                                            \
-        auto& counter = Counters->Cumulative()                                 \
-            [TDiskAgentCounters::CUMULATIVE_COUNTER_Request_##name];           \
-        counter.Increment(1);                                                  \
-    }                                                                          \
-// BLOCKSTORE_DISK_AGENT_COUNTER
+#define BLOCKSTORE_DISK_AGENT_COUNTER(name)                              \
+    if (Counters) {                                                      \
+        auto& counter =                                                  \
+            Counters->Cumulative()                                       \
+                [TDiskAgentCounters::CUMULATIVE_COUNTER_Request_##name]; \
+        counter.Increment(1);                                            \
+    }                                                                    \
+    // BLOCKSTORE_DISK_AGENT_COUNTER
 
 }   // namespace NCloud::NBlockStore::NStorage

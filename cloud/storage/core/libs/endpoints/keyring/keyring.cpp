@@ -43,8 +43,8 @@ ui32 RetriableExecute(T&& block, const TString& operation)
         if (errno != EAGAIN) {
             auto err = errno;
             auto msg = strerror(errno);
-            Cerr << operation << " failed with error: "
-                << err << ", " << msg << Endl;
+            Cerr << operation << " failed with error: " << err << ", " << msg
+                 << Endl;
             return res;
         }
 
@@ -55,7 +55,7 @@ ui32 RetriableExecute(T&& block, const TString& operation)
     return InvalidCode;
 }
 
-#define RETRIABLE_SYSCALL(op, ...)                                             \
+#define RETRIABLE_SYSCALL(op, ...) \
     RetriableExecute([&] { return syscall(op, __VA_ARGS__); }, #op);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -94,17 +94,13 @@ ui32 SysKeyCtlReadSize(ui32 key)
 TString SysKeyCtlReadValue(ui32 key, ui32 size)
 {
     TString res(size, 0);
-    ui32 readSize = RETRIABLE_SYSCALL(
-        __NR_keyctl,
-        KEYCTL_READ,
-        key,
-        res.data(),
-        size);
+    ui32 readSize =
+        RETRIABLE_SYSCALL(__NR_keyctl, KEYCTL_READ, key, res.data(), size);
 
     if (readSize != size) {
         ythrow TServiceError(E_REJECTED)
-            << "readSize (" << readSize << ")"
-            << " should be equal size (" << size << ")";
+            << "readSize (" << readSize << ")" << " should be equal size ("
+            << size << ")";
     }
     return res;
 }
@@ -122,11 +118,12 @@ TString SysKeyCtlDescribe(ui32 key)
 
     char buf[size];
     memset((void*)buf, 0, size);
-    ui32 readSize = RETRIABLE_SYSCALL(__NR_keyctl, KEYCTL_DESCRIBE, key, buf, size);
+    ui32 readSize =
+        RETRIABLE_SYSCALL(__NR_keyctl, KEYCTL_DESCRIBE, key, buf, size);
     if (readSize != size) {
         ythrow TServiceError(E_REJECTED)
-            << "readSize (" << readSize << ")"
-            << " should be equal size (" << size << ")";
+            << "readSize (" << readSize << ")" << " should be equal size ("
+            << size << ")";
     }
     return buf;
 }
@@ -160,16 +157,16 @@ ui32 SearchProcKeys(const TString& desc)
     TString str;
     while (file.ReadLine(str)) {
         str = StripString(str);
-        if (str.empty())
+        if (str.empty()) {
             continue;
+        }
 
         TVector<TStringBuf> splitted;
         StringSplitter(str).Split(' ').SkipEmpty().AddTo(&splitted);
         const auto& keyStr = splitted.at(KeySerialColumn);
         const auto& keyDesc = splitted.at(KeyDescColumn);
 
-        if (keyDesc.size() == desc.size() + 1 &&
-            keyDesc.back() == ':' &&
+        if (keyDesc.size() == desc.size() + 1 && keyDesc.back() == ':' &&
             keyDesc.StartsWith(desc))
         {
             return std::strtoul(keyStr.data(), nullptr, 16);
@@ -182,8 +179,7 @@ ui32 SearchProcKeys(const TString& desc)
 
 ui32 GetRootKeySerial(TKeyring::ERootKeyring keyring)
 {
-    switch (keyring)
-    {
+    switch (keyring) {
         case TKeyring::Thread:
             return KEY_SPEC_THREAD_KEYRING;
         case TKeyring::Process:
@@ -319,7 +315,9 @@ TVector<TKeyring> TKeyring::GetUserKeys() const
 
     auto data = SysKeyCtlReadValue(KeySerial, size);
 
-    static_assert(sizeof(TKeyring) == sizeof(ui32), "TKeyring size must match ui32");
+    static_assert(
+        sizeof(TKeyring) == sizeof(ui32),
+        "TKeyring size must match ui32");
     auto count = data.size() / sizeof(ui32);
     TVector<TKeyring> keyrings;
     keyrings.resize(count);

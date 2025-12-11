@@ -80,13 +80,16 @@ TString PrintLockInfo(
         out << PrintValue(typeLabel, LockType(lockInfo.GetType())) << ", ";
     }
     if (lockInfo.HasConflictedOwner()) {
-        out << PrintValue(conflictedOwnerLabel, lockInfo.GetConflictedOwner()) << ", ";
+        out << PrintValue(conflictedOwnerLabel, lockInfo.GetConflictedOwner())
+            << ", ";
     }
     if (lockInfo.HasConflictedOffset()) {
-        out << PrintValue(conflictedOffsetLabel, lockInfo.GetConflictedOffset()) << ", ";
+        out << PrintValue(conflictedOffsetLabel, lockInfo.GetConflictedOffset())
+            << ", ";
     }
     if (lockInfo.HasConflictedLength()) {
-        out << PrintValue(conflictedLengthLabel, lockInfo.GetConflictedLength()) << ", ";
+        out << PrintValue(conflictedLengthLabel, lockInfo.GetConflictedLength())
+            << ", ";
     }
 
     if (out.empty()) {
@@ -119,13 +122,15 @@ TString PrintNodeInfo(
     out << "{";
 
     if (nodeInfo.HasParentNodeId()) {
-        out << PrintValue(parentNodeIdLabel, nodeInfo.GetParentNodeId()) << ", ";
+        out << PrintValue(parentNodeIdLabel, nodeInfo.GetParentNodeId())
+            << ", ";
     }
     if (nodeInfo.HasNodeName()) {
         out << PrintValue(nodeNameLabel, nodeInfo.GetNodeName()) << ", ";
     }
     if (nodeInfo.HasNewParentNodeId()) {
-        out << PrintValue(newParentNodeIdLabel, nodeInfo.GetNewParentNodeId()) << ", ";
+        out << PrintValue(newParentNodeIdLabel, nodeInfo.GetNewParentNodeId())
+            << ", ";
     }
     if (nodeInfo.HasNewNodeName()) {
         out << PrintValue(newNodeNameLabel, nodeInfo.GetNewNodeName()) << ", ";
@@ -169,12 +174,13 @@ TString PrintRanges(
     TStringBuf actualBytesLabel,
     TStringBuf actualOffsetLabel,
     TStringBuf checksumsLabel,
-    const google::protobuf::RepeatedPtrField<NProto::TProfileLogBlockRange>& ranges)
+    const google::protobuf::RepeatedPtrField<NProto::TProfileLogBlockRange>&
+        ranges)
 {
     TStringBuilder out;
 
     out << "[";
-    for (const auto& range : ranges) {
+    for (const auto& range: ranges) {
         out << "{";
 
         TStringBuilder currentRange;
@@ -192,10 +198,14 @@ TString PrintRanges(
             currentRange << PrintValue(bytesLabel, range.GetBytes()) << ", ";
         }
         if (range.HasActualBytes()) {
-            currentRange << PrintValue(actualBytesLabel, range.GetActualBytes()) << ", ";
+            currentRange << PrintValue(actualBytesLabel, range.GetActualBytes())
+                         << ", ";
         }
         if (range.HasBufferOffset()) {
-            currentRange << PrintValue(actualOffsetLabel, range.GetBufferOffset()) << ", ";
+            currentRange << PrintValue(
+                                actualOffsetLabel,
+                                range.GetBufferOffset())
+                         << ", ";
         }
         if (range.BlockChecksumsSize() > 0) {
             TStringBuilder checksumsStr;
@@ -229,25 +239,25 @@ TString PrintRanges(
 }
 
 TString PrintBlobsInfo(
-    const google::protobuf::RepeatedPtrField<NProto::TProfileLogBlobInfo>& blobs)
+    const google::protobuf::RepeatedPtrField<NProto::TProfileLogBlobInfo>&
+        blobs)
 {
     TStringBuilder out;
 
     out << "[";
-    for (const auto& blob : blobs) {
-
+    for (const auto& blob: blobs) {
         TPartialBlobId id(blob.GetCommitId(), blob.GetUnique());
 
         out << id << "->";
         out << PrintRanges(
-                "node_id",
-                "handle",
-                "offset",
-                "bytes",
-                "actual_bytes",
-                "actual_offset",
-                "checksums",
-                blob.GetRanges())
+                   "node_id",
+                   "handle",
+                   "offset",
+                   "bytes",
+                   "actual_bytes",
+                   "actual_offset",
+                   "checksums",
+                   blob.GetRanges())
             << '\t';
     }
 
@@ -259,13 +269,13 @@ TString PrintBlobsInfo(
     return out;
 }
 
-TString PrintCompactionRanges(
-    const google::protobuf::RepeatedPtrField<NProto::TProfileLogCompactionRangeInfo>& ranges)
+TString PrintCompactionRanges(const google::protobuf::RepeatedPtrField<
+                              NProto::TProfileLogCompactionRangeInfo>& ranges)
 {
     TStringBuilder out;
 
     out << "[";
-    for (const auto& range : ranges) {
+    for (const auto& range: ranges) {
         out << "{";
 
         TStringBuilder currentRange;
@@ -277,17 +287,20 @@ TString PrintCompactionRanges(
             currentRange << PrintValue("rangeId", range.GetRangeId()) << ", ";
         }
         if (range.HasBlobsCount()) {
-            currentRange << PrintValue("blobsCount", range.GetBlobsCount()) << ", ";
+            currentRange << PrintValue("blobsCount", range.GetBlobsCount())
+                         << ", ";
         }
         if (range.HasDeletionsCount()) {
             currentRange << PrintValue(
-                "deletionsCount",
-                range.GetDeletionsCount()) << ", ";
+                                "deletionsCount",
+                                range.GetDeletionsCount())
+                         << ", ";
         }
         if (range.HasGarbageBlocksCount()) {
             currentRange << PrintValue(
-                "garbageBlocksCount",
-                range.GetGarbageBlocksCount()) << ", ";
+                                "garbageBlocksCount",
+                                range.GetGarbageBlocksCount())
+                         << ", ";
         }
 
         if (currentRange.empty()) {
@@ -314,53 +327,56 @@ TString PrintCompactionRanges(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDefaultRequestPrinter
-    : public IRequestPrinter
+class TDefaultRequestPrinter: public IRequestPrinter
 {
 public:
-    TString DumpInfo(const NProto::TProfileLogRequestInfo& request) const override
+    TString DumpInfo(
+        const NProto::TProfileLogRequestInfo& request) const override
     {
         TStringBuilder out;
 
         if (request.HasNodeInfo()) {
             out << PrintNodeInfo(
-                "parent_node_id",
-                "node_name",
-                "new_parent_node_id",
-                "new_node_name",
-                "flags",
-                "mode",
-                "node_id",
-                "handle",
-                "size",
-                "type",
-                request.GetNodeInfo()) << "\t";
+                       "parent_node_id",
+                       "node_name",
+                       "new_parent_node_id",
+                       "new_node_name",
+                       "flags",
+                       "mode",
+                       "node_id",
+                       "handle",
+                       "size",
+                       "type",
+                       request.GetNodeInfo())
+                << "\t";
         }
 
         if (request.HasLockInfo()) {
             out << PrintLockInfo(
-                "node_id",
-                "handle",
-                "owner",
-                "offset",
-                "length",
-                "type",
-                "conflicted_owner",
-                "conflicted_offset",
-                "conflicted_length",
-                request.GetLockInfo()) << "\t";
+                       "node_id",
+                       "handle",
+                       "owner",
+                       "offset",
+                       "length",
+                       "type",
+                       "conflicted_owner",
+                       "conflicted_offset",
+                       "conflicted_length",
+                       request.GetLockInfo())
+                << "\t";
         }
 
         if (!request.GetRanges().empty()) {
             out << PrintRanges(
-                "node_id",
-                "handle",
-                "offset",
-                "bytes",
-                "actual_bytes",
-                "actual_offset",
-                "checksums",
-                request.GetRanges()) << "\t";
+                       "node_id",
+                       "handle",
+                       "offset",
+                       "bytes",
+                       "actual_bytes",
+                       "actual_offset",
+                       "checksums",
+                       request.GetRanges())
+                << "\t";
         }
 
         if (!request.GetCompactionRanges().empty()) {
@@ -383,11 +399,11 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TAccessNodeRequestPrinter
-    : public IRequestPrinter
+class TAccessNodeRequestPrinter: public IRequestPrinter
 {
 public:
-    TString DumpInfo(const NProto::TProfileLogRequestInfo& request) const override
+    TString DumpInfo(
+        const NProto::TProfileLogRequestInfo& request) const override
     {
         if (request.HasNodeInfo()) {
             return PrintNodeInfo(
@@ -410,11 +426,11 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TGetSetNodeXAttrRequestPrinter
-    : public IRequestPrinter
+class TGetSetNodeXAttrRequestPrinter: public IRequestPrinter
 {
 public:
-    TString DumpInfo(const NProto::TProfileLogRequestInfo& request) const override
+    TString DumpInfo(
+        const NProto::TProfileLogRequestInfo& request) const override
     {
         if (request.HasNodeInfo()) {
             return PrintNodeInfo(
@@ -437,11 +453,11 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRemoveNodeXAttrRequestPrinter
-    : public IRequestPrinter
+class TRemoveNodeXAttrRequestPrinter: public IRequestPrinter
 {
 public:
-    TString DumpInfo(const NProto::TProfileLogRequestInfo& request) const override
+    TString DumpInfo(
+        const NProto::TProfileLogRequestInfo& request) const override
     {
         if (request.HasNodeInfo()) {
             return PrintNodeInfo(
@@ -464,11 +480,11 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCreateDestroyCheckpointRequestPrinter
-    : public IRequestPrinter
+class TCreateDestroyCheckpointRequestPrinter: public IRequestPrinter
 {
 public:
-    TString DumpInfo(const NProto::TProfileLogRequestInfo& request) const override
+    TString DumpInfo(
+        const NProto::TProfileLogRequestInfo& request) const override
     {
         if (request.HasNodeInfo()) {
             return PrintNodeInfo(
@@ -491,11 +507,11 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFlushFsyncRequestPrinter
-    : public IRequestPrinter
+class TFlushFsyncRequestPrinter: public IRequestPrinter
 {
 public:
-    TString DumpInfo(const NProto::TProfileLogRequestInfo& request) const override
+    TString DumpInfo(
+        const NProto::TProfileLogRequestInfo& request) const override
     {
         if (request.HasNodeInfo()) {
             return PrintNodeInfo(
@@ -518,11 +534,11 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCollectGarbageRequestPrinter
-    : public IRequestPrinter
+class TCollectGarbageRequestPrinter: public IRequestPrinter
 {
 public:
-    TString DumpInfo(const NProto::TProfileLogRequestInfo& request) const override
+    TString DumpInfo(
+        const NProto::TProfileLogRequestInfo& request) const override
     {
         if (!request.GetRanges().empty()) {
             return PrintRanges(
@@ -542,11 +558,11 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDeleteGarbageRequestPrinter
-    : public IRequestPrinter
+class TDeleteGarbageRequestPrinter: public IRequestPrinter
 {
 public:
-    TString DumpInfo(const NProto::TProfileLogRequestInfo& request) const override
+    TString DumpInfo(
+        const NProto::TProfileLogRequestInfo& request) const override
     {
         if (!request.GetRanges().empty()) {
             return PrintRanges(
@@ -566,11 +582,11 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TReadWriteBlobRequestPrinter
-    : public IRequestPrinter
+class TReadWriteBlobRequestPrinter: public IRequestPrinter
 {
 public:
-    TString DumpInfo(const NProto::TProfileLogRequestInfo& request) const override
+    TString DumpInfo(
+        const NProto::TProfileLogRequestInfo& request) const override
     {
         if (!request.GetRanges().empty()) {
             return PrintRanges(
@@ -605,7 +621,8 @@ IRequestPrinterPtr CreateRequestPrinter(ui32 requestType)
                 return std::make_shared<TRemoveNodeXAttrRequestPrinter>();
             case EFileStoreRequest::CreateCheckpoint:
             case EFileStoreRequest::DestroyCheckpoint:
-                return std::make_shared<TCreateDestroyCheckpointRequestPrinter>();
+                return std::make_shared<
+                    TCreateDestroyCheckpointRequestPrinter>();
             default:
                 break;
         }
@@ -622,7 +639,8 @@ IRequestPrinterPtr CreateRequestPrinter(ui32 requestType)
                 break;
         }
     } else if (
-        requestType > static_cast<ui32>(NStorage::EFileStoreSystemRequest::MIN) &&
+        requestType >
+            static_cast<ui32>(NStorage::EFileStoreSystemRequest::MIN) &&
         requestType < static_cast<ui32>(NStorage::EFileStoreSystemRequest::MAX))
     {
         switch (static_cast<NStorage::EFileStoreSystemRequest>(requestType)) {

@@ -22,12 +22,11 @@ std::mt19937_64 CreateRandomEngine()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEnvironment
-    : public NUnitTest::TBaseFixture
+struct TEnvironment: public NUnitTest::TBaseFixture
 {
     const TString FileSystemId = "nfs_test";
     const ILoggingServicePtr Logging =
-        CreateLoggingService("console", { TLOG_RESOURCES });
+        CreateLoggingService("console", {TLOG_RESOURCES});
 
     TFSyncQueue Queue = TFSyncQueue(FileSystemId, Logging);
 
@@ -50,7 +49,7 @@ struct TEnvironment
 
     TNodeId GetNextNodeId()
     {
-        return TNodeId { CurrentNodeId++ };
+        return TNodeId{CurrentNodeId++};
     }
 
     THandle GetRandomHandle()
@@ -60,7 +59,7 @@ struct TEnvironment
         std::uniform_int_distribution<H> dist(1, std::numeric_limits<H>::max());
 
         for (;;) {
-            THandle handle {dist(eng)};
+            THandle handle{dist(eng)};
 
             if (UsedHandles.emplace(handle).second) {
                 return handle;
@@ -82,8 +81,7 @@ Y_UNIT_TEST_SUITE(TFSyncQueueTest)
 
         Queue.Enqueue(reqId, nodeId);
 
-        const auto future =
-            Queue.WaitForRequests(GetNextRequestId(), nodeId);
+        const auto future = Queue.WaitForRequests(GetNextRequestId(), nodeId);
         UNIT_ASSERT(!future.HasValue());
 
         Queue.Dequeue(reqId, {}, nodeId);
@@ -92,19 +90,23 @@ Y_UNIT_TEST_SUITE(TFSyncQueueTest)
         UNIT_ASSERT(!HasError(future.GetValueSync()));
     }
 
-    Y_UNIT_TEST_F(ShouldReturnImmediatelyIfThereAreNoRequestsInQueue, TEnvironment)
+    Y_UNIT_TEST_F(
+        ShouldReturnImmediatelyIfThereAreNoRequestsInQueue,
+        TEnvironment)
     {
         const auto nodeId = GetNextNodeId();
 
         {
-            const auto future =
-                Queue.WaitForRequests(GetNextRequestId(), nodeId); // Local meta
+            const auto future = Queue.WaitForRequests(
+                GetNextRequestId(),
+                nodeId);   // Local meta
             UNIT_ASSERT(future.HasValue());
             UNIT_ASSERT(!HasError(future.GetValueSync()));
         }
 
         {
-            const auto future = Queue.WaitForRequests(GetNextRequestId()); // Global meta
+            const auto future =
+                Queue.WaitForRequests(GetNextRequestId());   // Global meta
             UNIT_ASSERT(future.HasValue());
             UNIT_ASSERT(!HasError(future.GetValueSync()));
         }
@@ -113,14 +115,14 @@ Y_UNIT_TEST_SUITE(TFSyncQueueTest)
             const auto future = Queue.WaitForDataRequests(
                 GetNextRequestId(),
                 nodeId,
-                GetRandomHandle()); // Local data
+                GetRandomHandle());   // Local data
             UNIT_ASSERT(future.HasValue());
             UNIT_ASSERT(!HasError(future.GetValueSync()));
         }
 
         {
             const auto future =
-                Queue.WaitForDataRequests(GetNextRequestId()); // Global data
+                Queue.WaitForDataRequests(GetNextRequestId());   // Global data
             UNIT_ASSERT(future.HasValue());
             UNIT_ASSERT(!HasError(future.GetValueSync()));
         }
@@ -140,12 +142,12 @@ Y_UNIT_TEST_SUITE(TFSyncQueueTest)
 
         const auto fsyncReqId = GetNextRequestId();
 
-        Queue.Enqueue(firstMetaReqId, firstNodeId); // Meta
-        Queue.Enqueue(firstDataReqId, firstNodeId, firstHandle); // Data
-        Queue.Enqueue(secondMetaReqId, secondNodeId); // Meta
+        Queue.Enqueue(firstMetaReqId, firstNodeId);                // Meta
+        Queue.Enqueue(firstDataReqId, firstNodeId, firstHandle);   // Data
+        Queue.Enqueue(secondMetaReqId, secondNodeId);              // Meta
 
         const auto future =
-            Queue.WaitForRequests(fsyncReqId, firstNodeId); // Local meta
+            Queue.WaitForRequests(fsyncReqId, firstNodeId);   // Local meta
         UNIT_ASSERT(!future.HasValue());
 
         Queue.Dequeue(firstDataReqId, {}, firstNodeId, firstHandle);
@@ -173,13 +175,13 @@ Y_UNIT_TEST_SUITE(TFSyncQueueTest)
 
         const auto thirdMetaReqId = GetNextRequestId();
 
-        Queue.Enqueue(firstMetaReqId, firstNodeId); // Meta
-        Queue.Enqueue(secondDataReqId, secondNodeId, secondHandle); // Data
+        Queue.Enqueue(firstMetaReqId, firstNodeId);                   // Meta
+        Queue.Enqueue(secondDataReqId, secondNodeId, secondHandle);   // Data
 
-        const auto future = Queue.WaitForRequests(fsyncReqId); // Global meta
+        const auto future = Queue.WaitForRequests(fsyncReqId);   // Global meta
         UNIT_ASSERT(!future.HasValue());
 
-        Queue.Enqueue(thirdMetaReqId, thirdNodeId); // Meta unused
+        Queue.Enqueue(thirdMetaReqId, thirdNodeId);   // Meta unused
 
         Queue.Dequeue(firstMetaReqId, {}, firstNodeId);
         UNIT_ASSERT(!future.HasValue());
@@ -205,14 +207,14 @@ Y_UNIT_TEST_SUITE(TFSyncQueueTest)
 
         const auto fsyncReqId = GetNextRequestId();
 
-        Queue.Enqueue(firstMetaReqId, firstNodeId); // Meta
-        Queue.Enqueue(firstDataReqId, firstNodeId, firstHandle); // Data
-        Queue.Enqueue(secondMetaReqId, secondNodeId); // Meta
+        Queue.Enqueue(firstMetaReqId, firstNodeId);                // Meta
+        Queue.Enqueue(firstDataReqId, firstNodeId, firstHandle);   // Data
+        Queue.Enqueue(secondMetaReqId, secondNodeId);              // Meta
 
         const auto future = Queue.WaitForDataRequests(
             fsyncReqId,
             firstNodeId,
-            firstHandle); // Local data
+            firstHandle);   // Local data
         UNIT_ASSERT(!future.HasValue());
 
         Queue.Dequeue(firstDataReqId, {}, firstNodeId, firstHandle);
@@ -242,14 +244,18 @@ Y_UNIT_TEST_SUITE(TFSyncQueueTest)
         const auto thirdDataReqId = GetNextRequestId();
         const auto thirdHandle = GetRandomHandle();
 
-        Queue.Enqueue(firstMetaReqId, firstNodeId); // Meta
-        Queue.Enqueue(firstDataReqId, firstNodeId, firstHandle); // Data
-        Queue.Enqueue(secondDataReqId, secondNodeId, secondHandle); // Data
+        Queue.Enqueue(firstMetaReqId, firstNodeId);                   // Meta
+        Queue.Enqueue(firstDataReqId, firstNodeId, firstHandle);      // Data
+        Queue.Enqueue(secondDataReqId, secondNodeId, secondHandle);   // Data
 
-        const auto future = Queue.WaitForDataRequests(fsyncReqId); // Global data
+        const auto future =
+            Queue.WaitForDataRequests(fsyncReqId);   // Global data
         UNIT_ASSERT(!future.HasValue());
 
-        Queue.Enqueue(thirdDataReqId, thirdNodeId, thirdHandle); // Data unused
+        Queue.Enqueue(
+            thirdDataReqId,
+            thirdNodeId,
+            thirdHandle);   // Data unused
 
         Queue.Dequeue(secondDataReqId, {}, secondNodeId, secondHandle);
         UNIT_ASSERT(!future.HasValue());
@@ -321,13 +327,12 @@ Y_UNIT_TEST_SUITE(TFSyncQueueTest)
             const auto secondHandle = GetRandomHandle();
             Queue.Enqueue(secondDataReqId, secondNodeId, secondHandle);
 
-            const auto dataFsync = Queue.WaitForDataRequests(
-                GetNextRequestId());
+            const auto dataFsync =
+                Queue.WaitForDataRequests(GetNextRequestId());
             UNIT_ASSERT(!dataFsync.HasValue());
 
-            const auto metaFsync = Queue.WaitForRequests(
-                GetNextRequestId(),
-                secondNodeId);
+            const auto metaFsync =
+                Queue.WaitForRequests(GetNextRequestId(), secondNodeId);
             UNIT_ASSERT(!dataFsync.HasValue());
             UNIT_ASSERT(!metaFsync.HasValue());
 
@@ -363,7 +368,8 @@ Y_UNIT_TEST_SUITE(TFSyncQueueTest)
             const auto metaFsync = Queue.WaitForRequests(GetNextRequestId());
             UNIT_ASSERT(!metaFsync.HasValue());
 
-            const auto dataFsync = Queue.WaitForDataRequests(GetNextRequestId());
+            const auto dataFsync =
+                Queue.WaitForDataRequests(GetNextRequestId());
             UNIT_ASSERT(!metaFsync.HasValue());
             UNIT_ASSERT(!dataFsync.HasValue());
 

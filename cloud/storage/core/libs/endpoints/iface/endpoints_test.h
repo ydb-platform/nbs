@@ -19,8 +19,7 @@ struct IMutableEndpointStorage
         const TString& key,
         const TString& data) = 0;
 
-    virtual NProto::TError RemoveEndpoint(
-        const TString& key) = 0;
+    virtual NProto::TError RemoveEndpoint(const TString& key) = 0;
 };
 
 }   // namespace NCloud

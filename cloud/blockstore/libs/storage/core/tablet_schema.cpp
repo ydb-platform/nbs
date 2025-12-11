@@ -12,7 +12,8 @@ NKikimr::NLocalDb::TCompactionPolicyPtr CreateIndexTablePolicy()
 {
     auto policy = MakeIntrusive<NKikimr::NLocalDb::TCompactionPolicy>();
 
-    // for fast NVMe devices we do not need large read ahead (large memory overhead)
+    // for fast NVMe devices we do not need large read ahead (large memory
+    // overhead)
     policy->ReadAheadHiThreshold = 2 * 1024 * 1024;
     policy->ReadAheadLoThreshold = 1 * 1024 * 1024;
 
@@ -20,7 +21,8 @@ NKikimr::NLocalDb::TCompactionPolicyPtr CreateIndexTablePolicy()
     policy->DroppedRowsPercentToCompact = 10;
 
     policy->Generations.reserve(3);
-    // first level: 8x8MB expected geometry (keep in cache, auto uplift up to 8MB)
+    // first level: 8x8MB expected geometry (keep in cache, auto uplift up to
+    // 8MB)
     policy->Generations.emplace_back(
         64 * 1024 * 1024,
         8,

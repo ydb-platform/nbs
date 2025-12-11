@@ -29,10 +29,10 @@ TString DescribeDeviceOwner(
 ////////////////////////////////////////////////////////////////////////////////
 
 TDeviceClient::TDeviceClient(
-        TDuration releaseInactiveSessionsTimeout,
-        TVector<std::pair<TString, TStorageAdapterPtr>> uuidToDevice,
-        TLog log,
-        bool kickOutOldClientsEnabled)
+    TDuration releaseInactiveSessionsTimeout,
+    TVector<std::pair<TString, TStorageAdapterPtr>> uuidToDevice,
+    TLog log,
+    bool kickOutOldClientsEnabled)
     : ReleaseInactiveSessionsTimeout(releaseInactiveSessionsTimeout)
     , Devices(MakeDevices(std::move(uuidToDevice)))
     , KickOutOldClientsEnabled(kickOutOldClientsEnabled)
@@ -85,9 +85,9 @@ TVector<NProto::TDiskAgentDeviceSession> TDeviceClient::GetSessions() const
         r.push_back(std::move(session));
     }
 
-    SortBy(r, [] (const auto& session) {
-        return TStringBuf {session.GetClientId()};
-    });
+    SortBy(
+        r,
+        [](const auto& session) { return TStringBuf{session.GetClientId()}; });
 
     return r;
 }
@@ -109,22 +109,25 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
     for (const auto& uuid: uuids) {
         TDeviceState* deviceState = GetDeviceState(uuid);
         if (!deviceState) {
-            return MakeError(E_NOT_FOUND, TStringBuilder()
-                << "Device " << uuid.Quote() << " not found");
+            return MakeError(
+                E_NOT_FOUND,
+                TStringBuilder() << "Device " << uuid.Quote() << " not found");
         }
 
         TReadGuard g(deviceState->Lock);
 
-        if (deviceState->DiskId == diskId
-                && deviceState->VolumeGeneration > volumeGeneration
-                // backwards compat
-                && volumeGeneration)
+        if (deviceState->DiskId == diskId &&
+            deviceState->VolumeGeneration > volumeGeneration
+            // backwards compat
+            && volumeGeneration)
         {
-            return MakeError(E_BS_INVALID_SESSION, TStringBuilder()
-                << "AcquireDevices: "
-                << "Outdated volume generation, DiskId=" << diskId.Quote()
-                << ", VolumeGeneration: " << volumeGeneration
-                << ", LastGeneration: " << deviceState->VolumeGeneration);
+            return MakeError(
+                E_BS_INVALID_SESSION,
+                TStringBuilder()
+                    << "AcquireDevices: "
+                    << "Outdated volume generation, DiskId=" << diskId.Quote()
+                    << ", VolumeGeneration: " << volumeGeneration
+                    << ", LastGeneration: " << deviceState->VolumeGeneration);
         }
 
         const bool canKickOutClient =
@@ -132,14 +135,13 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
             deviceState->VolumeGeneration < volumeGeneration &&
             KickOutOldClientsEnabled;
 
-        if (IsReadWriteMode(accessMode)
-                && deviceState->WriterSession.Id
-                && deviceState->WriterSession.Id != clientId
-                && deviceState->WriterSession.MountSeqNumber >= mountSeqNumber
-                && deviceState->WriterSession.LastActivityTs
-                    + ReleaseInactiveSessionsTimeout
-                    > now
-                && !canKickOutClient)
+        if (IsReadWriteMode(accessMode) && deviceState->WriterSession.Id &&
+            deviceState->WriterSession.Id != clientId &&
+            deviceState->WriterSession.MountSeqNumber >= mountSeqNumber &&
+            deviceState->WriterSession.LastActivityTs +
+                    ReleaseInactiveSessionsTimeout >
+                now &&
+            !canKickOutClient)
         {
             return MakeError(
                 E_BS_MOUNT_CONFLICT,
@@ -165,10 +167,7 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
         auto s = FindIf(
             ds.ReaderSessions.begin(),
             ds.ReaderSessions.end(),
-            [&] (const TSessionInfo& s) {
-                return s.Id == clientId;
-            }
-        );
+            [&](const TSessionInfo& s) { return s.Id == clientId; });
 
         if (ds.DiskId != diskId || ds.VolumeGeneration != volumeGeneration) {
             somethingHasChanged = true;
@@ -180,8 +179,10 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
         if (!IsReadWriteMode(accessMode)) {
             if (clientId == ds.WriterSession.Id) {
                 ds.WriterSession = {};
-                STORAGE_INFO("Device %s was released by client %s for writing.",
-                    uuid.Quote().c_str(), clientId.c_str());
+                STORAGE_INFO(
+                    "Device %s was released by client %s for writing.",
+                    uuid.Quote().c_str(),
+                    clientId.c_str());
 
                 somethingHasChanged = true;
             }
@@ -195,23 +196,29 @@ TResultOrError<bool> TDeviceClient::AcquireDevices(
 
             if (s == ds.ReaderSessions.end()) {
                 ds.ReaderSessions.push_back({clientId, now});
-                STORAGE_INFO("Device %s was acquired by client %s for reading.",
-                    uuid.Quote().c_str(), clientId.c_str());
+                STORAGE_INFO(
+                    "Device %s was acquired by client %s for reading.",
+                    uuid.Quote().c_str(),
+                    clientId.c_str());
             } else if (now > s->LastActivityTs) {
                 s->LastActivityTs = now;
             }
         } else {
             if (s != ds.ReaderSessions.end()) {
                 ds.ReaderSessions.erase(s);
-                STORAGE_INFO("Device %s was released by client %s for reading.",
-                    uuid.Quote().c_str(), clientId.c_str());
+                STORAGE_INFO(
+                    "Device %s was released by client %s for reading.",
+                    uuid.Quote().c_str(),
+                    clientId.c_str());
 
                 somethingHasChanged = true;
             }
 
             if (ds.WriterSession.Id != clientId) {
-                STORAGE_INFO("Device %s was acquired by client %s for writing.",
-                    uuid.Quote().c_str(), clientId.c_str());
+                STORAGE_INFO(
+                    "Device %s was acquired by client %s for writing.",
+                    uuid.Quote().c_str(),
+                    clientId.c_str());
 
                 somethingHasChanged = true;
             }
@@ -248,21 +255,23 @@ NCloud::NProto::TError TDeviceClient::ReleaseDevices(
         auto* deviceState = GetDeviceState(uuid);
 
         if (deviceState == nullptr) {
-            continue; // TODO: log
+            continue;   // TODO: log
         }
 
         TWriteGuard g(deviceState->Lock);
 
-        if (deviceState->DiskId == diskId
-                && deviceState->VolumeGeneration > volumeGeneration
-                // backwards compat
-                && volumeGeneration)
+        if (deviceState->DiskId == diskId &&
+            deviceState->VolumeGeneration > volumeGeneration
+            // backwards compat
+            && volumeGeneration)
         {
-            return MakeError(E_INVALID_STATE, TStringBuilder()
-                << "ReleaseDevices: "
-                << "outdated volume generation, DiskId=" << diskId.Quote()
-                << ", VolumeGeneration: " << volumeGeneration
-                << ", LastGeneration: " << deviceState->VolumeGeneration);
+            return MakeError(
+                E_INVALID_STATE,
+                TStringBuilder()
+                    << "ReleaseDevices: "
+                    << "outdated volume generation, DiskId=" << diskId.Quote()
+                    << ", VolumeGeneration: " << volumeGeneration
+                    << ", LastGeneration: " << deviceState->VolumeGeneration);
         }
 
         deviceState->DiskId = diskId;
@@ -271,20 +280,22 @@ NCloud::NProto::TError TDeviceClient::ReleaseDevices(
         auto s = FindIf(
             deviceState->ReaderSessions.begin(),
             deviceState->ReaderSessions.end(),
-            [&] (const TSessionInfo& s) {
-                return s.Id == clientId;
-            }
-        );
+            [&](const TSessionInfo& s) { return s.Id == clientId; });
 
         if (s != deviceState->ReaderSessions.end()) {
             deviceState->ReaderSessions.erase(s);
-            STORAGE_INFO("Device %s was released by client %s for reading.",
-                    uuid.Quote().c_str(), clientId.c_str());
-        } else if (deviceState->WriterSession.Id == clientId
-            || clientId == AnyWriterClientId)
+            STORAGE_INFO(
+                "Device %s was released by client %s for reading.",
+                uuid.Quote().c_str(),
+                clientId.c_str());
+        } else if (
+            deviceState->WriterSession.Id == clientId ||
+            clientId == AnyWriterClientId)
         {
-            STORAGE_INFO("Device %s was released by client %s for writing.",
-                    uuid.Quote().c_str(), clientId.c_str());
+            STORAGE_INFO(
+                "Device %s was released by client %s for writing.",
+                uuid.Quote().c_str(),
+                clientId.c_str());
             deviceState->WriterSession = {};
         } else if (clientId == AnyReaderClientId) {
             STORAGE_INFO(
@@ -309,8 +320,9 @@ TResultOrError<TStorageAdapterPtr> TDeviceClient::AccessDevice(
 
     auto* deviceState = GetDeviceState(uuid);
     if (!deviceState) {
-        return MakeError(E_NOT_FOUND, TStringBuilder()
-            << "Device " << uuid.Quote() << " not found");
+        return MakeError(
+            E_NOT_FOUND,
+            TStringBuilder() << "Device " << uuid.Quote() << " not found");
     }
 
     TReadGuard g(deviceState->Lock);
@@ -319,9 +331,11 @@ TResultOrError<TStorageAdapterPtr> TDeviceClient::AccessDevice(
     if (clientId == BackgroundOpsClientId || clientId == CopyVolumeClientId) {
         // it's fine to accept migration writes if this device is not acquired
         // migration might be in progress even for an unmounted volume
-        acquired = !IsReadWriteMode(accessMode)
-            || deviceState->WriterSession.Id.empty();
-    } else if (clientId == CheckHealthClientId || clientId == CheckRangeClientId) {
+        acquired = !IsReadWriteMode(accessMode) ||
+                   deviceState->WriterSession.Id.empty();
+    } else if (
+        clientId == CheckHealthClientId || clientId == CheckRangeClientId)
+    {
         acquired = accessMode == NProto::VOLUME_ACCESS_READ_ONLY;
     } else {
         acquired = clientId == deviceState->WriterSession.Id;
@@ -330,10 +344,7 @@ TResultOrError<TStorageAdapterPtr> TDeviceClient::AccessDevice(
             auto s = FindIf(
                 deviceState->ReaderSessions.begin(),
                 deviceState->ReaderSessions.end(),
-                [&] (const TSessionInfo& s) {
-                    return s.Id == clientId;
-                }
-            );
+                [&](const TSessionInfo& s) { return s.Id == clientId; });
 
             acquired = s != deviceState->ReaderSessions.end();
         }

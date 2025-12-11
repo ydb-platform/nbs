@@ -48,7 +48,9 @@ TOptionsBase::TOptionsBase()
         .OptionalArgument("STR")
         .StoreResult(&VerboseLevel);
 
-    Opts.AddLongOption("lock-memory", "lock process memory after initialization")
+    Opts.AddLongOption(
+            "lock-memory",
+            "lock process memory after initialization")
         .NoArgument()
         .DefaultValue(true)
         .StoreTrue(&MemLock);

@@ -18,18 +18,13 @@ void TIndexTabletActor::HandleReleaseLock(
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TReleaseLockMethod>(*requestInfo);
 
-    ExecuteTx<TReleaseLock>(
-        ctx,
-        std::move(requestInfo),
-        msg->Record);
+    ExecuteTx<TReleaseLock>(ctx, std::move(requestInfo), msg->Record);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -56,10 +51,8 @@ void TIndexTabletActor::ExecuteTx_ReleaseLock(
 
     FILESTORE_VALIDATE_TX_ERROR(ReleaseLock, args);
 
-    auto* session = FindSession(
-        args.ClientId,
-        args.SessionId,
-        args.SessionSeqNo);
+    auto* session =
+        FindSession(args.ClientId, args.SessionId, args.SessionSeqNo);
     TABLET_VERIFY(session);
 
     auto* handle = FindHandle(args.Request.GetHandle());
@@ -77,7 +70,8 @@ void TIndexTabletActor::ExecuteTx_ReleaseLock(
     if (result.Failed()) {
         if (result.IncompatibleHolds<ELockOrigin>()) {
             auto origin = result.IncompatibleAs<ELockOrigin>();
-            args.IncompatibleLockOrigin = ConvertTo<NProto::ELockOrigin>(origin);
+            args.IncompatibleLockOrigin =
+                ConvertTo<NProto::ELockOrigin>(origin);
         } else {
             LOG_DEBUG(
                 *TlsActivationContext,
@@ -94,7 +88,8 @@ void TIndexTabletActor::CompleteTx_ReleaseLock(
 {
     RemoveTransaction(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvService::TEvReleaseLockResponse>(args.Error);
+    auto response =
+        std::make_unique<TEvService::TEvReleaseLockResponse>(args.Error);
     CompleteResponse<TEvService::TReleaseLockMethod>(
         response->Record,
         args.RequestInfo->CallContext,

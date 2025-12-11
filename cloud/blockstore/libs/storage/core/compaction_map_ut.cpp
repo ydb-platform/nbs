@@ -47,32 +47,54 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
         UNIT_ASSERT_VALUES_EQUAL(0, map.Get(GetGroupIndex(0)).BlockCount);
         UNIT_ASSERT_VALUES_EQUAL(0, map.Get(GetGroupIndex(0)).UsedBlockCount);
         UNIT_ASSERT_VALUES_EQUAL(0, map.Get(GetGroupIndex(0)).ReadRequestCount);
-        UNIT_ASSERT_VALUES_EQUAL(0, map.Get(GetGroupIndex(0)).ReadRequestBlobCount);
-        UNIT_ASSERT_VALUES_EQUAL(0, map.Get(GetGroupIndex(0)).ReadRequestBlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            map.Get(GetGroupIndex(0)).ReadRequestBlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            map.Get(GetGroupIndex(0)).ReadRequestBlockCount);
         UNIT_ASSERT_VALUES_EQUAL(false, map.Get(GetGroupIndex(0)).Compacted);
 
         UNIT_ASSERT_VALUES_EQUAL(1, map.Get(GetGroupIndex(1)).BlobCount);
         UNIT_ASSERT_VALUES_EQUAL(10, map.Get(GetGroupIndex(1)).BlockCount);
         UNIT_ASSERT_VALUES_EQUAL(5, map.Get(GetGroupIndex(1)).UsedBlockCount);
         UNIT_ASSERT_VALUES_EQUAL(1, map.Get(GetGroupIndex(1)).ReadRequestCount);
-        UNIT_ASSERT_VALUES_EQUAL(2, map.Get(GetGroupIndex(1)).ReadRequestBlobCount);
-        UNIT_ASSERT_VALUES_EQUAL(15, map.Get(GetGroupIndex(1)).ReadRequestBlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            map.Get(GetGroupIndex(1)).ReadRequestBlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            15,
+            map.Get(GetGroupIndex(1)).ReadRequestBlockCount);
         UNIT_ASSERT_VALUES_EQUAL(false, map.Get(GetGroupIndex(1)).Compacted);
 
         UNIT_ASSERT_VALUES_EQUAL(10, map.Get(GetGroupIndex(10)).BlobCount);
         UNIT_ASSERT_VALUES_EQUAL(100, map.Get(GetGroupIndex(10)).BlockCount);
         UNIT_ASSERT_VALUES_EQUAL(50, map.Get(GetGroupIndex(10)).UsedBlockCount);
-        UNIT_ASSERT_VALUES_EQUAL(1, map.Get(GetGroupIndex(10)).ReadRequestCount);
-        UNIT_ASSERT_VALUES_EQUAL(11, map.Get(GetGroupIndex(10)).ReadRequestBlobCount);
-        UNIT_ASSERT_VALUES_EQUAL(105, map.Get(GetGroupIndex(10)).ReadRequestBlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            map.Get(GetGroupIndex(10)).ReadRequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            11,
+            map.Get(GetGroupIndex(10)).ReadRequestBlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            105,
+            map.Get(GetGroupIndex(10)).ReadRequestBlockCount);
         UNIT_ASSERT_VALUES_EQUAL(false, map.Get(GetGroupIndex(10)).Compacted);
 
         UNIT_ASSERT_VALUES_EQUAL(100, map.Get(GetGroupIndex(100)).BlobCount);
         UNIT_ASSERT_VALUES_EQUAL(1000, map.Get(GetGroupIndex(100)).BlockCount);
-        UNIT_ASSERT_VALUES_EQUAL(500, map.Get(GetGroupIndex(100)).UsedBlockCount);
-        UNIT_ASSERT_VALUES_EQUAL(1, map.Get(GetGroupIndex(100)).ReadRequestCount);
-        UNIT_ASSERT_VALUES_EQUAL(101, map.Get(GetGroupIndex(100)).ReadRequestBlobCount);
-        UNIT_ASSERT_VALUES_EQUAL(1005, map.Get(GetGroupIndex(100)).ReadRequestBlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            500,
+            map.Get(GetGroupIndex(100)).UsedBlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            map.Get(GetGroupIndex(100)).ReadRequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            101,
+            map.Get(GetGroupIndex(100)).ReadRequestBlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1005,
+            map.Get(GetGroupIndex(100)).ReadRequestBlockCount);
         UNIT_ASSERT_VALUES_EQUAL(false, map.Get(GetGroupIndex(100)).Compacted);
 
         map.Update(GetGroupIndex(1), 22, 33, 11, true);
@@ -80,9 +102,15 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
         UNIT_ASSERT_VALUES_EQUAL(33, map.Get(GetGroupIndex(1)).BlockCount);
         UNIT_ASSERT_VALUES_EQUAL(11, map.Get(GetGroupIndex(1)).UsedBlockCount);
         UNIT_ASSERT_VALUES_EQUAL(0, map.Get(GetGroupIndex(1)).ReadRequestCount);
-        UNIT_ASSERT_VALUES_EQUAL(0, map.Get(GetGroupIndex(1)).ReadRequestBlobCount);
-        UNIT_ASSERT_VALUES_EQUAL(0, map.Get(GetGroupIndex(1)).ReadRequestBlockCount);
-        UNIT_ASSERT_VALUES_EQUAL(-1000, map.Get(GetGroupIndex(1)).CompactionScore.Score);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            map.Get(GetGroupIndex(1)).ReadRequestBlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            map.Get(GetGroupIndex(1)).ReadRequestBlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            -1000,
+            map.Get(GetGroupIndex(1)).CompactionScore.Score);
         UNIT_ASSERT_VALUES_EQUAL(true, map.Get(GetGroupIndex(1)).Compacted);
     }
 
@@ -117,12 +145,10 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
             103,
             blockCount,
             usedBlockCount,
-            false
-        );
+            false);
         UNIT_ASSERT_VALUES_EQUAL(
             GetGroupIndex(10) + RangeSize,
-            map.GetTop().BlockIndex
-        );
+            map.GetTop().BlockIndex);
     }
 
     Y_UNIT_TEST(ShouldTrackTopByGarbageBlockCount)
@@ -135,50 +161,42 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             GetGroupIndex(100),
-            map.GetTopByGarbageBlockCount().BlockIndex
-        );
+            map.GetTopByGarbageBlockCount().BlockIndex);
 
         map.Update(GetGroupIndex(50), blobCount, 1010, 505, false);
         UNIT_ASSERT_VALUES_EQUAL(
             GetGroupIndex(50),
-            map.GetTopByGarbageBlockCount().BlockIndex
-        );
+            map.GetTopByGarbageBlockCount().BlockIndex);
 
         map.Update(GetGroupIndex(0), blobCount, 600, 1, false);
         UNIT_ASSERT_VALUES_EQUAL(
             GetGroupIndex(0),
-            map.GetTopByGarbageBlockCount().BlockIndex
-        );
+            map.GetTopByGarbageBlockCount().BlockIndex);
 
         map.Update(GetGroupIndex(0), 0, 0, 0, false);
         UNIT_ASSERT_VALUES_EQUAL(
             GetGroupIndex(50),
-            map.GetTopByGarbageBlockCount().BlockIndex
-        );
+            map.GetTopByGarbageBlockCount().BlockIndex);
 
         map.Update(GetGroupIndex(50), 0, 0, 0, false);
         UNIT_ASSERT_VALUES_EQUAL(
             GetGroupIndex(100),
-            map.GetTopByGarbageBlockCount().BlockIndex
-        );
+            map.GetTopByGarbageBlockCount().BlockIndex);
 
         map.Update(GetGroupIndex(100), 0, 0, 0, false);
         UNIT_ASSERT_VALUES_EQUAL(
             GetGroupIndex(99),
-            map.GetTopByGarbageBlockCount().BlockIndex
-        );
+            map.GetTopByGarbageBlockCount().BlockIndex);
 
         map.Update(GetGroupIndex(10) + RangeSize, blobCount, 1030, 515, false);
         UNIT_ASSERT_VALUES_EQUAL(
             GetGroupIndex(10) + RangeSize,
-            map.GetTopByGarbageBlockCount().BlockIndex
-        );
+            map.GetTopByGarbageBlockCount().BlockIndex);
 
         map.Update(GetGroupIndex(10) + RangeSize, blobCount, 1030, 515, true);
         UNIT_ASSERT_VALUES_EQUAL(
             GetGroupIndex(99),
-            map.GetTopByGarbageBlockCount().BlockIndex
-        );
+            map.GetTopByGarbageBlockCount().BlockIndex);
     }
 
     Y_UNIT_TEST(ShouldBeEmptyAfterClear)
@@ -211,8 +229,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
                 {RangeSize, {2, 2000, 0, 0, 0, 0, false, 0}},
                 {2 * RangeSize, {3, 3000, 0, 0, 0, 0, false, 0}},
             },
-            &used
-        );
+            &used);
 
         {
             const auto stat = map.Get(0);
@@ -256,7 +273,9 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
 
         {
             const auto nonEmptyCount = map.GetNonEmptyRanges().size();
-            UNIT_ASSERT_VALUES_EQUAL(nonEmptyCount, map.GetNonEmptyRangeCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                nonEmptyCount,
+                map.GetNonEmptyRangeCount());
             UNIT_ASSERT_VALUES_EQUAL(nonEmptyCount, 100);
         }
 
@@ -264,7 +283,9 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
         map.Update(GetGroupIndex(46), 0, blockCount, usedBlockCount, false);
         {
             const auto nonEmptyCount = map.GetNonEmptyRanges().size();
-            UNIT_ASSERT_VALUES_EQUAL(nonEmptyCount, map.GetNonEmptyRangeCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                nonEmptyCount,
+                map.GetNonEmptyRangeCount());
             UNIT_ASSERT_VALUES_EQUAL(nonEmptyCount, 99);
         }
     }

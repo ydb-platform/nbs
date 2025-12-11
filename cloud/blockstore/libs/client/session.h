@@ -16,8 +16,7 @@ namespace NCloud::NBlockStore::NClient {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct ISession
-    : public IStorage
+struct ISession: public IStorage
 {
     virtual ~ISession() = default;
 
@@ -38,7 +37,8 @@ struct ISession
         TCallContextPtr callContext = MakeIntrusive<TCallContext>(),
         const NProto::THeaders& headers = {}) = 0;
 
-    virtual NThreading::TFuture<NProto::TMountVolumeResponse> EnsureVolumeMounted() = 0;
+    virtual NThreading::TFuture<NProto::TMountVolumeResponse>
+    EnsureVolumeMounted() = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

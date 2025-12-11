@@ -1,10 +1,11 @@
 #include "service_ut.h"
 
+#include "cloud/blockstore/private/api/protos/volume.pb.h"
+
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/testlib/test_runtime.h>
 #include <cloud/blockstore/libs/ydbstats/ydbstats.h>
-#include "cloud/blockstore/private/api/protos/volume.pb.h"
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -57,12 +58,13 @@ ui32 SetupTestEnvWithYdbStats(
     NProto::TStorageServiceConfig storageServiceConfig;
     storageServiceConfig.SetStatsUploadDiskCount(diskCnt);
     storageServiceConfig.SetStatsUploadMaxRowsPerTx(rowCnt);
-    storageServiceConfig.SetStatsUploadInterval(statsUploadInterval.MilliSeconds());
-    storageServiceConfig.SetStatsUploadRetryTimeout(statsUploadRetryTimeout.MilliSeconds());
+    storageServiceConfig.SetStatsUploadInterval(
+        statsUploadInterval.MilliSeconds());
+    storageServiceConfig.SetStatsUploadRetryTimeout(
+        statsUploadRetryTimeout.MilliSeconds());
 
-    auto storageConfig = CreateTestStorageConfig(
-        std::move(storageServiceConfig),
-        {});
+    auto storageConfig =
+        CreateTestStorageConfig(std::move(storageServiceConfig), {});
 
     return env.CreateBlockStoreNode(
         "nbs",
@@ -72,9 +74,7 @@ ui32 SetupTestEnvWithYdbStats(
         CreateManuallyPreemptedVolumes());
 }
 
-ui32 SetupTestEnvWithMultipleMount(
-    TTestEnv& env,
-    TDuration inactivateTimeout)
+ui32 SetupTestEnvWithMultipleMount(TTestEnv& env, TDuration inactivateTimeout)
 {
     NProto::TStorageServiceConfig storageServiceConfig;
     storageServiceConfig.SetInactiveClientsTimeout(
@@ -103,8 +103,7 @@ ui32 SetupTestEnvWithManuallyPreemptedVolumes(
     return SetupTestEnvWithManuallyPreemptedVolumes(
         env,
         std::move(storageServiceConfig),
-        std::move(manuallyPreemptedVolumes)
-    );
+        std::move(manuallyPreemptedVolumes));
 }
 
 ui32 SetupTestEnvWithManuallyPreemptedVolumes(
@@ -114,9 +113,8 @@ ui32 SetupTestEnvWithManuallyPreemptedVolumes(
 {
     env.CreateSubDomain("nbs");
 
-    auto storageConfig = CreateTestStorageConfig(
-        std::move(storageServiceConfig),
-        {});
+    auto storageConfig =
+        CreateTestStorageConfig(std::move(storageServiceConfig), {});
 
     return env.CreateBlockStoreNode(
         "nbs",
@@ -142,9 +140,9 @@ NKikimrBlockStore::TVolumeConfig GetVolumeConfig(
     auto response = service.ExecuteAction("DescribeVolume", buf);
     NKikimrSchemeOp::TBlockStoreVolumeDescription pathDescr;
     UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-        response->Record.GetOutput(),
-        &pathDescr
-    ).ok());
+                    response->Record.GetOutput(),
+                    &pathDescr)
+                    .ok());
     return pathDescr.GetVolumeConfig();
 }
 

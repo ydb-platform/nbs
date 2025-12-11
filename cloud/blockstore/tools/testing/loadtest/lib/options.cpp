@@ -55,23 +55,21 @@ void TOptions::Parse(int argc, char** argv)
         .RequiredArgument("STR")
         .StoreResult(&SpdkConfig);
 
-    opts.AddLongOption("config")
-        .RequiredArgument("STR")
-        .StoreResult(&TestConfig);
+    opts.AddLongOption("config").RequiredArgument("STR").StoreResult(
+        &TestConfig);
 
-    opts.AddLongOption("results")
-        .RequiredArgument("STR")
-        .StoreResult(&OutputFile);
+    opts.AddLongOption("results").RequiredArgument("STR").StoreResult(
+        &OutputFile);
 
-    const auto& verbose = opts.AddLongOption("verbose", "output level for diagnostics messages")
-        .OptionalArgument("STR")
-        .StoreResult(&VerboseLevel);
+    const auto& verbose =
+        opts.AddLongOption("verbose", "output level for diagnostics messages")
+            .OptionalArgument("STR")
+            .StoreResult(&VerboseLevel);
 
     opts.AddLongOption("timeout", "timeout in seconds")
         .OptionalArgument("NUM")
-        .Handler1T<ui32>([this] (const auto& timeout) {
-            Timeout = TDuration::Seconds(timeout);
-        });
+        .Handler1T<ui32>([this](const auto& timeout)
+                         { Timeout = TDuration::Seconds(timeout); });
 
     opts.AddLongOption("grpc-trace", "turn on grpc tracing")
         .NoArgument()
@@ -87,7 +85,7 @@ void TOptions::Parse(int argc, char** argv)
 IOutputStream& TOptions::GetOutputStream()
 {
     if (OutputFile) {
-        if(!OutputStream) {
+        if (!OutputStream) {
             OutputStream.reset(new TOFStream(OutputFile));
         }
         return *OutputStream;

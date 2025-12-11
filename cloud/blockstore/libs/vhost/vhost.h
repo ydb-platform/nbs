@@ -18,7 +18,8 @@ namespace NCloud::NBlockStore::NVhost {
 
 struct TVhostRequest
 {
-    enum EResult {
+    enum EResult
+    {
         SUCCESS,
         IOERR,
         CANCELLED,

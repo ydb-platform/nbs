@@ -54,9 +54,8 @@ TAlignedBuffer::TAlignedBuffer(TString&& buffer, ui32 align)
         if (AlignedData > Buffer.end()) {
             ythrow TServiceError(E_ARGUMENT)
                 << "Initializing from unaligned buffer "
-                << static_cast<void*>(Buffer.begin())
-                << " with alignment " << align
-                << " with size " << Buffer.size();
+                << static_cast<void*>(Buffer.begin()) << " with alignment "
+                << align << " with size " << Buffer.size();
         }
     }
 }

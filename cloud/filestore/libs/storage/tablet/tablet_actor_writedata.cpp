@@ -37,22 +37,15 @@ void TIndexTabletActor::HandleWriteData(
     const TByteRange range(
         msg->Record.GetOffset(),
         buffer.size(),
-        GetBlockSize()
-    );
+        GetBlockSize());
 
     if (Config->GetBlockChecksumsInProfileLogEnabled()) {
-        CalculateChecksums(
-            buffer,
-            GetBlockSize(),
-            profileLogRequest);
+        CalculateChecksums(buffer, GetBlockSize(), profileLogRequest);
     }
 
-    auto replyError = [&] (const NProto::TError& error)
+    auto replyError = [&](const NProto::TError& error)
     {
-        FILESTORE_TRACK(
-            ResponseSent_Tablet,
-            msg->CallContext,
-            "WriteData");
+        FILESTORE_TRACK(ResponseSent_Tablet, msg->CallContext, "WriteData");
 
         auto response =
             std::make_unique<TEvService::TEvWriteDataResponse>(error);
@@ -74,15 +67,14 @@ void TIndexTabletActor::HandleWriteData(
         bool reject = false;
 
         for (ui64 b = range.FirstBlock();
-                b < range.FirstBlock() + range.BlockCount();
-                ++b)
+             b < range.FirstBlock() + range.BlockCount();
+             ++b)
         {
-            const auto rangeId = GetMixedRangeIndex(
-                msg->Record.GetNodeId(),
-                range.FirstBlock());
+            const auto rangeId =
+                GetMixedRangeIndex(msg->Record.GetNodeId(), range.FirstBlock());
 
-            if (rangeId > s.MaxLoadedInOrderRangeId
-                    && !s.LoadedOutOfOrderRangeIds.contains(rangeId))
+            if (rangeId > s.MaxLoadedInOrderRangeId &&
+                !s.LoadedOutOfOrderRangeIds.contains(rangeId))
             {
                 reject = true;
 
@@ -111,9 +103,8 @@ void TIndexTabletActor::HandleWriteData(
         }
 
         if (reject) {
-            replyError(MakeError(
-                E_REJECTED,
-                "compaction state not loaded yet"));
+            replyError(
+                MakeError(E_REJECTED, "compaction state not loaded yet"));
 
             return;
         }
@@ -149,10 +140,8 @@ void TIndexTabletActor::HandleWriteData(
         return;
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     auto blockBuffer = CreateBlockBuffer(range, std::move(buffer));
@@ -163,7 +152,9 @@ void TIndexTabletActor::HandleWriteData(
             range,
             std::move(blockBuffer));
 
-        EnqueueWriteBatch<TEvService::TWriteDataMethod>(ctx, std::move(request));
+        EnqueueWriteBatch<TEvService::TWriteDataMethod>(
+            ctx,
+            std::move(request));
         return;
     }
 
@@ -200,10 +191,8 @@ bool TIndexTabletActor::PrepareTx_WriteData(
     TTransactionContext& tx,
     TTxIndexTablet::TWriteData& args)
 {
-    auto* session = FindSession(
-        args.ClientId,
-        args.SessionId,
-        args.SessionSeqNo);
+    auto* session =
+        FindSession(args.ClientId, args.SessionId, args.SessionSeqNo);
     if (!session) {
         args.Error = ErrorInvalidSession(
             args.ClientId,
@@ -235,7 +224,9 @@ bool TIndexTabletActor::PrepareTx_WriteData(
     }
     args.CommitId = GetCurrentCommitId();
 
-    LOG_TRACE(ctx, TFileStoreComponents::TABLET,
+    LOG_TRACE(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s WriteNodeData tx %lu @%lu %s",
         LogTag.c_str(),
         args.CommitId,
@@ -293,7 +284,8 @@ void TIndexTabletActor::ExecuteTx_WriteData(
         args.ByteRange.FirstAlignedBlock(),
         args.ByteRange.AlignedBlockCount(),
         BlockGroupSize,
-        [&] (ui32 blockOffset, ui32 blocksCount) {
+        [&](ui32 blockOffset, ui32 blocksCount)
+        {
             MarkMixedBlocksDeleted(
                 db,
                 args.NodeId,
@@ -303,8 +295,9 @@ void TIndexTabletActor::ExecuteTx_WriteData(
         });
 
     for (ui64 b = args.ByteRange.FirstAlignedBlock();
-            b < args.ByteRange.FirstAlignedBlock() + args.ByteRange.AlignedBlockCount();
-            ++b)
+         b < args.ByteRange.FirstAlignedBlock() +
+                 args.ByteRange.AlignedBlockCount();
+         ++b)
     {
         WriteFreshBlock(
             db,
@@ -320,8 +313,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
             args.NodeId,
             args.CommitId,
             args.ByteRange.Offset,
-            args.Buffer->GetUnalignedHead()
-        );
+            args.Buffer->GetUnalignedHead());
     }
 
     if (args.ByteRange.UnalignedTailLength()) {
@@ -377,11 +369,10 @@ void TIndexTabletActor::CompleteTx_WriteData(
 
     RemoveTransaction(*args.RequestInfo);
 
-    auto reply = [&] (
-        const TActorContext& ctx,
-        TTxIndexTablet::TWriteData& args)
+    auto reply = [&](const TActorContext& ctx, TTxIndexTablet::TWriteData& args)
     {
-        auto response = std::make_unique<TEvService::TEvWriteDataResponse>(args.Error);
+        auto response =
+            std::make_unique<TEvService::TEvWriteDataResponse>(args.Error);
         CompleteResponse<TEvService::TWriteDataMethod>(
             response->Record,
             args.RequestInfo->CallContext,
@@ -423,16 +414,15 @@ void TIndexTabletActor::CompleteTx_WriteData(
         args.ByteRange.FirstAlignedBlock(),
         args.ByteRange.AlignedBlockCount(),
         BlockGroupSize,
-        [&] (ui32 blockOffset, ui32 blocksCount) {
-            TBlock block {
+        [&](ui32 blockOffset, ui32 blocksCount)
+        {
+            TBlock block{
                 args.NodeId,
                 IntegerCast<ui32>(
-                    args.ByteRange.FirstAlignedBlock() + blockOffset
-                ),
+                    args.ByteRange.FirstAlignedBlock() + blockOffset),
                 // correct CommitId will be assigned later in AddBlobs
                 InvalidCommitId,
-                InvalidCommitId
-            };
+                InvalidCommitId};
 
             builder.Accept(block, blocksCount, blockOffset, *args.Buffer);
         });
@@ -456,7 +446,8 @@ void TIndexTabletActor::CompleteTx_WriteData(
         if (!ok) {
             ReassignDataChannelsIfNeeded(ctx);
 
-            args.Error = MakeError(E_FS_OUT_OF_SPACE, "failed to generate blobId");
+            args.Error =
+                MakeError(E_FS_OUT_OF_SPACE, "failed to generate blobId");
             reply(ctx, args);
 
             return;

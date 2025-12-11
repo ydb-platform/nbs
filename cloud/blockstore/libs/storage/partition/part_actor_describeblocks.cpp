@@ -69,15 +69,16 @@ TMaybe<ui64> TPartitionActor::VerifyDescribeBlocksCheckpoint(
         return State->GetLastCommitId();
     }
 
-    const ui64 commitId = State->GetCheckpoints().GetCommitId(checkpointId, false);
+    const ui64 commitId =
+        State->GetCheckpoints().GetCommitId(checkpointId, false);
     if (commitId) {
         return commitId;
     }
 
     ui32 flags = 0;
     SetProtoFlag(flags, NProto::EF_SILENT);
-    auto response = std::make_unique<TEvVolume::TEvDescribeBlocksResponse>(
-        MakeError(
+    auto response =
+        std::make_unique<TEvVolume::TEvDescribeBlocksResponse>(MakeError(
             E_NOT_FOUND,
             TStringBuilder()
                 << "checkpoint not found: " << checkpointId.Quote(),
@@ -122,10 +123,8 @@ void TPartitionActor::HandleDescribeBlocks(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -135,7 +134,8 @@ void TPartitionActor::HandleDescribeBlocks(
         "DescribeBlocks",
         requestInfo->CallContext->RequestId);
 
-    auto reply = [&](auto response) {
+    auto reply = [&](auto response)
+    {
         LWTRACK(
             ResponseSent_Partition,
             requestInfo->CallContext->LWOrbit,
@@ -146,32 +146,32 @@ void TPartitionActor::HandleDescribeBlocks(
     };
 
     if (State->GetBaseDiskId()) {
-        auto response = std::make_unique<TEvVolume::TEvDescribeBlocksResponse>(
-            MakeError(E_NOT_IMPLEMENTED, TStringBuilder()
-                << "DescribeBlocks is not implemented for overlay disks"));
+        auto response =
+            std::make_unique<TEvVolume::TEvDescribeBlocksResponse>(MakeError(
+                E_NOT_IMPLEMENTED,
+                TStringBuilder()
+                    << "DescribeBlocks is not implemented for overlay disks"));
         reply(std::move(response));
         return;
     }
 
     if (msg->Record.GetBlocksCount() == 0) {
-        auto response = std::make_unique<TEvVolume::TEvDescribeBlocksResponse>(
-            MakeError(E_ARGUMENT, TStringBuilder()
-                << "empty block range is forbidden for DescribeBlocks: ["
-                << "index: " << msg->Record.GetStartIndex()
-                << ", count: " << msg->Record.GetBlocksCount()
-                << "]"));
+        auto response =
+            std::make_unique<TEvVolume::TEvDescribeBlocksResponse>(MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "empty block range is forbidden for DescribeBlocks: ["
+                    << "index: " << msg->Record.GetStartIndex()
+                    << ", count: " << msg->Record.GetBlocksCount() << "]"));
         reply(std::move(response));
         return;
     }
 
     auto range = TBlockRange64::WithLength(
         msg->Record.GetStartIndex(),
-        msg->Record.GetBlocksCount()
-    );
-    auto bounds = TBlockRange64::WithLength(
-        0,
-        State->GetConfig().GetBlocksCount()
-    );
+        msg->Record.GetBlocksCount());
+    auto bounds =
+        TBlockRange64::WithLength(0, State->GetConfig().GetBlocksCount());
 
     if (!bounds.Overlaps(range)) {
         // describing out of bounds range should return empty response
@@ -182,7 +182,9 @@ void TPartitionActor::HandleDescribeBlocks(
     range = bounds.Intersect(range);
 
     const auto commitId = VerifyDescribeBlocksCheckpoint(
-        ctx, msg->Record.GetCheckpointId(), *requestInfo);
+        ctx,
+        msg->Record.GetCheckpointId(),
+        *requestInfo);
 
     if (!commitId.Defined()) {
         return;
@@ -220,16 +222,14 @@ bool TPartitionActor::PrepareDescribeBlocks(
     auto ready = db.FindMixedBlocks(
         visitor,
         args.DescribeRange,
-        false,  // precharge
-        commitId
-    );
+        false,   // precharge
+        commitId);
     ready &= db.FindMergedBlocks(
         visitor,
         args.DescribeRange,
-        false,  // precharge
+        false,   // precharge
         State->GetMaxBlocksInBlob(),
-        commitId
-    );
+        commitId);
 
     return ready;
 }
@@ -269,9 +269,10 @@ void TPartitionActor::CompleteDescribeBlocks(
     State->GetCleanupQueue().ReleaseBarrier(commitId);
 
     if (args.Interrupted) {
-        auto response = std::make_unique<TEvVolume::TEvDescribeBlocksResponse>(
-            MakeError(E_REJECTED, "DescribeBlocks transaction was interrupted")
-        );
+        auto response =
+            std::make_unique<TEvVolume::TEvDescribeBlocksResponse>(MakeError(
+                E_REJECTED,
+                "DescribeBlocks transaction was interrupted"));
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
         return;
     }
@@ -286,9 +287,11 @@ void TPartitionActor::CompleteDescribeBlocks(
     UpdateNetworkStat(ctx.Now(), responseBytes);
     UpdateCPUUsageStat(ctx.Now(), args.RequestInfo->GetExecCycles());
 
-    const auto duration = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles());
+    const auto duration =
+        CyclesToDurationSafe(args.RequestInfo->GetTotalCycles());
     const auto time = duration.MicroSeconds();
-    const ui64 requestBytes = static_cast<ui64>(State->GetBlockSize()) * args.DescribeRange.Size();
+    const ui64 requestBytes =
+        static_cast<ui64>(State->GetBlockSize()) * args.DescribeRange.Size();
 
     PartCounters->RequestCounters.DescribeBlocks.AddRequest(time, requestBytes);
 
@@ -319,7 +322,9 @@ void TPartitionActor::FillDescribeBlocksResponse(
         range->SetBlocksContent(std::move(mark.Content));
     }
 
-    EraseIf(args.Marks, [] (const auto& m) { return IsDeletionMarker(m.BlobId); });
+    EraseIf(
+        args.Marks,
+        [](const auto& m) { return IsDeletionMarker(m.BlobId); });
     Sort(args.Marks);
 
     auto iter = args.Marks.begin();
@@ -344,12 +349,10 @@ void TPartitionActor::FillDescribeBlocksResponse(
             ui32 blocksCount = 1;
 
             ++iter;
-            while (
-                iter != args.Marks.end() &&
-                iter->BlobId == blobId &&
-                iter->BlobOffset == blobOffset + 1 &&
-                iter->BlockIndex == blockIndex + 1
-            ) {
+            while (iter != args.Marks.end() && iter->BlobId == blobId &&
+                   iter->BlobOffset == blobOffset + 1 &&
+                   iter->BlockIndex == blockIndex + 1)
+            {
                 ++blobOffset;
                 ++blockIndex;
                 ++blocksCount;

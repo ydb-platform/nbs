@@ -122,7 +122,7 @@ Y_UNIT_TEST_SUITE(TRecentBlocksTrackerTest)
              "full {0-9}+{10-15}+{16}+{17-20}"},
         };
 
-        for (const auto& check : rangeChecks) {
+        for (const auto& check: rangeChecks) {
             TString overlapDetails;
             auto status = tracker.CheckRecorded(
                 check.Id,

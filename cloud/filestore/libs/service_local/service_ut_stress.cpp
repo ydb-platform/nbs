@@ -125,7 +125,8 @@ struct TCreateNodeArgs
         }
     }
 
-    static TCreateNodeArgs Directory(ui64 parent, const TString& name, ui32 mode = 0)
+    static TCreateNodeArgs
+    Directory(ui64 parent, const TString& name, ui32 mode = 0)
     {
         TCreateNodeArgs args(ENodeType::Directory, parent, name);
         args.Mode = mode;
@@ -139,14 +140,16 @@ struct TCreateNodeArgs
         return args;
     }
 
-    static TCreateNodeArgs Link(ui64 parent, const TString& name, ui64 targetNode)
+    static TCreateNodeArgs
+    Link(ui64 parent, const TString& name, ui64 targetNode)
     {
         TCreateNodeArgs args(ENodeType::Link, parent, name);
         args.TargetNode = targetNode;
         return args;
     }
 
-    static TCreateNodeArgs SymLink(ui64 parent, const TString& name, const TString& targetPath)
+    static TCreateNodeArgs
+    SymLink(ui64 parent, const TString& name, const TString& targetPath)
     {
         TCreateNodeArgs args(ENodeType::SymLink, parent, name);
         args.TargetPath = targetPath;
@@ -231,8 +234,7 @@ struct TSetNodeAttrArgs
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTempDirectory
-    : public TFsPath
+struct TTempDirectory: public TFsPath
 {
     TTempDirectory()
         : TFsPath(MakeName())
@@ -266,7 +268,8 @@ using TTempDirectoryPtr = std::shared_ptr<TTempDirectory>;
 struct TTestBootstrap
 {
     TIntrusivePtr<TCallContext> Ctx = MakeIntrusive<TCallContext>();
-    ILoggingServicePtr Logging = CreateLoggingService("console", {TLOG_RESOURCES});
+    ILoggingServicePtr Logging =
+        CreateLoggingService("console", {TLOG_RESOURCES});
     ITimerPtr Timer = CreateWallClockTimer();
     ISchedulerPtr Scheduler = CreateScheduler();
     ITaskQueuePtr TaskQueue = CreateTaskQueueStub();
@@ -277,7 +280,8 @@ struct TTestBootstrap
 
     THeaders Headers;
 
-    TTestBootstrap(const TTempDirectoryPtr& cwd = std::make_shared<TTempDirectory>())
+    TTestBootstrap(
+        const TTempDirectoryPtr& cwd = std::make_shared<TTempDirectory>())
         : Cwd(cwd)
     {
         AIOService->Start();
@@ -293,7 +297,10 @@ struct TTestBootstrap
         Store->Start();
     }
 
-    TTestBootstrap(const TString& id, const TString& client = "client", const TString& session = {})
+    TTestBootstrap(
+        const TString& id,
+        const TString& client = "client",
+        const TString& session = {})
         : Cwd(std::make_shared<TTempDirectory>())
     {
         AIOService->Start();
@@ -310,7 +317,8 @@ struct TTestBootstrap
 
         CreateFileStore(id, "cloud", "folder", 100500, 500100);
         if (client) {
-            Headers.SessionId = CreateSession(id, client, session).GetSession().GetSessionId();
+            Headers.SessionId =
+                CreateSession(id, client, session).GetSession().GetSessionId();
         }
     }
 
@@ -327,7 +335,7 @@ struct TTestBootstrap
         return std::make_shared<TLocalFileStoreConfig>(config);
     }
 
-    template<typename T>
+    template <typename T>
     std::shared_ptr<T> CreateRequest()
     {
         auto request = std::make_shared<T>();
@@ -390,7 +398,10 @@ struct TTestBootstrap
         ui64 seqNo = 0,
         bool restore = false)
     {
-        Headers = {.FileSystemId = id, .ClientId = clientId, .SessionId = sessionId};
+        Headers = {
+            .FileSystemId = id,
+            .ClientId = clientId,
+            .SessionId = sessionId};
         auto request = CreateRequest<NProto::TCreateSessionRequest>();
         request->SetRestoreClientSession(restore);
         request->SetMountSeqNumber(seqNo);
@@ -425,7 +436,10 @@ struct TTestBootstrap
         return request;
     }
 
-    auto CreateUnlinkNodeRequest(ui64 parent, const TString& name, bool unlinkDirectory)
+    auto CreateUnlinkNodeRequest(
+        ui64 parent,
+        const TString& name,
+        bool unlinkDirectory)
     {
         auto request = CreateRequest<NProto::TUnlinkNodeRequest>();
         request->SetNodeId(parent);
@@ -509,7 +523,10 @@ struct TTestBootstrap
         return request;
     }
 
-    auto CreateSetNodeXAttrRequest(ui64 node, const TString& name, const TString& value)
+    auto CreateSetNodeXAttrRequest(
+        ui64 node,
+        const TString& name,
+        const TString& value)
     {
         auto request = CreateRequest<NProto::TSetNodeXAttrRequest>();
         request->SetNodeId(node);
@@ -597,7 +614,8 @@ struct TTestBootstrap
         return std::make_shared<NProto::TPingRequest>();
     }
 
-    auto CreateAllocateDataRequest(ui64 handle, ui64 offset, ui64 length, ui32 flags)
+    auto
+    CreateAllocateDataRequest(ui64 handle, ui64 offset, ui64 length, ui32 flags)
     {
         auto request = CreateRequest<NProto::TAllocateDataRequest>();
         request->SetHandle(handle);
@@ -607,33 +625,33 @@ struct TTestBootstrap
         return request;
     }
 
-#define FILESTORE_DECLARE_METHOD(name, ns)                                         \
-    template <typename... Args>                                                    \
-    NProto::T##name##Response name(Args&&... args)                                 \
-    {                                                                              \
-        auto request = Create##name##Request(std::forward<Args>(args)...);         \
-        auto dbg = request->ShortDebugString();                                    \
-        auto response = Store->name(Ctx, std::move(request)).GetValueSync();       \
-                                                                                   \
-        UNIT_ASSERT_C(                                                             \
-            SUCCEEDED(response.GetError().GetCode()),                              \
-            response.GetError().GetMessage() + "@" + dbg);                         \
-        return response;                                                           \
-    }                                                                              \
-                                                                                   \
-    template <typename... Args>                                                    \
-    NProto::T##name##Response Assert##name##Failed(Args&&... args)                 \
-    {                                                                              \
-        auto request = Create##name##Request(std::forward<Args>(args)...);         \
-        auto dbg = request->ShortDebugString();                                    \
-                                                                                   \
-        auto response = Store->name(Ctx, std::move(request)).GetValueSync();       \
-        UNIT_ASSERT_C(                                                             \
-            FAILED(response.GetError().GetCode()),                                 \
-            #name " has not failed as expected " + dbg);                           \
-        return response;                                                           \
-    }                                                                              \
-// FILESTORE_DECLARE_METHOD
+#define FILESTORE_DECLARE_METHOD(name, ns)                                   \
+    template <typename... Args>                                              \
+    NProto::T##name##Response name(Args&&... args)                           \
+    {                                                                        \
+        auto request = Create##name##Request(std::forward<Args>(args)...);   \
+        auto dbg = request->ShortDebugString();                              \
+        auto response = Store->name(Ctx, std::move(request)).GetValueSync(); \
+                                                                             \
+        UNIT_ASSERT_C(                                                       \
+            SUCCEEDED(response.GetError().GetCode()),                        \
+            response.GetError().GetMessage() + "@" + dbg);                   \
+        return response;                                                     \
+    }                                                                        \
+                                                                             \
+    template <typename... Args>                                              \
+    NProto::T##name##Response Assert##name##Failed(Args&&... args)           \
+    {                                                                        \
+        auto request = Create##name##Request(std::forward<Args>(args)...);   \
+        auto dbg = request->ShortDebugString();                              \
+                                                                             \
+        auto response = Store->name(Ctx, std::move(request)).GetValueSync(); \
+        UNIT_ASSERT_C(                                                       \
+            FAILED(response.GetError().GetCode()),                           \
+            #name " has not failed as expected " + dbg);                     \
+        return response;                                                     \
+    }                                                                        \
+    // FILESTORE_DECLARE_METHOD
 
     FILESTORE_SERVICE(FILESTORE_DECLARE_METHOD)
 
@@ -642,12 +660,11 @@ struct TTestBootstrap
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEnvironment
-    : public NUnitTest::TBaseFixture
+struct TEnvironment: public NUnitTest::TBaseFixture
 {
     TTestBootstrap Bootstrap = TTestBootstrap("fs");
 
-    ILoggingServicePtr Logging = CreateLoggingService("console", { TLOG_DEBUG });
+    ILoggingServicePtr Logging = CreateLoggingService("console", {TLOG_DEBUG});
     TLog Log;
 
     ui64 Id = 0;
@@ -661,7 +678,8 @@ struct TEnvironment
     char Fill = 'a';
     ui64 MaxSize = 0;
 
-    TEnvironment() : Log(Logging->CreateLog("NFS_TEST"))
+    TEnvironment()
+        : Log(Logging->CreateLog("NFS_TEST"))
     {}
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
@@ -675,13 +693,16 @@ struct TEnvironment
         MaxBlocks = Engine() % 64 + 1;
         STORAGE_DEBUG("Max blocks: " << MaxBlocks);
 
-        Id = Bootstrap.CreateNode(
-            TCreateNodeArgs::File(RootNodeId, "file")).GetNode().GetId();
-        Handle = Bootstrap.CreateHandle(
-            RootNodeId,
-            "file",
-            ProtoFlag(NProto::TCreateHandleRequest::E_READ)
-                | ProtoFlag(NProto::TCreateHandleRequest::E_WRITE)).GetHandle();
+        Id = Bootstrap.CreateNode(TCreateNodeArgs::File(RootNodeId, "file"))
+                 .GetNode()
+                 .GetId();
+        Handle = Bootstrap
+                     .CreateHandle(
+                         RootNodeId,
+                         "file",
+                         ProtoFlag(NProto::TCreateHandleRequest::E_READ) |
+                             ProtoFlag(NProto::TCreateHandleRequest::E_WRITE))
+                     .GetHandle();
     }
 
     void TearDown(NUnitTest::TTestContext& /*context*/) override
@@ -742,7 +763,9 @@ struct TEnvironment
     {
         const ui64 currentSize = GetNodeAttrs().GetSize();
 
-        std::uniform_int_distribution<ui64> offsetDist(0, MaxBlocks * BlockSize);
+        std::uniform_int_distribution<ui64> offsetDist(
+            0,
+            MaxBlocks * BlockSize);
         std::uniform_int_distribution<ui64> sizeDist(1, MaxBlocks * BlockSize);
 
         ui64 allocOffset = 0;
@@ -767,18 +790,23 @@ struct TEnvironment
 
         const auto data = ReadFullData();
         if (const ui64 diff = Min<ui64>(allocOffset, currentSize)) {
-            UNIT_ASSERT_VALUES_EQUAL(Data.substr(0, diff), data.substr(0, diff));
+            UNIT_ASSERT_VALUES_EQUAL(
+                Data.substr(0, diff),
+                data.substr(0, diff));
         }
 
         if (allocOffset < currentSize) {
-            const ui64 rightBorder = Min<ui64>(currentSize, allocOffset + allocSize);
+            const ui64 rightBorder =
+                Min<ui64>(currentSize, allocOffset + allocSize);
             if (const ui64 diff = rightBorder - allocOffset;
                 HasFlag(flags, NProto::TAllocateDataRequest::F_PUNCH_HOLE) ||
                 HasFlag(flags, NProto::TAllocateDataRequest::F_ZERO_RANGE))
             {
                 TString expected;
                 expected.resize(diff, 0);
-                UNIT_ASSERT_VALUES_EQUAL(expected, data.substr(allocOffset, diff));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expected,
+                    data.substr(allocOffset, diff));
 
                 WriteData(allocOffset, diff);
             } else {
@@ -794,10 +822,15 @@ struct TEnvironment
                     data.substr(rightBorder, diff));
             } else {
                 if (const ui64 diff = newSize - currentSize;
-                    !HasFlag(flags, NProto::TAllocateDataRequest::F_KEEP_SIZE) && diff)
+                    !HasFlag(
+                        flags,
+                        NProto::TAllocateDataRequest::F_KEEP_SIZE) &&
+                    diff)
                 {
                     TString expected(diff, 0);
-                    UNIT_ASSERT_VALUES_EQUAL(expected, data.substr(currentSize, diff));
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        expected,
+                        data.substr(currentSize, diff));
 
                     WriteData(currentSize, diff);
                 }
@@ -807,7 +840,9 @@ struct TEnvironment
                 !HasFlag(flags, NProto::TAllocateDataRequest::F_KEEP_SIZE))
             {
                 TString expected(diff, 0);
-                UNIT_ASSERT_VALUES_EQUAL(expected, data.substr(currentSize, diff));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expected,
+                    data.substr(currentSize, diff));
 
                 WriteData(currentSize, diff);
             }
@@ -835,7 +870,9 @@ struct TEnvironment
             if (newSize != currentSize) {
                 const ui64 diff = newSize - currentSize;
                 TString expected(diff, 0);
-                UNIT_ASSERT_VALUES_EQUAL(expected, data.substr(currentSize, diff));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expected,
+                    data.substr(currentSize, diff));
 
                 WriteData(currentSize, diff);
             }
@@ -849,52 +886,50 @@ struct TEnvironment
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(LocalFileStore_Stress)
-{
-    Y_UNIT_TEST_F(ShouldStress, TEnvironment)
-    {
-        constexpr ui64 test_steps = 1'000;
-        std::uniform_int_distribution<ui32> dist(0, EStepType::MAX - 1);
+Y_UNIT_TEST_SUITE(LocalFileStore_Stress){
+    Y_UNIT_TEST_F(ShouldStress, TEnvironment){constexpr ui64 test_steps = 1'000;
+std::uniform_int_distribution<ui32> dist(0, EStepType::MAX - 1);
 
-        for (size_t i = 0; i < test_steps; ++i) {
-            const ui32 type = dist(Engine);
-            switch (type) {
-                case EStepType::Truncate: {
-                    PerformTruncate();
-                    break;
-                }
-                case EStepType::AllocateDefault: {
-                    PerformAllocate(0);
-                    break;
-                }
-                case EStepType::AllocateKeepSize: {
-                    PerformAllocate(
-                        ProtoFlag(NProto::TAllocateDataRequest::F_KEEP_SIZE));
-                    break;
-                }
-                case EStepType::AllocatePunch: {
-                    PerformAllocate(
-                        ProtoFlag(NProto::TAllocateDataRequest::F_PUNCH_HOLE) |
-                        ProtoFlag(NProto::TAllocateDataRequest::F_KEEP_SIZE));
-                    break;
-                }
-                case EStepType::AllocateZero: {
-                    PerformAllocate(
-                        ProtoFlag(NProto::TAllocateDataRequest::F_ZERO_RANGE));
-                    break;
-                }
-                case EStepType::AllocateZeroKeepSize: {
-                    PerformAllocate(
-                        ProtoFlag(NProto::TAllocateDataRequest::F_ZERO_RANGE) |
-                        ProtoFlag(NProto::TAllocateDataRequest::F_KEEP_SIZE));
-                    break;
-                }
-                default: {
-                    UNIT_ASSERT_C(false, "Unreachable code");
-                }
-            }
+for (size_t i = 0; i < test_steps; ++i) {
+    const ui32 type = dist(Engine);
+    switch (type) {
+        case EStepType::Truncate: {
+            PerformTruncate();
+            break;
+        }
+        case EStepType::AllocateDefault: {
+            PerformAllocate(0);
+            break;
+        }
+        case EStepType::AllocateKeepSize: {
+            PerformAllocate(
+                ProtoFlag(NProto::TAllocateDataRequest::F_KEEP_SIZE));
+            break;
+        }
+        case EStepType::AllocatePunch: {
+            PerformAllocate(
+                ProtoFlag(NProto::TAllocateDataRequest::F_PUNCH_HOLE) |
+                ProtoFlag(NProto::TAllocateDataRequest::F_KEEP_SIZE));
+            break;
+        }
+        case EStepType::AllocateZero: {
+            PerformAllocate(
+                ProtoFlag(NProto::TAllocateDataRequest::F_ZERO_RANGE));
+            break;
+        }
+        case EStepType::AllocateZeroKeepSize: {
+            PerformAllocate(
+                ProtoFlag(NProto::TAllocateDataRequest::F_ZERO_RANGE) |
+                ProtoFlag(NProto::TAllocateDataRequest::F_KEEP_SIZE));
+            break;
+        }
+        default: {
+            UNIT_ASSERT_C(false, "Unreachable code");
         }
     }
-};
+}
+}   // namespace NCloud::NFileStore
+}
+;
 
 }   // namespace NCloud::NFileStore

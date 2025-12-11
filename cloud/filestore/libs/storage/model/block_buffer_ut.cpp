@@ -18,11 +18,7 @@ Y_UNIT_TEST_SUITE(TBlockBufferTest)
         IBlockBufferPtr BlockBuffer;
         TString Out;
 
-        TTest(
-                ui64 offset,
-                ui64 length,
-                ui32 blockSize,
-                ui64 fileSize)
+        TTest(ui64 offset, ui64 length, ui32 blockSize, ui64 fileSize)
             : Range(offset, length, blockSize)
             , AlignedRange(Range.AlignedSuperRange())
         {
@@ -50,17 +46,13 @@ Y_UNIT_TEST_SUITE(TBlockBufferTest)
     Y_UNIT_TEST(ShouldCopyFileDataUnaligned)
     {
         TTest test(101_KB, 10_KB, 4_KB, 107_KB);
-        UNIT_ASSERT_VALUES_EQUAL(
-            test.Data.substr(1_KB, 6_KB),
-            test.Out);
+        UNIT_ASSERT_VALUES_EQUAL(test.Data.substr(1_KB, 6_KB), test.Out);
     }
 
     Y_UNIT_TEST(ShouldCopyFileDataUnalignedSmall)
     {
         TTest test(101_KB, 10_KB, 4_KB, 103_KB);
-        UNIT_ASSERT_VALUES_EQUAL(
-            test.Data.substr(1_KB, 2_KB),
-            test.Out);
+        UNIT_ASSERT_VALUES_EQUAL(test.Data.substr(1_KB, 2_KB), test.Out);
     }
 }
 

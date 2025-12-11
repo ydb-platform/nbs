@@ -1,6 +1,7 @@
 #include "proto_helpers.h"
 
 #include <cloud/blockstore/libs/storage/core/config.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -24,7 +25,6 @@ Y_UNIT_TEST_SUITE(TProtoHelpersTest)
 {
     Y_UNIT_TEST(TestFillDeviceInfo)
     {
-
         google::protobuf::RepeatedPtrField<NProto::TDeviceConfig> devices;
         InitDev("uuid-1-1", devices.Add());
         InitDev("uuid-1-2", devices.Add());

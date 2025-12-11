@@ -48,7 +48,7 @@ struct THistBase
         , HistBounds(ConvertToHistBounds(TDerived::Buckets))
         , CounterOptions(counterOptions)
         , Hist(
-            new THistogramCounter(NMonitoring::ExplicitHistogram(HistBounds)))
+              new THistogramCounter(NMonitoring::ExplicitHistogram(HistBounds)))
     {
         std::fill(Counters.begin(), Counters.end(), new TCounterForPtr(true));
     }
@@ -57,16 +57,14 @@ struct THistBase
         TDynamicCounters& counters,
         TCountableBase::EVisibility vis = TCountableBase::EVisibility::Public)
     {
-        auto subgroup = MakeVisibilitySubgroup(
-            counters,
-            "histogram",
-            Name,
-            vis);
+        auto subgroup =
+            MakeVisibilitySubgroup(counters, "histogram", Name, vis);
         if (GetUnits()) {
             subgroup = subgroup->GetSubgroup("units", GetUnits());
         }
         if (CounterOptions & EHistogramCounterOption::ReportSingleCounter) {
-            Hist = subgroup->GetHistogram(Name,
+            Hist = subgroup->GetHistogram(
+                Name,
                 NMonitoring::ExplicitHistogram(HistBounds),
                 true,
                 vis);
@@ -87,10 +85,7 @@ struct THistBase
             TDerived::Buckets.begin(),
             TDerived::Buckets.end(),
             value);
-        STORAGE_VERIFY(
-            it != TDerived::Buckets.end(),
-            "Bucket",
-            value);
+        STORAGE_VERIFY(it != TDerived::Buckets.end(), "Bucket", value);
         size_t index = std::distance(TDerived::Buckets.begin(), it);
         Counters[index]->Add(count);
     }
@@ -236,8 +231,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TSizeHist
-    : public THistBase<TKbSizeBuckets>
+struct TSizeHist: public THistBase<TKbSizeBuckets>
 {
     using THistBase::THistBase;
 
@@ -293,9 +287,8 @@ public:
             Prev[i] = value;
         }
 
-        auto result = CalculateWeightedPercentiles(
-            delta,
-            GetDefaultPercentiles());
+        auto result =
+            CalculateWeightedPercentiles(delta, GetDefaultPercentiles());
 
         for (ui32 i = 0; i < Min(Counters.size(), result.size()); ++i) {
             *Counters[i] =
@@ -317,30 +310,24 @@ struct TRequestCounters::TSpecialCounters
     TSpecialCounters(const TSpecialCounters&) = delete;
     TSpecialCounters(TSpecialCounters&&) = default;
 
-    TSpecialCounters& operator = (const TSpecialCounters&) = delete;
-    TSpecialCounters& operator = (TSpecialCounters&&) = default;
+    TSpecialCounters& operator=(const TSpecialCounters&) = delete;
+    TSpecialCounters& operator=(TSpecialCounters&&) = default;
 
     void Init(TDynamicCounters& counters)
     {
         HwProblems = counters.GetCounter("HwProblems", true);
     }
 
-    void AddStats(
-        EDiagnosticsErrorKind errorKind,
-        ui32 errorFlags)
+    void AddStats(EDiagnosticsErrorKind errorKind, ui32 errorFlags)
     {
-        if ((errorKind != EDiagnosticsErrorKind::Success)
-            && HasProtoFlag(
-                errorFlags,
-                NCloud::NProto::EF_HW_PROBLEMS_DETECTED))
+        if ((errorKind != EDiagnosticsErrorKind::Success) &&
+            HasProtoFlag(errorFlags, NCloud::NProto::EF_HW_PROBLEMS_DETECTED))
         {
             HwProblems->Inc();
         }
     }
 
-    void AddRetryStats(
-        EDiagnosticsErrorKind errorKind,
-        ui32 errorFlags)
+    void AddRetryStats(EDiagnosticsErrorKind errorKind, ui32 errorFlags)
     {
         AddStats(errorKind, errorFlags);
     }
@@ -350,7 +337,7 @@ struct TRequestCounters::TSpecialCounters
 
 struct TRequestCounters::TStatCounters
 {
-    template<typename Type>
+    template <typename Type>
     struct TFailedAndSuccess
     {
         Type Success;
@@ -363,7 +350,7 @@ struct TRequestCounters::TStatCounters
         TRequestPercentiles<TAdaptiveTimeHist> ExecutionTimePercentiles;
 
         explicit TSizeClassCounters(
-                EHistogramCounterOptions histogramCounterOptions)
+            EHistogramCounterOptions histogramCounterOptions)
             : ExecutionTimeHist("ExecutionTime", histogramCounterOptions)
             , ExecutionTimePercentiles(ExecutionTimeHist)
         {}
@@ -479,8 +466,8 @@ struct TRequestCounters::TStatCounters
     TStatCounters(const TStatCounters&) = delete;
     TStatCounters(TStatCounters&&) = default;
 
-    TStatCounters& operator = (const TStatCounters&) = delete;
-    TStatCounters& operator = (TStatCounters&&) = default;
+    TStatCounters& operator=(const TStatCounters&) = delete;
+    TStatCounters& operator=(TStatCounters&&) = default;
 
     void Init(
         TDynamicCountersPtr countersGroup,
@@ -530,7 +517,8 @@ struct TRequestCounters::TStatCounters
         ErrorsAborted = counters.GetCounter("Errors/Aborted", true);
         ErrorsRetriable = counters.GetCounter("Errors/Retriable", true);
         ErrorsThrottling = counters.GetCounter("Errors/Throttling", true);
-        ErrorsWriteRejectdByCheckpoint = counters.GetCounter("Errors/CheckpointReject", true);
+        ErrorsWriteRejectdByCheckpoint =
+            counters.GetCounter("Errors/CheckpointReject", true);
         ErrorsSession = counters.GetCounter("Errors/Session", true);
         Retries = counters.GetCounter("Retries", true);
 
@@ -549,7 +537,8 @@ struct TRequestCounters::TStatCounters
             UnalignedCount = counters.GetCounter("UnalignedCount", true);
 
             if (ReportDataPlaneHistogram) {
-                auto unalignedClassGroup = counters.GetSubgroup("sizeclass", "Unaligned");
+                auto unalignedClassGroup =
+                    counters.GetSubgroup("sizeclass", "Unaligned");
 
                 SizeHist.Register(counters);
                 TimeHistUnaligned.Register(*unalignedClassGroup);
@@ -575,9 +564,9 @@ struct TRequestCounters::TStatCounters
                 }
             }
 
-            const auto visibleHistogram = ReportDataPlaneHistogram
-                ? TCountableBase::EVisibility::Public
-                : TCountableBase::EVisibility::Private;
+            const auto visibleHistogram =
+                ReportDataPlaneHistogram ? TCountableBase::EVisibility::Public
+                                         : TCountableBase::EVisibility::Private;
 
             PostponedTimeHist.Register(counters, visibleHistogram);
             TimeHist.Register(counters, visibleHistogram);
@@ -589,7 +578,8 @@ struct TRequestCounters::TStatCounters
             RequestCompletionTimePercentiles.Register(counters);
 
             PostponedQueueSize = counters.GetCounter("PostponedQueueSize");
-            MaxPostponedQueueSize = counters.GetCounter("MaxPostponedQueueSize");
+            MaxPostponedQueueSize =
+                counters.GetCounter("MaxPostponedQueueSize");
             PostponedCount = counters.GetCounter("PostponedCount", true);
 
             PostponedQueueSizeGrpc =
@@ -632,9 +622,9 @@ struct TRequestCounters::TStatCounters
         bool unaligned,
         ECalcMaxTime calcMaxTime)
     {
-        const bool failed = errorKind != EDiagnosticsErrorKind::Success
-            && (errorKind != EDiagnosticsErrorKind::ErrorSilent
-                || !IsReadWriteRequest);
+        const bool failed = errorKind != EDiagnosticsErrorKind::Success &&
+                            (errorKind != EDiagnosticsErrorKind::ErrorSilent ||
+                             !IsReadWriteRequest);
 
         if (failed) {
             Errors->Inc();
@@ -871,13 +861,13 @@ struct TRequestCounters::TStatCounters
 ////////////////////////////////////////////////////////////////////////////////
 
 TRequestCounters::TRequestCounters(
-        ITimerPtr timer,
-        ui32 requestCount,
-        std::function<TString(TRequestType)> requestType2Name,
-        std::function<bool(TRequestType)> isReadWriteRequestType,
-        EOptions options,
-        EHistogramCounterOptions histogramCounterOptions,
-        const TVector<TSizeInterval>& executionTimeSizeClasses)
+    ITimerPtr timer,
+    ui32 requestCount,
+    std::function<TString(TRequestType)> requestType2Name,
+    std::function<bool(TRequestType)> isReadWriteRequestType,
+    EOptions options,
+    EHistogramCounterOptions histogramCounterOptions,
+    const TVector<TSizeInterval>& executionTimeSizeClasses)
     : RequestType2Name(std::move(requestType2Name))
     , IsReadWriteRequestType(std::move(isReadWriteRequestType))
     , Options(options)
@@ -916,9 +906,8 @@ void TRequestCounters::Register(TDynamicCounters& counters)
 
     for (TRequestType t = 0; t < CountersByRequest.size(); ++t) {
         if (ShouldReport(t)) {
-            auto requestGroup = counters.GetSubgroup(
-                "request",
-                RequestType2Name(t));
+            auto requestGroup =
+                counters.GetSubgroup("request", RequestType2Name(t));
 
             CountersByRequest[t].Init(
                 std::move(requestGroup),
@@ -928,8 +917,9 @@ void TRequestCounters::Register(TDynamicCounters& counters)
 
             // ReadWrite counters are usually the most important ones so let's
             // report zeroes for them instead of not reporting anything at all
-            const bool lazyInit = Options & EOption::LazyRequestInitialization
-                && !IsReadWriteRequestType(t);
+            const bool lazyInit =
+                Options & EOption::LazyRequestInitialization &&
+                !IsReadWriteRequestType(t);
 
             if (!lazyInit) {
                 CountersByRequest[t].FullInitIfNeeded();
@@ -1009,9 +999,7 @@ void TRequestCounters::RequestPostponed(TRequestType requestType)
     if (ShouldReport(requestType)) {
         AccessRequestStats(requestType).RequestPostponed();
     }
-    NotifySubscribers(
-        &TRequestCounters::RequestPostponed,
-        requestType);
+    NotifySubscribers(&TRequestCounters::RequestPostponed, requestType);
 }
 
 void TRequestCounters::RequestPostponedServer(TRequestType requestType)
@@ -1019,9 +1007,7 @@ void TRequestCounters::RequestPostponedServer(TRequestType requestType)
     if (ShouldReport(requestType)) {
         AccessRequestStats(requestType).RequestPostponedServer();
     }
-    NotifySubscribers(
-        &TRequestCounters::RequestPostponedServer,
-        requestType);
+    NotifySubscribers(&TRequestCounters::RequestPostponedServer, requestType);
 }
 
 void TRequestCounters::RequestFastPathHit(TRequestType requestType)
@@ -1029,9 +1015,7 @@ void TRequestCounters::RequestFastPathHit(TRequestType requestType)
     if (ShouldReport(requestType)) {
         AccessRequestStats(requestType).RequestFastPathHit();
     }
-    NotifySubscribers(
-        &TRequestCounters::RequestFastPathHit,
-        requestType);
+    NotifySubscribers(&TRequestCounters::RequestFastPathHit, requestType);
 }
 
 void TRequestCounters::RequestAdvanced(TRequestType requestType)
@@ -1039,9 +1023,7 @@ void TRequestCounters::RequestAdvanced(TRequestType requestType)
     if (ShouldReport(requestType)) {
         AccessRequestStats(requestType).RequestAdvanced();
     }
-    NotifySubscribers(
-        &TRequestCounters::RequestAdvanced,
-        requestType);
+    NotifySubscribers(&TRequestCounters::RequestAdvanced, requestType);
 }
 
 void TRequestCounters::RequestAdvancedServer(TRequestType requestType)
@@ -1049,9 +1031,7 @@ void TRequestCounters::RequestAdvancedServer(TRequestType requestType)
     if (ShouldReport(requestType)) {
         AccessRequestStats(requestType).RequestAdvancedServer();
     }
-    NotifySubscribers(
-        &TRequestCounters::RequestAdvancedServer,
-        requestType);
+    NotifySubscribers(&TRequestCounters::RequestAdvancedServer, requestType);
 }
 
 void TRequestCounters::AddIncompleteStats(
@@ -1061,10 +1041,8 @@ void TRequestCounters::AddIncompleteStats(
     ECalcMaxTime calcMaxTime)
 {
     if (ShouldReport(requestType)) {
-        AccessRequestStats(requestType).AddIncompleteStats(
-            executionTime,
-            totalTime,
-            calcMaxTime);
+        AccessRequestStats(requestType)
+            .AddIncompleteStats(executionTime, totalTime, calcMaxTime);
     }
     NotifySubscribers(
         &TRequestCounters::AddIncompleteStats,
@@ -1083,13 +1061,14 @@ void TRequestCounters::BatchCompleted(
     std::span<TSizeBucket> sizeHist)
 {
     if (ShouldReport(requestType)) {
-        AccessRequestStats(requestType).BatchCompleted(
-            count,
-            bytes,
-            errors,
-            timeHist,
-            sizeHist,
-            false); // unaligned
+        AccessRequestStats(requestType)
+            .BatchCompleted(
+                count,
+                bytes,
+                errors,
+                timeHist,
+                sizeHist,
+                false);   // unaligned
     }
     NotifySubscribers(
         &TRequestCounters::BatchCompleted,
@@ -1166,12 +1145,12 @@ void TRequestCounters::RequestCompletedImpl(
 
 bool TRequestCounters::ShouldReport(TRequestType requestType) const
 {
-    return requestType < CountersByRequest.size()
-        && (IsReadWriteRequestType(requestType)
-        || !(Options & EOption::OnlyReadWriteRequests));
+    return requestType < CountersByRequest.size() &&
+           (IsReadWriteRequestType(requestType) ||
+            !(Options & EOption::OnlyReadWriteRequests));
 }
 
-template<typename TMethod, typename... TArgs>
+template <typename TMethod, typename... TArgs>
 void TRequestCounters::NotifySubscribers(TMethod&& m, TArgs&&... args)
 {
     for (auto& s: Subscribers) {

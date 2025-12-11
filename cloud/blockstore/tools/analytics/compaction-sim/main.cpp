@@ -96,14 +96,16 @@ struct TOptions
 
         opts.AddLongOption(
                 "filled-block-count",
-                "fill the specified number of disk blocks before starting log replay")
+                "fill the specified number of disk blocks before starting log "
+                "replay")
             .RequiredArgument("INTEGER")
             .DefaultValue(0)
             .StoreResult(&FilledBlockCount);
 
         opts.AddLongOption(
                 "fill-layers",
-                "fill the disk N times (works together with filled-block-count)")
+                "fill the disk N times (works together with "
+                "filled-block-count)")
             .RequiredArgument("INTEGER")
             .DefaultValue(1)
             .StoreResult(&FillLayers);
@@ -122,9 +124,7 @@ struct TOptions
             .DefaultValue(0)
             .StoreResult(&CompactionType);
 
-        opts.AddLongOption(
-                "max-read-iops",
-                "max blobstorage read iops")
+        opts.AddLongOption("max-read-iops", "max blobstorage read iops")
             .RequiredArgument("INTEGER")
             .DefaultValue(400)
             .StoreResult(&MaxReadIops);
@@ -136,9 +136,7 @@ struct TOptions
             .DefaultValue(15_MB)
             .StoreResult(&MaxReadBandwidth);
 
-        opts.AddLongOption(
-                "max-write-iops",
-                "max blobstorage write iops")
+        opts.AddLongOption("max-write-iops", "max blobstorage write iops")
             .RequiredArgument("INTEGER")
             .DefaultValue(1000)
             .StoreResult(&MaxWriteIops);
@@ -224,11 +222,14 @@ double Round(double x)
 TString Bytes2String(double bytes)
 {
     if (bytes >= 1_GB) {
-        return TStringBuilder() << Prec(Round(bytes / 1_GB), PREC_AUTO) << " GiB";
+        return TStringBuilder()
+               << Prec(Round(bytes / 1_GB), PREC_AUTO) << " GiB";
     } else if (bytes >= 1_MB) {
-        return TStringBuilder() << Prec(Round(bytes / 1_MB), PREC_AUTO) << " MiB";
+        return TStringBuilder()
+               << Prec(Round(bytes / 1_MB), PREC_AUTO) << " MiB";
     } else {
-        return TStringBuilder() << Prec(Round(bytes / 1_KB), PREC_AUTO) << " KiB";
+        return TStringBuilder()
+               << Prec(Round(bytes / 1_KB), PREC_AUTO) << " KiB";
     }
 }
 
@@ -259,24 +260,20 @@ void ResetOutput(ui32 rows)
 
 void PrintStatHeader()
 {
-    Cout << CONSOLE_MAGENTA
-        << "Metric"
-        << TString(19, ' ') << "Count"
-        << TString(15, ' ') << "Bytes"
-        << TString(6, ' ') << "AvgRequestSize"
-        << CONSOLE_ENDC << Endl;
+    Cout << CONSOLE_MAGENTA << "Metric" << TString(19, ' ') << "Count"
+         << TString(15, ' ') << "Bytes" << TString(6, ' ') << "AvgRequestSize"
+         << CONSOLE_ENDC << Endl;
 }
 
 void PrintStat(const TString& label, const TString& sublabel, const TStat& stat)
 {
     const auto bpr = stat.Count ? stat.Bytes / stat.Count : 0;
 
-    Cout << CONSOLE_YELLOW << label << CONSOLE_ENDC
-        << CONSOLE_GREEN << sublabel << CONSOLE_ENDC
-        << " " << Indented(stat.Count, 30 - label.size() - sublabel.size())
-        << " " << Indented(Bytes2String(stat.Bytes), 20)
-        << " " << Indented(Bytes2String(bpr), 20)
-        << WIPE << Endl;
+    Cout << CONSOLE_YELLOW << label << CONSOLE_ENDC << CONSOLE_GREEN << sublabel
+         << CONSOLE_ENDC << " "
+         << Indented(stat.Count, 30 - label.size() - sublabel.size()) << " "
+         << Indented(Bytes2String(stat.Bytes), 20) << " "
+         << Indented(Bytes2String(bpr), 20) << WIPE << Endl;
 }
 
 void PrintStat(const TString& label, const TRWStat& stat)
@@ -292,11 +289,10 @@ ui32 PrintStat(const TFullStat& stat)
     PrintStatHeader();
 
     const auto wampl =
-        (stat.BlobStat.Write.Bytes + stat.FreshStat.Write.Bytes)
-        / double(stat.UserStat.Write.Bytes);
-    const auto rampl =
-        (stat.BlobStat.Read.Bytes + stat.FreshStat.Read.Bytes)
-        / double(stat.UserStat.Read.Bytes);
+        (stat.BlobStat.Write.Bytes + stat.FreshStat.Write.Bytes) /
+        double(stat.UserStat.Write.Bytes);
+    const auto rampl = (stat.BlobStat.Read.Bytes + stat.FreshStat.Read.Bytes) /
+                       double(stat.UserStat.Read.Bytes);
 
     PrintStat("Fresh", stat.FreshStat);
     PrintStat("Blob", stat.BlobStat);
@@ -304,51 +300,42 @@ ui32 PrintStat(const TFullStat& stat)
     PrintStat("Flush", "BlobWrite", stat.FlushStat);
     PrintStat("Compaction", stat.CompactionStat);
 
-    Cout << (stat.GarbagePercentage > 20 ? CONSOLE_RED : CONSOLE_GREEN) << "Garbage"
-        << " " << Round(stat.GarbagePercentage) << "%" << CONSOLE_ENDC
-        << WIPE << Endl;
+    Cout << (stat.GarbagePercentage > 20 ? CONSOLE_RED : CONSOLE_GREEN)
+         << "Garbage" << " " << Round(stat.GarbagePercentage) << "%"
+         << CONSOLE_ENDC << WIPE << Endl;
 
-    Cout << "Used"
-        << " " << Bytes2String(stat.UsedBlockCount * BlockSize) << CONSOLE_ENDC
-        << WIPE << Endl;
+    Cout << "Used" << " " << Bytes2String(stat.UsedBlockCount * BlockSize)
+         << CONSOLE_ENDC << WIPE << Endl;
 
-    Cout << "Stored"
-        << " " << Bytes2String(stat.BlockCount * BlockSize) << CONSOLE_ENDC
-        << WIPE << Endl;
+    Cout << "Stored" << " " << Bytes2String(stat.BlockCount * BlockSize)
+         << CONSOLE_ENDC << WIPE << Endl;
 
-    Cout << "Mixed"
-        << " " << Bytes2String(stat.MixedBlockCount * BlockSize) << CONSOLE_ENDC
-        << WIPE << Endl;
+    Cout << "Mixed" << " " << Bytes2String(stat.MixedBlockCount * BlockSize)
+         << CONSOLE_ENDC << WIPE << Endl;
 
-    Cout << "Merged"
-        << " " << Bytes2String(stat.MergedBlockCount * BlockSize) << CONSOLE_ENDC
-        << WIPE << Endl;
+    Cout << "Merged" << " " << Bytes2String(stat.MergedBlockCount * BlockSize)
+         << CONSOLE_ENDC << WIPE << Endl;
 
-    Cout << "LastCompactionScore"
-        << " " << stat.LastCompactionScore << CONSOLE_ENDC
-        << WIPE << Endl;
+    Cout << "LastCompactionScore" << " " << stat.LastCompactionScore
+         << CONSOLE_ENDC << WIPE << Endl;
 
-    Cout << "LastGarbageCompactionScore"
-        << " " << stat.LastGarbageCompactionScore << CONSOLE_ENDC
-        << WIPE << Endl;
+    Cout << "LastGarbageCompactionScore" << " "
+         << stat.LastGarbageCompactionScore << CONSOLE_ENDC << WIPE << Endl;
 
-    Cout << (wampl > 3 ? CONSOLE_RED : CONSOLE_GREEN) << "Write Ampl"
-        << " " << Round(wampl) << CONSOLE_ENDC
-        << WIPE << Endl;
+    Cout << (wampl > 3 ? CONSOLE_RED : CONSOLE_GREEN) << "Write Ampl" << " "
+         << Round(wampl) << CONSOLE_ENDC << WIPE << Endl;
 
-    Cout << (rampl > 3 ? CONSOLE_RED : CONSOLE_GREEN) << "Read Ampl"
-        << " " << Round(rampl) << CONSOLE_ENDC
-        << WIPE << Endl;
+    Cout << (rampl > 3 ? CONSOLE_RED : CONSOLE_GREEN) << "Read Ampl" << " "
+         << Round(rampl) << CONSOLE_ENDC << WIPE << Endl;
 
     const auto logicalPassed =
         stat.LastEventTimestamp - stat.PreLastEventTimestamp;
     const auto realPassed = stat.RealTimestamp - stat.PreRealTimestamp;
-    const auto speed = double(logicalPassed.MilliSeconds())
-        / realPassed.MilliSeconds();
+    const auto speed =
+        double(logicalPassed.MilliSeconds()) / realPassed.MilliSeconds();
 
-    Cout << (speed > 1 ? CONSOLE_GREEN : CONSOLE_RED) << "Replay Speed"
-        << " x" << Round(speed) << CONSOLE_ENDC
-        << WIPE << Endl;
+    Cout << (speed > 1 ? CONSOLE_GREEN : CONSOLE_RED) << "Replay Speed" << " x"
+         << Round(speed) << CONSOLE_ENDC << WIPE << Endl;
 
     Cout << stat.LastEventTimestamp.ToString() << Endl;
 
@@ -371,8 +358,7 @@ struct TFreshIndex
     TFreshIndex(ui32 maxBlobSize, ui32 maxBlobRangeSize)
         : MaxBlobSize(maxBlobSize)
         , MaxBlobRangeSize(maxBlobRangeSize)
-    {
-    }
+    {}
 
     void Write(ui64 index, ui32 blocks)
     {
@@ -404,9 +390,9 @@ struct TFreshIndex
         const auto maxBlocks = MaxBlobSize / BlockSize;
         for (auto block: blocks) {
             auto* blob = &blobs.back();
-            if (blob->Blocks.size()
-                    && block - blob->Blocks.front() >= maxRangeSize
-                    || blob->Blocks.size() == maxBlocks)
+            if (blob->Blocks.size() &&
+                    block - blob->Blocks.front() >= maxRangeSize ||
+                blob->Blocks.size() == maxBlocks)
             {
                 blob = &blobs.emplace_back();
             }
@@ -447,8 +433,7 @@ struct TCompactionRange: TAtomicRefCount<TCompactionRange>
 
     TCompactionRange(ui64 index)
         : Index(index)
-    {
-    }
+    {}
 
     void Read(ui32 bytes, ui32 blobCount)
     {
@@ -460,27 +445,21 @@ struct TCompactionRange: TAtomicRefCount<TCompactionRange>
 
 using TCompactionRangePtr = TIntrusivePtr<TCompactionRange>;
 
-double RequestCost(
-    ui32 maxIops,
-    ui64 maxBandwidth,
-    double bytes,
-    double count)
+double RequestCost(ui32 maxIops, ui64 maxBandwidth, double bytes, double count)
 {
     return count / maxIops + bytes / maxBandwidth;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct ICompactionScoreCalculator
-    : TThrRefBase
+struct ICompactionScoreCalculator: TThrRefBase
 {
     virtual double Calculate(const TCompactionRange& range) const = 0;
 };
 
 using ICompactionScoreCalculatorPtr = TIntrusivePtr<ICompactionScoreCalculator>;
 
-struct TSimpleCompactionScoreCalculator final
-    : ICompactionScoreCalculator
+struct TSimpleCompactionScoreCalculator final: ICompactionScoreCalculator
 {
     double Calculate(const TCompactionRange& range) const override
     {
@@ -488,8 +467,7 @@ struct TSimpleCompactionScoreCalculator final
     }
 };
 
-struct TDynamicCompactionScoreCalculator final
-    : ICompactionScoreCalculator
+struct TDynamicCompactionScoreCalculator final: ICompactionScoreCalculator
 {
     const ui32 MaxBlobSize;
     const ui32 MaxReadIops;
@@ -498,18 +476,17 @@ struct TDynamicCompactionScoreCalculator final
     const ui64 MaxWriteBandwidth;
 
     TDynamicCompactionScoreCalculator(
-            ui32 maxBlobSize,
-            ui32 maxReadIops,
-            ui64 maxReadBandwidth,
-            ui32 maxWriteIops,
-            ui64 maxWriteBandwidth)
+        ui32 maxBlobSize,
+        ui32 maxReadIops,
+        ui64 maxReadBandwidth,
+        ui32 maxWriteIops,
+        ui64 maxWriteBandwidth)
         : MaxBlobSize(maxBlobSize)
         , MaxReadIops(maxReadIops)
         , MaxReadBandwidth(maxReadBandwidth)
         , MaxWriteIops(maxWriteIops)
         , MaxWriteBandwidth(maxWriteBandwidth)
-    {
-    }
+    {}
 
     double Calculate(const TCompactionRange& range) const override
     {
@@ -517,27 +494,24 @@ struct TDynamicCompactionScoreCalculator final
             MaxReadIops,
             MaxReadBandwidth,
             range.ReadBytes,
-            range.ReadBlobCount
-        );
+            range.ReadBlobCount);
 
         auto compactedReadCost = RequestCost(
             MaxReadIops,
             MaxReadBandwidth,
             range.ReadBytes,
-            range.ReadCount
-        );
+            range.ReadCount);
 
         auto compactionCost = RequestCost(
-            MaxReadIops,
-            MaxReadBandwidth,
-            Min(range.Bytes, MaxBlobSize),
-            range.Blobs
-        ) + RequestCost(
-            MaxWriteIops,
-            MaxWriteBandwidth,
-            Min(range.Bytes, MaxBlobSize),
-            1
-        );
+                                  MaxReadIops,
+                                  MaxReadBandwidth,
+                                  Min(range.Bytes, MaxBlobSize),
+                                  range.Blobs) +
+                              RequestCost(
+                                  MaxWriteIops,
+                                  MaxWriteBandwidth,
+                                  Min(range.Bytes, MaxBlobSize),
+                                  1);
 
         return readCost - compactedReadCost - compactionCost - 1e-10;
     }
@@ -549,8 +523,7 @@ struct TCompactionRangeComparator
 
     TCompactionRangeComparator(ICompactionScoreCalculatorPtr calc)
         : Calc(std::move(calc))
-    {
-    }
+    {}
 
     bool operator()(
         const TCompactionRangePtr& l,
@@ -582,8 +555,7 @@ struct TBlockLocation
     TBlockLocation(ui64 blobId, ui16 blobOffset)
         : BlobId(blobId)
         , BlobOffset(blobOffset)
-    {
-    }
+    {}
 };
 
 struct TMergedBlobInfo
@@ -613,13 +585,11 @@ struct TBlobIndex
     using TCompactionRanges = TPriorityQueue<
         TCompactionRangePtr,
         TVector<TCompactionRangePtr>,
-        TCompactionRangeComparator
-    >;
+        TCompactionRangeComparator>;
     using TCompactionRangesByByteCount = TPriorityQueue<
         TCompactionRangePtr,
         TVector<TCompactionRangePtr>,
-        TCompareByByteCount
-    >;
+        TCompareByByteCount>;
     mutable TCompactionRanges CompactionRanges;
     mutable TCompactionRangesByByteCount CompactionRangesByByteCount;
 
@@ -643,16 +613,15 @@ struct TBlobIndex
     ui64 MaxBlockIndex = 0;
 
     TBlobIndex(
-            ICompactionScoreCalculatorPtr calc,
-            ui32 maxBlobSize,
-            ui32 compactionThreshold)
+        ICompactionScoreCalculatorPtr calc,
+        ui32 maxBlobSize,
+        ui32 compactionThreshold)
         : Calc(std::move(calc))
         , MaxBlobSize(maxBlobSize)
         , CompactionThreshold(compactionThreshold)
         , CompactionRangeComp(Calc)
         , CompactionRanges(CompactionRangeComp)
-    {
-    }
+    {}
 
     struct TBlobBlocks
     {
@@ -664,8 +633,7 @@ struct TBlobIndex
         TBlobBlocks(bool mixed, ui64 blobId)
             : Mixed(mixed)
             , BlobId(blobId)
-        {
-        }
+        {}
     };
 
     //
@@ -681,8 +649,7 @@ struct TBlobIndex
             for (ui32 i = 0; i < blocks; ++i) {
                 if (auto* p = MixedIndex.FindPtr(index + i)) {
                     mixedBlob2Blocks[p->BlobId].push_back(
-                        {index + i, p->BlobOffset}
-                    );
+                        {index + i, p->BlobOffset});
                 }
             }
 
@@ -706,8 +673,7 @@ struct TBlobIndex
                 it->first + 1 >= maxBlocksInBlob
                     ? it->first - maxBlocksInBlob + 1
                     : 0,
-                it->first
-            );
+                it->first);
 
             if (!range.Overlaps(maxRange)) {
                 break;
@@ -785,10 +751,7 @@ struct TBlobIndex
     };
     */
 
-    ui32 DeleteBlocks(
-        ui64 index,
-        ui32 blocks,
-        TVector<ui64>* deleted = nullptr)
+    ui32 DeleteBlocks(ui64 index, ui32 blocks, TVector<ui64>* deleted = nullptr)
     {
         const auto maxBlocksInBlob = MaxBlobSize / BlockSize;
 
@@ -798,7 +761,9 @@ struct TBlobIndex
             for (ui16 i = 0; i < blobBlocks.Blocks.size(); ++i) {
                 /*
                 if (XXX.contains(blobBlocks.Blocks[i])) {
-                    Cerr << "marking the block " << blobBlocks.Blocks[i] << " deleted in blob " << blobBlocks.BlobId << ", offset=" << blobBlocks.Offsets[i] << Endl;
+                    Cerr << "marking the block " << blobBlocks.Blocks[i] << "
+                deleted in blob " << blobBlocks.BlobId << ", offset=" <<
+                blobBlocks.Offsets[i] << Endl;
                 }
                 */
 
@@ -843,15 +808,15 @@ struct TBlobIndex
         ui64 prevRangeIndex = Max<ui64>();
         ui32 blockCount = 0;
 
-        const auto onRange = [&] () {
+        const auto onRange = [&]()
+        {
             Y_ABORT_UNLESS(prevRangeIndex != Max<ui64>());
 
             UpdateCompactionRange(
                 prevRangeIndex,
                 ECompactionRangeActionType::Write,
                 BlockSize * blockCount,
-                1
-            );
+                1);
         };
 
         for (const auto b: blocks) {
@@ -894,35 +859,31 @@ struct TBlobIndex
         const auto ranges = ToCompactionRanges(index, blocks);
         const auto maxBlocksInBlob = MaxBlobSize / BlockSize;
         for (ui32 i = ranges.FirstRange; i <= ranges.LastRange; ++i) {
-            const auto compactionRange = TBlockRange64::WithLength(
-                i * maxBlocksInBlob,
-                maxBlocksInBlob
-            );
+            const auto compactionRange =
+                TBlockRange64::WithLength(i * maxBlocksInBlob, maxBlocksInBlob);
 
             UpdateCompactionRange(
                 i,
                 ECompactionRangeActionType::Write,
                 BlockSize * blockRange.Intersect(compactionRange).Size(),
-                1
-            );
+                1);
         }
 
         // XXX
         /*
         for (const auto b: XXX) {
             if (blockRange.Contains(b)) {
-                Cerr << "writing the block " << b << " via " << index << " - " << (index + blocks - 1) << ", blob id=" << (LastBlobId + 1) << ", offset=" << (b - index) << Endl;
+                Cerr << "writing the block " << b << " via " << index << " - "
+        << (index + blocks - 1) << ", blob id=" << (LastBlobId + 1) << ",
+        offset=" << (b - index) << Endl;
             }
         }
         */
 
-
         DeleteBlocks(index, blocks);
 
         ++LastBlobId;
-        MergedIndex[index + blocks - 1].push_back(
-            {LastBlobId, index}
-        );
+        MergedIndex[index + blocks - 1].push_back({LastBlobId, index});
         Blobs[LastBlobId].BlockCount = blocks;
         MergedBlockCount += blocks;
 
@@ -942,17 +903,14 @@ struct TBlobIndex
         const auto ranges = ToCompactionRanges(index, blocks);
         const auto maxBlocksInBlob = MaxBlobSize / BlockSize;
         for (ui32 i = ranges.FirstRange; i <= ranges.LastRange; ++i) {
-            const auto compactionRange = TBlockRange64::WithLength(
-                i * maxBlocksInBlob,
-                maxBlocksInBlob
-            );
+            const auto compactionRange =
+                TBlockRange64::WithLength(i * maxBlocksInBlob, maxBlocksInBlob);
 
             UpdateCompactionRange(
                 i,
                 ECompactionRangeActionType::Read,
                 BlockSize * blockRange.Intersect(compactionRange).Size(),
-                bblocks.size()
-            );
+                bblocks.size());
         }
 
         return std::make_pair(blockCount, bblocks.size());
@@ -970,8 +928,7 @@ struct TBlobIndex
         TCompactionRangesRange(ui64 firstRange, ui64 lastRange)
             : FirstRange(firstRange)
             , LastRange(lastRange)
-        {
-        }
+        {}
     };
 
     TCompactionRangesRange ToCompactionRanges(ui64 index, ui32 blocks) const
@@ -979,8 +936,7 @@ struct TBlobIndex
         const auto maxBlocksInBlob = MaxBlobSize / BlockSize;
         return {
             index / maxBlocksInBlob,
-            (index + blocks - 1) / maxBlocksInBlob
-        };
+            (index + blocks - 1) / maxBlocksInBlob};
     }
 
     enum class ECompactionRangeActionType
@@ -1001,9 +957,8 @@ struct TBlobIndex
             CompactionMap.resize(rangeIndex + 1);
         }
 
-        auto range = MakeIntrusive<TCompactionRange>(
-            rangeIndex * maxBlocksInBlob
-        );
+        auto range =
+            MakeIntrusive<TCompactionRange>(rangeIndex * maxBlocksInBlob);
 
         if (CompactionMap[rangeIndex]) {
             if (action != ECompactionRangeActionType::Reset) {
@@ -1030,13 +985,11 @@ struct TBlobIndex
         }
 
         const auto score = Calc->Calculate(*range);
-        Cdbg << "rangeIndex=" << rangeIndex
-            << "\tblobs=" << range->Blobs
-            << "\tbytes=" << range->Bytes
-            << "\treadCount=" << range->ReadCount
-            << "\treadBytes=" << range->ReadBytes
-            << "\treadBlobs=" << range->ReadBlobCount
-            << "\tscore=" << score << Endl;
+        Cdbg << "rangeIndex=" << rangeIndex << "\tblobs=" << range->Blobs
+             << "\tbytes=" << range->Bytes << "\treadCount=" << range->ReadCount
+             << "\treadBytes=" << range->ReadBytes
+             << "\treadBlobs=" << range->ReadBlobCount << "\tscore=" << score
+             << Endl;
 
         if (score >= CompactionThreshold) {
             CompactionRanges.push(range);
@@ -1085,8 +1038,7 @@ struct TBlobIndex
             index / maxBlocksInBlob,
             ECompactionRangeActionType::Reset,
             deleted.size() * BlockSize,
-            1
-        );
+            1);
 
         return {blobCount, std::move(deleted)};
     }
@@ -1153,7 +1105,8 @@ struct TBlobIndex
 
                     /*
                     if (XXX.contains(b)) {
-                        Cerr << "the block " << b << " found in blob " << y.BlobId << " at offset " << b - y.FirstIndex << Endl;
+                        Cerr << "the block " << b << " found in blob " <<
+                    y.BlobId << " at offset " << b - y.FirstIndex << Endl;
                     }
                     */
 
@@ -1179,8 +1132,7 @@ ICompactionScoreCalculatorPtr BuildCompactionRangeScoreCalculator(
             options.MaxReadIops,
             options.MaxReadBandwidth,
             options.MaxWriteIops,
-            options.MaxWriteBandwidth
-        );
+            options.MaxWriteBandwidth);
     }
 
     return new TSimpleCompactionScoreCalculator();
@@ -1188,8 +1140,7 @@ ICompactionScoreCalculatorPtr BuildCompactionRangeScoreCalculator(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TEventProcessor final
-    : public TProtobufEventProcessor
+class TEventProcessor final: public TProtobufEventProcessor
 {
 private:
     const TOptions& Options;
@@ -1206,10 +1157,9 @@ public:
         , Log(log)
         , FreshIndex(options.MaxBlobSize, options.MaxBlobRangeSize)
         , BlobIndex(
-            BuildCompactionRangeScoreCalculator(options),
-            options.MaxBlobSize,
-            options.CompactionType != 1 ? options.CompactionThreshold : 0
-        )
+              BuildCompactionRangeScoreCalculator(options),
+              options.MaxBlobSize,
+              options.CompactionType != 1 ? options.CompactionThreshold : 0)
         , UsedBlocks(options.FilledBlockCount)
     {
         if (options.FilledBlockCount) {
@@ -1264,14 +1214,13 @@ protected:
             Sort(
                 reqs.begin(),
                 reqs.end(),
-                [] (const NProto::TProfileLogRequestInfo* l,
-                    const NProto::TProfileLogRequestInfo* r)
+                [](const NProto::TProfileLogRequestInfo* l,
+                   const NProto::TProfileLogRequestInfo* r)
                 {
                     // XXX not taking ts overflows into account
                     // but this should not seriously affect the results
                     return l->GetTimestampMcs() < r->GetTimestampMcs();
-                }
-            );
+                });
 
             for (const auto* req: reqs) {
                 Process(*req);
@@ -1288,13 +1237,16 @@ private:
             FlushIfNeeded();
             keepRunning = CompactIfNeeded();
         } else {
-            const auto t = static_cast<EBlockStoreRequest>(req.GetRequestType());
+            const auto t =
+                static_cast<EBlockStoreRequest>(req.GetRequestType());
 
             if (t == EBlockStoreRequest::WriteBlocks) {
                 WriteBlocks(req.GetBlockIndex(), req.GetBlockCount());
 
                 FlushIfNeeded();
-                if (Stat.UserStat.Write.Count % Options.Write2CompactionRatio == 0) {
+                if (Stat.UserStat.Write.Count % Options.Write2CompactionRatio ==
+                    0)
+                {
                     CompactIfNeeded();
                 }
             } else if (t == EBlockStoreRequest::ReadBlocks) {
@@ -1308,7 +1260,8 @@ private:
         if (Stat.RealTimestamp > Stat.PreRealTimestamp + d) {
             ResetOutput(LastRowsPrinted);
             Stat.UsedBlockCount = UsedBlocks.Count();
-            Stat.BlockCount = FreshIndex.GetBlockCount() + BlobIndex.GetBlockCount();
+            Stat.BlockCount =
+                FreshIndex.GetBlockCount() + BlobIndex.GetBlockCount();
             Stat.MixedBlockCount = BlobIndex.GetMixedBlockCount();
             Stat.MergedBlockCount = BlobIndex.GetMergedBlockCount();
             LastRowsPrinted = PrintStat(Stat);
@@ -1343,11 +1296,8 @@ private:
         if (index < Options.FilledBlockCount) {
             UsedBlocks.Set(
                 index,
-                Min(
-                    index + blocks,
-                    static_cast<ui64>(Options.FilledBlockCount)
-                )
-            );
+                Min(index + blocks,
+                    static_cast<ui64>(Options.FilledBlockCount)));
         }
         Stat.UserStat.Write.Reg(blocks);
     }
@@ -1375,8 +1325,8 @@ private:
         const auto count = FreshIndex.Read(index, blocks);
 
         if (count) {
-            Log << "fresh read\t" << index << "\t" << blocks
-                << "\t" << count << "\n";
+            Log << "fresh read\t" << index << "\t" << blocks << "\t" << count
+                << "\n";
 
             Stat.FreshStat.Read.Reg(count, count);
         }
@@ -1384,10 +1334,8 @@ private:
 
     void WriteBlob(const TVector<ui64>& blocks)
     {
-        Log << "mixed write\t" << blocks.size()
-            << "\t" << blocks.front()
-            << "\t" << blocks.back()
-            << "\n";
+        Log << "mixed write\t" << blocks.size() << "\t" << blocks.front()
+            << "\t" << blocks.back() << "\n";
         Y_ABORT_UNLESS(blocks.size() <= Options.MaxBlobSize / BlockSize);
 
         BlobIndex.Write(blocks);
@@ -1406,12 +1354,9 @@ private:
     void ReadBlobs(const ui64 index, const ui32 blocks)
     {
         ui32 blockCount, blobCount;
-        std::tie(blockCount, blobCount) = BlobIndex.Read(
-            index,
-            blocks
-        );
-        Log << "blob read\t" << index << "\t" << blocks
-            << "\t" << blockCount << "\t" << blobCount << "\n";
+        std::tie(blockCount, blobCount) = BlobIndex.Read(index, blocks);
+        Log << "blob read\t" << index << "\t" << blocks << "\t" << blockCount
+            << "\t" << blobCount << "\n";
 
         Stat.BlobStat.Read.Reg(blockCount, blobCount);
     }
@@ -1436,10 +1381,8 @@ private:
         ui32 blobCount;
         TVector<ui64> blocks;
         std::tie(blobCount, blocks) = BlobIndex.Compact(topRange.Index);
-        Log << "compact range\t" << topRange.Index
-            << "\t" << topRange.Blobs
-            << "\t" << topRange.Bytes
-            << "\t" << blocks.size() << "\n";
+        Log << "compact range\t" << topRange.Index << "\t" << topRange.Blobs
+            << "\t" << topRange.Bytes << "\t" << blocks.size() << "\n";
 
         WriteBlob(topRange.Index, Options.MaxBlobSize / BlockSize);
         Stat.CompactionStat.Write.Reg(Options.MaxBlobSize / BlockSize, 1);
@@ -1450,10 +1393,10 @@ private:
 
     bool CompactIfNeeded()
     {
-        const double garbageBlocks = BlobIndex.GetBlockCount()
-            + FreshIndex.GetBlockCount() - UsedBlocks.Count();
-        const auto garbagePercentage =
-            garbageBlocks * 100 / UsedBlocks.Count();
+        const double garbageBlocks = BlobIndex.GetBlockCount() +
+                                     FreshIndex.GetBlockCount() -
+                                     UsedBlocks.Count();
+        const auto garbagePercentage = garbageBlocks * 100 / UsedBlocks.Count();
         Stat.GarbagePercentage = garbagePercentage;
 
         auto topRange = BlobIndex.TopRange();
@@ -1499,8 +1442,7 @@ int main(int argc, const char** argv)
         NEvClass::Factory(),
         &processor,
         options.EvlogDumperArgv.size(),
-        options.EvlogDumperArgv.begin()
-    );
+        options.EvlogDumperArgv.begin());
 
     PrintStat(processor.GetStat());
     processor.ValidateGarbage();

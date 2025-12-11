@@ -27,4 +27,4 @@ void CancelPendingRequests(
     }
 }
 
-}    // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NBlockStore::NStorage

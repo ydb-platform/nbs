@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/service/public.h>
+
 #include <cloud/storage/core/libs/common/startable.h>
 
 #include <util/network/address.h>
@@ -12,8 +13,7 @@ namespace NCloud::NBlockStore::NBD {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IClient
-    : public IStartable
+struct IClient: public IStartable
 {
     virtual IBlockStorePtr CreateEndpoint(
         const TNetworkAddress& connectAddress,

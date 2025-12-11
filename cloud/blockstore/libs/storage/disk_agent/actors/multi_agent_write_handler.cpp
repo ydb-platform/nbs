@@ -30,8 +30,8 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 TMultiAgentWriteHandler::TMultiAgentWriteHandler(
-        TActorSystem* actorSystem,
-        TActorId diskAgentId)
+    TActorSystem* actorSystem,
+    TActorId diskAgentId)
     : ActorSystem(actorSystem)
     , DiskAgentId(diskAgentId)
 {}

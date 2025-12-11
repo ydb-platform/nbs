@@ -2,10 +2,9 @@
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
-#include <library/cpp/lwtrace/mon/mon_lwtrace.h>
-
 #include <library/cpp/lwtrace/all.h>
 #include <library/cpp/lwtrace/log_shuttle.h>
+#include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 #include <library/cpp/lwtrace/signature.h>
 
 #include <util/datetime/cputimer.h>
@@ -21,8 +20,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTraceSerializer final
-    : public ITraceSerializer
+struct TTraceSerializer final: public ITraceSerializer
 {
 private:
     const ILoggingServicePtr Logging;
@@ -34,14 +32,13 @@ private:
 
 public:
     TTraceSerializer(
-            ILoggingServicePtr logging,
-            TString componentName,
-            NLWTrace::TManager& lwManager)
+        ILoggingServicePtr logging,
+        TString componentName,
+        NLWTrace::TManager& lwManager)
         : Logging(std::move(logging))
         , ComponentName(std::move(componentName))
         , LWManager(lwManager)
-    {
-    }
+    {}
 
     void Start() override
     {
@@ -51,8 +48,7 @@ public:
     }
 
     void Stop() override
-    {
-    }
+    {}
 
     void BuildTraceInfo(
         NProto::TTraceInfo& traceResponse,
@@ -60,8 +56,10 @@ public:
         ui64 startTime,
         ui64 endTime) override
     {
-        traceResponse.SetRequestStartTime(NLWTrace::CyclesToEpochNanoseconds(startTime));
-        traceResponse.SetRequestEndTime(NLWTrace::CyclesToEpochNanoseconds(endTime));
+        traceResponse.SetRequestStartTime(
+            NLWTrace::CyclesToEpochNanoseconds(startTime));
+        traceResponse.SetRequestEndTime(
+            NLWTrace::CyclesToEpochNanoseconds(endTime));
         LWManager.CreateTraceResponse(*traceResponse.MutableLWTrace(), orbit);
     }
 
@@ -78,16 +76,21 @@ public:
 
         auto res = AdjustRemoteInterval(
             {startTime, endTime},
-            {
-                NLWTrace::EpochNanosecondsToCycles(trace.GetRequestStartTime()),
-                NLWTrace::EpochNanosecondsToCycles(trace.GetRequestEndTime())
-            });
+            {NLWTrace::EpochNanosecondsToCycles(trace.GetRequestStartTime()),
+             NLWTrace::EpochNanosecondsToCycles(trace.GetRequestEndTime())});
 
-        auto result = LWManager.HandleTraceResponse(trace.GetLWTrace(), Probes, orbit, res.Shift, res.Scale);
+        auto result = LWManager.HandleTraceResponse(
+            trace.GetLWTrace(),
+            Probes,
+            orbit,
+            res.Shift,
+            res.Scale);
 
         if (!result.IsSuccess) {
             TString probeSeq = JoinSeq(",", result.FailedEventNames);
-            STORAGE_ERROR("Failed to deserialize trace. Failed events: " << probeSeq.Quote());
+            STORAGE_ERROR(
+                "Failed to deserialize trace. Failed events: "
+                << probeSeq.Quote());
         }
     }
 
@@ -113,16 +116,13 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTraceSerializerStub final
-    : public ITraceSerializer
+struct TTraceSerializerStub final: public ITraceSerializer
 {
     void Start() override
-    {
-    }
+    {}
 
     void Stop() override
-    {
-    }
+    {}
 
     void BuildTraceInfo(
         NProto::TTraceInfo& msg,
@@ -192,7 +192,9 @@ ITraceSerializerPtr CreateTraceSerializerStub()
     return std::make_shared<TTraceSerializerStub>();
 }
 
-TTraceIntervalParams AdjustRemoteInterval(const TTraceInterval& local, const TTraceInterval& remote)
+TTraceIntervalParams AdjustRemoteInterval(
+    const TTraceInterval& local,
+    const TTraceInterval& remote)
 {
     ui64 localDuration = local.EndTime - local.StartTime;
     ui64 remoteDuration = remote.EndTime - remote.StartTime;
@@ -207,4 +209,3 @@ TTraceIntervalParams AdjustRemoteInterval(const TTraceInterval& local, const TTr
 }
 
 }   // namespace NCloud
-

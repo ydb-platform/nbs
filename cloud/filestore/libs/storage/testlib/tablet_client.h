@@ -9,9 +9,9 @@
 #include <cloud/filestore/libs/storage/model/channel_data_kind.h>
 #include <cloud/filestore/libs/storage/tablet/tablet_private.h>
 
+#include <contrib/ydb/core/filestore/core/filestore.h>
 #include <contrib/ydb/core/testlib/actors/test_runtime.h>
 #include <contrib/ydb/core/testlib/test_client.h>
-#include <contrib/ydb/core/filestore/core/filestore.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -22,9 +22,10 @@ namespace NCloud::NFileStore::NStorage {
 namespace NImpl {
 
 template <typename T>
-concept HasRecord = requires (T v)
-{
-    {v.Record};
+concept HasRecord = requires(T v) {
+    {
+        v.Record
+    };
 };
 
 template <typename T>
@@ -107,11 +108,11 @@ private:
 
 public:
     TIndexTabletClient(
-            NKikimr::TTestActorRuntime& runtime,
-            ui32 nodeIdx,
-            ui64 tabletId,
-            const TFileSystemConfig& config = {},
-            bool updateConfig = true)
+        NKikimr::TTestActorRuntime& runtime,
+        ui32 nodeIdx,
+        ui64 tabletId,
+        const TFileSystemConfig& config = {},
+        bool updateConfig = true)
         : Runtime(runtime)
         , NodeIdx(nodeIdx)
         , TabletId(tabletId)
@@ -134,11 +135,9 @@ public:
 
     void RebootTablet()
     {
-        TVector<ui64> tablets = { TabletId };
-        auto guard = NKikimr::CreateTabletScheduledEventsGuard(
-            tablets,
-            Runtime,
-            Sender);
+        TVector<ui64> tablets = {TabletId};
+        auto guard =
+            NKikimr::CreateTabletScheduledEventsGuard(tablets, Runtime, Sender);
 
         NKikimr::RebootTablet(Runtime, TabletId, Sender, NodeIdx);
 
@@ -148,12 +147,8 @@ public:
     template <typename TRequest>
     void SendRequest(std::unique_ptr<TRequest> request, ui64 cookie = 0)
     {
-        Runtime.SendToPipe(
-            PipeClient,
-            Sender,
-            request.release(),
-            NodeIdx,
-            cookie);
+        Runtime
+            .SendToPipe(PipeClient, Sender, request.release(), NodeIdx, cookie);
     }
 
     template <typename TResponse>
@@ -161,12 +156,19 @@ public:
     {
         TAutoPtr<NActors::IEventHandle> handle;
         Runtime.GrabEdgeEventRethrow<TResponse>(handle);
-        return std::unique_ptr<TResponse>(handle->Release<TResponse>().Release());
+        return std::unique_ptr<TResponse>(
+            handle->Release<TResponse>().Release());
     }
 
     void RecoverSession()
     {
-        CreateSession(Headers.ClientId, Headers.SessionId, TString(), 0, false, true);
+        CreateSession(
+            Headers.ClientId,
+            Headers.SessionId,
+            TString(),
+            0,
+            false,
+            true);
     }
 
     auto InitSession(
@@ -189,9 +191,12 @@ public:
         return response;
     }
 
-    void SetHeaders(const TString& clientId, const TString& sessionId, ui64 sessionSeqNo)
+    void SetHeaders(
+        const TString& clientId,
+        const TString& sessionId,
+        ui64 sessionSeqNo)
     {
-        Headers = { "test", clientId, sessionId, sessionSeqNo};
+        Headers = {"test", clientId, sessionId, sessionSeqNo};
     }
 
     template <typename T>
@@ -215,7 +220,8 @@ public:
         ui32 compactionRangeCount = 0,
         ui32 compactionRangeCountByCleanupScore = 0)
     {
-        auto request = std::make_unique<TEvIndexTablet::TEvGetStorageStatsRequest>();
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvGetStorageStatsRequest>();
         request->Record.SetCompactionRangeCountByCompactionScore(
             compactionRangeCount);
         request->Record.SetCompactionRangeCountByCleanupScore(
@@ -225,7 +231,8 @@ public:
 
     auto CreateGetFileSystemConfigRequest()
     {
-        return std::make_unique<TEvIndexTablet::TEvGetFileSystemConfigRequest>();
+        return std::make_unique<
+            TEvIndexTablet::TEvGetFileSystemConfigRequest>();
     }
 
     auto CreateCreateSessionRequest(
@@ -236,7 +243,8 @@ public:
         bool readOnly = false,
         bool restoreClientSession = false)
     {
-        auto request = std::make_unique<TEvIndexTablet::TEvCreateSessionRequest>();
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvCreateSessionRequest>();
         request->Record.SetCheckpointId(checkpointId);
         request->Record.SetMountSeqNumber(mountSeqNo);
         request->Record.SetReadOnly(readOnly);
@@ -288,7 +296,8 @@ public:
 
     auto CreateDestroySessionRequest(ui64 seqNo = 0)
     {
-        auto request = std::make_unique<TEvIndexTablet::TEvDestroySessionRequest>();
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvDestroySessionRequest>();
         Headers.Fill(request->Record);
         if (seqNo) {
             request->Record.MutableHeaders()->SetSessionSeqNo(seqNo);
@@ -312,8 +321,7 @@ public:
         const TVector<NProtoPrivate::TCompactionRangeStats>& ranges)
     {
         NProtoPrivate::TWriteCompactionMapRequest request;
-        for (auto range: ranges)
-        {
+        for (auto range: ranges) {
             *request.AddRanges() = range;
         }
 
@@ -349,12 +357,15 @@ public:
 
     auto CreateCleanupRequest(ui32 rangeId)
     {
-        return std::make_unique<TEvIndexTabletPrivate::TEvCleanupRequest>(rangeId);
+        return std::make_unique<TEvIndexTabletPrivate::TEvCleanupRequest>(
+            rangeId);
     }
 
     auto CreateCompactionRequest(ui32 rangeId, bool filter = false)
     {
-        return std::make_unique<TEvIndexTabletPrivate::TEvCompactionRequest>(rangeId, filter);
+        return std::make_unique<TEvIndexTabletPrivate::TEvCompactionRequest>(
+            rangeId,
+            filter);
     }
 
     auto CreateForcedRangeOperationRequest(
@@ -370,7 +381,8 @@ public:
 
     auto CreateCollectGarbageRequest()
     {
-        return std::make_unique<TEvIndexTabletPrivate::TEvCollectGarbageRequest>();
+        return std::make_unique<
+            TEvIndexTabletPrivate::TEvCollectGarbageRequest>();
     }
 
     auto CreateTruncateRequest(ui64 node, ui64 length)
@@ -407,24 +419,27 @@ public:
 
     auto CreateFilterAliveNodesRequest(TStackVec<ui64, 16> nodes)
     {
-        return std::make_unique<TEvIndexTabletPrivate::TEvFilterAliveNodesRequest>(
+        return std::make_unique<
+            TEvIndexTabletPrivate::TEvFilterAliveNodesRequest>(
             std::move(nodes));
     }
 
     auto CreateGenerateCommitIdRequest()
     {
-        return std::make_unique<TEvIndexTabletPrivate::TEvGenerateCommitIdRequest>();
+        return std::make_unique<
+            TEvIndexTabletPrivate::TEvGenerateCommitIdRequest>();
     }
 
     auto CreateDumpCompactionRangeRequest(ui32 rangeId)
     {
-        return std::make_unique<TEvIndexTabletPrivate::TEvDumpCompactionRangeRequest>(
-            rangeId);
+        return std::make_unique<
+            TEvIndexTabletPrivate::TEvDumpCompactionRangeRequest>(rangeId);
     }
 
     auto CreateCleanupSessionsRequest()
     {
-        return std::make_unique<TEvIndexTabletPrivate::TEvCleanupSessionsRequest>();
+        return std::make_unique<
+            TEvIndexTabletPrivate::TEvCleanupSessionsRequest>();
     }
 
     auto CreateUpdateCounters()
@@ -507,8 +522,10 @@ public:
         return request;
     }
 
-    auto CreateReadNodeRefsRequest(ui64 node, TString cookie, ui32 limit){
-        auto request = std::make_unique<TEvIndexTablet::TEvReadNodeRefsRequest>();
+    auto CreateReadNodeRefsRequest(ui64 node, TString cookie, ui32 limit)
+    {
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvReadNodeRefsRequest>();
         request->Record.SetNodeId(node);
         request->Record.SetCookie(std::move(cookie));
         request->Record.SetLimit(limit);
@@ -517,7 +534,8 @@ public:
 
     auto CreateGetNodeAttrRequest(ui64 node, const TString& name = "")
     {
-        auto request = CreateSessionRequest<TEvService::TEvGetNodeAttrRequest>();
+        auto request =
+            CreateSessionRequest<TEvService::TEvGetNodeAttrRequest>();
         request->Record.SetNodeId(node);
         request->Record.SetName(name);
         return request;
@@ -536,29 +554,37 @@ public:
 
     auto CreateSetNodeAttrRequest(const TSetNodeAttrArgs& args)
     {
-        auto request = CreateSessionRequest<TEvService::TEvSetNodeAttrRequest>();
+        auto request =
+            CreateSessionRequest<TEvService::TEvSetNodeAttrRequest>();
         args.Fill(request->Record);
         return request;
     }
 
     auto CreateListNodeXAttrRequest(ui64 node)
     {
-        auto request = CreateSessionRequest<TEvService::TEvListNodeXAttrRequest>();
+        auto request =
+            CreateSessionRequest<TEvService::TEvListNodeXAttrRequest>();
         request->Record.SetNodeId(node);
         return request;
     }
 
     auto CreateGetNodeXAttrRequest(ui64 node, const TString& name)
     {
-        auto request = CreateSessionRequest<TEvService::TEvGetNodeXAttrRequest>();
+        auto request =
+            CreateSessionRequest<TEvService::TEvGetNodeXAttrRequest>();
         request->Record.SetNodeId(node);
         request->Record.SetName(name);
         return request;
     }
 
-    auto CreateSetNodeXAttrRequest(ui64 node, const TString& name, const TString& value, ui64 flags = 0)
+    auto CreateSetNodeXAttrRequest(
+        ui64 node,
+        const TString& name,
+        const TString& value,
+        ui64 flags = 0)
     {
-        auto request = CreateSessionRequest<TEvService::TEvSetNodeXAttrRequest>();
+        auto request =
+            CreateSessionRequest<TEvService::TEvSetNodeXAttrRequest>();
         request->Record.SetNodeId(node);
         request->Record.SetName(name);
         request->Record.SetValue(value);
@@ -568,7 +594,8 @@ public:
 
     auto CreateRemoveNodeXAttrRequest(ui64 node, const TString& name)
     {
-        auto request = CreateSessionRequest<TEvService::TEvRemoveNodeXAttrRequest>();
+        auto request =
+            CreateSessionRequest<TEvService::TEvRemoveNodeXAttrRequest>();
         request->Record.SetNodeId(node);
         request->Record.SetName(name);
         return request;
@@ -576,7 +603,8 @@ public:
 
     auto CreateCreateHandleRequest(ui64 node, ui32 flags)
     {
-        auto request = CreateSessionRequest<TEvService::TEvCreateHandleRequest>();
+        auto request =
+            CreateSessionRequest<TEvService::TEvCreateHandleRequest>();
         request->Record.SetNodeId(node);
         request->Record.SetFlags(flags);
         return request;
@@ -584,7 +612,8 @@ public:
 
     auto CreateCreateHandleRequest(ui64 node, const TString& name, ui32 flags)
     {
-        auto request = CreateSessionRequest<TEvService::TEvCreateHandleRequest>();
+        auto request =
+            CreateSessionRequest<TEvService::TEvCreateHandleRequest>();
         request->Record.SetNodeId(node);
         request->Record.SetFlags(flags);
         request->Record.SetName(name);
@@ -593,14 +622,17 @@ public:
 
     auto CreateDestroyHandleRequest(ui64 handle)
     {
-        auto request = CreateSessionRequest<TEvService::TEvDestroyHandleRequest>();
+        auto request =
+            CreateSessionRequest<TEvService::TEvDestroyHandleRequest>();
         request->Record.SetHandle(handle);
         return request;
     }
 
-    auto CreateAllocateDataRequest(ui64 handle, ui64 offset, ui64 length, ui32 flags)
+    auto
+    CreateAllocateDataRequest(ui64 handle, ui64 offset, ui64 length, ui32 flags)
     {
-        auto request = CreateSessionRequest<TEvService::TEvAllocateDataRequest>();
+        auto request =
+            CreateSessionRequest<TEvService::TEvAllocateDataRequest>();
         request->Record.SetHandle(handle);
         request->Record.SetOffset(offset);
         request->Record.SetLength(length);
@@ -693,8 +725,8 @@ public:
         ui64 commitId,
         TVector<NProtoPrivate::TFreshDataRange> unalignedDataParts = {})
     {
-        auto request = CreateSessionRequest<
-            TEvIndexTablet::TEvAddDataRequest>();
+        auto request =
+            CreateSessionRequest<TEvIndexTablet::TEvAddDataRequest>();
         request->Record.SetNodeId(nodeId);
         request->Record.SetHandle(handle);
         request->Record.SetOffset(offset);
@@ -720,7 +752,8 @@ public:
         NProto::ELockType type = NProto::E_EXCLUSIVE,
         NProto::ELockOrigin origin = NProto::E_FCNTL)
     {
-        auto request = CreateSessionRequest<TEvService::TEvAcquireLockRequest>();
+        auto request =
+            CreateSessionRequest<TEvService::TEvAcquireLockRequest>();
         auto& record = request->Record;
         record.SetHandle(handle);
         record.SetOwner(owner);
@@ -740,7 +773,8 @@ public:
         i32 pid = DefaultPid,
         NProto::ELockOrigin origin = NProto::E_FCNTL)
     {
-        auto request = CreateSessionRequest<TEvService::TEvReleaseLockRequest>();
+        auto request =
+            CreateSessionRequest<TEvService::TEvReleaseLockRequest>();
         auto& record = request->Record;
         record.SetHandle(handle);
         record.SetOwner(owner);
@@ -772,9 +806,12 @@ public:
         return request;
     }
 
-    auto CreateCreateCheckpointRequest(const TString& checkpointId, ui64 nodeId = RootNodeId)
+    auto CreateCreateCheckpointRequest(
+        const TString& checkpointId,
+        ui64 nodeId = RootNodeId)
     {
-        auto request = CreateSessionRequest<TEvService::TEvCreateCheckpointRequest>();
+        auto request =
+            CreateSessionRequest<TEvService::TEvCreateCheckpointRequest>();
         request->Record.SetCheckpointId(checkpointId);
         request->Record.SetNodeId(nodeId);
         return request;
@@ -782,14 +819,16 @@ public:
 
     auto CreateDestroyCheckpointRequest(const TString& checkpointId)
     {
-        auto request = CreateSessionRequest<TEvService::TEvDestroyCheckpointRequest>();
+        auto request =
+            CreateSessionRequest<TEvService::TEvDestroyCheckpointRequest>();
         request->Record.SetCheckpointId(checkpointId);
         return request;
     }
 
     auto CreateSubscribeSessionRequest()
     {
-        auto request = CreateSessionRequest<TEvService::TEvSubscribeSessionRequest>();
+        auto request =
+            CreateSessionRequest<TEvService::TEvSubscribeSessionRequest>();
         return request;
     }
 
@@ -799,17 +838,19 @@ public:
 
     void SendRemoteHttpInfoRequest(const TString& query = {})
     {
-        auto request = std::make_unique<NImpl::TEvRemoteHttpInfoRequest>(
-            "/app?" + query);
+        auto request =
+            std::make_unique<NImpl::TEvRemoteHttpInfoRequest>("/app?" + query);
         SendRequest(std::move(request));
     }
 
-    std::unique_ptr<NImpl::TEvRemoteHttpInfoResponse> RecvRemoteHttpInfoResponse()
+    std::unique_ptr<NImpl::TEvRemoteHttpInfoResponse>
+    RecvRemoteHttpInfoResponse()
     {
         return RecvResponse<NImpl::TEvRemoteHttpInfoResponse>();
     }
 
-    std::unique_ptr<NImpl::TEvRemoteHttpInfoResponse> GetRemoteHttpInfo(TString query = {})
+    std::unique_ptr<NImpl::TEvRemoteHttpInfoResponse> GetRemoteHttpInfo(
+        TString query = {})
     {
         SendRemoteHttpInfoRequest(std::move(query));
         return RecvRemoteHttpInfoResponse();
@@ -884,7 +925,7 @@ public:
         auto evList = Runtime.CaptureEvents();                                 \
                                                                                \
         std::unique_ptr<NActors::IEventHandle> handle;                         \
-        for (auto& ev : evList) {                                              \
+        for (auto& ev: evList) {                                               \
             if (ev->GetTypeRewrite() == ns::Ev##name##Response) {              \
                 handle.reset(ev.Release());                                    \
                 break;                                                         \
@@ -914,24 +955,26 @@ public:
                                                                                \
         for (auto& ev: evList) {                                               \
             UNIT_ASSERT(                                                       \
-                ev->GetTypeRewrite() != ns::TEv##name##Response::EventType     \
-            );                                                                 \
+                ev->GetTypeRewrite() != ns::TEv##name##Response::EventType);   \
         }                                                                      \
                                                                                \
         Runtime.PushEventsFront(evList);                                       \
     }                                                                          \
-// FILESTORE_DECLARE_METHOD
+    // FILESTORE_DECLARE_METHOD
 
     FILESTORE_SERVICE_REQUESTS(FILESTORE_DECLARE_METHOD, TEvService)
 
     FILESTORE_TABLET_REQUESTS(FILESTORE_DECLARE_METHOD, TEvIndexTablet)
-    FILESTORE_TABLET_REQUESTS_PRIVATE(FILESTORE_DECLARE_METHOD, TEvIndexTabletPrivate)
+    FILESTORE_TABLET_REQUESTS_PRIVATE(
+        FILESTORE_DECLARE_METHOD,
+        TEvIndexTabletPrivate)
 
 #undef FILESTORE_DECLARE_METHOD
 
     auto CreateUpdateConfigRequest(const TFileSystemConfig& config)
     {
-        auto request = std::make_unique<NKikimr::TEvFileStore::TEvUpdateConfig>();
+        auto request =
+            std::make_unique<NKikimr::TEvFileStore::TEvUpdateConfig>();
         auto* c = request->Record.MutableConfig();
         c->SetFileSystemId(config.FileSystemId);
         c->SetCloudId(config.CloudId);
@@ -952,8 +995,7 @@ public:
             config.PerformanceProfile.MaxReadBandwidth);
         c->SetPerformanceProfileMaxWriteBandwidth(
             config.PerformanceProfile.MaxWriteBandwidth);
-        c->SetPerformanceProfileBoostTime(
-            config.PerformanceProfile.BoostTime);
+        c->SetPerformanceProfileBoostTime(config.PerformanceProfile.BoostTime);
         c->SetPerformanceProfileBoostRefillTime(
             config.PerformanceProfile.BoostRefillTime);
         c->SetPerformanceProfileBoostPercentage(
@@ -992,7 +1034,6 @@ public:
             auto* ecp = c->MutableExplicitChannelProfiles()->Add();
             ecp->SetPoolKind("pool-kind-1");
             ecp->SetDataKind(static_cast<ui32>(EChannelDataKind::Fresh));
-
         }
 
         // mixed [3+]
@@ -1005,13 +1046,14 @@ public:
         return request;
     }
 
-    std::unique_ptr<NKikimr::TEvFileStore::TEvUpdateConfigResponse> UpdateConfig(
-        const TFileSystemConfig& config)
+    std::unique_ptr<NKikimr::TEvFileStore::TEvUpdateConfigResponse>
+    UpdateConfig(const TFileSystemConfig& config)
     {
         auto request = CreateUpdateConfigRequest(config);
         SendRequest(std::move(request));
 
-        auto response = RecvResponse<NKikimr::TEvFileStore::TEvUpdateConfigResponse>();
+        auto response =
+            RecvResponse<NKikimr::TEvFileStore::TEvUpdateConfigResponse>();
         UNIT_ASSERT(response->Record.GetStatus() == NKikimrFileStore::OK);
 
         return response;
@@ -1055,17 +1097,20 @@ inline NProtoPrivate::TStorageStats GetStorageStats(TIndexTabletClient& tablet)
     return tablet.GetStorageStats()->Record.GetStats();
 }
 
-inline NCloud::NProto::EStorageMediaKind GetStorageMediaKind(TIndexTabletClient& tablet)
+inline NCloud::NProto::EStorageMediaKind GetStorageMediaKind(
+    TIndexTabletClient& tablet)
 {
     return tablet.GetStorageStats()->Record.GetMediaKind();
 }
 
-inline NProtoPrivate::TFileSystemConfig GetFileSystemConfig(TIndexTabletClient& tablet)
+inline NProtoPrivate::TFileSystemConfig GetFileSystemConfig(
+    TIndexTabletClient& tablet)
 {
     return tablet.GetFileSystemConfig()->Record.GetConfig();
 }
 
-inline TString ReadData(TIndexTabletClient& tablet, ui64 handle, ui64 size, ui64 offset = 0)
+inline TString
+ReadData(TIndexTabletClient& tablet, ui64 handle, ui64 size, ui64 offset = 0)
 {
     auto response = tablet.ReadData(handle, offset, size);
     return response->Record.GetBuffer();

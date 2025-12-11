@@ -24,7 +24,7 @@ constexpr TDuration MaxExecutionTime = TDuration::MilliSeconds(50);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTask : public ITask
+struct TTask: public ITask
 {
     TTask* Next = nullptr;
 
@@ -116,7 +116,7 @@ public:
 
     TTaskList DequeueAll()
     {
-        return { AtomicSwap(&Head, nullptr) };
+        return {AtomicSwap(&Head, nullptr)};
     }
 };
 
@@ -126,7 +126,7 @@ class TPendingTasks
 {
     struct TComparer
     {
-        bool operator ()(const TTask* l, const TTask* r) const
+        bool operator()(const TTask* l, const TTask* r) const
         {
             return r->Deadline < l->Deadline;   // min-heap
         }
@@ -237,7 +237,8 @@ void TScheduler::Schedule(
     TInstant deadline,
     TCallback callback)
 {
-    auto task = std::make_unique<TTask>(taskQueue, deadline, std::move(callback));
+    auto task =
+        std::make_unique<TTask>(taskQueue, deadline, std::move(callback));
 
     InputTasks.Enqueue(std::move(task));
     ThreadPark.Signal();
@@ -267,12 +268,11 @@ void* TScheduler::ThreadProc()
 
         auto elapsed = Timer->Now() - started;
         if (elapsed > MaxExecutionTime) {
-            Cerr << (
-                TStringBuilder()
-                    << GetProgramName() <<
-                    " WARN: scheduler thread was blocked for too long: "
-                    << elapsed
-                ) << Endl;
+            Cerr << (TStringBuilder()
+                     << GetProgramName()
+                     << " WARN: scheduler thread was blocked for too long: "
+                     << elapsed)
+                 << Endl;
         }
 
         ThreadPark.WaitD(PendingTasks.GetDeadLine());
@@ -294,11 +294,12 @@ void TScheduler::ExecuteTask(std::unique_ptr<TTask> task) noexcept
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TSchedulerStub final
-    : public IScheduler
+struct TSchedulerStub final: public IScheduler
 {
-    void Start() override {}
-    void Stop() override {}
+    void Start() override
+    {}
+    void Stop() override
+    {}
 
     void Schedule(
         ITaskQueue* taskQueue,
@@ -313,8 +314,7 @@ struct TSchedulerStub final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TBackgroundScheduler final
-    : public IScheduler
+class TBackgroundScheduler final: public IScheduler
 {
 private:
     ISchedulerPtr Scheduler;

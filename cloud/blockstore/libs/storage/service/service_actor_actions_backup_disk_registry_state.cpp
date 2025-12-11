@@ -33,17 +33,14 @@ private:
     NProto::TError Error;
 
 public:
-    TBackupDiskRegistryStateActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TBackupDiskRegistryStateActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
     void ReplyAndDie(
         const TActorContext& ctx,
-        NProto::TBackupDiskRegistryStateResponse proto
-    );
+        NProto::TBackupDiskRegistryStateResponse proto);
 
 private:
     STFUNC(StateWork);
@@ -56,17 +53,20 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TBackupDiskRegistryStateActor::TBackupDiskRegistryStateActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
 
 void TBackupDiskRegistryStateActor::Bootstrap(const TActorContext& ctx)
 {
-    auto request = std::make_unique<TEvDiskRegistry::TEvBackupDiskRegistryStateRequest>();
+    auto request =
+        std::make_unique<TEvDiskRegistry::TEvBackupDiskRegistryStateRequest>();
 
-    if (!google::protobuf::util::JsonStringToMessage(Input, &request->Record).ok()) {
+    if (!google::protobuf::util::JsonStringToMessage(Input, &request->Record)
+             .ok())
+    {
         Error = MakeError(E_ARGUMENT, "Failed to parse input");
         ReplyAndDie(ctx, {});
         return;
@@ -81,8 +81,11 @@ void TBackupDiskRegistryStateActor::ReplyAndDie(
     const TActorContext& ctx,
     NProto::TBackupDiskRegistryStateResponse proto)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(Error);
-    google::protobuf::util::MessageToJsonString(proto, response->Record.MutableOutput());
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(Error);
+    google::protobuf::util::MessageToJsonString(
+        proto,
+        response->Record.MutableOutput());
 
     LWTRACK(
         ResponseSent_Service,

@@ -10,8 +10,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFixture
-    : public NUnitTest::TBaseFixture
+struct TFixture: public NUnitTest::TBaseFixture
 {
     ILoggingServicePtr Logging = CreateLoggingService("console");
     TLog Log = Logging->CreateLog("BLOCKSTORE_DISK_AGENT");
@@ -58,10 +57,15 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
         local.SetHashSuffix("-local");
         local.SetBlockSize(512);
 
-        TDeviceGenerator gen { Log, AgentId };
+        TDeviceGenerator gen{Log, AgentId};
 
         {
-            gen("/dev/disk/by-partlabel/NVMENBS01", def, 1, 63, 4_KB, 6401251344384);
+            gen("/dev/disk/by-partlabel/NVMENBS01",
+                def,
+                1,
+                63,
+                4_KB,
+                6401251344384);
 
             auto r = gen.ExtractResult();
             UNIT_ASSERT_VALUES_EQUAL(63, r.size());
@@ -73,28 +77,43 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
             }
 
             UNIT_ASSERT_VALUES_EQUAL_C(
-                "106e06a6badd67822dcc1d449e4d793e", r[0].GetDeviceId(), r[0]);
+                "106e06a6badd67822dcc1d449e4d793e",
+                r[0].GetDeviceId(),
+                r[0]);
             UNIT_ASSERT_VALUES_EQUAL_C(1073741824, r[0].GetOffset(), r[0]);
 
             UNIT_ASSERT_VALUES_EQUAL_C(
-                "ac78b0c4f1510bf7158070271dfcf58f", r[1].GetDeviceId(), r[1]);
+                "ac78b0c4f1510bf7158070271dfcf58f",
+                r[1].GetDeviceId(),
+                r[1]);
             UNIT_ASSERT_VALUES_EQUAL_C(100965285888, r[1].GetOffset(), r[1]);
 
             UNIT_ASSERT_VALUES_EQUAL_C(
-                "f66be94d3144d1bf333459655fdfd9d7", r[5].GetDeviceId(), r[5]);
+                "f66be94d3144d1bf333459655fdfd9d7",
+                r[5].GetDeviceId(),
+                r[5]);
             UNIT_ASSERT_VALUES_EQUAL_C(500531462144, r[5].GetOffset(), r[5]);
 
             UNIT_ASSERT_VALUES_EQUAL_C(
-                "129ad5096b4f7f2dae7e1b1719f7007b", r[10].GetDeviceId(), r[10]);
+                "129ad5096b4f7f2dae7e1b1719f7007b",
+                r[10].GetDeviceId(),
+                r[10]);
             UNIT_ASSERT_VALUES_EQUAL_C(999989182464, r[10].GetOffset(), r[10]);
 
             UNIT_ASSERT_VALUES_EQUAL_C(
-                "289f051650402174ae0d892082aa92fc", r[62].GetDeviceId(), r[62]);
+                "289f051650402174ae0d892082aa92fc",
+                r[62].GetDeviceId(),
+                r[62]);
             UNIT_ASSERT_VALUES_EQUAL_C(6194349473792, r[62].GetOffset(), r[62]);
         }
 
         {
-            gen("/dev/disk/by-partlabel/ROTNBS01", rot, 1, 140, 4_KB, 16000898564096);
+            gen("/dev/disk/by-partlabel/ROTNBS01",
+                rot,
+                1,
+                140,
+                4_KB,
+                16000898564096);
 
             auto r = gen.ExtractResult();
             UNIT_ASSERT_VALUES_EQUAL(140, r.size());
@@ -106,24 +125,40 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
             }
 
             UNIT_ASSERT_VALUES_EQUAL_C(
-                "2f07f2bf30e6ffe40644fe1bf08d744f", r[0].GetDeviceId(), r[0]);
+                "2f07f2bf30e6ffe40644fe1bf08d744f",
+                r[0].GetDeviceId(),
+                r[0]);
             UNIT_ASSERT_VALUES_EQUAL_C(1073741824, r[0].GetOffset(), r[0]);
 
             UNIT_ASSERT_VALUES_EQUAL_C(
-                "a5ba4c956e2f8742722c41fdf4a6e039", r[41].GetDeviceId(), r[41]);
+                "a5ba4c956e2f8742722c41fdf4a6e039",
+                r[41].GetDeviceId(),
+                r[41]);
             UNIT_ASSERT_VALUES_EQUAL_C(4096627048448, r[41].GetOffset(), r[41]);
 
             UNIT_ASSERT_VALUES_EQUAL_C(
-                "2441bf9832c162c41dd1c268e8006d65", r[99].GetDeviceId(), r[99]);
+                "2441bf9832c162c41dd1c268e8006d65",
+                r[99].GetDeviceId(),
+                r[99]);
             UNIT_ASSERT_VALUES_EQUAL_C(9890336604160, r[99].GetOffset(), r[99]);
 
             UNIT_ASSERT_VALUES_EQUAL_C(
-                "60db58a3fa6cc2fac2169b637023eefc", r[139].GetDeviceId(), r[139]);
-            UNIT_ASSERT_VALUES_EQUAL_C(13885998366720, r[139].GetOffset(), r[139]);
+                "60db58a3fa6cc2fac2169b637023eefc",
+                r[139].GetDeviceId(),
+                r[139]);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                13885998366720,
+                r[139].GetOffset(),
+                r[139]);
         }
 
         {
-            gen("/dev/disk/by-partlabel/ROTNBS02", rot, 2, 140, 4_KB, 15999825870848);
+            gen("/dev/disk/by-partlabel/ROTNBS02",
+                rot,
+                2,
+                140,
+                4_KB,
+                15999825870848);
 
             auto r = gen.ExtractResult();
             UNIT_ASSERT_VALUES_EQUAL(140, r.size());
@@ -135,24 +170,40 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
             }
 
             UNIT_ASSERT_VALUES_EQUAL_C(
-                "919aa95b16c0bfd8fc6476fde09ef645", r[0].GetDeviceId(), r[0]);
+                "919aa95b16c0bfd8fc6476fde09ef645",
+                r[0].GetDeviceId(),
+                r[0]);
             UNIT_ASSERT_VALUES_EQUAL_C(1073741824, r[0].GetOffset(), r[0]);
 
             UNIT_ASSERT_VALUES_EQUAL_C(
-                "7a3b642159a0de575b1e9c700dd0bd33", r[41].GetDeviceId(), r[41]);
+                "7a3b642159a0de575b1e9c700dd0bd33",
+                r[41].GetDeviceId(),
+                r[41]);
             UNIT_ASSERT_VALUES_EQUAL_C(4096627048448, r[41].GetOffset(), r[41]);
 
             UNIT_ASSERT_VALUES_EQUAL_C(
-                "405158327ee766c4ce45cb1a61017293", r[99].GetDeviceId(), r[99]);
+                "405158327ee766c4ce45cb1a61017293",
+                r[99].GetDeviceId(),
+                r[99]);
             UNIT_ASSERT_VALUES_EQUAL_C(9890336604160, r[99].GetOffset(), r[99]);
 
             UNIT_ASSERT_VALUES_EQUAL_C(
-                "eb5e46284e440d7bb5a6aafe067fc7bc", r[139].GetDeviceId(), r[139]);
-            UNIT_ASSERT_VALUES_EQUAL_C(13885998366720, r[139].GetOffset(), r[139]);
+                "eb5e46284e440d7bb5a6aafe067fc7bc",
+                r[139].GetDeviceId(),
+                r[139]);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                13885998366720,
+                r[139].GetOffset(),
+                r[139]);
         }
 
         {
-            gen("/dev/disk/by-partlabel/NVMECOMPUTE01", local, 1, 1, local.GetBlockSize(), 367_GB);
+            gen("/dev/disk/by-partlabel/NVMECOMPUTE01",
+                local,
+                1,
+                1,
+                local.GetBlockSize(),
+                367_GB);
 
             auto r = gen.ExtractResult();
             UNIT_ASSERT_VALUES_EQUAL(1, r.size());
@@ -161,10 +212,15 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
 
             UNIT_ASSERT_VALUES_EQUAL_C("local", d.GetPoolName(), d);
             UNIT_ASSERT_VALUES_EQUAL_C(512, d.GetBlockSize(), d);
-            UNIT_ASSERT_VALUES_EQUAL_C(0, d.GetFileSize(), d);  // the file size is set only when a layout is used
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                0,
+                d.GetFileSize(),
+                d);   // the file size is set only when a layout is used
 
             UNIT_ASSERT_VALUES_EQUAL_C(
-                "c7f55aef7b99489f8a47d2f94f85a88b", d.GetDeviceId(), d);
+                "c7f55aef7b99489f8a47d2f94f85a88b",
+                d.GetDeviceId(),
+                d);
         }
     }
 
@@ -175,7 +231,7 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
         TString expectedId;
 
         {
-            TDeviceGenerator gen { Log, AgentId };
+            TDeviceGenerator gen{Log, AgentId};
 
             gen("/dev/disk/by-partlabel/NVMENBS01", def, 1, 42, 4_KB, 93_GB);
             gen("/dev/disk/by-partlabel/NVMENBS02", def, 2, 0, 4_KB, 93_GB);
@@ -186,7 +242,7 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
         }
 
         {
-            TDeviceGenerator gen { Log, AgentId };
+            TDeviceGenerator gen{Log, AgentId};
 
             gen("/dev/disk/by-partlabel/NVMENBS02", def, 2, 0, 4_KB, 93_GB);
             auto r = gen.ExtractResult();
@@ -210,10 +266,9 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
         layout.SetDevicePadding(padding);
         layout.SetDeviceSize(deviceSize);
 
-        TDeviceGenerator gen { Log, AgentId };
+        TDeviceGenerator gen{Log, AgentId};
 
-        gen(
-            "/dev/disk/by-partlabel/NVMENBS01",
+        gen("/dev/disk/by-partlabel/NVMENBS01",
             compound,
             1,      // device number
             0,      // max device count
@@ -222,11 +277,11 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
 
         auto devices = gen.ExtractResult();
         UNIT_ASSERT_VALUES_EQUAL(10, devices.size());
-        SortBy(devices, [] (const NProto::TFileDeviceArgs& d) {
-            return d.GetOffset();
-        });
+        SortBy(
+            devices,
+            [](const NProto::TFileDeviceArgs& d) { return d.GetOffset(); });
 
-        const TString ids[] {
+        const TString ids[]{
             "106e06a6badd67822dcc1d449e4d793e",
             "ac78b0c4f1510bf7158070271dfcf58f",
             "1f700ac364e7da8656117bfd9b53101f",
@@ -236,8 +291,7 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
             "ac634d5316c02940b9c490a07df7665c",
             "e8f0eb076142588345f94b0e6c4ffc9f",
             "77a1755b5df703cb5c8dc6c0d7ec02d7",
-            "4d774f7d69227c2e281681cce660744c"
-        };
+            "4d774f7d69227c2e281681cce660744c"};
 
         ui64 offset = headerSize;
         for (size_t i = 0; i != devices.size(); ++i) {

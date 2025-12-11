@@ -14,8 +14,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TNotifyActor final
-    : public TActorBootstrapped<TNotifyActor>
+class TNotifyActor final: public TActorBootstrapped<TNotifyActor>
 {
 private:
     const TActorId Owner;
@@ -60,11 +59,11 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TNotifyActor::TNotifyActor(
-        const TActorId& owner,
-        const ui64 tabletID,
-        TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
-        TVector<TDiskNotification> diskIds)
+    const TActorId& owner,
+    const ui64 tabletID,
+    TRequestInfoPtr requestInfo,
+    TStorageConfigPtr config,
+    TVector<TDiskNotification> diskIds)
     : Owner(owner)
     , TabletID(tabletID)
     , RequestInfo(std::move(requestInfo))
@@ -112,7 +111,9 @@ void TNotifyActor::ReallocateDisks(const TActorContext& ctx)
 
     ui64 cookie = 0;
     for (const auto& [diskId, seqNo]: DiskNotifications) {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY_WORKER,
             "[%lu] Notifying volume: DiskId=%s",
             TabletID,
             diskId.Quote().c_str());
@@ -123,8 +124,7 @@ void TNotifyActor::ReallocateDisks(const TActorContext& ctx)
             ctx,
             MakeVolumeProxyServiceId(),
             std::move(request),
-            cookie++
-        );
+            cookie++);
     }
 }
 
@@ -144,7 +144,9 @@ void TNotifyActor::HandleTimeout(
 {
     Y_UNUSED(ev);
 
-    LOG_WARN(ctx, TBlockStoreComponents::DISK_REGISTRY_WORKER,
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY_WORKER,
         "Notify disks request timed out");
 
     ReplyAndDie(ctx);
@@ -200,7 +202,9 @@ STFUNC(TNotifyActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvents::TEvWakeup, HandleTimeout);
 
-        HFunc(TEvVolume::TEvReallocateDiskResponse, HandleReallocateDiskResponse);
+        HFunc(
+            TEvVolume::TEvReallocateDiskResponse,
+            HandleReallocateDiskResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -228,8 +232,9 @@ void TDiskRegistryActor::HandleListDisksToNotify(
         diskIds.push_back(diskId);
     }
 
-    auto response = std::make_unique<TEvDiskRegistryPrivate::TEvListDisksToNotifyResponse>(
-        std::move(diskIds));
+    auto response =
+        std::make_unique<TEvDiskRegistryPrivate::TEvListDisksToNotifyResponse>(
+            std::move(diskIds));
 
     NCloud::Send(ctx, ev->Sender, std::move(response));
 }
@@ -244,12 +249,15 @@ void TDiskRegistryActor::ReallocateDisks(const TActorContext& ctx)
 
     DisksNotificationInProgress = true;
 
-    auto request = std::make_unique<TEvDiskRegistryPrivate::TEvNotifyDisksRequest>();
+    auto request =
+        std::make_unique<TEvDiskRegistryPrivate::TEvNotifyDisksRequest>();
 
     auto deadline = Min(DisksNotificationStartTs, ctx.Now()) +
                     Config->GetDiskRegistryDisksNotificationTimeout();
     if (deadline > ctx.Now()) {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
             "[%lu] Scheduled disks notification, now: %lu, deadline: %lu",
             TabletID(),
             ctx.Now().MicroSeconds(),
@@ -257,7 +265,9 @@ void TDiskRegistryActor::ReallocateDisks(const TActorContext& ctx)
 
         ctx.Schedule(deadline, request.release());
     } else {
-        LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::DISK_REGISTRY,
             "[%lu] Sending disks notification request",
             TabletID());
 
@@ -284,14 +294,9 @@ void TDiskRegistryActor::HandleNotifyDisks(
         ctx,
         SelfId(),
         TabletID(),
-        CreateRequestInfo(
-            SelfId(),
-            0,
-            MakeIntrusive<TCallContext>()
-        ),
+        CreateRequestInfo(SelfId(), 0, MakeIntrusive<TCallContext>()),
         Config,
-        DisksBeingNotified
-    );
+        DisksBeingNotified);
     Actors.insert(actor);
 }
 
@@ -304,10 +309,8 @@ void TDiskRegistryActor::HandleNotifyDisksResponse(
         CreateRequestInfo<TEvDiskRegistryPrivate::TNotifyDisksMethod>(
             ev->Sender,
             ev->Cookie,
-            ev->Get()->CallContext
-        ),
-        std::move(ev->Get()->NotifiedDisks)
-    );
+            ev->Get()->CallContext),
+        std::move(ev->Get()->NotifiedDisks));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

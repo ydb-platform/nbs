@@ -20,8 +20,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFixture
-    : public NUnitTest::TBaseFixture
+struct TFixture: public NUnitTest::TBaseFixture
 {
     const TTempDir TempDir;
     const TFsPath RootDir = TempDir.Path();
@@ -65,7 +64,7 @@ Y_UNIT_TEST_SUITE(TDeviceScannerTest)
 {
     Y_UNIT_TEST_F(ShouldLimitSplitDevices, TFixture)
     {
-        PrepareFiles({{ "dev/disk/by-partlabel/NVMENBS01", 100_KB }});
+        PrepareFiles({{"dev/disk/by-partlabel/NVMENBS01", 100_KB}});
 
         auto& nvme = *Config.AddPathConfigs();
         nvme.SetPathRegExp(RootDir / "dev/disk/by-partlabel/NVMENBS([0-9]{2})");
@@ -120,34 +119,35 @@ Y_UNIT_TEST_SUITE(TDeviceScannerTest)
     Y_UNIT_TEST_F(ShouldScanDevices, TFixture)
     {
         PrepareFiles({
-            { "dev/disk/by-partlabel/DEVNBS01", 160_KB }, // bs16K
-            { "dev/disk/by-partlabel/DEVNBS02", 160_KB }, // bs16K
-            { "dev/disk/by-partlabel/DEVNBS03", 160_KB }, // bs16K
-            { "dev/disk/by-partlabel/NVMECOMPUTE01", 1_KB }, // v1
-            { "dev/disk/by-partlabel/NVMECOMPUTE02", 1_KB }, // v1
-            { "dev/disk/by-partlabel/NVMECOMPUTE03", 2_KB }, // v2
-            { "dev/disk/by-partlabel/NVMECOMPUTE04", 2_KB }, // v2
-            { "dev/disk/by-partlabel/NVMECOMPUTE05", 2_KB }, // v2
-            { "dev/disk/by-partlabel/NVMENBS01", 1_KB },     // default
-            { "dev/disk/by-partlabel/NVMENBS02", 1_KB },     // default
-            { "dev/disk/by-partlabel/NVMENBS03", 1_KB },     // default
-            { "dev/disk/by-partlabel/NVMENBS04", 10_KB },    // v3
-            { "dev/disk/by-partlabel/NVMEKIKIMR01", 1_KB },
-            { "dev/disk/by-partlabel/NVMEKIKIMR02", 2_KB },
-            { "dev/disk/by-partlabel/NVMEKIKIMR03", 3_KB },
-            { "dev/disk/by-partlabel/NVMEKIKIMR04", 10_KB },
-            { "dev/disk/by-partlabel/ROTNBS01", 21_KB },    // rot
-            { "dev/disk/by-partlabel/ROTNBS02", 22_KB },    // rot
-            { "dev/disk/by-partlabel/ROTNBS03", 23_KB },    // rot
-            { "dev/disk/by-partlabel/ROTNBS04", 24_KB },    // rot
-            { "dev/nvme1n1", 1_KB },     // default
-            { "dev/nvme2n1", 1_KB },     // default
-            { "dev/nvme3n1", 1_KB },     // default
+            {"dev/disk/by-partlabel/DEVNBS01", 160_KB},      // bs16K
+            {"dev/disk/by-partlabel/DEVNBS02", 160_KB},      // bs16K
+            {"dev/disk/by-partlabel/DEVNBS03", 160_KB},      // bs16K
+            {"dev/disk/by-partlabel/NVMECOMPUTE01", 1_KB},   // v1
+            {"dev/disk/by-partlabel/NVMECOMPUTE02", 1_KB},   // v1
+            {"dev/disk/by-partlabel/NVMECOMPUTE03", 2_KB},   // v2
+            {"dev/disk/by-partlabel/NVMECOMPUTE04", 2_KB},   // v2
+            {"dev/disk/by-partlabel/NVMECOMPUTE05", 2_KB},   // v2
+            {"dev/disk/by-partlabel/NVMENBS01", 1_KB},       // default
+            {"dev/disk/by-partlabel/NVMENBS02", 1_KB},       // default
+            {"dev/disk/by-partlabel/NVMENBS03", 1_KB},       // default
+            {"dev/disk/by-partlabel/NVMENBS04", 10_KB},      // v3
+            {"dev/disk/by-partlabel/NVMEKIKIMR01", 1_KB},
+            {"dev/disk/by-partlabel/NVMEKIKIMR02", 2_KB},
+            {"dev/disk/by-partlabel/NVMEKIKIMR03", 3_KB},
+            {"dev/disk/by-partlabel/NVMEKIKIMR04", 10_KB},
+            {"dev/disk/by-partlabel/ROTNBS01", 21_KB},   // rot
+            {"dev/disk/by-partlabel/ROTNBS02", 22_KB},   // rot
+            {"dev/disk/by-partlabel/ROTNBS03", 23_KB},   // rot
+            {"dev/disk/by-partlabel/ROTNBS04", 24_KB},   // rot
+            {"dev/nvme1n1", 1_KB},                       // default
+            {"dev/nvme2n1", 1_KB},                       // default
+            {"dev/nvme3n1", 1_KB},                       // default
         });
 
         {
             auto& compute = *Config.AddPathConfigs();
-            compute.SetPathRegExp(RootDir / "dev/disk/by-partlabel/NVMECOMPUTE([0-9]{2})");
+            compute.SetPathRegExp(
+                RootDir / "dev/disk/by-partlabel/NVMECOMPUTE([0-9]{2})");
 
             auto& v1 = *compute.AddPoolConfigs();
             v1.SetPoolName("v1");
@@ -160,7 +160,8 @@ Y_UNIT_TEST_SUITE(TDeviceScannerTest)
             v2.SetMaxSize(2_KB + 1);
 
             auto& nvme = *Config.AddPathConfigs();
-            nvme.SetPathRegExp(RootDir / "dev/disk/by-partlabel/NVMENBS([0-9]{2})");
+            nvme.SetPathRegExp(
+                RootDir / "dev/disk/by-partlabel/NVMENBS([0-9]{2})");
 
             auto& def = *nvme.AddPoolConfigs();
             def.SetMinSize(1_KB);
@@ -172,7 +173,8 @@ Y_UNIT_TEST_SUITE(TDeviceScannerTest)
             v3.SetMaxSize(10_KB + 1);
 
             auto& rot = *Config.AddPathConfigs();
-            rot.SetPathRegExp(RootDir / "dev/disk/by-partlabel/ROTNBS([0-9]{2})");
+            rot.SetPathRegExp(
+                RootDir / "dev/disk/by-partlabel/ROTNBS([0-9]{2})");
 
             auto& rotPool = *rot.AddPoolConfigs();
             rotPool.SetPoolName("rot");
@@ -189,7 +191,8 @@ Y_UNIT_TEST_SUITE(TDeviceScannerTest)
             rawPool.SetMaxSize(1_KB);
 
             auto& bs16K = *Config.AddPathConfigs();
-            bs16K.SetPathRegExp(RootDir / "dev/disk/by-partlabel/DEVNBS([0-9]{2})");
+            bs16K.SetPathRegExp(
+                RootDir / "dev/disk/by-partlabel/DEVNBS([0-9]{2})");
 
             auto& bs16KPool = *bs16K.AddPoolConfigs();
             bs16KPool.SetPoolName("bs16K");
@@ -198,26 +201,26 @@ Y_UNIT_TEST_SUITE(TDeviceScannerTest)
             bs16KPool.SetBlockSize(16_KB);
         }
 
-        const std::tuple<TString, TString, ui32> expected[] {
-            { RootDir / "dev/disk/by-partlabel/DEVNBS01", "bs16K", 1 },
-            { RootDir / "dev/disk/by-partlabel/DEVNBS02", "bs16K", 2 },
-            { RootDir / "dev/disk/by-partlabel/DEVNBS03", "bs16K", 3 },
-            { RootDir / "dev/disk/by-partlabel/NVMECOMPUTE01", "v1", 1 },
-            { RootDir / "dev/disk/by-partlabel/NVMECOMPUTE02", "v1", 2 },
-            { RootDir / "dev/disk/by-partlabel/NVMECOMPUTE03", "v2", 3 },
-            { RootDir / "dev/disk/by-partlabel/NVMECOMPUTE04", "v2", 4 },
-            { RootDir / "dev/disk/by-partlabel/NVMECOMPUTE05", "v2", 5 },
-            { RootDir / "dev/disk/by-partlabel/NVMENBS01", "", 1 },
-            { RootDir / "dev/disk/by-partlabel/NVMENBS02", "", 2 },
-            { RootDir / "dev/disk/by-partlabel/NVMENBS03", "", 3 },
-            { RootDir / "dev/disk/by-partlabel/NVMENBS04", "v3", 4 },
-            { RootDir / "dev/disk/by-partlabel/ROTNBS01", "rot", 1 },
-            { RootDir / "dev/disk/by-partlabel/ROTNBS02", "rot", 2 },
-            { RootDir / "dev/disk/by-partlabel/ROTNBS03", "rot", 3 },
-            { RootDir / "dev/disk/by-partlabel/ROTNBS04", "rot", 4 },
-            { RootDir / "dev/nvme1n1", "raw", 1 },
-            { RootDir / "dev/nvme2n1", "raw", 2 },
-            { RootDir / "dev/nvme3n1", "raw", 3 },
+        const std::tuple<TString, TString, ui32> expected[]{
+            {RootDir / "dev/disk/by-partlabel/DEVNBS01", "bs16K", 1},
+            {RootDir / "dev/disk/by-partlabel/DEVNBS02", "bs16K", 2},
+            {RootDir / "dev/disk/by-partlabel/DEVNBS03", "bs16K", 3},
+            {RootDir / "dev/disk/by-partlabel/NVMECOMPUTE01", "v1", 1},
+            {RootDir / "dev/disk/by-partlabel/NVMECOMPUTE02", "v1", 2},
+            {RootDir / "dev/disk/by-partlabel/NVMECOMPUTE03", "v2", 3},
+            {RootDir / "dev/disk/by-partlabel/NVMECOMPUTE04", "v2", 4},
+            {RootDir / "dev/disk/by-partlabel/NVMECOMPUTE05", "v2", 5},
+            {RootDir / "dev/disk/by-partlabel/NVMENBS01", "", 1},
+            {RootDir / "dev/disk/by-partlabel/NVMENBS02", "", 2},
+            {RootDir / "dev/disk/by-partlabel/NVMENBS03", "", 3},
+            {RootDir / "dev/disk/by-partlabel/NVMENBS04", "v3", 4},
+            {RootDir / "dev/disk/by-partlabel/ROTNBS01", "rot", 1},
+            {RootDir / "dev/disk/by-partlabel/ROTNBS02", "rot", 2},
+            {RootDir / "dev/disk/by-partlabel/ROTNBS03", "rot", 3},
+            {RootDir / "dev/disk/by-partlabel/ROTNBS04", "rot", 4},
+            {RootDir / "dev/nvme1n1", "raw", 1},
+            {RootDir / "dev/nvme2n1", "raw", 2},
+            {RootDir / "dev/nvme3n1", "raw", 3},
         };
 
         TVector<std::pair<NProto::TFileDeviceArgs, ui32>> r;
@@ -248,9 +251,7 @@ Y_UNIT_TEST_SUITE(TDeviceScannerTest)
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
 
         UNIT_ASSERT_VALUES_EQUAL(std::size(expected), r.size());
-        SortBy(r, [] (const auto& p) {
-            return p.first.GetPath();
-        });
+        SortBy(r, [](const auto& p) { return p.first.GetPath(); });
 
         for (size_t i = 0; i != r.size(); ++i) {
             auto& [path, poolName, expectedPathIndex] = expected[i];
@@ -271,7 +272,7 @@ Y_UNIT_TEST_SUITE(TDeviceScannerTest)
     Y_UNIT_TEST_F(ShouldInferMinSizeFromLayout, TFixture)
     {
         PrepareFiles({
-            { "dev/disk/by-partlabel/NVMENBS01", 100_KB },
+            {"dev/disk/by-partlabel/NVMENBS01", 100_KB},
         });
 
         auto& nvme = *Config.AddPathConfigs();
@@ -329,7 +330,7 @@ Y_UNIT_TEST_SUITE(TDeviceScannerTest)
     Y_UNIT_TEST_F(ShouldIgnoreDevicesThatAreTooSmall, TFixture)
     {
         PrepareFiles({
-            { "dev/disk/by-partlabel/NVMENBS01", 9_KB },
+            {"dev/disk/by-partlabel/NVMENBS01", 9_KB},
         });
 
         auto& nvme = *Config.AddPathConfigs();
@@ -355,22 +356,26 @@ Y_UNIT_TEST_SUITE(TDeviceScannerTest)
             });
 
         // NVMENBS01 wasn't accepted because of implicit MinSize = 10Kb
-        UNIT_ASSERT_VALUES_EQUAL_C(E_NOT_FOUND, error.GetCode(), error.GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_NOT_FOUND,
+            error.GetCode(),
+            error.GetMessage());
         UNIT_ASSERT_VALUES_EQUAL(0, success);
     }
 
     Y_UNIT_TEST_F(ShouldApplyAllowedList, TFixture)
     {
         PrepareFiles({
-            { "dev/disk/by-partlabel/NVMENBS01", 1_KB },     // default
-            { "dev/disk/by-partlabel/NVMENBS02", 1_KB },     // default
-            { "dev/disk/by-partlabel/NVMENBS03", 1_KB },     // default
-            { "dev/disk/by-partlabel/NVMENBS04", 10_KB },    // v3
+            {"dev/disk/by-partlabel/NVMENBS01", 1_KB},    // default
+            {"dev/disk/by-partlabel/NVMENBS02", 1_KB},    // default
+            {"dev/disk/by-partlabel/NVMENBS03", 1_KB},    // default
+            {"dev/disk/by-partlabel/NVMENBS04", 10_KB},   // v3
         });
 
         {
             auto& nvme = *Config.AddPathConfigs();
-            nvme.SetPathRegExp(RootDir / "dev/disk/by-partlabel/NVMENBS([0-9]{2})");
+            nvme.SetPathRegExp(
+                RootDir / "dev/disk/by-partlabel/NVMENBS([0-9]{2})");
 
             auto& def = *nvme.AddPoolConfigs();
             def.SetMinSize(1_KB);
@@ -382,9 +387,9 @@ Y_UNIT_TEST_SUITE(TDeviceScannerTest)
             v3.SetMaxSize(10_KB + 1);
         }
 
-        const std::tuple<TString, TString, ui32> expected[] {
-            { RootDir / "dev/disk/by-partlabel/NVMENBS01", "", 1 },
-            { RootDir / "dev/disk/by-partlabel/NVMENBS04", "v3", 4 },
+        const std::tuple<TString, TString, ui32> expected[]{
+            {RootDir / "dev/disk/by-partlabel/NVMENBS01", "", 1},
+            {RootDir / "dev/disk/by-partlabel/NVMENBS04", "v3", 4},
         };
 
         TVector<std::pair<NProto::TFileDeviceArgs, ui32>> r;
@@ -416,9 +421,7 @@ Y_UNIT_TEST_SUITE(TDeviceScannerTest)
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
 
         UNIT_ASSERT_VALUES_EQUAL(std::size(expected), r.size());
-        SortBy(r, [] (const auto& p) {
-            return p.first.GetPath();
-        });
+        SortBy(r, [](const auto& p) { return p.first.GetPath(); });
 
         for (size_t i = 0; i != r.size(); ++i) {
             auto& [path, poolName, expectedPathIndex] = expected[i];

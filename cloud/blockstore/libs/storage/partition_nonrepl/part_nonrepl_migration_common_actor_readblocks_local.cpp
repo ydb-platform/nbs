@@ -12,10 +12,7 @@ void TNonreplicatedPartitionMigrationCommonActor::HandleReadBlocksLocal(
     const TEvService::TEvReadBlocksLocalRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    ForwardRequestWithNondeliveryTracking(
-        ctx,
-        SrcActorId,
-        *ev);
+    ForwardRequestWithNondeliveryTracking(ctx, SrcActorId, *ev);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

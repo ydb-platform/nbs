@@ -65,7 +65,6 @@ struct TPartitionStartInfo
 //   [TFollowerDiskActor] (wrapper)     (owned by TVolumeActor)
 //   [TPartitionActor]                  (owned by bootstraper)
 
-
 class TActorsStack
 {
 public:

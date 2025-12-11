@@ -37,23 +37,24 @@ void TDiskRegistryActor::HandleQueryAvailableStorage(
 {
     const auto& request = ev->Get()->Record;
 
-    auto response = std::make_unique<TEvService::TEvQueryAvailableStorageResponse>();
+    auto response =
+        std::make_unique<TEvService::TEvQueryAvailableStorageResponse>();
 
     const THashSet<TString> agentIds{
         request.GetAgentIds().begin(),
-        request.GetAgentIds().end()
-    };
+        request.GetAgentIds().end()};
 
     for (const auto& agentId: agentIds) {
         auto [infos, error] = State->QueryAvailableStorage(
             agentId,
             request.GetStoragePoolName(),
-            ToDevicePoolKind(request.GetStoragePoolKind())
-        );
+            ToDevicePoolKind(request.GetStoragePoolKind()));
 
         if (HasError(error)) {
             if (error.GetCode() == E_NOT_FOUND) {
-                LOG_DEBUG(ctx, TBlockStoreComponents::DISK_REGISTRY,
+                LOG_DEBUG(
+                    ctx,
+                    TBlockStoreComponents::DISK_REGISTRY,
                     "[%lu] Can't get storage info for %s: %s",
                     TabletID(),
                     agentId.Quote().c_str(),
@@ -62,7 +63,9 @@ void TDiskRegistryActor::HandleQueryAvailableStorage(
                 continue;
             }
 
-            LOG_WARN(ctx, TBlockStoreComponents::DISK_REGISTRY,
+            LOG_WARN(
+                ctx,
+                TBlockStoreComponents::DISK_REGISTRY,
                 "[%lu] Can't get storage info for %s: %s",
                 TabletID(),
                 agentId.Quote().c_str(),

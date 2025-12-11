@@ -10,8 +10,7 @@ namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TOptionsYdbBase
-    : public virtual TOptionsBase
+struct TOptionsYdbBase: public virtual TOptionsBase
 {
     TString LogConfig;
     TString SysConfig;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "public.h"
+
 #include "sglist.h"
 
 namespace NCloud {

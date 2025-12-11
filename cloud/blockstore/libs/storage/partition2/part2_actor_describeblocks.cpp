@@ -62,7 +62,9 @@ void TPartitionActor::DescribeBlocks(
     ui64 commitId,
     const TBlockRange32& describeRange)
 {
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%lu] Start describe blocks @%lu (range: %s)",
         TabletID(),
         commitId,
@@ -70,11 +72,7 @@ void TPartitionActor::DescribeBlocks(
 
     AddTransaction<TEvVolume::TDescribeBlocksMethod>(*requestInfo);
 
-    ExecuteTx<TDescribeBlocks>(
-        ctx,
-        requestInfo,
-        commitId,
-        describeRange);
+    ExecuteTx<TDescribeBlocks>(ctx, requestInfo, commitId, describeRange);
 }
 
 void TPartitionActor::HandleDescribeBlocks(
@@ -83,10 +81,8 @@ void TPartitionActor::HandleDescribeBlocks(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -96,7 +92,8 @@ void TPartitionActor::HandleDescribeBlocks(
         "DescribeBlocks",
         requestInfo->CallContext->RequestId);
 
-    auto reply = [&](auto response) {
+    auto reply = [&](auto response)
+    {
         LWTRACK(
             ResponseSent_Partition,
             requestInfo->CallContext->LWOrbit,
@@ -107,32 +104,32 @@ void TPartitionActor::HandleDescribeBlocks(
     };
 
     if (State->GetBaseDiskId()) {
-        auto response = std::make_unique<TEvVolume::TEvDescribeBlocksResponse>(
-            MakeError(E_NOT_IMPLEMENTED, TStringBuilder()
-                << "DescribeBlocks is not implemented for overlay disks"));
+        auto response =
+            std::make_unique<TEvVolume::TEvDescribeBlocksResponse>(MakeError(
+                E_NOT_IMPLEMENTED,
+                TStringBuilder()
+                    << "DescribeBlocks is not implemented for overlay disks"));
         reply(std::move(response));
         return;
     }
 
     if (msg->Record.GetBlocksCount() == 0) {
-        auto response = std::make_unique<TEvVolume::TEvDescribeBlocksResponse>(
-            MakeError(E_ARGUMENT, TStringBuilder()
-                << "empty block range is forbidden for DescribeBlocks: ["
-                << "index: " << msg->Record.GetStartIndex()
-                << ", count: " << msg->Record.GetBlocksCount()
-                << "]"));
+        auto response =
+            std::make_unique<TEvVolume::TEvDescribeBlocksResponse>(MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "empty block range is forbidden for DescribeBlocks: ["
+                    << "index: " << msg->Record.GetStartIndex()
+                    << ", count: " << msg->Record.GetBlocksCount() << "]"));
         reply(std::move(response));
         return;
     }
 
     auto range = TBlockRange64::WithLength(
         msg->Record.GetStartIndex(),
-        msg->Record.GetBlocksCount()
-    );
-    auto bounds = TBlockRange64::WithLength(
-        0,
-        State->GetConfig().GetBlocksCount()
-    );
+        msg->Record.GetBlocksCount());
+    auto bounds =
+        TBlockRange64::WithLength(0, State->GetConfig().GetBlocksCount());
 
     if (!bounds.Overlaps(range)) {
         // describing out of bounds range should return empty response
@@ -157,8 +154,8 @@ void TPartitionActor::HandleDescribeBlocks(
     if (!commitId) {
         ui32 flags = 0;
         SetProtoFlag(flags, NProto::EF_SILENT);
-        auto response = std::make_unique<TEvVolume::TEvDescribeBlocksResponse>(
-            MakeError(
+        auto response =
+            std::make_unique<TEvVolume::TEvDescribeBlocksResponse>(MakeError(
                 E_NOT_FOUND,
                 TStringBuilder()
                     << "checkpoint not found: " << checkpointId.Quote(),
@@ -191,7 +188,8 @@ bool TPartitionActor::PrepareDescribeBlocks(
 
     TDescribeBlocksVisitor visitor(args);
     State->FindFreshBlocks(args.CommitId, args.DescribeRange, visitor);
-    return State->FindMergedBlocks(db, args.CommitId, args.DescribeRange, visitor);
+    return State
+        ->FindMergedBlocks(db, args.CommitId, args.DescribeRange, visitor);
 }
 
 void TPartitionActor::ExecuteDescribeBlocks(
@@ -215,7 +213,9 @@ void TPartitionActor::CompleteDescribeBlocks(
 
     RemoveTransaction(*args.RequestInfo);
 
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%lu] Complete describe blocks @%lu",
         TabletID(),
         args.CommitId);
@@ -233,9 +233,11 @@ void TPartitionActor::CompleteDescribeBlocks(
     UpdateNetworkStats(ctx, responseBytes);
     UpdateCPUUsageStat(ctx, args.RequestInfo->GetExecCycles());
 
-    const auto duration = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles());
+    const auto duration =
+        CyclesToDurationSafe(args.RequestInfo->GetTotalCycles());
     const auto time = duration.MicroSeconds();
-    const ui64 requestBytes = static_cast<ui64>(State->GetBlockSize()) * args.DescribeRange.Size();
+    const ui64 requestBytes =
+        static_cast<ui64>(State->GetBlockSize()) * args.DescribeRange.Size();
 
     PartCounters->RequestCounters.DescribeBlocks.AddRequest(time, requestBytes);
 
@@ -254,7 +256,7 @@ void TPartitionActor::FillDescribeBlocksResponse(
     TTxPartition::TDescribeBlocks& args,
     TEvVolume::TEvDescribeBlocksResponse* response)
 {
-    for (auto& mark : args.Marks) {
+    for (auto& mark: args.Marks) {
         if (!mark.Content) {
             continue;
         }
@@ -268,7 +270,7 @@ void TPartitionActor::FillDescribeBlocksResponse(
 
     EraseIf(
         args.Marks,
-        [] (const auto& m) {
+        [](const auto& m) {
             return IsDeletionMarker(m.BlobId) || m.BlobOffset == ZeroBlobOffset;
         });
     Sort(args.Marks);
@@ -294,12 +296,10 @@ void TPartitionActor::FillDescribeBlocksResponse(
             ui32 blocksCount = 1;
 
             ++iter;
-            while (
-                iter != args.Marks.end() &&
-                iter->BlobId == blobId &&
-                iter->BlobOffset == blobOffset + 1 &&
-                iter->BlockIndex == blockIndex + 1
-            ) {
+            while (iter != args.Marks.end() && iter->BlobId == blobId &&
+                   iter->BlobOffset == blobOffset + 1 &&
+                   iter->BlockIndex == blockIndex + 1)
+            {
                 ++blobOffset;
                 ++blockIndex;
                 ++blocksCount;

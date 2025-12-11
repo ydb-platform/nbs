@@ -10,9 +10,9 @@
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
-#include <google/protobuf/util/json_util.h>
-
 #include <util/string/printf.h>
+
+#include <google/protobuf/util/json_util.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -38,9 +38,7 @@ private:
     NProto::TError Error;
 
 public:
-    TDiskRegistryChangeStateActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TDiskRegistryChangeStateActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -66,8 +64,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDiskRegistryChangeStateActor::TDiskRegistryChangeStateActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -89,41 +87,46 @@ void TDiskRegistryChangeStateActor::Bootstrap(const TActorContext& ctx)
     std::unique_ptr<IEventBase> event;
 
     switch (Request.GetChangeStateCase()) {
-        case NPrivateProto::TDiskRegistryChangeStateRequest::kChangeDeviceState: {
+        case NPrivateProto::TDiskRegistryChangeStateRequest::
+            kChangeDeviceState: {
             const auto& cs = Request.GetChangeDeviceState();
 
             if (cs.GetState() > NProto::EDeviceState_MAX) {
                 Error = MakeError(
                     E_ARGUMENT,
-                    Sprintf("Invalid DeviceState: %u", cs.GetState())
-                );
+                    Sprintf("Invalid DeviceState: %u", cs.GetState()));
             } else {
-                const auto state = static_cast<NProto::EDeviceState>(cs.GetState());
-                auto request =
-                    std::make_unique<TEvDiskRegistry::TEvChangeDeviceStateRequest>();
+                const auto state =
+                    static_cast<NProto::EDeviceState>(cs.GetState());
+                auto request = std::make_unique<
+                    TEvDiskRegistry::TEvChangeDeviceStateRequest>();
                 request->Record.SetDeviceUUID(cs.GetDeviceUUID());
                 request->Record.SetDeviceState(state);
-                request->Record.SetReason("private api: " + Request.GetMessage());
+                request->Record.SetReason(
+                    "private api: " + Request.GetMessage());
                 event.reset(request.release());
             }
 
             break;
         }
 
-        case NPrivateProto::TDiskRegistryChangeStateRequest::kChangeAgentState: {
+        case NPrivateProto::TDiskRegistryChangeStateRequest::
+            kChangeAgentState: {
             const auto& cs = Request.GetChangeAgentState();
 
             if (cs.GetState() > NProto::EAgentState_MAX) {
                 Error = MakeError(
                     E_ARGUMENT,
-                    Sprintf("Invalid AgentState: %u", cs.GetState())
-                );
+                    Sprintf("Invalid AgentState: %u", cs.GetState()));
             } else {
-                const auto state = static_cast<NProto::EAgentState>(cs.GetState());
-                auto request = std::make_unique<TEvDiskRegistry::TEvChangeAgentStateRequest>();
+                const auto state =
+                    static_cast<NProto::EAgentState>(cs.GetState());
+                auto request = std::make_unique<
+                    TEvDiskRegistry::TEvChangeAgentStateRequest>();
                 request->Record.SetAgentId(cs.GetAgentId());
                 request->Record.SetAgentState(state);
-                request->Record.SetReason("private api: " + Request.GetMessage());
+                request->Record.SetReason(
+                    "private api: " + Request.GetMessage());
                 event.reset(request.release());
             }
 
@@ -160,11 +163,11 @@ void TDiskRegistryChangeStateActor::Bootstrap(const TActorContext& ctx)
 
 void TDiskRegistryChangeStateActor::ReplyAndDie(const TActorContext& ctx)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(Error);
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(Error);
     google::protobuf::util::MessageToJsonString(
         NPrivateProto::TDiskRegistryChangeStateResponse(),
-        response->Record.MutableOutput()
-    );
+        response->Record.MutableOutput());
 
     LWTRACK(
         ResponseSent_Service,

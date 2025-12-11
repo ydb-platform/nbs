@@ -7,17 +7,12 @@ namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IOutputStream& operator <<(
-    IOutputStream& out,
-    const TBlock& block)
+IOutputStream& operator<<(IOutputStream& out, const TBlock& block)
 {
-    return out
-        << "{"
-        << "BlockIndex: "  << block.BlockIndex  << ", "
-        << "MinCommitId: " << block.MinCommitId << ", "
-        << "MaxCommitId: " << block.MaxCommitId << ", "
-        << "Zeroed: "      << block.Zeroed
-        << "}";
+    return out << "{" << "BlockIndex: " << block.BlockIndex << ", "
+               << "MinCommitId: " << block.MinCommitId << ", "
+               << "MaxCommitId: " << block.MaxCommitId << ", "
+               << "Zeroed: " << block.Zeroed << "}";
 }
 
 ////////////////////////////////////////////////////////////////////////////////

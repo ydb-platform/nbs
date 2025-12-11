@@ -14,8 +14,8 @@ struct TOptions
 {
     ELogPriority FiltrationLevel = TLOG_INFO;
 
-    ui32 BlockSize = 4*1024;
-    ui64 BlocksCount = 1024*1024;
+    ui32 BlockSize = 4 * 1024;
+    ui64 BlocksCount = 1024 * 1024;
 
     TString ListenUnixSocketPath;
     TString ListenAddress;
@@ -23,7 +23,7 @@ struct TOptions
 
     bool StructuredReply = false;
     bool LimiterEnabled = true;
-    ui32 MaxInFlightBytes = 128*1024*1024;
+    ui32 MaxInFlightBytes = 128 * 1024 * 1024;
 };
 
 }   // namespace NCloud::NBlockStore::NBD

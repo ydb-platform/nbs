@@ -27,16 +27,16 @@ void TIndexTabletActor::HandleZeroRange(
 
     auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s ZeroRange @%lu %s",
         LogTag.c_str(),
         msg->NodeId,
         msg->Range.Describe().c_str());
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     FILESTORE_TRACK(
@@ -44,11 +44,7 @@ void TIndexTabletActor::HandleZeroRange(
         msg->CallContext,
         "ZeroRange");
 
-    ExecuteTx<TZeroRange>(
-        ctx,
-        std::move(requestInfo),
-        msg->NodeId,
-        msg->Range);
+    ExecuteTx<TZeroRange>(ctx, std::move(requestInfo), msg->NodeId, msg->Range);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -98,7 +94,9 @@ void TIndexTabletActor::CompleteTx_ZeroRange(
         args.Error,
         ProfileLog);
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s ZeroRange %lu %s completed: %s",
         LogTag.c_str(),
         args.NodeId,

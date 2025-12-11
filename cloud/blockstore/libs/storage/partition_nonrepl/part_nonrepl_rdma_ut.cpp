@@ -36,7 +36,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum class EIOType {
+enum class EIOType
+{
     Read = 0,
     Write = 1,
     Zero = 2,
@@ -53,11 +54,8 @@ struct TTestEnv
     NRdma::IClientPtr RdmaClient;
     TStorageConfigPtr Config;
 
-    static void AddDevice(
-        ui32 nodeId,
-        ui32 blockCount,
-        TString name,
-        TDevices& devices)
+    static void
+    AddDevice(ui32 nodeId, ui32 blockCount, TString name, TDevices& devices)
     {
         const auto k = DefaultBlockSize / DefaultDeviceBlockSize;
 
@@ -83,22 +81,16 @@ struct TTestEnv
         : TTestEnv(runtime, NProto::VOLUME_IO_OK)
     {}
 
-    TTestEnv(
-            TTestActorRuntime& runtime,
-            NProto::EVolumeIOMode ioMode)
-        : TTestEnv(
-            runtime,
-            ioMode,
-            DefaultDevices(runtime.GetNodeId(0)),
-            false)
+    TTestEnv(TTestActorRuntime& runtime, NProto::EVolumeIOMode ioMode)
+        : TTestEnv(runtime, ioMode, DefaultDevices(runtime.GetNodeId(0)), false)
     {}
 
     TTestEnv(
-            TTestActorRuntime& runtime,
-            NProto::EVolumeIOMode ioMode,
-            TDevices devices,
-            bool optimizeVoidBuffersTransfer,
-            bool laggingDevicesAllowed = false)
+        TTestActorRuntime& runtime,
+        NProto::EVolumeIOMode ioMode,
+        TDevices devices,
+        bool optimizeVoidBuffersTransfer,
+        bool laggingDevicesAllowed = false)
         : Runtime(runtime)
         , ActorId(0, "YYY")
         , VolumeActorId(0, "VVV")
@@ -119,8 +111,7 @@ struct TTestEnv
         auto config = std::make_shared<TStorageConfig>(
             std::move(storageConfig),
             std::make_shared<NFeatures::TFeaturesConfig>(
-                NCloud::NProto::TFeaturesConfig())
-        );
+                NCloud::NProto::TFeaturesConfig()));
 
         Config = config;
 
@@ -131,9 +122,7 @@ struct TTestEnv
             TActorSetupCmd(
                 new TDiskAgentMock(devices, DiskAgentState),
                 TMailboxType::Simple,
-                0
-            )
-        );
+                0));
 
         TNonreplicatedPartitionConfig::TNonreplicatedPartitionConfigInitParams
             params{
@@ -158,29 +147,24 @@ struct TTestEnv
             std::move(partConfig),
             RdmaClient,
             VolumeActorId,
-            VolumeActorId
-        );
+            VolumeActorId);
 
         Runtime.AddLocalService(
             ActorId,
-            TActorSetupCmd(part.release(), TMailboxType::Simple, 0)
-        );
+            TActorSetupCmd(part.release(), TMailboxType::Simple, 0));
 
         auto dummy = std::make_unique<TDummyActor>();
 
         Runtime.AddLocalService(
             VolumeActorId,
-            TActorSetupCmd(dummy.release(), TMailboxType::Simple, 0)
-        );
+            TActorSetupCmd(dummy.release(), TMailboxType::Simple, 0));
 
         Runtime.AddLocalService(
             MakeStorageStatsServiceId(),
             TActorSetupCmd(
                 new TStorageStatsServiceMock(StorageStatsServiceState),
                 TMailboxType::Simple,
-                0
-            )
-        );
+                0));
 
         SetupTabletServices(Runtime);
     }
@@ -192,7 +176,8 @@ struct TTestEnv
             TBlockStoreComponents::END,
             GetComponentName);
 
-        // for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
+        // for (ui32 i = TBlockStoreComponents::START; i <
+        // TBlockStoreComponents::END; ++i) {
         //    Runtime.SetLogPriority(i, NLog::PRI_DEBUG);
         // }
         // Runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
@@ -266,8 +251,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                 TGuardedSgList(ResizeBlocks(
                     blocks,
                     blockRange1.Size(),
-                    TString(DefaultBlockSize, '\0')
-                )));
+                    TString(DefaultBlockSize, '\0'))));
 
             for (ui32 i = 0; i < blocks.size(); ++i) {
                 UNIT_ASSERT_VALUES_EQUAL_C(
@@ -290,8 +274,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                 TGuardedSgList(ResizeBlocks(
                     blocks,
                     blockRange3.Size(),
-                    TString(DefaultBlockSize, '\0')
-                )));
+                    TString(DefaultBlockSize, '\0'))));
 
             for (ui32 i = 0; i < 120; ++i) {
                 UNIT_ASSERT_VALUES_EQUAL_C(
@@ -318,8 +301,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                 TGuardedSgList(ResizeBlocks(
                     blocks,
                     blockRange3.Size(),
-                    TString(DefaultBlockSize, '\0')
-                )));
+                    TString(DefaultBlockSize, '\0'))));
 
             for (ui32 i = 0; i < blockRange3.Size(); ++i) {
                 UNIT_ASSERT_VALUES_EQUAL_C(
@@ -331,8 +313,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
         client.SendRequest(
             env.ActorId,
-            std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>()
-        );
+            std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>());
 
         runtime.DispatchEvents({}, TDuration::Seconds(1));
 
@@ -341,18 +322,12 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
         UNIT_ASSERT_VALUES_EQUAL(3, counters.ReadBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
-            DefaultBlockSize * (
-                blockRange1.Size() + 2 * blockRange3.Size()
-            ),
-            counters.ReadBlocks.RequestBytes
-        );
+            DefaultBlockSize * (blockRange1.Size() + 2 * blockRange3.Size()),
+            counters.ReadBlocks.RequestBytes);
         UNIT_ASSERT_VALUES_EQUAL(2, counters.WriteBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
-            DefaultBlockSize * (
-                blockRange1.Size() + blockRange2.Size()
-            ),
-            counters.WriteBlocks.RequestBytes
-        );
+            DefaultBlockSize * (blockRange1.Size() + blockRange2.Size()),
+            counters.WriteBlocks.RequestBytes);
 
         UNIT_ASSERT_VALUES_EQUAL(
             rdmaCounters.ReadCount.Value,
@@ -369,8 +344,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            env.StorageStatsServiceState->Counters.Simple.IORequestsInFlight.Value
-        );
+            env.StorageStatsServiceState->Counters.Simple.IORequestsInFlight
+                .Value);
     }
 
     Y_UNIT_TEST(ShouldRemoteReadWrite)
@@ -423,8 +398,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
         client.SendRequest(
             env.ActorId,
-            std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>()
-        );
+            std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>());
 
         runtime.DispatchEvents({}, TDuration::Seconds(1));
 
@@ -433,18 +407,12 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
         UNIT_ASSERT_VALUES_EQUAL(2, counters.ReadBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
-            DefaultBlockSize * (
-                blockRange1.Size() + blockRange3.Size()
-            ),
-            counters.ReadBlocks.RequestBytes
-        );
+            DefaultBlockSize * (blockRange1.Size() + blockRange3.Size()),
+            counters.ReadBlocks.RequestBytes);
         UNIT_ASSERT_VALUES_EQUAL(2, counters.WriteBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
-            DefaultBlockSize * (
-                blockRange1.Size() + blockRange2.Size()
-            ),
-            counters.WriteBlocks.RequestBytes
-        );
+            DefaultBlockSize * (blockRange1.Size() + blockRange2.Size()),
+            counters.WriteBlocks.RequestBytes);
 
         UNIT_ASSERT_VALUES_EQUAL(
             rdmaCounters.ReadCount.Value,
@@ -461,72 +429,75 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            env.StorageStatsServiceState->Counters.Simple.IORequestsInFlight.Value
-        );
+            env.StorageStatsServiceState->Counters.Simple.IORequestsInFlight
+                .Value);
     }
 
-#define WRITE_BLOCKS_E(error) {                                                \
-            TString data(DefaultBlockSize, 'A');                               \
-            client.SendWriteBlocksLocalRequest(blockRange1, data);             \
-            {                                                                  \
-                auto response = client.RecvWriteBlocksLocalResponse();         \
-                UNIT_ASSERT_VALUES_EQUAL_C(                                    \
-                    error.GetCode(),                                           \
-                    response->GetStatus(),                                     \
-                    response->GetErrorReason());                               \
-            }                                                                  \
-        }                                                                      \
-// WRITE_BLOCKS_E
+#define WRITE_BLOCKS_E(error)                                      \
+    {                                                              \
+        TString data(DefaultBlockSize, 'A');                       \
+        client.SendWriteBlocksLocalRequest(blockRange1, data);     \
+        {                                                          \
+            auto response = client.RecvWriteBlocksLocalResponse(); \
+            UNIT_ASSERT_VALUES_EQUAL_C(                            \
+                error.GetCode(),                                   \
+                response->GetStatus(),                             \
+                response->GetErrorReason());                       \
+        }                                                          \
+    }                                                              \
+    // WRITE_BLOCKS_E
 
-#define ZERO_BLOCKS_E(error) {                                                 \
-            client.SendZeroBlocksRequest(blockRange1);                         \
-            {                                                                  \
-                auto response = client.RecvZeroBlocksResponse();               \
-                UNIT_ASSERT_VALUES_EQUAL_C(                                    \
-                    error.GetCode(),                                           \
-                    response->GetStatus(),                                     \
-                    response->GetErrorReason());                               \
-            }                                                                  \
-        }                                                                      \
-// ZERO_BLOCKS_E
+#define ZERO_BLOCKS_E(error)                                 \
+    {                                                        \
+        client.SendZeroBlocksRequest(blockRange1);           \
+        {                                                    \
+            auto response = client.RecvZeroBlocksResponse(); \
+            UNIT_ASSERT_VALUES_EQUAL_C(                      \
+                error.GetCode(),                             \
+                response->GetStatus(),                       \
+                response->GetErrorReason());                 \
+        }                                                    \
+    }                                                        \
+    // ZERO_BLOCKS_E
 
-#define READ_BLOCKS_E(error, c) {                                              \
-            TVector<TString> blocks;                                           \
-                                                                               \
-            client.SendReadBlocksLocalRequest(                                 \
-                blockRange1,                                                   \
-                TGuardedSgList(ResizeBlocks(                                   \
-                    blocks,                                                    \
-                    blockRange1.Size(),                                        \
-                    TString(DefaultBlockSize, '\0')                            \
-                )));                                                           \
-                                                                               \
-            auto response = client.RecvReadBlocksLocalResponse();              \
-            UNIT_ASSERT_VALUES_EQUAL_C(                                        \
-                error.GetCode(),                                               \
-                response->GetStatus(),                                         \
-                response->GetErrorReason());                                   \
-                                                                               \
-            if (!HasError(error)) {                                            \
-                for (ui32 i = 0; i < blocks.size(); ++i) {                     \
-                    UNIT_ASSERT_VALUES_EQUAL_C(                                \
-                        TString(4096, c),                                      \
-                        blocks[i],                                             \
-                        TStringBuilder() << "block " << i);                    \
-                }                                                              \
-            }                                                                  \
-        }                                                                      \
-// READ_BLOCKS_E
+#define READ_BLOCKS_E(error, c)                               \
+    {                                                         \
+        TVector<TString> blocks;                              \
+                                                              \
+        client.SendReadBlocksLocalRequest(                    \
+            blockRange1,                                      \
+            TGuardedSgList(ResizeBlocks(                      \
+                blocks,                                       \
+                blockRange1.Size(),                           \
+                TString(DefaultBlockSize, '\0'))));           \
+                                                              \
+        auto response = client.RecvReadBlocksLocalResponse(); \
+        UNIT_ASSERT_VALUES_EQUAL_C(                           \
+            error.GetCode(),                                  \
+            response->GetStatus(),                            \
+            response->GetErrorReason());                      \
+                                                              \
+        if (!HasError(error)) {                               \
+            for (ui32 i = 0; i < blocks.size(); ++i) {        \
+                UNIT_ASSERT_VALUES_EQUAL_C(                   \
+                    TString(4096, c),                         \
+                    blocks[i],                                \
+                    TStringBuilder() << "block " << i);       \
+            }                                                 \
+        }                                                     \
+    }                                                         \
+    // READ_BLOCKS_E
 
-#define CHECKSUM_BLOCKS_E(error) {                                             \
-        client.SendChecksumBlocksRequest(blockRange1);                         \
-        auto response = client.RecvChecksumBlocksResponse();                   \
-        UNIT_ASSERT_VALUES_EQUAL_C(                                            \
-            error.GetCode(),                                                   \
-            response->GetStatus(),                                             \
-            response->GetErrorReason());                                       \
-    }                                                                          \
-// CHECKSUM_BLOCKS_E
+#define CHECKSUM_BLOCKS_E(error)                             \
+    {                                                        \
+        client.SendChecksumBlocksRequest(blockRange1);       \
+        auto response = client.RecvChecksumBlocksResponse(); \
+        UNIT_ASSERT_VALUES_EQUAL_C(                          \
+            error.GetCode(),                                 \
+            response->GetStatus(),                           \
+            response->GetErrorReason());                     \
+    }                                                        \
+    // CHECKSUM_BLOCKS_E
 
     Y_UNIT_TEST(ShouldLocalReadWriteWithErrors)
     {
@@ -581,7 +552,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         TActorId notifiedActor;
         ui32 notificationCount = 0;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvRdmaUnavailable: {
                         notifiedActor = event->Recipient;
@@ -592,8 +565,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         env.Rdma().InitAllEndpointsWithError();
 
@@ -778,7 +750,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         UNIT_ASSERT_VALUES_EQUAL(1, deviceTimedOutCount);
     }
 
-    Y_UNIT_TEST(ShouldSendDeviceTimedOutOnAllocationError) {
+    Y_UNIT_TEST(ShouldSendDeviceTimedOutOnAllocationError)
+    {
         ShouldSendDeviceTimedOutOnAllocationError(EIOType::Read);
         ShouldSendDeviceTimedOutOnAllocationError(EIOType::Write);
         ShouldSendDeviceTimedOutOnAllocationError(EIOType::Zero);
@@ -829,7 +802,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                                              { forceReconnectCount++; });
         env.Rdma().InitAllEndpoints();
 
-        auto testDeviceTimedOutRoutine = [&]() {
+        auto testDeviceTimedOutRoutine = [&]()
+        {
             const auto blockRange1 = TBlockRange64::WithLength(1024, 3072);
 
             WRITE_BLOCKS_E(error);
@@ -948,7 +922,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         UNIT_ASSERT_VALUES_EQUAL(2, deviceTimedOutCount);
     }
 
-    void DoShouldRejectRequestsIfAgentIsUnavailable(EDataPlaneRequestType requestType)
+    void DoShouldRejectRequestsIfAgentIsUnavailable(
+        EDataPlaneRequestType requestType)
     {
         TTestBasicRuntime runtime;
 
@@ -961,7 +936,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         TPartitionClient client(runtime, env.ActorId);
 
         auto promise = NThreading::NewPromise();
-        env.Rdma().InjectFutureToWaitBeforeRequestProcessing(promise.GetFuture());
+        env.Rdma().InjectFutureToWaitBeforeRequestProcessing(
+            promise.GetFuture());
         env.Rdma().InitAllEndpoints();
         const auto error = NProto::TError();
 
@@ -1006,7 +982,6 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                 NProto::EF_INSTANT_RETRIABLE));
         };
 
-
         switch (requestType) {
             case EDataPlaneRequestType::Read:
                 checkResponse(client.RecvReadBlocksResponse());
@@ -1036,17 +1011,20 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
     Y_UNIT_TEST(ShouldRejectRequestsIfAgentIsUnavailableReadLocal)
     {
-        DoShouldRejectRequestsIfAgentIsUnavailable(EDataPlaneRequestType::ReadLocal);
+        DoShouldRejectRequestsIfAgentIsUnavailable(
+            EDataPlaneRequestType::ReadLocal);
     }
 
     Y_UNIT_TEST(ShouldRejectRequestsIfAgentIsUnavailableWrite)
     {
-        DoShouldRejectRequestsIfAgentIsUnavailable(EDataPlaneRequestType::Write);
+        DoShouldRejectRequestsIfAgentIsUnavailable(
+            EDataPlaneRequestType::Write);
     }
 
     Y_UNIT_TEST(ShouldRejectRequestsIfAgentIsUnavailableWriteLocal)
     {
-        DoShouldRejectRequestsIfAgentIsUnavailable(EDataPlaneRequestType::WriteLocal);
+        DoShouldRejectRequestsIfAgentIsUnavailable(
+            EDataPlaneRequestType::WriteLocal);
     }
 
     Y_UNIT_TEST(ShouldRejectRequestsIfAgentIsUnavailableZero)
@@ -1056,7 +1034,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
     Y_UNIT_TEST(ShouldRejectRequestsIfAgentIsUnavailableChecksum)
     {
-        DoShouldRejectRequestsIfAgentIsUnavailable(EDataPlaneRequestType::Checksum);
+        DoShouldRejectRequestsIfAgentIsUnavailable(
+            EDataPlaneRequestType::Checksum);
     }
 
     Y_UNIT_TEST(ShouldUpdateStats)
@@ -1064,11 +1043,11 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         TTestBasicRuntime runtime;
 
         runtime.SetRegistrationObserverFunc(
-            [] (auto& runtime, const auto& parentId, const auto& actorId)
-        {
-            Y_UNUSED(parentId);
-            runtime.EnableScheduleForActor(actorId);
-        });
+            [](auto& runtime, const auto& parentId, const auto& actorId)
+            {
+                Y_UNUSED(parentId);
+                runtime.EnableScheduleForActor(actorId);
+            });
 
         TTestEnv env(runtime);
 
@@ -1084,8 +1063,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
         client.SendRequest(
             env.ActorId,
-            std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>()
-        );
+            std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>());
 
         runtime.DispatchEvents({}, TDuration::Seconds(1));
 
@@ -1116,15 +1094,16 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         const auto blockRange1 = TBlockRange64::WithLength(1024, 3072);
         const auto invalidSession =
             MakeError(E_BS_INVALID_SESSION, "invalid session");
-        const auto replacementError =
-            MakeError(E_REJECTED, "invalid session");
+        const auto replacementError = MakeError(E_REJECTED, "invalid session");
 
         env.Rdma().InjectErrors({}, {}, invalidSession);
 
         TPartitionClient client(runtime, env.ActorId);
 
         TActorId reacquireDiskRecipient;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvReacquireDisk: {
                         reacquireDiskRecipient = event->Recipient;
@@ -1134,8 +1113,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         {
             client.SendReadBlocksRequest(TBlockRange64::WithLength(0, 1024));
@@ -1200,8 +1178,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
         client.SendRequest(
             env.ActorId,
-            std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>()
-        );
+            std::make_unique<TEvNonreplPartitionPrivate::TEvUpdateCounters>());
 
         runtime.DispatchEvents({}, TDuration::Seconds(1));
 
@@ -1209,8 +1186,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         UNIT_ASSERT_VALUES_EQUAL(1, counters.ChecksumBlocks.Count);
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultBlockSize * blockRange.Size(),
-            counters.ChecksumBlocks.RequestBytes
-        );
+            counters.ChecksumBlocks.RequestBytes);
     }
 
     Y_UNIT_TEST(ShouldFillRequestIdInDeviceBlocksRequest)
@@ -1250,7 +1226,8 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         {   // non-background WriteBlocksLocal should pass volume request id.
             TString data(DefaultBlockSize, 'A');
 
-            auto request = client.CreateWriteBlocksLocalRequest(blockRange, data);
+            auto request =
+                client.CreateWriteBlocksLocalRequest(blockRange, data);
             request->Record.MutableHeaders()->SetVolumeRequestId(10);
             client.SendRequest(client.GetActorId(), std::move(request));
             runtime.DispatchEvents({}, TDuration::Seconds(1));
@@ -1279,12 +1256,9 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
         }
 
         {   // non-background WriteBlocks should pass volume request id.
-            auto request =
-                client.CreateWriteBlocksRequest(blockRange, 'A');
+            auto request = client.CreateWriteBlocksRequest(blockRange, 'A');
             request->Record.MutableHeaders()->SetVolumeRequestId(20);
-            client.SendRequest(
-                client.GetActorId(),
-                std::move(request));
+            client.SendRequest(client.GetActorId(), std::move(request));
             runtime.DispatchEvents({}, TDuration::Seconds(1));
             auto response =
                 client.RecvResponse<TEvService::TEvWriteBlocksResponse>();
@@ -1351,16 +1325,22 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
         auto readBlocks = [&](const auto& expectedBlockData)
         {
-            auto response = client.ReadBlocks(
-                TBlockRange64::WithLength(1024, 3072));
+            auto response =
+                client.ReadBlocks(TBlockRange64::WithLength(1024, 3072));
             const auto& blocks = response->Record.GetBlocks();
 
             UNIT_ASSERT_VALUES_EQUAL(3072, blocks.BuffersSize());
-            UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, blocks.GetBuffers(0).size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                DefaultBlockSize,
+                blocks.GetBuffers(0).size());
             UNIT_ASSERT_VALUES_EQUAL(expectedBlockData, blocks.GetBuffers(0));
 
-            UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, blocks.GetBuffers(3071).size());
-            UNIT_ASSERT_VALUES_EQUAL(expectedBlockData, blocks.GetBuffers(3071));
+            UNIT_ASSERT_VALUES_EQUAL(
+                DefaultBlockSize,
+                blocks.GetBuffers(3071).size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedBlockData,
+                blocks.GetBuffers(3071));
         };
 
         readBlocks(zeroedBlockData);
@@ -1378,8 +1358,7 @@ Y_UNIT_TEST_SUITE(TNonreplicatedPartitionRdmaTest)
 
         // zero blocks requests are fobidden in read only mode
         {
-            client.SendZeroBlocksRequest(
-                TBlockRange64::WithLength(1024, 3072));
+            client.SendZeroBlocksRequest(TBlockRange64::WithLength(1024, 3072));
             auto response = client.RecvZeroBlocksResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_IO, response->GetStatus());
         }

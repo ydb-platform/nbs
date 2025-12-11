@@ -33,13 +33,13 @@ private:
 
 public:
     TTraceOpenTelemetryExporter(
-            TString id,
-            TString componentName,
-            TString serviceName,
-            TString tag,
-            ITraceReaderPtr consumer,
-            ILoggingServicePtr logging,
-            ITraceServiceClientPtr traceServiceClient)
+        TString id,
+        TString componentName,
+        TString serviceName,
+        TString tag,
+        ITraceReaderPtr consumer,
+        ILoggingServicePtr logging,
+        ITraceServiceClientPtr traceServiceClient)
         : ITraceReader(std::move(id))
         , ComponentName(std::move(componentName))
         , ServiceName(std::move(serviceName))

@@ -8,11 +8,12 @@
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
+
 #include <library/cpp/json/json_reader.h>
 
-#include <google/protobuf/util/json_util.h>
-
 #include <util/generic/guid.h>
+
+#include <google/protobuf/util/json_util.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -38,9 +39,7 @@ private:
     ui32 BlocksCount = 0;
 
 public:
-    TCompactRangeActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TCompactRangeActionActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -61,8 +60,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TCompactRangeActionActor::TCompactRangeActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -71,7 +70,9 @@ void TCompactRangeActionActor::Bootstrap(const TActorContext& ctx)
 {
     NJson::TJsonValue input;
     if (!NJson::ReadJsonTree(Input, &input, false)) {
-        HandleError(ctx, MakeError(E_ARGUMENT, "Input should be in JSON format"));
+        HandleError(
+            ctx,
+            MakeError(E_ARGUMENT, "Input should be in JSON format"));
         return;
     }
 
@@ -93,7 +94,9 @@ void TCompactRangeActionActor::Bootstrap(const TActorContext& ctx)
     }
 
     if (!BlocksCount) {
-        HandleError(ctx, MakeError(E_ARGUMENT, "BlocksCount should be defined"));
+        HandleError(
+            ctx,
+            MakeError(E_ARGUMENT, "BlocksCount should be defined"));
         return;
     }
 
@@ -138,7 +141,8 @@ void TCompactRangeActionActor::HandleError(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(error);
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(error);
 
     LWTRACK(
         ResponseSent_Service,

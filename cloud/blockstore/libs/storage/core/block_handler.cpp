@@ -25,13 +25,12 @@ TStringBuf ConvertBitMapToStringBuf(const TDynBitMap& bitmap)
 {
     auto size = bitmap.Size() / 8;
     Y_ABORT_UNLESS(bitmap.GetChunkCount() * sizeof(TDynBitMap::TChunk) == size);
-    return { reinterpret_cast<const char*>(bitmap.GetChunks()), size };
+    return {reinterpret_cast<const char*>(bitmap.GetChunks()), size};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TWriteBlocksHandler final
-    : public IWriteBlocksHandler
+class TWriteBlocksHandler final: public IWriteBlocksHandler
 {
 private:
     const TBlockRange64 WriteRange;
@@ -42,16 +41,15 @@ private:
 
 public:
     TWriteBlocksHandler(
-            const TBlockRange64& writeRange,
-            std::unique_ptr<TEvService::TEvWriteBlocksRequest> request,
-            ui32 blockSize)
+        const TBlockRange64& writeRange,
+        std::unique_ptr<TEvService::TEvWriteBlocksRequest> request,
+        ui32 blockSize)
         : WriteRange(writeRange)
         , Request(std::move(request->Record))
         , BlockSize(blockSize)
     {
-        auto sglistOrError = SgListNormalize(
-            GetSgList(Request.Get()),
-            BlockSize);
+        auto sglistOrError =
+            SgListNormalize(GetSgList(Request.Get()), BlockSize);
         Y_ABORT_UNLESS(!HasError(sglistOrError));
 
         SgList = sglistOrError.ExtractResult();
@@ -75,8 +73,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TReadBlocksHandler final
-    : public IReadBlocksHandler
+class TReadBlocksHandler final: public IReadBlocksHandler
 {
 private:
     const TBlockRange64 ReadRange;
@@ -143,7 +140,7 @@ public:
             block.assign(blockContent.AsStringBuf());
             SetBitMapValue(UnencryptedBlockMask, index, baseDisk);
         } else {
-            block.clear();  // do not keep zero blocks
+            block.clear();   // do not keep zero blocks
             SetBitMapValue(UnencryptedBlockMask, index, true);
         }
 
@@ -202,7 +199,7 @@ private:
         buffers.Reserve(blocksCount);
 
         for (size_t i = 0; i < blocksCount; ++i) {
-            buffers.Add();  // empty by default
+            buffers.Add();   // empty by default
         }
 
         return iov;
@@ -211,8 +208,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TWriteBlocksLocalHandler final
-    : public IWriteBlocksHandler
+class TWriteBlocksLocalHandler final: public IWriteBlocksHandler
 {
 private:
     const TBlockRange64 WriteRange;
@@ -220,8 +216,8 @@ private:
 
 public:
     TWriteBlocksLocalHandler(
-            const TBlockRange64& writeRange,
-            std::unique_ptr<TEvService::TEvWriteBlocksLocalRequest> request)
+        const TBlockRange64& writeRange,
+        std::unique_ptr<TEvService::TEvWriteBlocksLocalRequest> request)
         : WriteRange(writeRange)
         , GuardedSgList(std::move(request->Record.Sglist))
     {
@@ -252,8 +248,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TReadBlocksLocalHandler final
-    : public IReadBlocksHandler
+class TReadBlocksLocalHandler final: public IReadBlocksHandler
 {
 private:
     const TBlockRange64 ReadRange;
@@ -266,10 +261,10 @@ private:
 
 public:
     TReadBlocksLocalHandler(
-            const TBlockRange64& readRange,
-            TGuardedSgList guardedSgList,
-            ui32 blockSize,
-            bool enableDataIntegrityValidation)
+        const TBlockRange64& readRange,
+        TGuardedSgList guardedSgList,
+        ui32 blockSize,
+        bool enableDataIntegrityValidation)
         : ReadRange(readRange)
         , BlockSize(blockSize)
         , EnableDataIntegrityValidation(enableDataIntegrityValidation)
@@ -325,7 +320,7 @@ public:
                 SetBitMapValue(UnencryptedBlockMask, index, baseDisk);
             } else {
                 auto* data = const_cast<char*>(block.Data());
-                memset(data, 0, BlockSize);  // zero missing blocks
+                memset(data, 0, BlockSize);   // zero missing blocks
                 SetBitMapValue(UnencryptedBlockMask, index, true);
             }
 
@@ -383,8 +378,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TMixedWriteBlocksHandler final
-    : public IWriteBlocksHandler
+class TMixedWriteBlocksHandler final: public IWriteBlocksHandler
 {
     using TWriteHandlerAndRange =
         std::pair<IWriteBlocksHandlerPtr, TBlockRange64>;
@@ -408,10 +402,8 @@ public:
                 Parts.begin(),
                 Parts.end(),
                 endIndex,
-                [] (ui64 blockIndex, const TWriteHandlerAndRange& x) {
-                    return blockIndex < x.second.Start;
-                }
-            );
+                [](ui64 blockIndex, const TWriteHandlerAndRange& x)
+                { return blockIndex < x.second.Start; });
 
             Y_ABORT_UNLESS(it != Parts.begin());
             --it;

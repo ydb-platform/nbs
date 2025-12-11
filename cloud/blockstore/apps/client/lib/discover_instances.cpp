@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -16,8 +17,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDiscoverInstancesCommand final
-    : public TCommand
+class TDiscoverInstancesCommand final: public TCommand
 {
 private:
     ui32 Limit;
@@ -33,18 +33,22 @@ public:
             .StoreResult(&Limit);
 
         Opts.AddLongOption("instance-filter", "fitler instances by port type")
-        .RequiredArgument("{insecure, secure}")
-        .DefaultValue("insecure")
-        .Handler1T<TString>([this] (const auto& s) {
-            if (s == "insecure") {
-                InstanceFilter = EDiscoveryPortFilter::DISCOVERY_INSECURE_PORT;
-            } else if (s == "secure") {
-                InstanceFilter = EDiscoveryPortFilter::DISCOVERY_SECURE_PORT;
-            } else {
-                ythrow yexception()
-                    << "unknown port filter: " << s.Quote();
-            }
-        });
+            .RequiredArgument("{insecure, secure}")
+            .DefaultValue("insecure")
+            .Handler1T<TString>(
+                [this](const auto& s)
+                {
+                    if (s == "insecure") {
+                        InstanceFilter =
+                            EDiscoveryPortFilter::DISCOVERY_INSECURE_PORT;
+                    } else if (s == "secure") {
+                        InstanceFilter =
+                            EDiscoveryPortFilter::DISCOVERY_SECURE_PORT;
+                    } else {
+                        ythrow yexception()
+                            << "unknown port filter: " << s.Quote();
+                    }
+                });
     }
 
 protected:
@@ -81,14 +85,14 @@ protected:
         }
 
         const auto& instances = result.GetInstances();
-        for (const auto& instance : instances) {
+        for (const auto& instance: instances) {
             output << instance.GetHost() << ":" << instance.GetPort() << Endl;
         }
         return true;
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

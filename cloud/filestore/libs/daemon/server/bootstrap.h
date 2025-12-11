@@ -12,8 +12,7 @@ namespace NCloud::NFileStore::NDaemon {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TBootstrapServer final
-    : public TBootstrapCommon
+class TBootstrapServer final: public TBootstrapCommon
 {
 private:
     TConfigInitializerServerPtr Configs;
@@ -23,12 +22,11 @@ private:
     ITaskQueuePtr ThreadPool;
 
 public:
-    TBootstrapServer(std::shared_ptr<NKikimr::TModuleFactories> moduleFactories);
+    TBootstrapServer(
+        std::shared_ptr<NKikimr::TModuleFactories> moduleFactories);
     ~TBootstrapServer();
 
-    TConfigInitializerCommonPtr InitConfigs(
-        int argc,
-        char** argv) override;
+    TConfigInitializerCommonPtr InitConfigs(int argc, char** argv) override;
 
 protected:
     void InitComponents() override;
@@ -44,4 +42,4 @@ private:
     void InitNullService();
 };
 
-}   // namespace NCloud::NFileStore::NServer
+}   // namespace NCloud::NFileStore::NDaemon

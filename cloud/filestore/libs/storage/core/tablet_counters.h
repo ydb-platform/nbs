@@ -59,7 +59,8 @@ std::unique_ptr<NKikimr::TTabletCountersBase> CreateTabletCounters(
     const char* const cumulativeCounterNames[],
     const char* const percentileCounterNames[]);
 
-std::unique_ptr<NKikimr::TTabletCountersWithTxTypes> CreateTabletCountersWithTxTypes(
+std::unique_ptr<NKikimr::TTabletCountersWithTxTypes>
+CreateTabletCountersWithTxTypes(
     const TTabletCountersDesc& simpleCounters,
     const TTabletCountersDesc& cumulativeCounters,
     const TTabletCountersDesc& percentileCounters);

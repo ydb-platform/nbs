@@ -19,7 +19,8 @@ enum class ECounterExpirationPolicy
 class TSolomonValueHolder
 {
 private:
-    ECounterExpirationPolicy ExpirationPolicy = ECounterExpirationPolicy::Permanent;
+    ECounterExpirationPolicy ExpirationPolicy =
+        ECounterExpirationPolicy::Permanent;
     TInstant LastNonZeroValueTs;
 
     TString CounterName;
@@ -31,8 +32,7 @@ public:
     TSolomonValueHolder() = default;
 
     TSolomonValueHolder(ECounterExpirationPolicy policy)
-        : ExpirationPolicy(policy)
-    {};
+        : ExpirationPolicy(policy){};
 
     void Init(
         NMonitoring::TDynamicCountersPtr counters,
@@ -87,8 +87,7 @@ struct TSimpleCounter
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCumulativeCounter
-    : public TSimpleCounter
+struct TCumulativeCounter: public TSimpleCounter
 {
     TCumulativeCounter() = default;
 

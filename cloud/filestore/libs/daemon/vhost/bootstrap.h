@@ -24,13 +24,13 @@ struct TVhostModuleFactories
         ITimerPtr timer,
         ISchedulerPtr scheduler,
         IRequestStatsRegistryPtr requestStats,
-        IProfileLogPtr profileLog)> LoopFactory;
+        IProfileLogPtr profileLog)>
+        LoopFactory;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TBootstrapVhost final
-    : public TBootstrapCommon
+class TBootstrapVhost final: public TBootstrapCommon
 {
 private:
     const TVhostModuleFactoriesPtr VhostModuleFactories;

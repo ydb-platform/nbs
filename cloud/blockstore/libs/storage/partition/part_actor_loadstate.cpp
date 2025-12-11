@@ -81,9 +81,13 @@ bool TPartitionActor::PrepareLoadState(
     std::initializer_list<bool> results = {
         db.ReadMeta(args.Meta),
         db.ReadFreshBlocks(args.FreshBlocks),
-        shouldLoadCompactionMapLazily ? true : db.ReadCompactionMap(args.CompactionMap),
+        shouldLoadCompactionMapLazily
+            ? true
+            : db.ReadCompactionMap(args.CompactionMap),
         db.ReadUsedBlocks(args.UsedBlocks),
-        db.ReadLogicalUsedBlocks(args.LogicalUsedBlocks, args.ReadLogicalUsedBlocks),
+        db.ReadLogicalUsedBlocks(
+            args.LogicalUsedBlocks,
+            args.ReadLogicalUsedBlocks),
         db.ReadCheckpoints(args.Checkpoints, args.CheckpointId2CommitId),
         db.ReadCleanupQueue(args.CleanupQueue),
         db.ReadGarbageBlobs(args.GarbageBlobs),
@@ -94,11 +98,11 @@ bool TPartitionActor::PrepareLoadState(
         results.begin(),
         results.end(),
         true,
-        std::logical_and<>()
-    );
+        std::logical_and<>());
 
     if (ready) {
-        ready &= db.ReadNewBlobs(args.NewBlobs, GetLastCollectCommitId(args.Meta));
+        ready &=
+            db.ReadNewBlobs(args.NewBlobs, GetLastCollectCommitId(args.Meta));
     }
 
     return ready;
@@ -136,7 +140,7 @@ void TPartitionActor::CompleteLoadState(
     const auto& partitionConfig = args.Meta->GetConfig();
 
     // initialize state
-    TBackpressureFeaturesConfig bpConfig {
+    TBackpressureFeaturesConfig bpConfig{
         {
             Config->GetCompactionScoreLimitForBackpressure(),
             Config->GetCompactionScoreThresholdForBackpressure(),
@@ -154,7 +158,7 @@ void TPartitionActor::CompleteLoadState(
         },
     };
 
-    TFreeSpaceConfig fsConfig {
+    TFreeSpaceConfig fsConfig{
         Config->GetChannelFreeSpaceThreshold() / 100.,
         Config->GetChannelMinFreeSpace() / 100.,
     };
@@ -163,8 +167,8 @@ void TPartitionActor::CompleteLoadState(
     ui32 configChannelCount = partitionConfig.ExplicitChannelProfilesSize();
 
     if (tabletChannelCount < configChannelCount) {
-        // either a race or a bug (if this situation occurs again after tablet restart)
-        // example: CLOUDINC-2027
+        // either a race or a bug (if this situation occurs again after tablet
+        // restart) example: CLOUDINC-2027
         ReportInvalidTabletConfig(
             TStringBuilder()
             << LogTitle.GetWithTime()
@@ -183,7 +187,8 @@ void TPartitionActor::CompleteLoadState(
             configChannelCount);
     }
 
-    const ui32 mixedIndexCacheSize = [&] {
+    const ui32 mixedIndexCacheSize = [&]
+    {
         if (!Config->GetMixedIndexCacheV1Enabled() &&
             !Config->IsMixedIndexCacheV1FeatureEnabled(
                 partitionConfig.GetCloudId(),
@@ -203,12 +208,12 @@ void TPartitionActor::CompleteLoadState(
     }();
 
     const auto mediaKind = partitionConfig.GetStorageMediaKind();
-    auto maxBlobsPerUnit = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD ?
-        Config->GetSSDMaxBlobsPerUnit() :
-        Config->GetHDDMaxBlobsPerUnit();
-    auto maxBlobsPerRange = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD ?
-        Config->GetSSDMaxBlobsPerRange() :
-        Config->GetHDDMaxBlobsPerRange();
+    auto maxBlobsPerUnit = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD
+                               ? Config->GetSSDMaxBlobsPerUnit()
+                               : Config->GetHDDMaxBlobsPerUnit();
+    auto maxBlobsPerRange = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD
+                                ? Config->GetSSDMaxBlobsPerRange()
+                                : Config->GetHDDMaxBlobsPerRange();
 
     State = std::make_unique<TPartitionState>(
         *args.Meta,
@@ -261,21 +266,18 @@ void TPartitionActor::CompleteLoadState(
         if (args.ReadLogicalUsedBlocks) {
             State->GetLogicalUsedBlocks() = std::move(args.LogicalUsedBlocks);
             State->AccessStats().SetLogicalUsedBlocksCount(
-                State->GetLogicalUsedBlocks().Count()
-            );
+                State->GetLogicalUsedBlocks().Count());
         } else {
             State->GetLogicalUsedBlocks().Update(State->GetUsedBlocks(), 0);
             State->AccessStats().SetLogicalUsedBlocksCount(
-                State->AccessStats().GetUsedBlocksCount()
-            );
+                State->AccessStats().GetUsedBlocksCount());
 
             SendGetUsedBlocksFromBaseDisk(ctx);
             return;
         }
     } else {
         State->AccessStats().SetLogicalUsedBlocksCount(
-            State->AccessStats().GetUsedBlocksCount()
-        );
+            State->AccessStats().GetUsedBlocksCount());
     }
 
     State->InitUnconfirmedBlobs(std::move(args.UnconfirmedBlobs));
@@ -285,7 +287,8 @@ void TPartitionActor::CompleteLoadState(
 
 void TPartitionActor::FinalizeLoadState(const TActorContext& ctx)
 {
-    auto totalBlocksCount = State->GetMixedBlocksCount() + State->GetMergedBlocksCount();
+    auto totalBlocksCount =
+        State->GetMixedBlocksCount() + State->GetMergedBlocksCount();
     UpdateStorageStat(totalBlocksCount * State->GetBlockSize());
 
     LoadFreshBlobs(ctx);
@@ -311,7 +314,8 @@ void TPartitionActor::HandleGetUsedBlocksResponse(
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::PARTITION,
-            "%s LoadState failed: GetUsedBlocks from base disk failed. error: %s",
+            "%s LoadState failed: GetUsedBlocks from base disk failed. error: "
+            "%s",
             LogTitle.GetWithTime().c_str(),
             FormatError(msg->GetError()).c_str());
         Suicide(ctx);
@@ -325,16 +329,13 @@ void TPartitionActor::HandleGetUsedBlocksResponse(
         LogTitle.GetWithTime().c_str());
 
     for (const auto& block: msg->Record.GetUsedBlocks()) {
-        State->GetLogicalUsedBlocks().Merge(
-            TCompressedBitmap::TSerializedChunk{
-                block.GetChunkIdx(),
-                block.GetData()
-            });
+        State->GetLogicalUsedBlocks().Merge(TCompressedBitmap::TSerializedChunk{
+            block.GetChunkIdx(),
+            block.GetData()});
     }
 
     State->AccessStats().SetLogicalUsedBlocksCount(
-        State->GetLogicalUsedBlocks().Count()
-    );
+        State->GetLogicalUsedBlocks().Count());
 
     ExecuteTx(ctx, CreateTx<TUpdateLogicalUsedBlocks>(0));
 }
@@ -361,13 +362,13 @@ void TPartitionActor::ExecuteUpdateLogicalUsedBlocks(
 
     TPartitionDatabase db(tx.DB);
 
-    args.UpdatedToIdx = Min(
-        args.UpdateFromIdx + Config->GetLogicalUsedBlocksUpdateBlockCount(),
-        State->GetLogicalUsedBlocks().Capacity());
+    args.UpdatedToIdx =
+        Min(args.UpdateFromIdx + Config->GetLogicalUsedBlocksUpdateBlockCount(),
+            State->GetLogicalUsedBlocks().Capacity());
 
     auto serializer = State->GetLogicalUsedBlocks().RangeSerializer(
-        args.UpdateFromIdx, args.UpdatedToIdx
-    );
+        args.UpdateFromIdx,
+        args.UpdatedToIdx);
     TCompressedBitmap::TSerializedChunk sc;
     while (serializer.Next(&sc)) {
         if (!TCompressedBitmap::IsZeroChunk(sc)) {

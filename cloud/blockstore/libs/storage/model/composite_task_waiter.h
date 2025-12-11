@@ -78,4 +78,4 @@ public:
 
 ///////////////////////////////////////////////////////////////////////////////
 
-} // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NBlockStore::NStorage

@@ -13,17 +13,14 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TSortQueryKey = std::tuple<
-    NProto::EDevicePoolKind,
-    TString,
-    ui32,
-    TString>;
+using TSortQueryKey =
+    std::tuple<NProto::EDevicePoolKind, TString, ui32, TString>;
 
 struct TBySortQueryKey
 {
-    auto operator () (const NProto::TDeviceConfig& config) const
+    auto operator()(const NProto::TDeviceConfig& config) const
     {
-        return TSortQueryKey {
+        return TSortQueryKey{
             config.GetPoolKind(),
             config.GetPoolName(),
             config.GetBlockSize(),
@@ -34,16 +31,13 @@ struct TBySortQueryKey
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TAllocationQueryKey = std::tuple<
-    NProto::EDevicePoolKind,
-    TString,
-    ui32>;
+using TAllocationQueryKey = std::tuple<NProto::EDevicePoolKind, TString, ui32>;
 
 struct TByAllocationQueryKey
 {
-    auto operator () (const NProto::TDeviceConfig& config) const
+    auto operator()(const NProto::TDeviceConfig& config) const
     {
-        return TAllocationQueryKey {
+        return TAllocationQueryKey{
             config.GetPoolKind(),
             config.GetPoolName(),
             config.GetBlockSize(),
@@ -60,21 +54,16 @@ auto FindDeviceRange(
         devices.begin(),
         devices.end(),
         std::make_pair(query.PoolKind, poolName),
-        [] (const auto& d) {
-            return std::make_pair(d.GetPoolKind(), d.GetPoolName());
-        });
+        [](const auto& d)
+        { return std::make_pair(d.GetPoolKind(), d.GetPoolName()); });
 
     auto end = UpperBoundBy(
         begin,
         devices.end(),
-        TAllocationQueryKey {
-            query.PoolKind,
-            poolName,
-            query.LogicalBlockSize
-        },
+        TAllocationQueryKey{query.PoolKind, poolName, query.LogicalBlockSize},
         TByAllocationQueryKey());
 
-    return std::pair { begin, end };
+    return std::pair{begin, end};
 }
 
 }   // namespace
@@ -86,10 +75,10 @@ TDeviceList::TDeviceList()
 {}
 
 TDeviceList::TDeviceList(
-        TVector<TDeviceId> dirtyDevices,
-        TVector<NProto::TSuspendedDevice> suspendedDevices,
-        TVector<std::pair<TDeviceId, TDiskId>> allocatedDevices,
-        bool alwaysAllocateLocalDisks)
+    TVector<TDeviceId> dirtyDevices,
+    TVector<NProto::TSuspendedDevice> suspendedDevices,
+    TVector<std::pair<TDeviceId, TDiskId>> allocatedDevices,
+    bool alwaysAllocateLocalDisks)
     : AllocatedDevices(
           std::make_move_iterator(allocatedDevices.begin()),
           std::make_move_iterator(allocatedDevices.end()))
@@ -134,8 +123,8 @@ void TDeviceList::UpdateDevices(
     nodeDevices.TotalSize = 0;
 
     for (const auto& device: agent.GetDevices()) {
-        if (device.GetState() == NProto::DEVICE_STATE_ONLINE
-                && !device.GetRack().empty())
+        if (device.GetState() == NProto::DEVICE_STATE_ONLINE &&
+            !device.GetRack().empty())
         {
             nodeDevices.Rack = device.GetRack();
             break;
@@ -282,26 +271,30 @@ NProto::TDeviceConfig TDeviceList::AllocateDevice(
         const auto& currentRack = nodeDevices->Rack;
         auto& devices = nodeDevices->FreeDevices;
 
-        auto it = FindIf(devices, [&] (const auto& device) {
-            if (device.GetRack() != currentRack) {
-                ReportDiskRegistryPoolDeviceRackMismatch(
-                    {{"disk", diskId},
-                     {"NodeId", nodeId},
-                     {"PoolRack", currentRack},
-                     {"Device", device.GetDeviceUUID()},
-                     {"DeviceRack", device.GetRack()}});
-                return false;
-            }
+        auto it = FindIf(
+            devices,
+            [&](const auto& device)
+            {
+                if (device.GetRack() != currentRack) {
+                    ReportDiskRegistryPoolDeviceRackMismatch(
+                        {{"disk", diskId},
+                         {"NodeId", nodeId},
+                         {"PoolRack", currentRack},
+                         {"Device", device.GetDeviceUUID()},
+                         {"DeviceRack", device.GetRack()}});
+                    return false;
+                }
 
-            const ui64 size = device.GetBlockSize() * device.GetUnadjustedBlockCount();
-            const ui64 blockCount = size / query.LogicalBlockSize;
+                const ui64 size =
+                    device.GetBlockSize() * device.GetUnadjustedBlockCount();
+                const ui64 blockCount = size / query.LogicalBlockSize;
 
-            return query.BlockCount <= blockCount
-                && device.GetPoolName() == query.PoolName;
-        });
+                return query.BlockCount <= blockCount &&
+                       device.GetPoolName() == query.PoolName;
+            });
 
         if (it != devices.end()) {
-            auto it2 = it;  // for Coverity: NBS-2899
+            auto it2 = it;   // for Coverity: NBS-2899
             NProto::TDeviceConfig config = std::move(*it2);
             devices.erase(it);
 
@@ -321,49 +314,57 @@ TResultOrError<NProto::TDeviceConfig> TDeviceList::AllocateSpecificDevice(
 {
     const auto* config = FindDevice(deviceId);
     if (!config) {
-        return MakeError(E_NOT_FOUND, TStringBuilder()
-            << "device not found, " << deviceId.Quote());
+        return MakeError(
+            E_NOT_FOUND,
+            TStringBuilder() << "device not found, " << deviceId.Quote());
     }
 
     if (IsSuspendedDevice(deviceId)) {
-        return MakeError(E_INVALID_STATE, TStringBuilder()
-            << "device is suspended, " << deviceId.Quote());
+        return MakeError(
+            E_INVALID_STATE,
+            TStringBuilder() << "device is suspended, " << deviceId.Quote());
     }
 
     if (IsAllocatedDevice(deviceId)) {
-        return MakeError(E_INVALID_STATE, TStringBuilder()
-            << "device is allocated, " << deviceId.Quote());
+        return MakeError(
+            E_INVALID_STATE,
+            TStringBuilder() << "device is allocated, " << deviceId.Quote());
     }
 
-    if (!query.NodeIds.empty() && !query.NodeIds.contains(config->GetNodeId())) {
-        return MakeError(E_ARGUMENT, TStringBuilder()
-            << "device node id is not allowed, "
-            << deviceId.Quote()
-            << "NodeId: " << config->GetNodeId());
+    if (!query.NodeIds.empty() && !query.NodeIds.contains(config->GetNodeId()))
+    {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "device node id is not allowed, " << deviceId.Quote()
+                << "NodeId: " << config->GetNodeId());
     }
 
     if (query.ForbiddenRacks.contains(config->GetRack())) {
-        return MakeError(E_ARGUMENT, TStringBuilder()
-            << "device rack is forbidden, "
-            << deviceId.Quote()
-            << "Rack: " << config->GetRack());
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "device rack is forbidden, " << deviceId.Quote()
+                             << "Rack: " << config->GetRack());
     }
 
     if (query.PoolName != config->GetPoolName()) {
-        return MakeError(E_ARGUMENT, TStringBuilder()
-            << "device pool name is not allowed, "
-            << deviceId.Quote()
-            << "PoolName: " << config->GetPoolName());
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "device pool name is not allowed, " << deviceId.Quote()
+                << "PoolName: " << config->GetPoolName());
     }
 
-    const ui64 size = config->GetBlockSize() * config->GetUnadjustedBlockCount();
+    const ui64 size =
+        config->GetBlockSize() * config->GetUnadjustedBlockCount();
     const ui64 blockCount = size / query.LogicalBlockSize;
 
     if (query.BlockCount > blockCount) {
-        return MakeError(E_ARGUMENT, TStringBuilder()
-            << "device block count is too small, "
-            << deviceId.Quote()
-            << "BlockCount: " << blockCount);
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "device block count is too small, " << deviceId.Quote()
+                << "BlockCount: " << blockCount);
     }
 
     if (IsDirtyDevice(deviceId)) {
@@ -396,25 +397,24 @@ bool TDeviceList::ValidateAllocationQuery(
 
     const auto freeDeviceItr = FindIf(
         nodeDevices.FreeDevices,
-        [&targetDeviceId] (const NProto::TDeviceConfig& device) {
-            return device.GetDeviceUUID() == targetDeviceId;
-        });
+        [&targetDeviceId](const NProto::TDeviceConfig& device)
+        { return device.GetDeviceUUID() == targetDeviceId; });
 
     if (freeDeviceItr == nodeDevices.FreeDevices.end()) {
         return false;
     }
 
-    const ui64 freeBlockCount =
-        freeDeviceItr->GetBlockSize() *
-        freeDeviceItr->GetUnadjustedBlockCount() /
-        query.LogicalBlockSize;
+    const ui64 freeBlockCount = freeDeviceItr->GetBlockSize() *
+                                freeDeviceItr->GetUnadjustedBlockCount() /
+                                query.LogicalBlockSize;
 
-    return query.BlockCount <= freeBlockCount
-        && freeDeviceItr->GetPoolName() == query.PoolName;
-
+    return query.BlockCount <= freeBlockCount &&
+           freeDeviceItr->GetPoolName() == query.PoolName;
 }
 
-void TDeviceList::MarkDeviceAllocated(const TDiskId& diskId, const TDeviceId& id)
+void TDeviceList::MarkDeviceAllocated(
+    const TDiskId& diskId,
+    const TDeviceId& id)
 {
     RemoveDeviceFromFreeList(id);
     AllocatedDevices.emplace(id, diskId);
@@ -426,7 +426,8 @@ auto TDeviceList::SelectRacks(
 {
     THashMap<TString, TRack> racks;
 
-    auto appendNode = [&] (auto& currentRack, ui32 nodeId) {
+    auto appendNode = [&](auto& currentRack, ui32 nodeId)
+    {
         if (query.ForbiddenRacks.contains(currentRack)) {
             return;
         }
@@ -567,8 +568,8 @@ TVector<TDeviceList::TDeviceRange> TDeviceList::CollectDevices(
         // these groups by size in descending order
         TVector<TDeviceInfo> bySize;
         for (auto it = begin; it != end; ++it) {
-            if (bySize.empty()
-                    || bySize.back().DeviceName != it->GetDeviceName())
+            if (bySize.empty() ||
+                bySize.back().DeviceName != it->GetDeviceName())
             {
                 bySize.emplace_back(TDeviceInfo{
                     .DeviceName = it->GetDeviceName(),
@@ -582,9 +583,9 @@ TVector<TDeviceList::TDeviceRange> TDeviceList::CollectDevices(
             ++current.Range.second;
         }
 
-        SortBy(bySize, [] (const TDeviceInfo& d) {
-            return Max<ui64>() - d.Size;
-        });
+        SortBy(
+            bySize,
+            [](const TDeviceInfo& d) { return Max<ui64>() - d.Size; });
 
         // traversing device groups from the biggest to the smallest
         // the goal is to greedily select as few groups as possible
@@ -597,7 +598,8 @@ TVector<TDeviceList::TDeviceRange> TDeviceList::CollectDevices(
 
                 Y_DEBUG_ABORT_UNLESS(device.GetRack() == nodeDevices->Rack);
 
-                const ui64 size = device.GetBlockSize() * device.GetBlocksCount();
+                const ui64 size =
+                    device.GetBlockSize() * device.GetBlocksCount();
 
                 if (totalSize <= size) {
                     totalSize = 0;
@@ -659,7 +661,8 @@ TVector<NProto::TDeviceConfig> TDeviceList::AllocateDevices(
         for (const auto& device: MakeIteratorRange(it, end)) {
             const auto& uuid = device.GetDeviceUUID();
 
-            Y_DEBUG_ABORT_UNLESS(device.GetState() == NProto::DEVICE_STATE_ONLINE);
+            Y_DEBUG_ABORT_UNLESS(
+                device.GetState() == NProto::DEVICE_STATE_ONLINE);
 
             AllocatedDevices.emplace(uuid, diskId);
             allocated.emplace_back(device);
@@ -672,9 +675,9 @@ TVector<NProto::TDeviceConfig> TDeviceList::AllocateDevices(
     // otherwise some of the ranges can become invalid because there may be
     // multiple ranges from the same node
     for (auto& [nodeId, aranges]: allocatedRanges) {
-        Sort(aranges, [] (const auto& l, const auto& r) {
-            return l.first > r.first;
-        });
+        Sort(
+            aranges,
+            [](const auto& l, const auto& r) { return l.first > r.first; });
 
         auto& nodeDevices = NodeDevices[nodeId];
 
@@ -727,9 +730,9 @@ void TDeviceList::RemoveDeviceFromFreeList(const TDeviceId& id)
     if (nodeId) {
         auto& devices = NodeDevices[nodeId].FreeDevices;
 
-        auto it = FindIf(devices, [&] (const auto& x) {
-            return x.GetDeviceUUID() == id;
-        });
+        auto it = FindIf(
+            devices,
+            [&](const auto& x) { return x.GetDeviceUUID() == id; });
 
         if (it != devices.end()) {
             devices.erase(it);
@@ -752,7 +755,7 @@ TVector<NProto::TDeviceConfig> TDeviceList::GetBrokenDevices() const
 {
     TVector<NProto::TDeviceConfig> devices;
 
-    for (const auto& x: AllDevices){
+    for (const auto& x: AllDevices) {
         if (x.second.GetState() == NProto::DEVICE_STATE_ERROR) {
             devices.push_back(x.second);
         }
@@ -856,9 +859,7 @@ TVector<NProto::TSuspendedDevice> TDeviceList::GetSuspendedDevices() const
 ui64 TDeviceList::GetDeviceByteCount(const TDeviceId& id) const
 {
     const auto* device = FindDevice(id);
-    return device
-        ? device->GetBlocksCount() * device->GetBlockSize()
-        : 0;
+    return device ? device->GetBlocksCount() * device->GetBlockSize() : 0;
 }
 
 void TDeviceList::ForgetDevice(const TString& id)

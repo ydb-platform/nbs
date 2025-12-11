@@ -65,8 +65,7 @@ int TApp::Run(
         return Command->Run(argc - 1, std::next(argv));
     } catch (const TUsageException& e) {
         Cerr << FormatCmdLine(argc, argv)
-            << " failed: " << CurrentExceptionMessage()
-            << Endl;
+             << " failed: " << CurrentExceptionMessage() << Endl;
 
         if (Command) {
             Command->GetOpts().PrintUsage(GetProgramName());
@@ -76,8 +75,7 @@ int TApp::Run(
         return 1;
     } catch (...) {
         Cerr << FormatCmdLine(argc, argv)
-            << " failed: " << CurrentExceptionMessage()
-            << Endl;
+             << " failed: " << CurrentExceptionMessage() << Endl;
         return 1;
     }
 }

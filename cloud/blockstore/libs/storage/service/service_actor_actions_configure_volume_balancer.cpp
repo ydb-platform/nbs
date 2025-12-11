@@ -54,14 +54,13 @@ private:
     void HandleConfigureVolumeBalancerResponse(
         const TEvVolumeBalancer::TEvConfigureVolumeBalancerResponse::TPtr& ev,
         const TActorContext& ctx);
-
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TConfigureVolumeBalancerActionActor::TConfigureVolumeBalancerActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -73,7 +72,8 @@ void TConfigureVolumeBalancerActionActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
-    auto request = std::make_unique<TEvVolumeBalancer::TEvConfigureVolumeBalancerRequest>();
+    auto request = std::make_unique<
+        TEvVolumeBalancer::TEvConfigureVolumeBalancerRequest>();
     request->Record = std::move(Request);
 
     NCloud::Send(ctx, MakeVolumeBalancerServiceId(), std::move(request));
@@ -95,11 +95,11 @@ void TConfigureVolumeBalancerActionActor::ReplyAndDie(
     const NPrivateProto::TConfigureVolumeBalancerResponse& resp,
     NProto::TError error)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(std::move(error));
+    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(
+        std::move(error));
     google::protobuf::util::MessageToJsonString(
         resp,
-        response->Record.MutableOutput()
-    );
+        response->Record.MutableOutput());
 
     LWTRACK(
         ResponseSent_Service,
@@ -116,7 +116,9 @@ void TConfigureVolumeBalancerActionActor::ReplyAndDie(
 STFUNC(TConfigureVolumeBalancerActionActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvVolumeBalancer::TEvConfigureVolumeBalancerResponse, HandleConfigureVolumeBalancerResponse);
+        HFunc(
+            TEvVolumeBalancer::TEvConfigureVolumeBalancerResponse,
+            HandleConfigureVolumeBalancerResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -131,7 +133,8 @@ STFUNC(TConfigureVolumeBalancerActionActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<IActorPtr> TServiceActor::CreateConfigureVolumeBalancerActionActor(
+TResultOrError<IActorPtr>
+TServiceActor::CreateConfigureVolumeBalancerActionActor(
     TRequestInfoPtr requestInfo,
     TString input)
 {

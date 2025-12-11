@@ -25,11 +25,11 @@ struct TRequestInfo
     const TString InstanceId;
 
     TRequestInfo(
-            EBlockStoreRequest request,
-            ui64 requestId,
-            TString diskId,
-            TString clientId = {},
-            TString instanceId = {})
+        EBlockStoreRequest request,
+        ui64 requestId,
+        TString diskId,
+        TString clientId = {},
+        TString instanceId = {})
         : Request(request)
         , RequestId(requestId)
         , DiskId(std::move(diskId))
@@ -43,17 +43,23 @@ IOutputStream& operator<<(IOutputStream& out, const TRequestInfo& info);
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-concept HasBlockSize = requires (T& r)
-{
-    { r.BlockSize } -> std::same_as<ui32&>;
-    { r.BlockSize = ui32() };
+concept HasBlockSize = requires(T& r) {
+    {
+        r.BlockSize
+    } -> std::same_as<ui32&>;
+    {
+        r.BlockSize = ui32()
+    };
 };
 
 template <typename T>
-concept HasProtoBlockSize = requires (T& r)
-{
-    { r.SetBlockSize(ui32()) };
-    { r.GetBlockSize() } -> std::same_as<ui32>;
+concept HasProtoBlockSize = requires(T& r) {
+    {
+        r.SetBlockSize(ui32())
+    };
+    {
+        r.GetBlockSize()
+    } -> std::same_as<ui32>;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -137,10 +143,8 @@ TString GetRequestDetails(const T& request)
         }
 
         return TStringBuilder()
-               << " (offset: " << request.GetStartIndex()
-               << ", size: " << bytes
-               << ", buffers: " << request.GetBlocks().BuffersSize()
-               << ")";
+               << " (offset: " << request.GetStartIndex() << ", size: " << bytes
+               << ", buffers: " << request.GetBlocks().BuffersSize() << ")";
     } else if constexpr (HasGetStartIndex) {
         return TStringBuilder()
                << " (offset: " << request.GetStartIndex()
@@ -201,16 +205,19 @@ consteval bool ShouldBeThrottled();
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace NImpl {
-    template <typename T>
-    struct TRequest {};
+template <typename T>
+struct TRequest
+{
+};
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ...)                                   \
-    template <>                                                                \
-    struct TRequest<NProto::T##name##Request>                                  \
-    {                                                                          \
-        static constexpr EBlockStoreRequest Request = EBlockStoreRequest::name;\
-    };                                                                         \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ...)          \
+    template <>                                       \
+    struct TRequest<NProto::T##name##Request>         \
+    {                                                 \
+        static constexpr EBlockStoreRequest Request = \
+            EBlockStoreRequest::name;                 \
+    };                                                \
+    // BLOCKSTORE_DECLARE_METHOD
 
 BLOCKSTORE_SERVICE(BLOCKSTORE_DECLARE_METHOD)
 
@@ -362,7 +369,9 @@ constexpr bool IsDataChannel(NProto::ERequestSource source)
 template <typename T>
 bool IsThrottlingDisabled(const T& request)
 {
-    return HasProtoFlag(request.GetMountFlags(), NProto::MF_THROTTLING_DISABLED);
+    return HasProtoFlag(
+        request.GetMountFlags(),
+        NProto::MF_THROTTLING_DISABLED);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -372,6 +381,5 @@ consteval bool ShouldBeThrottled()
 {
     return IsReadWriteRequest(GetBlockStoreRequest<T>());
 }
-
 
 }   // namespace NCloud::NBlockStore

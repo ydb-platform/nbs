@@ -44,10 +44,9 @@ struct TExecutorCounters::TActivityCounters
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TExecutorCounters::TExecutor
-    : public TIntrusiveListItem<TExecutor>
+struct TExecutorCounters::TExecutor: public TIntrusiveListItem<TExecutor>
 {
-    std::array<TAtomic, EActivity::MAX> Activities {};
+    std::array<TAtomic, EActivity::MAX> Activities{};
 
     void Started(int index)
     {
@@ -99,7 +98,8 @@ TExecutorCounters::~TExecutorCounters() = default;
 void TExecutorCounters::Register(TDynamicCounters& counters)
 {
     Impl->Activities[WAIT].Register(*counters.GetSubgroup("activity", "Wait"));
-    Impl->Activities[EXECUTE].Register(*counters.GetSubgroup("activity", "Execute"));
+    Impl->Activities[EXECUTE].Register(
+        *counters.GetSubgroup("activity", "Execute"));
 }
 
 void TExecutorCounters::UpdateStats()

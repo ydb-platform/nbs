@@ -4,10 +4,10 @@
 
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
-#include <library/cpp/testing/unittest/registar.h>
-
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
 #include <contrib/ydb/library/actors/testlib/test_runtime.h>
+
+#include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -17,8 +17,7 @@ using namespace NBlobMarkers;
 
 Y_UNIT_TEST_SUITE(TNonreplReadTests)
 {
-    struct TActorSystem
-        : NActors::TTestActorRuntimeBase
+    struct TActorSystem: NActors::TTestActorRuntimeBase
     {
         void Start()
         {
@@ -31,8 +30,7 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
         }
     };
 
-    struct TSetupEnvironment
-        : public TCurrentTestCase
+    struct TSetupEnvironment: public TCurrentTestCase
     {
         TActorSystem ActorSystem;
         NActors::TActorId EdgeActor;
@@ -43,7 +41,9 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
             EdgeActor = ActorSystem.AllocateEdgeActor();
 
             ActorSystem.RegisterService(
-                MakeVolumeProxyServiceId(), EdgeActor, 0);
+                MakeVolumeProxyServiceId(),
+                EdgeActor,
+                0);
         }
     };
 
@@ -80,8 +80,9 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                     .GetChild(GetCycleCount()),
                 /*enableDataIntegrityValidation=*/false});
 
-        auto requestToPartition = ActorSystem.GrabEdgeEvent<
-            TEvService::TReadBlocksLocalMethod::TRequest>();
+        auto requestToPartition =
+            ActorSystem
+                .GrabEdgeEvent<TEvService::TReadBlocksLocalMethod::TRequest>();
         auto const& recordToPartition = requestToPartition.Get()->Record;
         UNIT_ASSERT_EQUAL(recordToPartition.GetStartIndex(), 0);
         UNIT_ASSERT_EQUAL(recordToPartition.GetBlocksCount(), 10);
@@ -92,8 +93,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
 
             for (size_t i = 0; i < 10; ++i) {
                 UNIT_ASSERT_EQUAL(sgListToPartition[i].Size(), blockSize);
-                memset(const_cast<char*>(
-                    sgListToPartition[i].Data()),
+                memset(
+                    const_cast<char*>(sgListToPartition[i].Data()),
                     i,
                     blockSize);
             }
@@ -104,18 +105,21 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
             EdgeActor,
             new TEvService::TReadBlocksLocalMethod::TResponse()));
 
-        auto fullResponse = ActorSystem.GrabEdgeEvent<
-            TEvService::TReadBlocksMethod::TResponse>();
+        auto fullResponse =
+            ActorSystem
+                .GrabEdgeEvent<TEvService::TReadBlocksMethod::TResponse>();
 
         UNIT_ASSERT(!HasError(fullResponse->GetError()));
 
         const auto& fullBuffers = fullResponse->Record.GetBlocks().GetBuffers();
         for (int i = 0; i < fullBuffers.size(); ++i) {
             UNIT_ASSERT_EQUAL(fullBuffers[i].size(), blockSize);
-            UNIT_ASSERT_EQUAL(memcmp(
-                fullBuffers[i].data(),
-                TString(blockSize, i).data(),
-                blockSize), 0);
+            UNIT_ASSERT_EQUAL(
+                memcmp(
+                    fullBuffers[i].data(),
+                    TString(blockSize, i).data(),
+                    blockSize),
+                0);
         }
     }
 
@@ -152,18 +156,18 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                     .GetChild(GetCycleCount()),
                 /*enableDataIntegrityValidation=*/false});
 
-        ActorSystem.GrabEdgeEvent<
-            TEvService::TReadBlocksLocalMethod::TRequest>();
+        ActorSystem
+            .GrabEdgeEvent<TEvService::TReadBlocksLocalMethod::TRequest>();
 
         ActorSystem.Send(new NActors::IEventHandle(
             readActor,
             EdgeActor,
             new TEvService::TReadBlocksLocalMethod::TResponse(
-                MakeError(E_FAIL)
-            )));
+                MakeError(E_FAIL))));
 
-        auto fullResponse = ActorSystem.GrabEdgeEvent<
-            TEvService::TReadBlocksMethod::TResponse>();
+        auto fullResponse =
+            ActorSystem
+                .GrabEdgeEvent<TEvService::TReadBlocksMethod::TResponse>();
 
         UNIT_ASSERT(HasError(fullResponse->GetError()));
     }
@@ -177,10 +181,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
 
         const ui32 blockSize = 512;
         TVector<TString> blocks;
-        auto sglist = ResizeBlocks(
-            blocks,
-            10,
-            TString::TUninitialized(blockSize));
+        auto sglist =
+            ResizeBlocks(blocks, 10, TString::TUninitialized(blockSize));
 
         auto request = NProto::TReadBlocksLocalRequest();
         request.SetStartIndex(0);
@@ -211,8 +213,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
             /*enableDataIntegrityValidation=*/false});
 
         TAutoPtr<NActors::IEventHandle> handle;
-        auto describeRequest = ActorSystem.GrabEdgeEventIf<
-            TEvVolume::TEvDescribeBlocksRequest>(
+        auto describeRequest =
+            ActorSystem.GrabEdgeEventIf<TEvVolume::TEvDescribeBlocksRequest>(
                 handle,
                 [](const auto&) { return true; });
 
@@ -220,7 +222,9 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
         UNIT_ASSERT_EQUAL(describeRecord.GetDiskId(), TString("BaseDiskId"));
         UNIT_ASSERT_EQUAL(describeRecord.GetStartIndex(), 0);
         UNIT_ASSERT_EQUAL(describeRecord.GetBlocksCount(), 10);
-        UNIT_ASSERT_EQUAL(describeRecord.GetCheckpointId(), TString("BaseDiskCheckpointId"));
+        UNIT_ASSERT_EQUAL(
+            describeRecord.GetCheckpointId(),
+            TString("BaseDiskCheckpointId"));
         UNIT_ASSERT_EQUAL(describeRecord.GetBlocksCountToRead(), 10);
         UNIT_ASSERT_EQUAL(describeRecord.GetFlags(), 0);
 
@@ -239,7 +243,7 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
         NKikimrProto::TLogoBlobID protoLogoBlobID1;
         protoLogoBlobID1.SetRawX1(142);
         protoLogoBlobID1.SetRawX2(143);
-        protoLogoBlobID1.SetRawX3(0x8000); //blob size 2028
+        protoLogoBlobID1.SetRawX3(0x8000);   // blob size 2028
 
         NKikimr::TLogoBlobID logoBlobID1(
             protoLogoBlobID1.GetRawX1(),
@@ -259,7 +263,7 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
         NKikimrProto::TLogoBlobID protoLogoBlobID2;
         protoLogoBlobID2.SetRawX1(42);
         protoLogoBlobID2.SetRawX2(43);
-        protoLogoBlobID2.SetRawX3(0x8000); //blob size 2028
+        protoLogoBlobID2.SetRawX3(0x8000);   // blob size 2028
 
         NKikimr::TLogoBlobID logoBlobID2(
             protoLogoBlobID2.GetRawX1(),
@@ -297,7 +301,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
             EdgeActor,
             describeResponse));
 
-        auto fillResponse = [&] (auto readBlob) {
+        auto fillResponse = [&](auto readBlob)
+        {
             UNIT_ASSERT_EQUAL(readBlob->QuerySize, 1);
             UNIT_ASSERT_EQUAL(readBlob->Queries[0].Size, blockSize * 3);
 
@@ -316,16 +321,16 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 getResult->Responses[0].Buffer.Insert(
                     getResult->Responses[0].Buffer.End(),
                     TRope(TString(blockSize, 6)
-                        .append(TString(blockSize, 7))
-                        .append(TString(blockSize, 5))));
+                              .append(TString(blockSize, 7))
+                              .append(TString(blockSize, 5))));
             } else if (readBlob->Queries[0].Id == logoBlobID1) {
                 UNIT_ASSERT_EQUAL(readBlob->Queries[0].Shift, blockSize);
 
                 getResult->Responses[0].Buffer.Insert(
-                getResult->Responses[0].Buffer.End(),
-                TRope(TString(blockSize, 2)
-                    .append(TString(blockSize, 3))
-                    .append(TString(blockSize, 4))));
+                    getResult->Responses[0].Buffer.End(),
+                    TRope(TString(blockSize, 2)
+                              .append(TString(blockSize, 3))
+                              .append(TString(blockSize, 4))));
             }
 
             ActorSystem.Send(new NActors::IEventHandle(
@@ -334,30 +339,33 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 getResult));
         };
 
-        auto readBlob1 = ActorSystem.GrabEdgeEventIf<
-            NKikimr::TEvBlobStorage::TEvGet>(
+        auto readBlob1 =
+            ActorSystem.GrabEdgeEventIf<NKikimr::TEvBlobStorage::TEvGet>(
                 handle,
                 [](const auto&) { return true; });
         fillResponse(readBlob1);
 
-        auto readBlob2 = ActorSystem.GrabEdgeEventIf<
-            NKikimr::TEvBlobStorage::TEvGet>(
+        auto readBlob2 =
+            ActorSystem.GrabEdgeEventIf<NKikimr::TEvBlobStorage::TEvGet>(
                 handle,
                 [](const auto&) { return true; });
         fillResponse(readBlob2);
 
-        auto fullResponse = ActorSystem.GrabEdgeEvent<
-            TEvService::TReadBlocksLocalMethod::TResponse>();
+        auto fullResponse =
+            ActorSystem
+                .GrabEdgeEvent<TEvService::TReadBlocksLocalMethod::TResponse>();
         UNIT_ASSERT(!HasError(fullResponse->GetError()));
 
         auto guard = request.Sglist.Acquire();
         auto& sgList = guard.Get();
         for (size_t i = 0; i < sgList.size(); ++i) {
             UNIT_ASSERT_EQUAL(sgList[i].Size(), blockSize);
-            UNIT_ASSERT_EQUAL(memcmp(
-                sgList[i].Data(),
-                TString(blockSize, i).data(),
-                blockSize), 0);
+            UNIT_ASSERT_EQUAL(
+                memcmp(
+                    sgList[i].Data(),
+                    TString(blockSize, i).data(),
+                    blockSize),
+                0);
         }
     }
 
@@ -367,10 +375,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
 
         const ui32 blockSize = 512;
         TVector<TString> blocks;
-        auto sglist = ResizeBlocks(
-            blocks,
-            10,
-            TString::TUninitialized(blockSize));
+        auto sglist =
+            ResizeBlocks(blocks, 10, TString::TUninitialized(blockSize));
 
         auto request = NProto::TReadBlocksLocalRequest();
         request.SetStartIndex(0);
@@ -401,19 +407,18 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
             /*enableDataIntegrityValidation=*/false});
 
         TAutoPtr<NActors::IEventHandle> handle;
-        ActorSystem.GrabEdgeEventIf<
-            TEvVolume::TEvDescribeBlocksRequest>(
-                handle,
-                [](const auto&) { return true; });
+        ActorSystem.GrabEdgeEventIf<TEvVolume::TEvDescribeBlocksRequest>(
+            handle,
+            [](const auto&) { return true; });
 
         ActorSystem.Send(new NActors::IEventHandle(
             handle->Sender,
             EdgeActor,
-            new TEvVolume::TEvDescribeBlocksResponse(
-                MakeError(E_FAIL))));
+            new TEvVolume::TEvDescribeBlocksResponse(MakeError(E_FAIL))));
 
-        auto fullResponse = ActorSystem.GrabEdgeEvent<
-            TEvService::TReadBlocksLocalMethod::TResponse>();
+        auto fullResponse =
+            ActorSystem
+                .GrabEdgeEvent<TEvService::TReadBlocksLocalMethod::TResponse>();
         UNIT_ASSERT(HasError(fullResponse->GetError()));
     }
 
@@ -426,10 +431,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
 
         const ui32 blockSize = 512;
         TVector<TString> blocks;
-        auto sglist = ResizeBlocks(
-            blocks,
-            1,
-            TString::TUninitialized(blockSize));
+        auto sglist =
+            ResizeBlocks(blocks, 1, TString::TUninitialized(blockSize));
 
         auto request = NProto::TReadBlocksLocalRequest();
         request.SetStartIndex(0);
@@ -460,8 +463,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
             /*enableDataIntegrityValidation=*/false});
 
         TAutoPtr<NActors::IEventHandle> handle;
-        auto describeRequest = ActorSystem.GrabEdgeEventIf<
-            TEvVolume::TEvDescribeBlocksRequest>(
+        auto describeRequest =
+            ActorSystem.GrabEdgeEventIf<TEvVolume::TEvDescribeBlocksRequest>(
                 handle,
                 [](const auto&) { return true; });
 
@@ -469,14 +472,16 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
         UNIT_ASSERT_EQUAL(describeRecord.GetDiskId(), TString("BaseDiskId"));
         UNIT_ASSERT_EQUAL(describeRecord.GetStartIndex(), 0);
         UNIT_ASSERT_EQUAL(describeRecord.GetBlocksCount(), 1);
-        UNIT_ASSERT_EQUAL(describeRecord.GetCheckpointId(), TString("BaseDiskCheckpointId"));
+        UNIT_ASSERT_EQUAL(
+            describeRecord.GetCheckpointId(),
+            TString("BaseDiskCheckpointId"));
         UNIT_ASSERT_EQUAL(describeRecord.GetBlocksCountToRead(), 1);
         UNIT_ASSERT_EQUAL(describeRecord.GetFlags(), 0);
 
         NKikimrProto::TLogoBlobID protoLogoBlobID1;
         protoLogoBlobID1.SetRawX1(142);
         protoLogoBlobID1.SetRawX2(143);
-        protoLogoBlobID1.SetRawX3(0x8000); //blob size 2028
+        protoLogoBlobID1.SetRawX3(0x8000);   // blob size 2028
 
         NKikimr::TLogoBlobID logoBlobID1(
             protoLogoBlobID1.GetRawX1(),
@@ -502,23 +507,21 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
             EdgeActor,
             describeResponse));
 
-        ActorSystem.GrabEdgeEventIf<
-            NKikimr::TEvBlobStorage::TEvGet>(
-                handle,
-                [](const auto&) { return true; });
+        ActorSystem.GrabEdgeEventIf<NKikimr::TEvBlobStorage::TEvGet>(
+            handle,
+            [](const auto&) { return true; });
 
         auto getResult1 = new NKikimr::TEvBlobStorage::TEvGetResult(
             NKikimrProto::EReplyStatus::ERROR,
             1,
             2181038123);
 
-        ActorSystem.Send(new NActors::IEventHandle(
-            handle->Sender,
-            EdgeActor,
-            getResult1));
+        ActorSystem.Send(
+            new NActors::IEventHandle(handle->Sender, EdgeActor, getResult1));
 
-        auto fullResponse = ActorSystem.GrabEdgeEvent<
-            TEvService::TReadBlocksLocalMethod::TResponse>();
+        auto fullResponse =
+            ActorSystem
+                .GrabEdgeEvent<TEvService::TReadBlocksLocalMethod::TResponse>();
         UNIT_ASSERT(HasError(fullResponse->GetError()));
     }
 
@@ -557,8 +560,9 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 /*enableDataIntegrityValidation=*/false});
 
         // read from overlay disk
-        auto requestToPartition = ActorSystem.GrabEdgeEvent<
-            TEvService::TReadBlocksLocalMethod::TRequest>();
+        auto requestToPartition =
+            ActorSystem
+                .GrabEdgeEvent<TEvService::TReadBlocksLocalMethod::TRequest>();
         auto const& recordToPartition = requestToPartition.Get()->Record;
         UNIT_ASSERT_EQUAL(recordToPartition.GetStartIndex(), 0);
         UNIT_ASSERT_EQUAL(recordToPartition.GetBlocksCount(), 3);
@@ -567,10 +571,16 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
             auto guardToPartition = recordToPartition.Sglist.Acquire();
             auto sgListToPartition = guardToPartition.Get();
 
-            memset(const_cast<char*>(sgListToPartition[0].Data()), 0, blockSize);
+            memset(
+                const_cast<char*>(sgListToPartition[0].Data()),
+                0,
+                blockSize);
             UNIT_ASSERT_EQUAL(sgListToPartition[1].Size(), blockSize);
             UNIT_ASSERT_EQUAL(sgListToPartition[1].Data(), 0);
-            memset(const_cast<char*>(sgListToPartition[2].Data()), 2, blockSize);
+            memset(
+                const_cast<char*>(sgListToPartition[2].Data()),
+                2,
+                blockSize);
         }
 
         ActorSystem.Send(new NActors::IEventHandle(
@@ -579,8 +589,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
             new TEvService::TReadBlocksLocalMethod::TResponse()));
 
         TAutoPtr<NActors::IEventHandle> handle;
-        auto describeRequest = ActorSystem.GrabEdgeEventIf<
-            TEvVolume::TEvDescribeBlocksRequest>(
+        auto describeRequest =
+            ActorSystem.GrabEdgeEventIf<TEvVolume::TEvDescribeBlocksRequest>(
                 handle,
                 [](const auto&) { return true; });
 
@@ -588,7 +598,9 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
         UNIT_ASSERT_EQUAL(describeRecord.GetDiskId(), TString("BaseDiskId"));
         UNIT_ASSERT_EQUAL(describeRecord.GetStartIndex(), 1);
         UNIT_ASSERT_EQUAL(describeRecord.GetBlocksCount(), 3);
-        UNIT_ASSERT_EQUAL(describeRecord.GetCheckpointId(), TString("BaseDiskCheckpointId"));
+        UNIT_ASSERT_EQUAL(
+            describeRecord.GetCheckpointId(),
+            TString("BaseDiskCheckpointId"));
         UNIT_ASSERT_EQUAL(describeRecord.GetBlocksCountToRead(), 2);
         UNIT_ASSERT_EQUAL(describeRecord.GetFlags(), 0);
 
@@ -608,18 +620,21 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
             EdgeActor,
             describeResponse));
 
-        auto fullResponse = ActorSystem.GrabEdgeEvent<
-            TEvService::TReadBlocksMethod::TResponse>();
+        auto fullResponse =
+            ActorSystem
+                .GrabEdgeEvent<TEvService::TReadBlocksMethod::TResponse>();
 
         UNIT_ASSERT(!HasError(fullResponse->GetError()));
 
         const auto& fullBuffers = fullResponse->Record.GetBlocks().GetBuffers();
         for (int i = 0; i < fullBuffers.size(); ++i) {
             UNIT_ASSERT_EQUAL(fullBuffers[i].size(), blockSize);
-            UNIT_ASSERT_EQUAL(memcmp(
-                fullBuffers[i].data(),
-                TString(blockSize, i).data(),
-                blockSize), 0);
+            UNIT_ASSERT_EQUAL(
+                memcmp(
+                    fullBuffers[i].data(),
+                    TString(blockSize, i).data(),
+                    blockSize),
+                0);
         }
     }
 }

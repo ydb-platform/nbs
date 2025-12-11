@@ -1,6 +1,5 @@
 #include "disk_registry_actor.h"
 
-
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;

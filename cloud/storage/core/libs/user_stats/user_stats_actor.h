@@ -3,16 +3,15 @@
 #include <cloud/storage/core/libs/api/user_stats.h>
 
 #include <contrib/ydb/core/mon/mon.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+
 #include <library/cpp/monlib/service/pages/mon_page.h>
 
 namespace NCloud::NStorage::NUserStats {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TUserStatsActor final
-    : public NActors::TActorBootstrapped<TUserStatsActor>
+class TUserStatsActor final: public NActors::TActorBootstrapped<TUserStatsActor>
 {
 private:
     TRWMutex Lock;
@@ -52,4 +51,4 @@ private:
         const NActors::TActorContext& ctx);
 };
 
-}   // NCloud::NStorage::NUserStats
+}   // namespace NCloud::NStorage::NUserStats

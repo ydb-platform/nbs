@@ -55,7 +55,6 @@ void FillOperationCompleted(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-
 class TGetChangedBlocksActor final
     : public TActorBootstrapped<TGetChangedBlocksActor>
 {
@@ -135,7 +134,8 @@ void TGetChangedBlocksActor::Bootstrap(const TActorContext& ctx)
     SendGetChangedBlocksFromBaseDisk(ctx);
 }
 
-void TGetChangedBlocksActor::SendGetChangedBlocksFromBaseDisk(const TActorContext& ctx)
+void TGetChangedBlocksActor::SendGetChangedBlocksFromBaseDisk(
+    const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvService::TEvGetChangedBlocksRequest>();
 
@@ -146,10 +146,8 @@ void TGetChangedBlocksActor::SendGetChangedBlocksFromBaseDisk(const TActorContex
 
     auto self = SelfId();
 
-    TAutoPtr<IEventHandle> event = new IEventHandle(
-        MakeVolumeProxyServiceId(),
-        self,
-        request.release());
+    TAutoPtr<IEventHandle> event =
+        new IEventHandle(MakeVolumeProxyServiceId(), self, request.release());
 
     ctx.Send(event);
 }
@@ -167,12 +165,14 @@ void TGetChangedBlocksActor::HandleGetChangedBlocksResponse(
     if (msg->Record.GetMask().size() > ChangedBlocks.size()) {
         HandleError(
             ctx,
-            MakeError(E_FAIL, "Changed blocks mask size from the base disk should not be wider than from the overlay disk")
-        );
+            MakeError(
+                E_FAIL,
+                "Changed blocks mask size from the base disk should not be "
+                "wider than from the overlay disk"));
         return;
     }
 
-    const auto& mask =  msg->Record.GetMask();
+    const auto& mask = msg->Record.GetMask();
 
     for (ui64 i = 0; i < mask.size(); i++) {
         ChangedBlocks[i] |= mask[i];
@@ -187,7 +187,8 @@ void TGetChangedBlocksActor::NotifyCompleted(
     const NProto::TError& error)
 {
     auto request =
-        std::make_unique<TEvPartitionPrivate::TEvGetChangedBlocksCompleted>(error);
+        std::make_unique<TEvPartitionPrivate::TEvGetChangedBlocksCompleted>(
+            error);
 
     FillOperationCompleted(*request, RequestInfo);
 
@@ -199,7 +200,8 @@ bool TGetChangedBlocksActor::HandleError(
     const NProto::TError& error)
 {
     if (FAILED(error.GetCode())) {
-        auto response = std::make_unique<TEvService::TEvGetChangedBlocksResponse>(error);
+        auto response =
+            std::make_unique<TEvService::TEvGetChangedBlocksResponse>(error);
         ReplyAndDie(ctx, std::move(response), error);
         return true;
     }
@@ -234,7 +236,8 @@ void TGetChangedBlocksActor::HandlePoisonPill(
 
     auto error = MakeError(E_REJECTED, "tablet is shutting down");
 
-    auto response = std::make_unique<TEvService::TEvGetChangedBlocksResponse>(error);
+    auto response =
+        std::make_unique<TEvService::TEvGetChangedBlocksResponse>(error);
 
     ReplyAndDie(ctx, std::move(response), error);
 }
@@ -245,7 +248,9 @@ STFUNC(TGetChangedBlocksActor::StateWork)
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvService::TEvGetChangedBlocksResponse, HandleGetChangedBlocksResponse);
+        HFunc(
+            TEvService::TEvGetChangedBlocksResponse,
+            HandleGetChangedBlocksResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -271,9 +276,7 @@ public:
         : Args(args)
     {}
 
-    void Visit(
-        const TBlock& block,
-        TStringBuf blockContent) override
+    void Visit(const TBlock& block, TStringBuf blockContent) override
     {
         Y_UNUSED(blockContent);
         Args.MarkBlock(block, Low);
@@ -301,7 +304,7 @@ public:
 
 void TPartitionActor::HandleGetChangedBlocksCompleted(
     const TEvPartitionPrivate::TEvGetChangedBlocksCompleted::TPtr& ev,
-    const NActors::TActorContext &ctx)
+    const NActors::TActorContext& ctx)
 {
     Actors.erase(ev->Sender);
 
@@ -316,10 +319,8 @@ void TPartitionActor::HandleGetChangedBlocks(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -329,15 +330,15 @@ void TPartitionActor::HandleGetChangedBlocks(
         "GetChangedBlocks",
         requestInfo->CallContext->RequestId);
 
-    auto reply = [=] (
-        const TActorContext& ctx,
-        TRequestInfo& requestInfo,
-        ui32 statusCode,
-        TString reason,
-        ui32 flags = 0)
+    auto reply = [=](const TActorContext& ctx,
+                     TRequestInfo& requestInfo,
+                     ui32 statusCode,
+                     TString reason,
+                     ui32 flags = 0)
     {
-        auto response = std::make_unique<TEvService::TEvGetChangedBlocksResponse>(
-            MakeError(statusCode, std::move(reason), flags));
+        auto response =
+            std::make_unique<TEvService::TEvGetChangedBlocksResponse>(
+                MakeError(statusCode, std::move(reason), flags));
 
         LWTRACK(
             ResponseSent_Partition,
@@ -349,22 +350,22 @@ void TPartitionActor::HandleGetChangedBlocks(
     };
 
     if (msg->Record.GetBlocksCount() == 0) {
-        reply(ctx, *requestInfo, E_ARGUMENT, TStringBuilder()
-            << "empty block range is forbidden for GetChangedBlocks: ["
-            << "index: " << msg->Record.GetStartIndex()
-            << ", count: " << msg->Record.GetBlocksCount()
-            << "]");
+        reply(
+            ctx,
+            *requestInfo,
+            E_ARGUMENT,
+            TStringBuilder()
+                << "empty block range is forbidden for GetChangedBlocks: ["
+                << "index: " << msg->Record.GetStartIndex()
+                << ", count: " << msg->Record.GetBlocksCount() << "]");
         return;
     }
 
     auto readRange = TBlockRange64::WithLength(
         msg->Record.GetStartIndex(),
-        msg->Record.GetBlocksCount()
-    );
-    auto bounds = TBlockRange64::WithLength(
-        0,
-        State->GetConfig().GetBlocksCount()
-    );
+        msg->Record.GetBlocksCount());
+    auto bounds =
+        TBlockRange64::WithLength(0, State->GetConfig().GetBlocksCount());
 
     if (!bounds.Overlaps(readRange)) {
         // NBS-3085: GetChangedBlocks should return empty response for out of
@@ -375,25 +376,26 @@ void TPartitionActor::HandleGetChangedBlocks(
 
     readRange = bounds.Intersect(readRange);
 
-    auto ok = InitChangedBlocksRange(
-        readRange.Start,
-        readRange.Size(),
-        &readRange
-    );
+    auto ok =
+        InitChangedBlocksRange(readRange.Start, readRange.Size(), &readRange);
 
     if (!ok) {
-        reply(ctx, *requestInfo, E_ARGUMENT, TStringBuilder()
-            << "invalid block range ["
-            << "index: " << msg->Record.GetStartIndex()
-            << ", count: " << msg->Record.GetBlocksCount()
-            << "]");
+        reply(
+            ctx,
+            *requestInfo,
+            E_ARGUMENT,
+            TStringBuilder()
+                << "invalid block range ["
+                << "index: " << msg->Record.GetStartIndex()
+                << ", count: " << msg->Record.GetBlocksCount() << "]");
         return;
     }
 
     ui64 lowCommitId = 0;
 
     if (msg->Record.GetLowCheckpointId()) {
-        lowCommitId = State->GetCheckpoints().GetCommitId(msg->Record.GetLowCheckpointId());
+        lowCommitId = State->GetCheckpoints().GetCommitId(
+            msg->Record.GetLowCheckpointId());
         if (!lowCommitId) {
             ui32 flags = 0;
             SetProtoFlag(flags, NProto::EF_SILENT);
@@ -401,10 +403,8 @@ void TPartitionActor::HandleGetChangedBlocks(
                 ctx,
                 *requestInfo,
                 E_NOT_FOUND,
-                TStringBuilder()
-                    << "Checkpoint not found ["
-                    << "index: " << msg->Record.GetLowCheckpointId()
-                    << "]",
+                TStringBuilder() << "Checkpoint not found [" << "index: "
+                                 << msg->Record.GetLowCheckpointId() << "]",
                 flags);
             return;
         }
@@ -413,7 +413,8 @@ void TPartitionActor::HandleGetChangedBlocks(
     ui64 highCommitId = State->GetLastCommitId();
 
     if (msg->Record.GetHighCheckpointId()) {
-        highCommitId = State->GetCheckpoints().GetCommitId(msg->Record.GetHighCheckpointId());
+        highCommitId = State->GetCheckpoints().GetCommitId(
+            msg->Record.GetHighCheckpointId());
         if (!highCommitId) {
             ui32 flags = 0;
             SetProtoFlag(flags, NProto::EF_SILENT);
@@ -421,16 +422,16 @@ void TPartitionActor::HandleGetChangedBlocks(
                 ctx,
                 *requestInfo,
                 E_NOT_FOUND,
-                TStringBuilder()
-                    << "Checkpoint not found ["
-                    << "index: " << msg->Record.GetHighCheckpointId()
-                    << "]",
+                TStringBuilder() << "Checkpoint not found [" << "index: "
+                                 << msg->Record.GetHighCheckpointId() << "]",
                 flags);
             return;
         }
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%lu] Start diffing blocks between @%lu and @%lu (range: %s)",
         TabletID(),
         lowCommitId,
@@ -465,23 +466,15 @@ bool TPartitionActor::PrepareGetChangedBlocks(
     TChangedBlocksVisitor visitor(args);
     State->FindFreshBlocks(args.LowCommitId, args.ReadRange, visitor);
 
-    bool result = State->FindMergedBlocks(
-        db,
-        args.LowCommitId,
-        args.ReadRange,
-        visitor
-    );
+    bool result =
+        State->FindMergedBlocks(db, args.LowCommitId, args.ReadRange, visitor);
 
     visitor.GetHigh();
 
     State->FindFreshBlocks(args.HighCommitId, args.ReadRange, visitor);
 
-    result &= State->FindMergedBlocks(
-        db,
-        args.HighCommitId,
-        args.ReadRange,
-        visitor
-    );
+    result &=
+        State->FindMergedBlocks(db, args.HighCommitId, args.ReadRange, visitor);
 
     if (result) {
         args.Finish();
@@ -508,7 +501,9 @@ void TPartitionActor::CompleteGetChangedBlocks(
     TRequestScope timer(*args.RequestInfo);
     RemoveTransaction(*args.RequestInfo);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%lu] Complete diff blocks between @%lu and @%lu (range: %s)",
         TabletID(),
         args.LowCommitId,

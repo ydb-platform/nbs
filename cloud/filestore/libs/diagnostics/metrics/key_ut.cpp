@@ -66,8 +66,10 @@ Y_UNIT_TEST_SUITE(TKeyTest)
 
     Y_UNIT_TEST(ShouldCorrectlyCheckKeysWithPtrs)
     {
-        const auto a = [](){};
-        const auto b = [](){};
+        const auto a = []() {
+        };
+        const auto b = []() {
+        };
 
         TMetricKey k11(&a, 1), k12(&a, 1), k13(&a, 2);
         TMetricKey k21(&b, 1), k22(&b, 1), k23(&b, 2);

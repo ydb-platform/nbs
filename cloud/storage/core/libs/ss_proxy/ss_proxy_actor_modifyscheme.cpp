@@ -1,7 +1,6 @@
 #include "ss_proxy_actor.h"
 
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NStorage {
@@ -37,8 +36,7 @@ NProto::TError GetErrorFromPreconditionFailed(const NProto::TError& error)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TModifySchemeActor final
-    : public TActorBootstrapped<TModifySchemeActor>
+class TModifySchemeActor final: public TActorBootstrapped<TModifySchemeActor>
 {
 private:
     const int LogComponent;
@@ -79,10 +77,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TModifySchemeActor::TModifySchemeActor(
-        int logComponent,
-        TSSProxyActor::TRequestInfo requestInfo,
-        const TActorId& owner,
-        NKikimrSchemeOp::TModifyScheme modifyScheme)
+    int logComponent,
+    TSSProxyActor::TRequestInfo requestInfo,
+    const TActorId& owner,
+    NKikimrSchemeOp::TModifyScheme modifyScheme)
     : LogComponent(logComponent)
     , RequestInfo(std::move(requestInfo))
     , Owner(owner)
@@ -109,24 +107,34 @@ void TModifySchemeActor::HandleStatus(
 
     TxId = record.GetTxId();
     SchemeShardTabletId = record.GetSchemeShardTabletId();
-    SchemeShardStatus = (NKikimrScheme::EStatus) record.GetSchemeShardStatus();
+    SchemeShardStatus = (NKikimrScheme::EStatus)record.GetSchemeShardStatus();
     SchemeShardReason = record.GetSchemeShardReason();
 
-    auto status = (TEvTxUserProxy::TEvProposeTransactionStatus::EStatus) record.GetStatus();
+    auto status = (TEvTxUserProxy::TEvProposeTransactionStatus::EStatus)
+                      record.GetStatus();
     switch (status) {
         case TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ExecComplete:
-            LOG_DEBUG(ctx, LogComponent,
+            LOG_DEBUG(
+                ctx,
+                LogComponent,
                 "Request %s with TxId# %lu completed immediately",
-                NKikimrSchemeOp::EOperationType_Name(ModifyScheme.GetOperationType()).c_str(),
+                NKikimrSchemeOp::EOperationType_Name(
+                    ModifyScheme.GetOperationType())
+                    .c_str(),
                 TxId);
 
             ReplyAndDie(ctx);
             break;
 
-        case TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ExecInProgress: {
-            LOG_DEBUG(ctx, LogComponent,
+        case TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::
+            ExecInProgress: {
+            LOG_DEBUG(
+                ctx,
+                LogComponent,
                 "Request %s with TxId# %lu in progress, waiting for completion",
-                NKikimrSchemeOp::EOperationType_Name(ModifyScheme.GetOperationType()).c_str(),
+                NKikimrSchemeOp::EOperationType_Name(
+                    ModifyScheme.GetOperationType())
+                    .c_str(),
                 TxId);
 
             auto request = std::make_unique<TEvSSProxy::TEvWaitSchemeTxRequest>(
@@ -138,22 +146,34 @@ void TModifySchemeActor::HandleStatus(
         }
 
         case TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ExecError:
-            LOG_DEBUG(ctx, LogComponent,
+            LOG_DEBUG(
+                ctx,
+                LogComponent,
                 "Request %s with TxId# %lu failed with status %s",
-                NKikimrSchemeOp::EOperationType_Name(ModifyScheme.GetOperationType()).c_str(),
+                NKikimrSchemeOp::EOperationType_Name(
+                    ModifyScheme.GetOperationType())
+                    .c_str(),
                 TxId,
                 NKikimrScheme::EStatus_Name(SchemeShardStatus).c_str());
 
-            if (SchemeShardStatus == NKikimrScheme::StatusMultipleModifications &&
-                (record.GetPathCreateTxId() != 0 || record.GetPathDropTxId() != 0))
+            if (SchemeShardStatus ==
+                    NKikimrScheme::StatusMultipleModifications &&
+                (record.GetPathCreateTxId() != 0 ||
+                 record.GetPathDropTxId() != 0))
             {
-                ui64 txId = record.GetPathCreateTxId() != 0 ? record.GetPathCreateTxId() : record.GetPathDropTxId();
-                LOG_DEBUG(ctx, LogComponent,
-                    "Waiting for a different TxId# %lu", txId);
-
-                auto request = std::make_unique<TEvSSProxy::TEvWaitSchemeTxRequest>(
-                    SchemeShardTabletId,
+                ui64 txId = record.GetPathCreateTxId() != 0
+                                ? record.GetPathCreateTxId()
+                                : record.GetPathDropTxId();
+                LOG_DEBUG(
+                    ctx,
+                    LogComponent,
+                    "Waiting for a different TxId# %lu",
                     txId);
+
+                auto request =
+                    std::make_unique<TEvSSProxy::TEvWaitSchemeTxRequest>(
+                        SchemeShardTabletId,
+                        txId);
 
                 NCloud::Send(ctx, Owner, std::move(request));
                 break;
@@ -164,44 +184,60 @@ void TModifySchemeActor::HandleStatus(
                 MakeError(
                     MAKE_SCHEMESHARD_ERROR(SchemeShardStatus),
                     (TStringBuilder()
-                        << NKikimrSchemeOp::EOperationType_Name(ModifyScheme.GetOperationType()).c_str()
-                        << " failed with reason: "
-                        << (SchemeShardReason.empty() ?
-                            NKikimrScheme::EStatus_Name(SchemeShardStatus).c_str()
-                            :SchemeShardReason))));
+                     << NKikimrSchemeOp::EOperationType_Name(
+                            ModifyScheme.GetOperationType())
+                            .c_str()
+                     << " failed with reason: "
+                     << (SchemeShardReason.empty()
+                             ? NKikimrScheme::EStatus_Name(SchemeShardStatus)
+                                   .c_str()
+                             : SchemeShardReason))));
             break;
 
         case TEvTxUserProxy::TEvProposeTransactionStatus::EStatus::ResolveError:
             if (SchemeShardStatus == NKikimrScheme::StatusPathDoesNotExist) {
-                LOG_DEBUG(ctx, LogComponent,
+                LOG_DEBUG(
+                    ctx,
+                    LogComponent,
                     "Request %s failed to resolve parent path",
-                    NKikimrSchemeOp::EOperationType_Name(ModifyScheme.GetOperationType()).c_str());
+                    NKikimrSchemeOp::EOperationType_Name(
+                        ModifyScheme.GetOperationType())
+                        .c_str());
 
                 ReplyAndDie(
                     ctx,
                     MakeError(
                         MAKE_SCHEMESHARD_ERROR(SchemeShardStatus),
                         (TStringBuilder()
-                            << NKikimrSchemeOp::EOperationType_Name(ModifyScheme.GetOperationType()).c_str()
-                            << " failed with reason: "
-                            << (SchemeShardReason.empty() ?
-                                NKikimrScheme::EStatus_Name(SchemeShardStatus).c_str()
-                                                          :SchemeShardReason))));
+                         << NKikimrSchemeOp::EOperationType_Name(
+                                ModifyScheme.GetOperationType())
+                                .c_str()
+                         << " failed with reason: "
+                         << (SchemeShardReason.empty()
+                                 ? NKikimrScheme::EStatus_Name(
+                                       SchemeShardStatus)
+                                       .c_str()
+                                 : SchemeShardReason))));
                 break;
             }
 
             /* fall through */
 
         default:
-            LOG_DEBUG(ctx, LogComponent,
+            LOG_DEBUG(
+                ctx,
+                LogComponent,
                 "Request %s to tx_proxy failed with code %u",
-                NKikimrSchemeOp::EOperationType_Name(ModifyScheme.GetOperationType()).c_str(),
+                NKikimrSchemeOp::EOperationType_Name(
+                    ModifyScheme.GetOperationType())
+                    .c_str(),
                 status);
 
             ReplyAndDie(
                 ctx,
-                MakeError(MAKE_TXPROXY_ERROR(status), TStringBuilder()
-                    << "TxProxy failed: " << status));
+                MakeError(
+                    MAKE_TXPROXY_ERROR(status),
+                    TStringBuilder() << "TxProxy failed: " << status));
             break;
     }
 }
@@ -212,7 +248,9 @@ void TModifySchemeActor::HandleTxDone(
 {
     const auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, LogComponent,
+    LOG_DEBUG(
+        ctx,
+        LogComponent,
         "TModifySchemeActor received TEvWaitSchemeTxResponse");
 
     ReplyAndDie(ctx, msg->GetError());

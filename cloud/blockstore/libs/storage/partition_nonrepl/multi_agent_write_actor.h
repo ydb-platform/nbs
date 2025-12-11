@@ -117,14 +117,14 @@ private:
 
 template <typename TMethod>
 TMultiAgentWriteActor<TMethod>::TMultiAgentWriteActor(
-        TRequestInfoPtr requestInfo,
-        TVector<NActors::TActorId> replicas,
-        typename TMethod::TRequest::ProtoRecordType request,
-        TBlockRange64 range,
-        TString diskId,
-        NActors::TActorId parentActorId,
-        ui64 nonreplicatedRequestCounter,
-        size_t roundRobinSeed)
+    TRequestInfoPtr requestInfo,
+    TVector<NActors::TActorId> replicas,
+    typename TMethod::TRequest::ProtoRecordType request,
+    TBlockRange64 range,
+    TString diskId,
+    NActors::TActorId parentActorId,
+    ui64 nonreplicatedRequestCounter,
+    size_t roundRobinSeed)
     : RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
     , Range(range)

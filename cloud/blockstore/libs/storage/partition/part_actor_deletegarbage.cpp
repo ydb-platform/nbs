@@ -19,10 +19,8 @@ void TPartitionActor::HandleDeleteGarbage(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -114,7 +112,8 @@ void TPartitionActor::CompleteDeleteGarbage(
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
     RemoveTransaction(*args.RequestInfo);
 
-    auto time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
+    auto time =
+        CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
     PartCounters->RequestCounters.DeleteGarbage.AddRequest(time);
 }
 

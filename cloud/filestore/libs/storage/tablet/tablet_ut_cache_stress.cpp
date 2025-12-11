@@ -2,6 +2,7 @@
 #include <cloud/filestore/libs/storage/tablet/tablet_state_iface.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -72,7 +73,8 @@ public:
 
         const auto sanitizerType = GetEnv("SANITIZER_TYPE");
         STORAGE_INFO("Sanitizer: %s", sanitizerType.c_str());
-        const THashSet<TString> slowSanitizers({"thread", "undefined", "address"});
+        const THashSet<TString> slowSanitizers(
+            {"thread", "undefined", "address"});
         const ui32 d = slowSanitizers.contains(sanitizerType) ? 20 : 1;
 
         const size_t numRequests = 5000 / d;

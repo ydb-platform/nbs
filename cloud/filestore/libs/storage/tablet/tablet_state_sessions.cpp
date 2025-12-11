@@ -1,14 +1,14 @@
 #include "tablet_state_impl.h"
 
 #include <cloud/filestore/libs/storage/model/utils.h>
-
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/log.h>
-#include <google/protobuf/messagext.h>
 
 #include <util/random/random.h>
+
+#include <google/protobuf/messagext.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -66,7 +66,9 @@ void TIndexTabletState::LoadSessions(
     const NProto::TSessionOptions& sessionOptions)
 {
     for (const auto& proto: sessions) {
-        LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
+        LOG_INFO(
+            *TlsActivationContext,
+            TFileStoreComponents::TABLET,
             "%s restoring session c: %s, s: %s n: %lu m: %lu l: %lu",
             LogTag.c_str(),
             proto.GetClientId().c_str(),
@@ -84,9 +86,10 @@ void TIndexTabletState::LoadSessions(
         auto* session = FindSession(proto.GetSessionId());
         TABLET_VERIFY_C(session, "no session for " << proto.ShortDebugString());
 
-
         auto* handle = CreateHandle(session, proto);
-        TABLET_VERIFY_C(handle, "failed to create handle " << proto.ShortDebugString());
+        TABLET_VERIFY_C(
+            handle,
+            "failed to create handle " << proto.ShortDebugString());
     }
 
     for (const auto& proto: locks) {
@@ -96,9 +99,9 @@ void TIndexTabletState::LoadSessions(
         auto result = CreateLock(session, proto);
         TABLET_VERIFY_C(
             result.Succeeded(),
-            "failed to acquire lock " << proto.ShortDebugString()
-                                      << "with error: "
-                                      << result.Error.GetMessage());
+            "failed to acquire lock "
+                << proto.ShortDebugString()
+                << "with error: " << result.Error.GetMessage());
         TABLET_VERIFY_C(
             result.RemovedLockIds().empty(),
             "non empty removed locks " << proto.ShortDebugString());
@@ -108,8 +111,10 @@ void TIndexTabletState::LoadSessions(
     for (const auto& entry: cacheEntries) {
         if (!session || session->GetSessionId() != entry.GetSessionId()) {
             session = FindSession(entry.GetSessionId());
-            TABLET_VERIFY_C(session, "no session for dup cache entry "
-                << entry.ShortDebugString().c_str());
+            TABLET_VERIFY_C(
+                session,
+                "no session for dup cache entry "
+                    << entry.ShortDebugString().c_str());
         }
 
         session->LoadDupCacheEntry(entry);
@@ -133,7 +138,9 @@ TSession* TIndexTabletState::CreateSession(
     const TActorId& owner,
     const NProto::TSessionOptions& sessionOptions)
 {
-    LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
+    LOG_INFO(
+        *TlsActivationContext,
+        TFileStoreComponents::TABLET,
         "%s creating session c: %s, s: %s",
         LogTag.c_str(),
         clientId.c_str(),
@@ -196,7 +203,9 @@ TSession* TIndexTabletState::CreateSession(
     Impl->SessionByOwner.emplace(owner, session.get());
     Impl->SessionByClient.emplace(session->GetClientId(), session.get());
 
-    LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
+    LOG_INFO(
+        *TlsActivationContext,
+        TFileStoreComponents::TABLET,
         "%s created session c: %s, s: %s, owner: %s",
         LogTag.c_str(),
         session->GetClientId().c_str(),
@@ -212,12 +221,13 @@ NActors::TActorId TIndexTabletState::RecoverSession(
     bool readOnly,
     const TActorId& owner)
 {
-    auto oldOwner =
-        session->UpdateSubSession(sessionSeqNo, readOnly, owner);
+    auto oldOwner = session->UpdateSubSession(sessionSeqNo, readOnly, owner);
     if (oldOwner) {
         Impl->SessionByOwner.erase(oldOwner);
 
-        LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
+        LOG_INFO(
+            *TlsActivationContext,
+            TFileStoreComponents::TABLET,
             "%s removed old owner for session c: %s, s: %s, owner: %s",
             LogTag.c_str(),
             session->GetClientId().c_str(),
@@ -233,7 +243,9 @@ NActors::TActorId TIndexTabletState::RecoverSession(
 
         Impl->SessionByOwner.emplace(owner, session);
 
-        LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
+        LOG_INFO(
+            *TlsActivationContext,
+            TFileStoreComponents::TABLET,
             "%s added new owner for session c: %s, s: %s, owner: %s",
             LogTag.c_str(),
             session->GetClientId().c_str(),
@@ -256,7 +268,8 @@ TSession* TIndexTabletState::FindSession(const TString& sessionId) const
     return nullptr;
 }
 
-TSession* TIndexTabletState::FindSessionByClientId(const TString& clientId) const
+TSession* TIndexTabletState::FindSessionByClientId(
+    const TString& clientId) const
 {
     auto it = Impl->SessionByClient.find(clientId);
     if (it != Impl->SessionByClient.end()) {
@@ -272,9 +285,7 @@ TSession* TIndexTabletState::FindSession(
     ui64 seqNo) const
 {
     auto* session = FindSession(sessionId);
-    if (session &&
-        session->IsValid() &&
-        session->GetClientId() == clientId &&
+    if (session && session->IsValid() && session->GetClientId() == clientId &&
         session->HasSeqNo(seqNo))
     {
         return session;
@@ -287,12 +298,14 @@ void TIndexTabletState::OrphanSession(const TActorId& owner, TInstant deadline)
 {
     auto it = Impl->SessionByOwner.find(owner);
     if (it == Impl->SessionByOwner.end()) {
-        return; // not a session pipe
+        return;   // not a session pipe
     }
 
     auto* session = it->second;
 
-    LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
+    LOG_INFO(
+        *TlsActivationContext,
+        TFileStoreComponents::TABLET,
         "%s orphaning session c: %s, s: %s, owner: %s",
         LogTag.c_str(),
         session->GetClientId().c_str(),
@@ -307,7 +320,9 @@ void TIndexTabletState::OrphanSession(const TActorId& owner, TInstant deadline)
 
         Impl->SessionByOwner.erase(it);
 
-        LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
+        LOG_INFO(
+            *TlsActivationContext,
+            TFileStoreComponents::TABLET,
             "%s removed last owner for session c: %s, s: %s, owner: %s",
             LogTag.c_str(),
             session->GetClientId().c_str(),
@@ -321,7 +336,9 @@ void TIndexTabletState::ResetSession(
     TSession* session,
     const TMaybe<TString>& state)
 {
-    LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
+    LOG_INFO(
+        *TlsActivationContext,
+        TFileStoreComponents::TABLET,
         "%s resetting session c: %s, s: %s",
         LogTag.c_str(),
         session->GetClientId().c_str(),
@@ -382,7 +399,9 @@ void TIndexTabletState::RemoveSession(
 
 void TIndexTabletState::RemoveSession(TSession* session)
 {
-    LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
+    LOG_INFO(
+        *TlsActivationContext,
+        TFileStoreComponents::TABLET,
         "%s removing session c: %s, s: %s",
         LogTag.c_str(),
         session->GetClientId().c_str(),
@@ -433,7 +452,8 @@ auto TIndexTabletState::DescribeSessions() const
     -> TVector<NProtoPrivate::TTabletSessionInfo>
 {
     TVector<NProtoPrivate::TTabletSessionInfo> sessionInfos;
-    auto addSessionInfos = [&] (const TSessionList& sessions, bool isOrphan) {
+    auto addSessionInfos = [&](const TSessionList& sessions, bool isOrphan)
+    {
         for (const auto& session: sessions) {
             NProtoPrivate::TTabletSessionInfo sessionInfo;
             sessionInfo.SetSessionId(session.GetSessionId());
@@ -718,9 +738,7 @@ void TIndexTabletState::DestroyHandle(
     TIndexTabletDatabase& db,
     TSessionHandle* handle)
 {
-    db.DeleteSessionHandle(
-        handle->GetSessionId(),
-        handle->GetHandle());
+    db.DeleteSessionHandle(handle->GetSessionId(), handle->GetHandle());
 
     DecrementUsedHandlesCount(db);
 
@@ -787,8 +805,13 @@ void TIndexTabletState::RemoveLock(TSessionLock* lock)
     Impl->LockById.erase(lock->GetLockId());
 
     auto [it, end] = Impl->LocksByHandle.equal_range(lock->GetHandle());
-    it = std::find(it, end, std::pair<const ui64, TSessionLock*>(lock->GetHandle(), lock));
-    TABLET_VERIFY_C(it != end, "failed to find lock by handle: " << lock->ShortDebugString());
+    it = std::find(
+        it,
+        end,
+        std::pair<const ui64, TSessionLock*>(lock->GetHandle(), lock));
+    TABLET_VERIFY_C(
+        it != end,
+        "failed to find lock by handle: " << lock->ShortDebugString());
 
     Impl->LocksByHandle.erase(it);
 }
@@ -888,9 +911,7 @@ TRangeLockOperationResult TIndexTabletState::TestLock(
     return Impl->RangeLocks.Test(session->GetSessionId(), range);
 }
 
-void TIndexTabletState::ReleaseLocks(
-    TIndexTabletDatabase& db,
-    ui64 handle)
+void TIndexTabletState::ReleaseLocks(TIndexTabletDatabase& db, ui64 handle)
 {
     TSmallVec<TSessionLock*> locks;
     auto [it, end] = Impl->LocksByHandle.equal_range(handle);
@@ -898,56 +919,56 @@ void TIndexTabletState::ReleaseLocks(
         locks.push_back(it->second);
     }
 
-    for (const auto *lock: locks) {
+    for (const auto* lock: locks) {
         auto range = MakeLockRange(*lock, lock->GetNodeId());
         ReleaseLock(db, lock->Session, range);
     }
 }
 
-#define FILESTORE_IMPLEMENT_DUPCACHE(name, ...)                                \
-void TIndexTabletState::AddDupCacheEntry(                                      \
-    TIndexTabletDatabase& db,                                                  \
-    TSession* session,                                                         \
-    ui64 requestId,                                                            \
-    const NProto::T##name##Response& response,                                 \
-    ui32 maxEntries)                                                           \
-{                                                                              \
-    if (!requestId || !maxEntries) {                                           \
-        return;                                                                \
-    }                                                                          \
-                                                                               \
-    NProto::TDupCacheEntry entry;                                              \
-    entry.SetSessionId(session->GetSessionId());                               \
-    entry.SetEntryId(session->GenerateDupCacheEntryId());                      \
-    entry.SetRequestId(requestId);                                             \
-    *entry.Mutable##name() = response;                                         \
-                                                                               \
-    db.WriteSessionDupCacheEntry(entry);                                       \
-    session->AddDupCacheEntry(std::move(entry), false);                        \
-                                                                               \
-    while (auto entryId = session->PopDupCacheEntry(maxEntries)) {             \
-        db.DeleteSessionDupCacheEntry(session->GetSessionId(), entryId);       \
-    }                                                                          \
-}                                                                              \
-                                                                               \
-bool TIndexTabletState::GetDupCacheEntry(                                      \
-    const TDupCacheEntry* entry,                                               \
-    NProto::T##name##Response& response)                                       \
-{                                                                              \
-    if (entry->Committed && entry->Has##name()) {                              \
-        response = entry->Get##name();                                         \
-    } else if (!entry->Committed) {                                            \
-        *response.MutableError() = ErrorDuplicate();                           \
-    } else if (!entry->Has##name()) {                                          \
-        ReportInvalidDupCacheEntry(TStringBuilder()                            \
-            << "invalid request dup cache type: "                              \
-            << entry->ShortUtf8DebugString().Quote());                         \
-        return false;                                                          \
-    }                                                                          \
-                                                                               \
-    return true;                                                               \
-}                                                                              \
-// FILESTORE_IMPLEMENT_DUPCACHE
+#define FILESTORE_IMPLEMENT_DUPCACHE(name, ...)                              \
+    void TIndexTabletState::AddDupCacheEntry(                                \
+        TIndexTabletDatabase& db,                                            \
+        TSession* session,                                                   \
+        ui64 requestId,                                                      \
+        const NProto::T##name##Response& response,                           \
+        ui32 maxEntries)                                                     \
+    {                                                                        \
+        if (!requestId || !maxEntries) {                                     \
+            return;                                                          \
+        }                                                                    \
+                                                                             \
+        NProto::TDupCacheEntry entry;                                        \
+        entry.SetSessionId(session->GetSessionId());                         \
+        entry.SetEntryId(session->GenerateDupCacheEntryId());                \
+        entry.SetRequestId(requestId);                                       \
+        *entry.Mutable##name() = response;                                   \
+                                                                             \
+        db.WriteSessionDupCacheEntry(entry);                                 \
+        session->AddDupCacheEntry(std::move(entry), false);                  \
+                                                                             \
+        while (auto entryId = session->PopDupCacheEntry(maxEntries)) {       \
+            db.DeleteSessionDupCacheEntry(session->GetSessionId(), entryId); \
+        }                                                                    \
+    }                                                                        \
+                                                                             \
+    bool TIndexTabletState::GetDupCacheEntry(                                \
+        const TDupCacheEntry* entry,                                         \
+        NProto::T##name##Response& response)                                 \
+    {                                                                        \
+        if (entry->Committed && entry->Has##name()) {                        \
+            response = entry->Get##name();                                   \
+        } else if (!entry->Committed) {                                      \
+            *response.MutableError() = ErrorDuplicate();                     \
+        } else if (!entry->Has##name()) {                                    \
+            ReportInvalidDupCacheEntry(                                      \
+                TStringBuilder() << "invalid request dup cache type: "       \
+                                 << entry->ShortUtf8DebugString().Quote());  \
+            return false;                                                    \
+        }                                                                    \
+                                                                             \
+        return true;                                                         \
+    }                                                                        \
+    // FILESTORE_IMPLEMENT_DUPCACHE
 
 FILESTORE_DUPCACHE_REQUESTS(FILESTORE_IMPLEMENT_DUPCACHE)
 

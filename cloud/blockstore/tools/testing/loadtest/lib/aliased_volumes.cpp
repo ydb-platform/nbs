@@ -5,6 +5,7 @@
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/algorithm.h>
@@ -17,9 +18,7 @@ namespace NCloud::NBlockStore::NLoadTest {
 void TAliasedVolumes::RegisterAlias(TString volumeName, TString alias)
 {
     with_lock (AliasedVolumesLock) {
-        AliasedVolumes.push_back({
-            std::move(volumeName), std::move(alias)
-        });
+        AliasedVolumes.push_back({std::move(volumeName), std::move(alias)});
     }
 }
 
@@ -29,12 +28,9 @@ TString TAliasedVolumes::ResolveAlias(TString volumeName) const
         with_lock (AliasedVolumesLock) {
             auto iter = FindIf(
                 AliasedVolumes,
-                [volumeName] (const auto& v) {
-                    return volumeName == v.Alias;
-                });
+                [volumeName](const auto& v) { return volumeName == v.Alias; });
             if (iter == AliasedVolumes.end()) {
-                throw yexception()
-                    << "Unknown volume alias: " << volumeName;
+                throw yexception() << "Unknown volume alias: " << volumeName;
             }
 
             volumeName = iter->Name;
@@ -47,16 +43,20 @@ TString TAliasedVolumes::ResolveAlias(TString volumeName) const
 bool TAliasedVolumes::IsAliased(const TString& diskId) const
 {
     with_lock (AliasedVolumesLock) {
-        return FindIf(AliasedVolumes, [diskId] (const auto& v) {
-            return diskId == v.Name;
-        }) != AliasedVolumes.end();
+        return FindIf(
+                   AliasedVolumes,
+                   [diskId](const auto& v)
+                   { return diskId == v.Name; }) != AliasedVolumes.end();
     }
 }
 
 void TAliasedVolumes::DestroyAliasedVolumesUnsafe(IClientFactory& clientFactory)
 {
-    ForEach(AliasedVolumes.rbegin(), AliasedVolumes.rend(),
-        [this, &clientFactory] (const auto& volume) {
+    ForEach(
+        AliasedVolumes.rbegin(),
+        AliasedVolumes.rend(),
+        [this, &clientFactory](const auto& volume)
+        {
             auto request = std::make_shared<NProto::TDestroyVolumeRequest>();
             request->SetDiskId(volume.Name);
 
@@ -74,8 +74,7 @@ void TAliasedVolumes::DestroyAliasedVolumesUnsafe(IClientFactory& clientFactory)
                 {});
 
             client->Stop();
-        }
-    );
+        });
 }
 
 }   // namespace NCloud::NBlockStore::NLoadTest

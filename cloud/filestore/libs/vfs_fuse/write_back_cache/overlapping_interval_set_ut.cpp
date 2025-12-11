@@ -57,7 +57,8 @@ Y_UNIT_TEST_SUITE(TOverlappedIntervalTest)
     {
         TOverlappingIntervalSet set;
 
-        auto check = [&](bool expected) {
+        auto check = [&](bool expected)
+        {
             UNIT_ASSERT(!set.HasIntersection(0, 1));
             UNIT_ASSERT(!set.HasIntersection(0, 2));
 
@@ -180,9 +181,12 @@ Y_UNIT_TEST_SUITE(TOverlappedIntervalTest)
                 sum += expectedData[end - 1];
                 auto actual = set.HasIntersection(begin, end);
 
-                UNIT_ASSERT_C((sum != 0) == actual,
-                    "Invalid HasIntersection(" << begin << ", " << end << ")"
-                    " result for " << Dump(intervalSet));
+                UNIT_ASSERT_C(
+                    (sum != 0) == actual,
+                    "Invalid HasIntersection(" << begin << ", " << end
+                                               << ")"
+                                                  " result for "
+                                               << Dump(intervalSet));
             }
         }
     }
@@ -197,8 +201,7 @@ Y_UNIT_TEST_SUITE(TOverlappedIntervalTest)
         TVector<TInterval> intervalSet;
         TVector<int> expectedData(IntervalSize, 0);
 
-        for (int round = 0; round < RoundsCount; round++)
-        {
+        for (int round = 0; round < RoundsCount; round++) {
             // The probability to remove element increases with data.size()
             if (RandomNumber(MaxIntervalsInSet) < intervalSet.size()) {
                 auto intervalIndex = RandomNumber(intervalSet.size());

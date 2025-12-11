@@ -23,9 +23,7 @@ TBlobLoadMetrics::TTabletMetric& operator+=(
     return lhs;
 }
 
-TBlobLoadMetrics& operator+=(
-    TBlobLoadMetrics& lhs,
-    const TBlobLoadMetrics& rhs)
+TBlobLoadMetrics& operator+=(TBlobLoadMetrics& lhs, const TBlobLoadMetrics& rhs)
 {
     for (const auto& kind: rhs.PoolKind2TabletOps) {
         for (const auto& value: kind.second) {
@@ -41,7 +39,8 @@ TBlobLoadMetrics TakeDelta(
     const TBlobLoadMetrics& prevMetricsValue,
     const TBlobLoadMetrics& newMetricsValue)
 {
-    auto takeDelta = [](auto& newValue, const auto& prevValue) {
+    auto takeDelta = [](auto& newValue, const auto& prevValue)
+    {
         if (newValue.ByteCount >= prevValue.ByteCount) {
             newValue.ByteCount -= prevValue.ByteCount;
         }
@@ -54,7 +53,7 @@ TBlobLoadMetrics TakeDelta(
     TBlobLoadMetrics result = newMetricsValue;
     for (auto& [newKind, newOps]: result.PoolKind2TabletOps) {
         if (const auto prevKind =
-            prevMetricsValue.PoolKind2TabletOps.find(newKind);
+                prevMetricsValue.PoolKind2TabletOps.find(newKind);
             prevKind != prevMetricsValue.PoolKind2TabletOps.end())
         {
             for (auto& [newKey, newMetric]: newOps) {
@@ -74,4 +73,4 @@ TBlobLoadMetrics TakeDelta(
     return result;
 }
 
-} // namespace NCloud::NBlockStore::NStorage::NBlobMetrics
+}   // namespace NCloud::NBlockStore::NStorage::NBlobMetrics

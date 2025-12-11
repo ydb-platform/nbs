@@ -12,9 +12,7 @@ void TDiskRegistryActor::HandleWaitReady(
     const TEvDiskRegistry::TEvWaitReadyRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (CurrentState != STATE_WORK &&
-        CurrentState != STATE_READ_ONLY)
-    {
+    if (CurrentState != STATE_WORK && CurrentState != STATE_READ_ONLY) {
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
@@ -26,7 +24,9 @@ void TDiskRegistryActor::HandleWaitReady(
             ev->Cookie,
             ev->Get()->CallContext);
 
-        PendingRequests.emplace_back(NActors::IEventHandlePtr(ev.Release()), requestInfo);
+        PendingRequests.emplace_back(
+            NActors::IEventHandlePtr(ev.Release()),
+            requestInfo);
         return;
     }
 

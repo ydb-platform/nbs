@@ -17,8 +17,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TKeyringMutableEndpointStorage final
-    : public IMutableEndpointStorage
+class TKeyringMutableEndpointStorage final: public IMutableEndpointStorage
 {
 private:
     const TString RootKeyringDesc;
@@ -28,8 +27,8 @@ private:
 
 public:
     TKeyringMutableEndpointStorage(
-            TString rootKeyringDesc,
-            TString endpointsKeyringDesc)
+        TString rootKeyringDesc,
+        TString endpointsKeyringDesc)
         : RootKeyringDesc(std::move(rootKeyringDesc))
         , SubKeyringDesc(std::move(endpointsKeyringDesc))
     {}
@@ -46,19 +45,16 @@ public:
         const TString& key,
         const TString& data) override;
 
-    NProto::TError RemoveEndpoint(
-        const TString& key) override;
+    NProto::TError RemoveEndpoint(const TString& key) override;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 NProto::TError TKeyringMutableEndpointStorage::Init()
 {
-    auto perm = (
-        TKeyring::PosAllPerm |
-        TKeyring::UsrAllPerm |
-        TKeyring::GrpAllPerm |
-        TKeyring::OthAllPerm);
+    auto perm =
+        (TKeyring::PosAllPerm | TKeyring::UsrAllPerm | TKeyring::GrpAllPerm |
+         TKeyring::OthAllPerm);
 
     auto rootKeyring = TKeyring::GetProcKey(RootKeyringDesc);
 
@@ -75,19 +71,25 @@ NProto::TError TKeyringMutableEndpointStorage::Init()
 
         rootKeyring = process.AddKeyring(RootKeyringDesc);
         if (!rootKeyring) {
-            return MakeError(E_FAIL, TStringBuilder()
-                << "Failed to add keyring " << RootKeyringDesc.Quote());
+            return MakeError(
+                E_FAIL,
+                TStringBuilder()
+                    << "Failed to add keyring " << RootKeyringDesc.Quote());
         }
 
         if (!rootKeyring.SetPerm(perm)) {
-            return MakeError(E_FAIL, TStringBuilder()
-                << "Failed to set perm for keyring " << RootKeyringDesc.Quote());
+            return MakeError(
+                E_FAIL,
+                TStringBuilder() << "Failed to set perm for keyring "
+                                 << RootKeyringDesc.Quote());
         }
 
         if (!user.LinkKeyring(rootKeyring)) {
-            return MakeError(E_FAIL, TStringBuilder()
-                << "Failed to link keyring " << RootKeyringDesc.Quote()
-                << " to user keyring");
+            return MakeError(
+                E_FAIL,
+                TStringBuilder()
+                    << "Failed to link keyring " << RootKeyringDesc.Quote()
+                    << " to user keyring");
         }
     }
 
@@ -96,13 +98,17 @@ NProto::TError TKeyringMutableEndpointStorage::Init()
     if (!subKeyring) {
         subKeyring = rootKeyring.AddKeyring(SubKeyringDesc);
         if (!subKeyring) {
-            return MakeError(E_FAIL, TStringBuilder()
-                << "Failed to add keyring " << SubKeyringDesc.Quote());
+            return MakeError(
+                E_FAIL,
+                TStringBuilder()
+                    << "Failed to add keyring " << SubKeyringDesc.Quote());
         }
 
         if (!subKeyring.SetPerm(perm)) {
-            return MakeError(E_FAIL, TStringBuilder()
-                << "Failed to set perm for keyring " << SubKeyringDesc.Quote());
+            return MakeError(
+                E_FAIL,
+                TStringBuilder() << "Failed to set perm for keyring "
+                                 << SubKeyringDesc.Quote());
         }
     }
 
@@ -119,14 +125,18 @@ NProto::TError TKeyringMutableEndpointStorage::Remove()
 
     auto rootKeyring = process.SearchKeyring(RootKeyringDesc);
     if (!rootKeyring) {
-        return MakeError(E_FAIL, TStringBuilder()
-            << "failed to find root keyring " << RootKeyringDesc.Quote());
+        return MakeError(
+            E_FAIL,
+            TStringBuilder()
+                << "failed to find root keyring " << RootKeyringDesc.Quote());
     }
 
     if (!process.UnlinkKeyring(rootKeyring)) {
-        return MakeError(E_FAIL, TStringBuilder()
-            << "failed to unlink root keyring "
-            << RootKeyringDesc.Quote() << " from process keyring");
+        return MakeError(
+            E_FAIL,
+            TStringBuilder()
+                << "failed to unlink root keyring " << RootKeyringDesc.Quote()
+                << " from process keyring");
     }
 
     auto user = TKeyring::GetRoot(TKeyring::User);
@@ -135,13 +145,16 @@ NProto::TError TKeyringMutableEndpointStorage::Remove()
     }
 
     if (!user.UnlinkKeyring(rootKeyring)) {
-        return MakeError(E_FAIL, TStringBuilder()
-            << "failed to unlink root keyring "
-            << RootKeyringDesc.Quote() << " from user keyring");
+        return MakeError(
+            E_FAIL,
+            TStringBuilder()
+                << "failed to unlink root keyring " << RootKeyringDesc.Quote()
+                << " from user keyring");
     }
 
     // wait while /proc/keys is updating
-    while (TKeyring::GetProcKey(RootKeyringDesc).GetId() == rootKeyring.GetId()) {
+    while (TKeyring::GetProcKey(RootKeyringDesc).GetId() == rootKeyring.GetId())
+    {
         Sleep(TDuration::MilliSeconds(100));
     }
 
@@ -152,16 +165,16 @@ TResultOrError<TString> TKeyringMutableEndpointStorage::AddEndpoint(
     const TString& key,
     const TString& data)
 {
-    auto perm = (
-        TKeyring::PosAllPerm |
-        TKeyring::UsrAllPerm |
-        TKeyring::GrpAllPerm |
-        TKeyring::OthAllPerm);
+    auto perm =
+        (TKeyring::PosAllPerm | TKeyring::UsrAllPerm | TKeyring::GrpAllPerm |
+         TKeyring::OthAllPerm);
 
     auto userKey = EndpointsKeyring.AddUserKey(key, data);
     if (!userKey) {
-        return MakeError(E_FAIL, TStringBuilder()
-            << "Failed to set perm for keyring " << key.Quote());
+        return MakeError(
+            E_FAIL,
+            TStringBuilder()
+                << "Failed to set perm for keyring " << key.Quote());
     }
 
     userKey.SetPerm(perm);
@@ -181,14 +194,17 @@ NProto::TError TKeyringMutableEndpointStorage::RemoveEndpoint(
         found = true;
 
         if (!EndpointsKeyring.UnlinkKeyring(userKey)) {
-            return MakeError(E_FAIL, TStringBuilder()
-                << "Failed to unlink keyring " << key.Quote());
+            return MakeError(
+                E_FAIL,
+                TStringBuilder() << "Failed to unlink keyring " << key.Quote());
         }
     }
 
     if (!found) {
-        return MakeError(E_INVALID_STATE, TStringBuilder()
-            << "Failed to find keyring " << key.Quote() << " to unlink");
+        return MakeError(
+            E_INVALID_STATE,
+            TStringBuilder()
+                << "Failed to find keyring " << key.Quote() << " to unlink");
     }
 
     return {};

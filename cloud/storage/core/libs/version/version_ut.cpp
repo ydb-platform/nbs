@@ -36,7 +36,9 @@ Y_UNIT_TEST_SUITE(TVersionTest)
         )___";
 
         auto url = GetSvnUrlFromInfo(info);
-        UNIT_ASSERT_EQUAL(url, "svn+ssh://zomb-sandbox-rw@arcadia.yandex.ru/arc/trunk/arcadia");
+        UNIT_ASSERT_EQUAL(
+            url,
+            "svn+ssh://zomb-sandbox-rw@arcadia.yandex.ru/arc/trunk/arcadia");
     }
 
     Y_UNIT_TEST(ShouldParseUrlFromFullInfoStable192)
@@ -69,7 +71,10 @@ Y_UNIT_TEST_SUITE(TVersionTest)
         )___";
 
         auto url = GetSvnUrlFromInfo(info);
-        UNIT_ASSERT_EQUAL(url, "svn+ssh://arcadia.yandex.ru/arc/branches/kikimr/stable-19-2/arcadia");
+        UNIT_ASSERT_EQUAL(
+            url,
+            "svn+ssh://arcadia.yandex.ru/arc/branches/kikimr/stable-19-2/"
+            "arcadia");
     }
 
     Y_UNIT_TEST(ShouldParseUrlFromFullInfoTag)
@@ -102,7 +107,10 @@ Y_UNIT_TEST_SUITE(TVersionTest)
         )___";
 
         auto url = GetSvnUrlFromInfo(info);
-        UNIT_ASSERT_EQUAL(url, "svn+ssh://arcadia.yandex.ru/arc/tags/kikimr/stable-19-2-29/arcadia");
+        UNIT_ASSERT_EQUAL(
+            url,
+            "svn+ssh://arcadia.yandex.ru/arc/tags/kikimr/stable-19-2-29/"
+            "arcadia");
     }
 
     Y_UNIT_TEST(ShouldParseUrlFromFullInfoWithNbsTag)
@@ -133,33 +141,41 @@ Y_UNIT_TEST_SUITE(TVersionTest)
         )___";
 
         auto url = GetSvnUrlFromInfo(info);
-        UNIT_ASSERT_EQUAL(url, "svn+ssh://arcadia.yandex.ru/arc/tags/nbs/stable-19-4-44/arcadia");
+        UNIT_ASSERT_EQUAL(
+            url,
+            "svn+ssh://arcadia.yandex.ru/arc/tags/nbs/stable-19-4-44/arcadia");
     }
 
     Y_UNIT_TEST(ShouldParseBranchFromUrlTrunk)
     {
-        TString url = "svn+ssh://zomb-sandbox-rw@arcadia.yandex.ru/arc/trunk/arcadia";
+        TString url =
+            "svn+ssh://zomb-sandbox-rw@arcadia.yandex.ru/arc/trunk/arcadia";
         auto branch = GetSvnBranchFromUrl(url);
         UNIT_ASSERT_VALUES_EQUAL(branch, "trunk");
     }
 
     Y_UNIT_TEST(ShouldParseBranchFromUrlStable192)
     {
-        TString url = "svn+ssh://arcadia.yandex.ru/arc/branches/kikimr/stable-19-2/arcadia";
+        TString url =
+            "svn+ssh://arcadia.yandex.ru/arc/branches/kikimr/stable-19-2/"
+            "arcadia";
         auto branch = GetSvnBranchFromUrl(url);
         UNIT_ASSERT_VALUES_EQUAL(branch, "stable-19-2");
     }
 
     Y_UNIT_TEST(ShoudlParseBranchFromUrlTag)
     {
-        TString url = "svn+ssh://arcadia.yandex.ru/arc/tags/kikimr/stable-19-2-29/arcadia";
+        TString url =
+            "svn+ssh://arcadia.yandex.ru/arc/tags/kikimr/stable-19-2-29/"
+            "arcadia";
         auto branch = GetSvnBranchFromUrl(url);
         UNIT_ASSERT_VALUES_EQUAL(branch, "stable-19-2-29");
     }
 
     Y_UNIT_TEST(ShoudlParseBranchFromUrlWithNbsTag)
     {
-        TString url = "svn+ssh://arcadia.yandex.ru/arc/tags/nbs/stable-19-4-44/arcadia";
+        TString url =
+            "svn+ssh://arcadia.yandex.ru/arc/tags/nbs/stable-19-4-44/arcadia";
         auto branch = GetSvnBranchFromUrl(url);
         UNIT_ASSERT_VALUES_EQUAL(branch, "stable-19-4-44");
     }

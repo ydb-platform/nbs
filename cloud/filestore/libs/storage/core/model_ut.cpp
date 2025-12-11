@@ -5,11 +5,11 @@
 
 #include <cloud/storage/core/protos/media.pb.h>
 
+#include <contrib/ydb/core/protos/filestore_config.pb.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/maybe.h>
-
-#include <contrib/ydb/core/protos/filestore_config.pb.h>
 
 #include <array>
 #include <functional>
@@ -30,14 +30,13 @@ void SetupFileStorePerformanceAndChannels(
         allocateMixed0Channel,
         config,
         fileStore,
-        {}  // clientPerformanceProfile
+        {}   // clientPerformanceProfile
     );
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TConfigs
-    : public NUnitTest::TBaseFixture
+struct TConfigs: public NUnitTest::TBaseFixture
 {
     const ui64 DefaultBlockSize = 4_KB;
     const ui64 DefaultBlocksCount = 2_GB / DefaultBlockSize;
@@ -95,16 +94,16 @@ Y_UNIT_TEST_SUITE(TModel)
 {
     Y_UNIT_TEST_F(ShouldCorrectlyOverrideStorageMediaKind, TConfigs)
     {
-#define DO_TEST(srcKind, overrideKind, targetKind)                             \
-    KikimrConfig.SetStorageMediaKind(srcKind);                                 \
-    StorageConfig.SetHDDMediaKindOverride(overrideKind);                       \
-                                                                               \
-    SetupFileStorePerformanceAndChannels(false, StorageConfig, KikimrConfig);  \
-                                                                               \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        static_cast<ui32>(targetKind),                                         \
-        KikimrConfig.GetStorageMediaKind());                                   \
-// DO_TEST
+#define DO_TEST(srcKind, overrideKind, targetKind)                            \
+    KikimrConfig.SetStorageMediaKind(srcKind);                                \
+    StorageConfig.SetHDDMediaKindOverride(overrideKind);                      \
+                                                                              \
+    SetupFileStorePerformanceAndChannels(false, StorageConfig, KikimrConfig); \
+                                                                              \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        static_cast<ui32>(targetKind),                                        \
+        KikimrConfig.GetStorageMediaKind());                                  \
+    // DO_TEST
 
         using namespace ::NCloud::NProto;
         DO_TEST(
@@ -140,22 +139,10 @@ Y_UNIT_TEST_SUITE(TModel)
             STORAGE_MEDIA_SSD_MIRROR3,
             STORAGE_MEDIA_DEFAULT);
 
-        DO_TEST(
-            STORAGE_MEDIA_SSD,
-            STORAGE_MEDIA_DEFAULT,
-            STORAGE_MEDIA_SSD);
-        DO_TEST(
-            STORAGE_MEDIA_SSD,
-            STORAGE_MEDIA_SSD,
-            STORAGE_MEDIA_SSD);
-        DO_TEST(
-            STORAGE_MEDIA_SSD,
-            STORAGE_MEDIA_HYBRID,
-            STORAGE_MEDIA_SSD);
-        DO_TEST(
-            STORAGE_MEDIA_SSD,
-            STORAGE_MEDIA_HDD,
-            STORAGE_MEDIA_SSD);
+        DO_TEST(STORAGE_MEDIA_SSD, STORAGE_MEDIA_DEFAULT, STORAGE_MEDIA_SSD);
+        DO_TEST(STORAGE_MEDIA_SSD, STORAGE_MEDIA_SSD, STORAGE_MEDIA_SSD);
+        DO_TEST(STORAGE_MEDIA_SSD, STORAGE_MEDIA_HYBRID, STORAGE_MEDIA_SSD);
+        DO_TEST(STORAGE_MEDIA_SSD, STORAGE_MEDIA_HDD, STORAGE_MEDIA_SSD);
         DO_TEST(
             STORAGE_MEDIA_SSD,
             STORAGE_MEDIA_SSD_NONREPLICATED,
@@ -164,10 +151,7 @@ Y_UNIT_TEST_SUITE(TModel)
             STORAGE_MEDIA_SSD,
             STORAGE_MEDIA_SSD_MIRROR2,
             STORAGE_MEDIA_SSD);
-        DO_TEST(
-            STORAGE_MEDIA_SSD,
-            STORAGE_MEDIA_SSD_LOCAL,
-            STORAGE_MEDIA_SSD);
+        DO_TEST(STORAGE_MEDIA_SSD, STORAGE_MEDIA_SSD_LOCAL, STORAGE_MEDIA_SSD);
         DO_TEST(
             STORAGE_MEDIA_SSD,
             STORAGE_MEDIA_SSD_MIRROR3,
@@ -177,18 +161,12 @@ Y_UNIT_TEST_SUITE(TModel)
             STORAGE_MEDIA_HYBRID,
             STORAGE_MEDIA_DEFAULT,
             STORAGE_MEDIA_HYBRID);
-        DO_TEST(
-            STORAGE_MEDIA_HYBRID,
-            STORAGE_MEDIA_SSD,
-            STORAGE_MEDIA_HYBRID);
+        DO_TEST(STORAGE_MEDIA_HYBRID, STORAGE_MEDIA_SSD, STORAGE_MEDIA_HYBRID);
         DO_TEST(
             STORAGE_MEDIA_HYBRID,
             STORAGE_MEDIA_HYBRID,
             STORAGE_MEDIA_HYBRID);
-        DO_TEST(
-            STORAGE_MEDIA_HYBRID,
-            STORAGE_MEDIA_HDD,
-            STORAGE_MEDIA_HYBRID);
+        DO_TEST(STORAGE_MEDIA_HYBRID, STORAGE_MEDIA_HDD, STORAGE_MEDIA_HYBRID);
         DO_TEST(
             STORAGE_MEDIA_HYBRID,
             STORAGE_MEDIA_SSD_NONREPLICATED,
@@ -206,22 +184,10 @@ Y_UNIT_TEST_SUITE(TModel)
             STORAGE_MEDIA_SSD_MIRROR3,
             STORAGE_MEDIA_HYBRID);
 
-        DO_TEST(
-            STORAGE_MEDIA_HDD,
-            STORAGE_MEDIA_DEFAULT,
-            STORAGE_MEDIA_HDD);
-        DO_TEST(
-            STORAGE_MEDIA_HDD,
-            STORAGE_MEDIA_SSD,
-            STORAGE_MEDIA_SSD);
-        DO_TEST(
-            STORAGE_MEDIA_HDD,
-            STORAGE_MEDIA_HYBRID,
-            STORAGE_MEDIA_HYBRID);
-        DO_TEST(
-            STORAGE_MEDIA_HDD,
-            STORAGE_MEDIA_HDD,
-            STORAGE_MEDIA_HDD);
+        DO_TEST(STORAGE_MEDIA_HDD, STORAGE_MEDIA_DEFAULT, STORAGE_MEDIA_HDD);
+        DO_TEST(STORAGE_MEDIA_HDD, STORAGE_MEDIA_SSD, STORAGE_MEDIA_SSD);
+        DO_TEST(STORAGE_MEDIA_HDD, STORAGE_MEDIA_HYBRID, STORAGE_MEDIA_HYBRID);
+        DO_TEST(STORAGE_MEDIA_HDD, STORAGE_MEDIA_HDD, STORAGE_MEDIA_HDD);
         DO_TEST(
             STORAGE_MEDIA_HDD,
             STORAGE_MEDIA_SSD_NONREPLICATED,
@@ -230,10 +196,7 @@ Y_UNIT_TEST_SUITE(TModel)
             STORAGE_MEDIA_HDD,
             STORAGE_MEDIA_SSD_MIRROR2,
             STORAGE_MEDIA_HDD);
-        DO_TEST(
-            STORAGE_MEDIA_HDD,
-            STORAGE_MEDIA_SSD_LOCAL,
-            STORAGE_MEDIA_HDD);
+        DO_TEST(STORAGE_MEDIA_HDD, STORAGE_MEDIA_SSD_LOCAL, STORAGE_MEDIA_HDD);
         DO_TEST(
             STORAGE_MEDIA_HDD,
             STORAGE_MEDIA_SSD_MIRROR3,
@@ -387,7 +350,7 @@ Y_UNIT_TEST_SUITE(TModel)
     UNIT_ASSERT_VALUES_EQUAL(                                                  \
         static_cast<ui32>(targetCount),                                        \
         KikimrConfig.GetNodesCount());                                         \
-// DO_TEST
+    // DO_TEST
 
         // (1024 * 4_KB) / 2048 = 2048 > 1.
         DO_TEST(1024, 4_KB, 2048, 1, 2048);
@@ -406,18 +369,18 @@ Y_UNIT_TEST_SUITE(TModel)
 #undef DO_TEST
     }
 
-#define CHECK_CHANNEL(id, pKind, dKind, size, rIops, rBand, wIops, wBand)      \
-    {                                                                          \
-        const auto profile = kikimrConfig.GetExplicitChannelProfiles(id);      \
-        UNIT_ASSERT_VALUES_EQUAL(pKind, profile.GetPoolKind());                \
-        UNIT_ASSERT_VALUES_EQUAL(dKind, profile.GetDataKind());                \
-        UNIT_ASSERT_VALUES_EQUAL(size, profile.GetSize());                     \
-        UNIT_ASSERT_VALUES_EQUAL(rIops, profile.GetReadIops());                \
-        UNIT_ASSERT_VALUES_EQUAL(rBand, profile.GetReadBandwidth());           \
-        UNIT_ASSERT_VALUES_EQUAL(wIops, profile.GetWriteIops());               \
-        UNIT_ASSERT_VALUES_EQUAL(wBand, profile.GetWriteBandwidth());          \
-    }                                                                          \
-// CHECK_CHANNEL
+#define CHECK_CHANNEL(id, pKind, dKind, size, rIops, rBand, wIops, wBand) \
+    {                                                                     \
+        const auto profile = kikimrConfig.GetExplicitChannelProfiles(id); \
+        UNIT_ASSERT_VALUES_EQUAL(pKind, profile.GetPoolKind());           \
+        UNIT_ASSERT_VALUES_EQUAL(dKind, profile.GetDataKind());           \
+        UNIT_ASSERT_VALUES_EQUAL(size, profile.GetSize());                \
+        UNIT_ASSERT_VALUES_EQUAL(rIops, profile.GetReadIops());           \
+        UNIT_ASSERT_VALUES_EQUAL(rBand, profile.GetReadBandwidth());      \
+        UNIT_ASSERT_VALUES_EQUAL(wIops, profile.GetWriteIops());          \
+        UNIT_ASSERT_VALUES_EQUAL(wBand, profile.GetWriteBandwidth());     \
+    }                                                                     \
+    // CHECK_CHANNEL
 
     struct TChannelState final
     {
@@ -505,19 +468,17 @@ Y_UNIT_TEST_SUITE(TModel)
                 .ReadBandwidth = 31'457'280,
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
-            }
-        };
+            }};
         for (size_t i = 3; i < 7; ++i) {
-            channels.push_back(
-                TChannelState{
-                    .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
-                    .PoolType = "rot",
-                    .Size = 4_GB,
-                    .ReadIops = 100,
-                    .ReadBandwidth = 31'457'280,
-                    .WriteIops = 300,
-                    .WriteBandwidth = 31'457'280,
-                });
+            channels.push_back(TChannelState{
+                .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
+                .PoolType = "rot",
+                .Size = 4_GB,
+                .ReadIops = 100,
+                .ReadBandwidth = 31'457'280,
+                .WriteIops = 300,
+                .WriteBandwidth = 31'457'280,
+            });
         }
         TestChannels(
             STORAGE_MEDIA_HDD,
@@ -561,19 +522,17 @@ Y_UNIT_TEST_SUITE(TModel)
                 .ReadBandwidth = 31'457'280,
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
-            }
-        };
+            }};
         for (size_t i = 3; i < 6; ++i) {
-            channels.push_back(
-                TChannelState{
-                    .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
-                    .PoolType = "rot",
-                    .Size = 4_GB,
-                    .ReadIops = 100,
-                    .ReadBandwidth = 31'457'280,
-                    .WriteIops = 300,
-                    .WriteBandwidth = 31'457'280,
-                });
+            channels.push_back(TChannelState{
+                .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
+                .PoolType = "rot",
+                .Size = 4_GB,
+                .ReadIops = 100,
+                .ReadBandwidth = 31'457'280,
+                .WriteIops = 300,
+                .WriteBandwidth = 31'457'280,
+            });
         }
         TestChannels(
             STORAGE_MEDIA_HDD,
@@ -617,19 +576,17 @@ Y_UNIT_TEST_SUITE(TModel)
                 .ReadBandwidth = 251'658'240,
                 .WriteIops = 4'800,
                 .WriteBandwidth = 251'658'240,
-            }
-        };
+            }};
         for (size_t i = 3; i < 19; ++i) {
-            channels.push_back(
-                TChannelState{
-                    .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
-                    .PoolType = "rot",
-                    .Size = 4_GB,
-                    .ReadIops = 300,
-                    .ReadBandwidth = 251'658'240,
-                    .WriteIops = 4'800,
-                    .WriteBandwidth = 251'658'240,
-               });
+            channels.push_back(TChannelState{
+                .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
+                .PoolType = "rot",
+                .Size = 4_GB,
+                .ReadIops = 300,
+                .ReadBandwidth = 251'658'240,
+                .WriteIops = 4'800,
+                .WriteBandwidth = 251'658'240,
+            });
         }
 
         KikimrConfig.SetBlocksCount(1'000'000);
@@ -676,19 +633,17 @@ Y_UNIT_TEST_SUITE(TModel)
                 .ReadBandwidth = 15'728'640,
                 .WriteIops = 1'000,
                 .WriteBandwidth = 15'728'640,
-            }
-        };
+            }};
         for (size_t i = 3; i < 7; ++i) {
-            channels.push_back(
-                TChannelState{
-                    .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
-                    .PoolType = "ssd",
-                    .Size = 2_GB,
-                    .ReadIops = 400,
-                    .ReadBandwidth = 15'728'640,
-                    .WriteIops = 1'000,
-                    .WriteBandwidth = 15'728'640,
-                });
+            channels.push_back(TChannelState{
+                .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
+                .PoolType = "ssd",
+                .Size = 2_GB,
+                .ReadIops = 400,
+                .ReadBandwidth = 15'728'640,
+                .WriteIops = 1'000,
+                .WriteBandwidth = 15'728'640,
+            });
         }
         TestChannels(
             STORAGE_MEDIA_SSD,
@@ -732,19 +687,17 @@ Y_UNIT_TEST_SUITE(TModel)
                 .ReadBandwidth = 15'728'640,
                 .WriteIops = 1'000,
                 .WriteBandwidth = 15'728'640,
-            }
-        };
+            }};
         for (size_t i = 3; i < 6; ++i) {
-            channels.push_back(
-                TChannelState{
-                    .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
-                    .PoolType = "ssd",
-                    .Size = 2_GB,
-                    .ReadIops = 400,
-                    .ReadBandwidth = 15'728'640,
-                    .WriteIops = 1'000,
-                    .WriteBandwidth = 15'728'640,
-                });
+            channels.push_back(TChannelState{
+                .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
+                .PoolType = "ssd",
+                .Size = 2_GB,
+                .ReadIops = 400,
+                .ReadBandwidth = 15'728'640,
+                .WriteIops = 1'000,
+                .WriteBandwidth = 15'728'640,
+            });
         }
         TestChannels(
             STORAGE_MEDIA_SSD,
@@ -788,19 +741,17 @@ Y_UNIT_TEST_SUITE(TModel)
                 .ReadBandwidth = 471'859'200,
                 .WriteIops = 31'000,
                 .WriteBandwidth = 471'859'200,
-            }
-        };
+            }};
         for (size_t i = 3; i < 34; ++i) {
-            channels.push_back(
-                TChannelState{
-                    .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
-                    .PoolType = "ssd",
-                    .Size = 2_GB,
-                    .ReadIops = 12'000,
-                    .ReadBandwidth = 471'859'200,
-                    .WriteIops = 31'000,
-                    .WriteBandwidth = 471'859'200,
-               });
+            channels.push_back(TChannelState{
+                .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
+                .PoolType = "ssd",
+                .Size = 2_GB,
+                .ReadIops = 12'000,
+                .ReadBandwidth = 471'859'200,
+                .WriteIops = 31'000,
+                .WriteBandwidth = 471'859'200,
+            });
         }
 
         KikimrConfig.SetBlocksCount(1'000'000);
@@ -847,19 +798,17 @@ Y_UNIT_TEST_SUITE(TModel)
                 .ReadBandwidth = 31'457'280,
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
-            }
-        };
+            }};
         for (size_t i = 3; i < 7; ++i) {
-            channels.push_back(
-                TChannelState{
-                    .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
-                    .PoolType = "rot",
-                    .Size = 4_GB,
-                    .ReadIops = 100,
-                    .ReadBandwidth = 31'457'280,
-                    .WriteIops = 300,
-                    .WriteBandwidth = 31'457'280,
-                });
+            channels.push_back(TChannelState{
+                .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
+                .PoolType = "rot",
+                .Size = 4_GB,
+                .ReadIops = 100,
+                .ReadBandwidth = 31'457'280,
+                .WriteIops = 300,
+                .WriteBandwidth = 31'457'280,
+            });
         }
         TestChannels(
             STORAGE_MEDIA_HYBRID,
@@ -903,19 +852,17 @@ Y_UNIT_TEST_SUITE(TModel)
                 .ReadBandwidth = 31'457'280,
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
-            }
-        };
+            }};
         for (size_t i = 3; i < 6; ++i) {
-            channels.push_back(
-                TChannelState{
-                    .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
-                    .PoolType = "rot",
-                    .Size = 4_GB,
-                    .ReadIops = 100,
-                    .ReadBandwidth = 31'457'280,
-                    .WriteIops = 300,
-                    .WriteBandwidth = 31'457'280,
-                });
+            channels.push_back(TChannelState{
+                .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
+                .PoolType = "rot",
+                .Size = 4_GB,
+                .ReadIops = 100,
+                .ReadBandwidth = 31'457'280,
+                .WriteIops = 300,
+                .WriteBandwidth = 31'457'280,
+            });
         }
         TestChannels(
             STORAGE_MEDIA_HYBRID,
@@ -959,19 +906,17 @@ Y_UNIT_TEST_SUITE(TModel)
                 .ReadBandwidth = 251'658'240,
                 .WriteIops = 4'800,
                 .WriteBandwidth = 251'658'240,
-            }
-        };
+            }};
         for (size_t i = 3; i < 19; ++i) {
-            channels.push_back(
-                TChannelState{
-                    .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
-                    .PoolType = "rot",
-                    .Size = 4_GB,
-                    .ReadIops = 300,
-                    .ReadBandwidth = 251'658'240,
-                    .WriteIops = 4'800,
-                    .WriteBandwidth = 251'658'240,
-               });
+            channels.push_back(TChannelState{
+                .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
+                .PoolType = "rot",
+                .Size = 4_GB,
+                .ReadIops = 300,
+                .ReadBandwidth = 251'658'240,
+                .WriteIops = 4'800,
+                .WriteBandwidth = 251'658'240,
+            });
         }
 
         KikimrConfig.SetBlocksCount(1'000'000);
@@ -1027,19 +972,17 @@ Y_UNIT_TEST_SUITE(TModel)
                 .ReadBandwidth = 31'457'280,
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
-            }
-        };
+            }};
         for (size_t i = 4; i < 8; ++i) {
-            channels.push_back(
-                TChannelState{
-                    .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
-                    .PoolType = "rot",
-                    .Size = 4_GB,
-                    .ReadIops = 100,
-                    .ReadBandwidth = 31'457'280,
-                    .WriteIops = 300,
-                    .WriteBandwidth = 31'457'280,
-                });
+            channels.push_back(TChannelState{
+                .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
+                .PoolType = "rot",
+                .Size = 4_GB,
+                .ReadIops = 100,
+                .ReadBandwidth = 31'457'280,
+                .WriteIops = 300,
+                .WriteBandwidth = 31'457'280,
+            });
         }
         TestChannels(
             STORAGE_MEDIA_HDD,
@@ -1092,19 +1035,17 @@ Y_UNIT_TEST_SUITE(TModel)
                 .ReadBandwidth = 31'457'280,
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
-            }
-        };
+            }};
         for (size_t i = 4; i < 7; ++i) {
-            channels.push_back(
-                TChannelState{
-                    .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
-                    .PoolType = "rot",
-                    .Size = 4_GB,
-                    .ReadIops = 100,
-                    .ReadBandwidth = 31'457'280,
-                    .WriteIops = 300,
-                    .WriteBandwidth = 31'457'280,
-                });
+            channels.push_back(TChannelState{
+                .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
+                .PoolType = "rot",
+                .Size = 4_GB,
+                .ReadIops = 100,
+                .ReadBandwidth = 31'457'280,
+                .WriteIops = 300,
+                .WriteBandwidth = 31'457'280,
+            });
         }
         TestChannels(
             STORAGE_MEDIA_HDD,
@@ -1157,19 +1098,17 @@ Y_UNIT_TEST_SUITE(TModel)
                 .ReadBandwidth = 251'658'240,
                 .WriteIops = 4'800,
                 .WriteBandwidth = 251'658'240,
-            }
-        };
+            }};
         for (size_t i = 4; i < 20; ++i) {
-            channels.push_back(
-                TChannelState{
-                    .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
-                    .PoolType = "rot",
-                    .Size = 4_GB,
-                    .ReadIops = 300,
-                    .ReadBandwidth = 251'658'240,
-                    .WriteIops = 4'800,
-                    .WriteBandwidth = 251'658'240,
-               });
+            channels.push_back(TChannelState{
+                .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
+                .PoolType = "rot",
+                .Size = 4_GB,
+                .ReadIops = 300,
+                .ReadBandwidth = 251'658'240,
+                .WriteIops = 4'800,
+                .WriteBandwidth = 251'658'240,
+            });
         }
 
         KikimrConfig.SetBlocksCount(1'000'000);
@@ -1225,19 +1164,17 @@ Y_UNIT_TEST_SUITE(TModel)
                 .ReadBandwidth = 15'728'640,
                 .WriteIops = 1'000,
                 .WriteBandwidth = 15'728'640,
-            }
-        };
+            }};
         for (size_t i = 4; i < 8; ++i) {
-            channels.push_back(
-                TChannelState{
-                    .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
-                    .PoolType = "ssd",
-                    .Size = 2_GB,
-                    .ReadIops = 400,
-                    .ReadBandwidth = 15'728'640,
-                    .WriteIops = 1'000,
-                    .WriteBandwidth = 15'728'640,
-                });
+            channels.push_back(TChannelState{
+                .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
+                .PoolType = "ssd",
+                .Size = 2_GB,
+                .ReadIops = 400,
+                .ReadBandwidth = 15'728'640,
+                .WriteIops = 1'000,
+                .WriteBandwidth = 15'728'640,
+            });
         }
         TestChannels(
             STORAGE_MEDIA_SSD,
@@ -1290,19 +1227,17 @@ Y_UNIT_TEST_SUITE(TModel)
                 .ReadBandwidth = 15'728'640,
                 .WriteIops = 1'000,
                 .WriteBandwidth = 15'728'640,
-            }
-        };
+            }};
         for (size_t i = 3; i < 6; ++i) {
-            channels.push_back(
-                TChannelState{
-                    .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
-                    .PoolType = "ssd",
-                    .Size = 2_GB,
-                    .ReadIops = 400,
-                    .ReadBandwidth = 15'728'640,
-                    .WriteIops = 1'000,
-                    .WriteBandwidth = 15'728'640,
-                });
+            channels.push_back(TChannelState{
+                .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
+                .PoolType = "ssd",
+                .Size = 2_GB,
+                .ReadIops = 400,
+                .ReadBandwidth = 15'728'640,
+                .WriteIops = 1'000,
+                .WriteBandwidth = 15'728'640,
+            });
         }
         TestChannels(
             STORAGE_MEDIA_SSD,
@@ -1355,19 +1290,17 @@ Y_UNIT_TEST_SUITE(TModel)
                 .ReadBandwidth = 471'859'200,
                 .WriteIops = 31'000,
                 .WriteBandwidth = 471'859'200,
-            }
-        };
+            }};
         for (size_t i = 3; i < 34; ++i) {
-            channels.push_back(
-                TChannelState{
-                    .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
-                    .PoolType = "ssd",
-                    .Size = 2_GB,
-                    .ReadIops = 12'000,
-                    .ReadBandwidth = 471'859'200,
-                    .WriteIops = 31'000,
-                    .WriteBandwidth = 471'859'200,
-               });
+            channels.push_back(TChannelState{
+                .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
+                .PoolType = "ssd",
+                .Size = 2_GB,
+                .ReadIops = 12'000,
+                .ReadBandwidth = 471'859'200,
+                .WriteIops = 31'000,
+                .WriteBandwidth = 471'859'200,
+            });
         }
 
         KikimrConfig.SetBlocksCount(1'000'000);
@@ -1423,19 +1356,17 @@ Y_UNIT_TEST_SUITE(TModel)
                 .ReadBandwidth = 31'457'280,
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
-            }
-        };
+            }};
         for (size_t i = 4; i < 8; ++i) {
-            channels.push_back(
-                TChannelState{
-                    .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
-                    .PoolType = "rot",
-                    .Size = 4_GB,
-                    .ReadIops = 100,
-                    .ReadBandwidth = 31'457'280,
-                    .WriteIops = 300,
-                    .WriteBandwidth = 31'457'280,
-                });
+            channels.push_back(TChannelState{
+                .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
+                .PoolType = "rot",
+                .Size = 4_GB,
+                .ReadIops = 100,
+                .ReadBandwidth = 31'457'280,
+                .WriteIops = 300,
+                .WriteBandwidth = 31'457'280,
+            });
         }
         TestChannels(
             STORAGE_MEDIA_HYBRID,
@@ -1488,19 +1419,17 @@ Y_UNIT_TEST_SUITE(TModel)
                 .ReadBandwidth = 31'457'280,
                 .WriteIops = 300,
                 .WriteBandwidth = 31'457'280,
-            }
-        };
+            }};
         for (size_t i = 4; i < 7; ++i) {
-            channels.push_back(
-                TChannelState{
-                    .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
-                    .PoolType = "rot",
-                    .Size = 4_GB,
-                    .ReadIops = 100,
-                    .ReadBandwidth = 31'457'280,
-                    .WriteIops = 300,
-                    .WriteBandwidth = 31'457'280,
-                });
+            channels.push_back(TChannelState{
+                .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
+                .PoolType = "rot",
+                .Size = 4_GB,
+                .ReadIops = 100,
+                .ReadBandwidth = 31'457'280,
+                .WriteIops = 300,
+                .WriteBandwidth = 31'457'280,
+            });
         }
         TestChannels(
             STORAGE_MEDIA_HYBRID,
@@ -1514,7 +1443,9 @@ Y_UNIT_TEST_SUITE(TModel)
             StorageConfig);
     }
 
-    Y_UNIT_TEST_F(ShouldCorrectlySetupChannelsHybridEnormousSizeDefault, TConfigs)
+    Y_UNIT_TEST_F(
+        ShouldCorrectlySetupChannelsHybridEnormousSizeDefault,
+        TConfigs)
     {
         using namespace ::NCloud::NProto;
         TVector<TChannelState> channels = {
@@ -1553,19 +1484,17 @@ Y_UNIT_TEST_SUITE(TModel)
                 .ReadBandwidth = 251'658'240,
                 .WriteIops = 4'800,
                 .WriteBandwidth = 251'658'240,
-            }
-        };
+            }};
         for (size_t i = 4; i < 20; ++i) {
-            channels.push_back(
-                TChannelState{
-                    .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
-                    .PoolType = "rot",
-                    .Size = 4_GB,
-                    .ReadIops = 300,
-                    .ReadBandwidth = 251'658'240,
-                    .WriteIops = 4'800,
-                    .WriteBandwidth = 251'658'240,
-               });
+            channels.push_back(TChannelState{
+                .DataType = static_cast<ui32>(EChannelDataKind::Mixed),
+                .PoolType = "rot",
+                .Size = 4_GB,
+                .ReadIops = 300,
+                .ReadBandwidth = 251'658'240,
+                .WriteIops = 4'800,
+                .WriteBandwidth = 251'658'240,
+            });
         }
 
         KikimrConfig.SetBlocksCount(1'000'000);
@@ -1604,8 +1533,8 @@ Y_UNIT_TEST_SUITE(TModel)
         ui32 maxWriteCostMultiplier,
         ui32 maxPostponedTimeMs,
         ui32 maxPostponedCount,
-        NKikimrFileStore::TConfig& kikimrConfig,
-        NProto::TStorageConfig& storageConfig,
+        NKikimrFileStore::TConfig & kikimrConfig,
+        NProto::TStorageConfig & storageConfig,
         const TMaybe<NProto::TFileStorePerformanceProfile>& performanceProfile)
     {
         std::random_device rd;
@@ -1683,9 +1612,11 @@ Y_UNIT_TEST_SUITE(TModel)
                 storageConfig.SetSSDBoostRefillTime(boostRefillTimeMs);
                 storageConfig.SetSSDUnitBoost(unitBoost);
                 storageConfig.SetSSDBurstPercentage(burstPercentage);
-                storageConfig.SetSSDDefaultPostponedRequestWeight(defaultPostponedRequestWeight);
+                storageConfig.SetSSDDefaultPostponedRequestWeight(
+                    defaultPostponedRequestWeight);
                 storageConfig.SetSSDMaxPostponedWeight(maxPostponedWeight);
-                storageConfig.SetSSDMaxWriteCostMultiplier(maxWriteCostMultiplier);
+                storageConfig.SetSSDMaxWriteCostMultiplier(
+                    maxWriteCostMultiplier);
                 storageConfig.SetSSDMaxPostponedTime(maxPostponedTimeMs);
                 storageConfig.SetSSDMaxPostponedCount(maxPostponedCount);
                 break;
@@ -1705,9 +1636,11 @@ Y_UNIT_TEST_SUITE(TModel)
                 storageConfig.SetHDDBoostRefillTime(boostRefillTimeMs);
                 storageConfig.SetHDDUnitBoost(unitBoost);
                 storageConfig.SetHDDBurstPercentage(burstPercentage);
-                storageConfig.SetHDDDefaultPostponedRequestWeight(defaultPostponedRequestWeight);
+                storageConfig.SetHDDDefaultPostponedRequestWeight(
+                    defaultPostponedRequestWeight);
                 storageConfig.SetHDDMaxPostponedWeight(maxPostponedWeight);
-                storageConfig.SetHDDMaxWriteCostMultiplier(maxWriteCostMultiplier);
+                storageConfig.SetHDDMaxWriteCostMultiplier(
+                    maxWriteCostMultiplier);
                 storageConfig.SetHDDMaxPostponedTime(maxPostponedTimeMs);
                 storageConfig.SetHDDMaxPostponedCount(maxPostponedCount);
                 break;
@@ -1763,15 +1696,14 @@ Y_UNIT_TEST_SUITE(TModel)
     UNIT_ASSERT_VALUES_EQUAL(                                                  \
         pp.Defined() ? pp->GetMaxPostponedCount() : mc,                        \
         kikimrConfig.GetPerformanceProfileMaxPostponedCount());                \
-// DO_TEST
-
+    // DO_TEST
 
     void TestPerformanceProfile(
         ui32 storageType,
         ui32 blocksCount,
         ui32 blockSize,
-        NKikimrFileStore::TConfig& kikimrConfig,
-        NProto::TStorageConfig& storageConfig,
+        NKikimrFileStore::TConfig & kikimrConfig,
+        NProto::TStorageConfig & storageConfig,
         const TMaybe<NProto::TFileStorePerformanceProfile>& performanceProfile)
     {
         {
@@ -1780,45 +1712,45 @@ Y_UNIT_TEST_SUITE(TModel)
             kikimrConfig.SetBlocksCount(blocksCount);
             kikimrConfig.SetBlockSize(blockSize);
             SetupPerformanceProfile(
-                storageType,       // storageType
-                4,                 // allocationUnits
-                200,               // unitReadIops
-                2,                 // unitReadBandwidth (MiB)
-                400,               // unitWriteIops
-                4,                 // unitWriteBandwidth (MiB)
-                2'000,             // maxReadIops
-                100,               // maxReadBandwidth (MiB)
-                4'000,             // maxWriteIops
-                200,               // maxWriteBandwidth (MiB)
-                30'000,            // boostTime (30s)
-                600'000,           // boostRefilleTime (10m)
-                2,                 // unitBoost
-                10,                // burstPercentage
-                1_KB,              // defaultPostponedRequestWeight
-                10_MB,             // maxPostponedWeight
-                5,                 // maxWriteCostMultiplier
-                10'000,            // maxPostponedTime (10s)
-                15,                // maxPostponedCount
-                kikimrConfig,      // kikimrConfig
-                storageConfig,     // storageConfig
-                performanceProfile // clientPerformanceProfile
+                storageType,         // storageType
+                4,                   // allocationUnits
+                200,                 // unitReadIops
+                2,                   // unitReadBandwidth (MiB)
+                400,                 // unitWriteIops
+                4,                   // unitWriteBandwidth (MiB)
+                2'000,               // maxReadIops
+                100,                 // maxReadBandwidth (MiB)
+                4'000,               // maxWriteIops
+                200,                 // maxWriteBandwidth (MiB)
+                30'000,              // boostTime (30s)
+                600'000,             // boostRefilleTime (10m)
+                2,                   // unitBoost
+                10,                  // burstPercentage
+                1_KB,                // defaultPostponedRequestWeight
+                10_MB,               // maxPostponedWeight
+                5,                   // maxWriteCostMultiplier
+                10'000,              // maxPostponedTime (10s)
+                15,                  // maxPostponedCount
+                kikimrConfig,        // kikimrConfig
+                storageConfig,       // storageConfig
+                performanceProfile   // clientPerformanceProfile
             );
             DO_TEST(
-                true,              // ThrottlingEnabled
-                200,               // MaxReadIops
-                2_MB,              // MaxReadBandwidth
-                400,               // MaxWriteIops
-                4_MB,              // MaxWriteBandwidth
-                30'000,            // BoostTime
-                600'000,           // BoostRefillTime
-                200,               // BoostPercentage
-                10,                // BurstPercentage
-                1_KB,              // DefaultPostponedRequestWeight
-                10_MB,             // MaxPostponedWeight
-                5,                 // MaxWriteCostMultiplier
-                10'000,            // MaxPostponedTime
-                15,                // MaxPostponedCount
-                performanceProfile // ClientPerformanceProfile
+                true,                // ThrottlingEnabled
+                200,                 // MaxReadIops
+                2_MB,                // MaxReadBandwidth
+                400,                 // MaxWriteIops
+                4_MB,                // MaxWriteBandwidth
+                30'000,              // BoostTime
+                600'000,             // BoostRefillTime
+                200,                 // BoostPercentage
+                10,                  // BurstPercentage
+                1_KB,                // DefaultPostponedRequestWeight
+                10_MB,               // MaxPostponedWeight
+                5,                   // MaxWriteCostMultiplier
+                10'000,              // MaxPostponedTime
+                15,                  // MaxPostponedCount
+                performanceProfile   // ClientPerformanceProfile
             );
         }
 
@@ -1828,45 +1760,45 @@ Y_UNIT_TEST_SUITE(TModel)
             kikimrConfig.SetBlocksCount(blocksCount);
             kikimrConfig.SetBlockSize(blockSize);
             SetupPerformanceProfile(
-                storageType,       // storageType
-                4,                 // allocationUnits
-                200,               // unitReadIops
-                2,                 // unitReadBandwidth (MiB)
-                400,               // unitWriteIops
-                4,                 // unitWriteBandwidth (MiB)
-                100,               // maxReadIops
-                1,                 // maxReadBandwidth (MiB)
-                200,               // maxWriteIops
-                2,                 // maxWriteBandwidth (MiB)
-                30'000,            // boostTime (30s)
-                600'000,           // boostRefilleTime (10m)
-                2,                 // unitBoost
-                10,                // burstPercentage
-                1_KB,              // defaultPostponedRequestWeight
-                10_MB,             // maxPostponedWeight
-                5,                 // maxWriteCostMultiplier
-                10'000,            // maxPostponedTime (10s)
-                15,                // MaxPostponedCount
-                kikimrConfig,      // kikimrConfig
-                storageConfig,     // storageConfig
-                performanceProfile // clientPerformanceProfile
+                storageType,         // storageType
+                4,                   // allocationUnits
+                200,                 // unitReadIops
+                2,                   // unitReadBandwidth (MiB)
+                400,                 // unitWriteIops
+                4,                   // unitWriteBandwidth (MiB)
+                100,                 // maxReadIops
+                1,                   // maxReadBandwidth (MiB)
+                200,                 // maxWriteIops
+                2,                   // maxWriteBandwidth (MiB)
+                30'000,              // boostTime (30s)
+                600'000,             // boostRefilleTime (10m)
+                2,                   // unitBoost
+                10,                  // burstPercentage
+                1_KB,                // defaultPostponedRequestWeight
+                10_MB,               // maxPostponedWeight
+                5,                   // maxWriteCostMultiplier
+                10'000,              // maxPostponedTime (10s)
+                15,                  // MaxPostponedCount
+                kikimrConfig,        // kikimrConfig
+                storageConfig,       // storageConfig
+                performanceProfile   // clientPerformanceProfile
             );
             DO_TEST(
-                true,              // ThrottlingEnabled
-                100,               // MaxReadIops
-                1_MB,              // MaxReadBandwidth
-                200,               // MaxWriteIops
-                2_MB,              // MaxWriteBandwidth
-                30'000,            // BoostTime
-                600'000,           // BoostRefillTime
-                200,               // BoostPercentage
-                10,                // BurstPercentage
-                1_KB,              // DefaultPostponedRequestWeight
-                10_MB,             // MaxPostponedWeight
-                5,                 // MaxWriteCostMultiplier
-                10'000,            // MaxPostponedTime
-                15,                // MaxPostponedCount
-                performanceProfile // ClientPerformanceProfile
+                true,                // ThrottlingEnabled
+                100,                 // MaxReadIops
+                1_MB,                // MaxReadBandwidth
+                200,                 // MaxWriteIops
+                2_MB,                // MaxWriteBandwidth
+                30'000,              // BoostTime
+                600'000,             // BoostRefillTime
+                200,                 // BoostPercentage
+                10,                  // BurstPercentage
+                1_KB,                // DefaultPostponedRequestWeight
+                10_MB,               // MaxPostponedWeight
+                5,                   // MaxWriteCostMultiplier
+                10'000,              // MaxPostponedTime
+                15,                  // MaxPostponedCount
+                performanceProfile   // ClientPerformanceProfile
             );
         }
 
@@ -1876,45 +1808,45 @@ Y_UNIT_TEST_SUITE(TModel)
             kikimrConfig.SetBlocksCount(1024_GB / 4_KB);
             kikimrConfig.SetBlockSize(4_KB);
             SetupPerformanceProfile(
-                storageType,       // storageType
-                4,                 // allocationUnits
-                200,               // unitReadIops
-                2,                 // unitReadBandwidth (MiB)
-                400,               // unitWriteIops
-                4,                 // unitWriteBandwidth (MiB)
-                200'000,           // maxReadIops
-                1'024,             // maxReadBandwidth (MiB)
-                400'000,           // maxWriteIops
-                2'048,             // maxWriteBandwidth (MiB)
-                30'000,            // boostTime (30s)
-                600'000,           // boostRefilleTime (10m)
-                2,                 // unitBoost
-                10,                // burstPercentage
-                1_KB,              // defaultPostponedRequestWeight
-                10_MB,             // maxPostponedWeight
-                5,                 // maxWriteCostMultiplier
-                10'000,            // maxPostponedTime (10s)
-                15,                // maxPostponedCount
-                kikimrConfig,      // kikimrConfig
-                storageConfig,     // storageConfig
-                performanceProfile // clientPerformanceProfile
+                storageType,         // storageType
+                4,                   // allocationUnits
+                200,                 // unitReadIops
+                2,                   // unitReadBandwidth (MiB)
+                400,                 // unitWriteIops
+                4,                   // unitWriteBandwidth (MiB)
+                200'000,             // maxReadIops
+                1'024,               // maxReadBandwidth (MiB)
+                400'000,             // maxWriteIops
+                2'048,               // maxWriteBandwidth (MiB)
+                30'000,              // boostTime (30s)
+                600'000,             // boostRefilleTime (10m)
+                2,                   // unitBoost
+                10,                  // burstPercentage
+                1_KB,                // defaultPostponedRequestWeight
+                10_MB,               // maxPostponedWeight
+                5,                   // maxWriteCostMultiplier
+                10'000,              // maxPostponedTime (10s)
+                15,                  // maxPostponedCount
+                kikimrConfig,        // kikimrConfig
+                storageConfig,       // storageConfig
+                performanceProfile   // clientPerformanceProfile
             );
             DO_TEST(
                 true,
-                51'200,            // MaxReadIops
-                512_MB,            // MaxReadBandwidth
-                102'400,           // MaxWriteIops
-                1024_MB,           // MaxWriteBandwidth
-                30'000,            // BoostTime
-                600'000,           // BoostRefillTime
-                0,                 // BoostPercentage
-                10,                // BurstPercentage
-                1_KB,              // DefaultPostponedRequestWeight
-                10_MB,             // MaxPostponedWeight
-                5,                 // MaxWriteCostMultiplier
-                10'000,            // MaxPostponedTime
-                15,                // MaxPostponedCount
-                performanceProfile // ClientPerformanceProfile
+                51'200,              // MaxReadIops
+                512_MB,              // MaxReadBandwidth
+                102'400,             // MaxWriteIops
+                1024_MB,             // MaxWriteBandwidth
+                30'000,              // BoostTime
+                600'000,             // BoostRefillTime
+                0,                   // BoostPercentage
+                10,                  // BurstPercentage
+                1_KB,                // DefaultPostponedRequestWeight
+                10_MB,               // MaxPostponedWeight
+                5,                   // MaxWriteCostMultiplier
+                10'000,              // MaxPostponedTime
+                15,                  // MaxPostponedCount
+                performanceProfile   // ClientPerformanceProfile
             );
         }
 
@@ -1924,45 +1856,45 @@ Y_UNIT_TEST_SUITE(TModel)
             kikimrConfig.SetBlocksCount(1024_GB / 4_KB);
             kikimrConfig.SetBlockSize(4_KB);
             SetupPerformanceProfile(
-                storageType,       // storageType
-                4,                 // allocationUnits
-                200,               // unitReadIops
-                2,                 // unitReadBandwidth (MiB)
-                400,               // unitWriteIops
-                4,                 // unitWriteBandwidth (MiB)
-                50'000,            // maxReadIops
-                256,               // maxReadBandwidth (MiB)
-                100'000,           // maxWriteIops
-                512,               // maxWriteBandwidth (MiB)
-                30'000,            // boostTime (30s)
-                600'000,           // boostRefilleTime (10m)
-                2,                 // unitBoost
-                10,                // burstPercentage
-                1_KB,              // defaultPostponedRequestWeight
-                10_MB,             // maxPostponedWeight
-                5,                 // maxWriteCostMultiplier
-                10'000,            // maxPostponedTime (10s)
-                15,                // maxPostponedCount
-                kikimrConfig,      // kikimrConfig
-                storageConfig,     // storageConfig
-                performanceProfile // clientPerformanceProfile
+                storageType,         // storageType
+                4,                   // allocationUnits
+                200,                 // unitReadIops
+                2,                   // unitReadBandwidth (MiB)
+                400,                 // unitWriteIops
+                4,                   // unitWriteBandwidth (MiB)
+                50'000,              // maxReadIops
+                256,                 // maxReadBandwidth (MiB)
+                100'000,             // maxWriteIops
+                512,                 // maxWriteBandwidth (MiB)
+                30'000,              // boostTime (30s)
+                600'000,             // boostRefilleTime (10m)
+                2,                   // unitBoost
+                10,                  // burstPercentage
+                1_KB,                // defaultPostponedRequestWeight
+                10_MB,               // maxPostponedWeight
+                5,                   // maxWriteCostMultiplier
+                10'000,              // maxPostponedTime (10s)
+                15,                  // maxPostponedCount
+                kikimrConfig,        // kikimrConfig
+                storageConfig,       // storageConfig
+                performanceProfile   // clientPerformanceProfile
             );
             DO_TEST(
-                true,              // ThrottlingEnabled
-                50'000,            // MaxReadIops
-                256_MB,            // MaxReadBandwidth
-                100'000,           // MaxWriteIops
-                512_MB,            // MaxWriteBandwidth
-                30'000,            // BoostTime
-                600'000,           // BoostRefillTime
-                0,                 // BoostPercentage
-                10,                // BurstPercentage
-                1_KB,              // DefaultPostponedRequestWeight
-                10_MB,             // MaxPostponedWeight
-                5,                 // MaxWriteCostMultiplier
-                10'000,            // MaxPostponedTime
-                15,                // MaxPostponedCount
-                performanceProfile // ClientPerformanceProfile
+                true,                // ThrottlingEnabled
+                50'000,              // MaxReadIops
+                256_MB,              // MaxReadBandwidth
+                100'000,             // MaxWriteIops
+                512_MB,              // MaxWriteBandwidth
+                30'000,              // BoostTime
+                600'000,             // BoostRefillTime
+                0,                   // BoostPercentage
+                10,                  // BurstPercentage
+                1_KB,                // DefaultPostponedRequestWeight
+                10_MB,               // MaxPostponedWeight
+                5,                   // MaxWriteCostMultiplier
+                10'000,              // MaxPostponedTime
+                15,                  // MaxPostponedCount
+                performanceProfile   // ClientPerformanceProfile
             );
         }
 
@@ -1973,45 +1905,45 @@ Y_UNIT_TEST_SUITE(TModel)
             kikimrConfig.SetBlocksCount(blocksCount);
             kikimrConfig.SetBlockSize(blockSize);
             SetupPerformanceProfile(
-                storageType,       // storageType
-                2,                 // allocationUnits
-                200,               // unitReadIops
-                2,                 // unitReadBandwidth (MiB)
-                400,               // unitWriteIops
-                4,                 // unitWriteBandwidth (MiB)
-                2'000,             // maxReadIops
-                100,               // maxReadBandwidth (MiB)
-                4'000,             // maxWriteIops
-                200,               // maxWriteBandwidth (MiB)
-                30'000,            // boostTime (30s)
-                600'000,           // boostRefilleTime (10m)
-                2,                 // unitBoost
-                10,                // burstPercentage
-                1_KB,              // defaultPostponedRequestWeight
-                10_MB,             // maxPostponedWeight
-                5,                 // maxWriteCostMultiplier
-                10'000,            // maxPostponedTime (10s)
-                15,                // maxPostponedCount
-                kikimrConfig,      // kikimrConfig
-                storageConfig,     // storageConfig
-                performanceProfile // clientPerformanceProfile
+                storageType,         // storageType
+                2,                   // allocationUnits
+                200,                 // unitReadIops
+                2,                   // unitReadBandwidth (MiB)
+                400,                 // unitWriteIops
+                4,                   // unitWriteBandwidth (MiB)
+                2'000,               // maxReadIops
+                100,                 // maxReadBandwidth (MiB)
+                4'000,               // maxWriteIops
+                200,                 // maxWriteBandwidth (MiB)
+                30'000,              // boostTime (30s)
+                600'000,             // boostRefilleTime (10m)
+                2,                   // unitBoost
+                10,                  // burstPercentage
+                1_KB,                // defaultPostponedRequestWeight
+                10_MB,               // maxPostponedWeight
+                5,                   // maxWriteCostMultiplier
+                10'000,              // maxPostponedTime (10s)
+                15,                  // maxPostponedCount
+                kikimrConfig,        // kikimrConfig
+                storageConfig,       // storageConfig
+                performanceProfile   // clientPerformanceProfile
             );
             DO_TEST(
-                true,              // ThrottlingEnabled
-                200,               // MaxReadIops
-                2_MB,              // MaxReadBandwidth
-                400,               // MaxWriteIops
-                4_MB,              // MaxWriteBandwidth
-                30'000,            // BoostTime
-                600'000,           // BoostRefillTime
-                200,               // BoostPercentage
-                10,                // BurstPercentage
-                1_KB,              // DefaultPostponedRequestWeight
-                10_MB,             // MaxPostponedWeight
-                5,                 // MaxWriteCostMultiplier
-                10'000,            // MaxPostponedTime
-                15,                // MaxPostponedCount
-                performanceProfile // ClientPerformanceProfile
+                true,                // ThrottlingEnabled
+                200,                 // MaxReadIops
+                2_MB,                // MaxReadBandwidth
+                400,                 // MaxWriteIops
+                4_MB,                // MaxWriteBandwidth
+                30'000,              // BoostTime
+                600'000,             // BoostRefillTime
+                200,                 // BoostPercentage
+                10,                  // BurstPercentage
+                1_KB,                // DefaultPostponedRequestWeight
+                10_MB,               // MaxPostponedWeight
+                5,                   // MaxWriteCostMultiplier
+                10'000,              // MaxPostponedTime
+                15,                  // MaxPostponedCount
+                performanceProfile   // ClientPerformanceProfile
             );
         }
 
@@ -2021,45 +1953,45 @@ Y_UNIT_TEST_SUITE(TModel)
             kikimrConfig.SetBlocksCount(blocksCount);
             kikimrConfig.SetBlockSize(blockSize);
             SetupPerformanceProfile(
-                storageType,       // storageType
-                2,                 // allocationUnits
-                200,               // unitReadIops
-                2,                 // unitReadBandwidth (MiB)
-                400,               // unitWriteIops
-                4,                 // unitWriteBandwidth (MiB)
-                100,               // maxReadIops
-                1,                 // maxReadBandwidth (MiB)
-                200,               // maxWriteIops
-                2,                 // maxWriteBandwidth (MiB)
-                30'000,            // boostTime (30s)
-                600'000,           // boostRefilleTime (10m)
-                2,                 // unitBoost
-                10,                // burstPercentage
-                1_KB,              // defaultPostponedRequestWeight
-                10_MB,             // maxPostponedWeight
-                5,                 // maxWriteCostMultiplier
-                10'000,            // maxPostponedTime (10s)
-                15,                // maxPostponedCount
-                kikimrConfig,      // kikimrConfig
-                storageConfig,     // storageConfig
-                performanceProfile // clientPerformanceProfile
+                storageType,         // storageType
+                2,                   // allocationUnits
+                200,                 // unitReadIops
+                2,                   // unitReadBandwidth (MiB)
+                400,                 // unitWriteIops
+                4,                   // unitWriteBandwidth (MiB)
+                100,                 // maxReadIops
+                1,                   // maxReadBandwidth (MiB)
+                200,                 // maxWriteIops
+                2,                   // maxWriteBandwidth (MiB)
+                30'000,              // boostTime (30s)
+                600'000,             // boostRefilleTime (10m)
+                2,                   // unitBoost
+                10,                  // burstPercentage
+                1_KB,                // defaultPostponedRequestWeight
+                10_MB,               // maxPostponedWeight
+                5,                   // maxWriteCostMultiplier
+                10'000,              // maxPostponedTime (10s)
+                15,                  // maxPostponedCount
+                kikimrConfig,        // kikimrConfig
+                storageConfig,       // storageConfig
+                performanceProfile   // clientPerformanceProfile
             );
             DO_TEST(
-                true,              // ThrottlingEnabled
-                100,               // MaxReadIops
-                1_MB,              // MaxReadBandwidth
-                200,               // MaxWriteIops
-                2_MB,              // MaxWriteBandwidth
-                30'000,            // BoostTime
-                600'000,           // BoostRefillTime
-                200,               // BoostPercentage
-                10,                // BurstPercentage
-                1_KB,              // DefaultPostponedRequestWeight
-                10_MB,             // MaxPostponedWeight
-                5,                 // MaxWriteCostMultiplier
-                10'000,            // MaxPostponedTime
-                15,                // MaxPostponedCount
-                performanceProfile // ClientPerformanceProfile
+                true,                // ThrottlingEnabled
+                100,                 // MaxReadIops
+                1_MB,                // MaxReadBandwidth
+                200,                 // MaxWriteIops
+                2_MB,                // MaxWriteBandwidth
+                30'000,              // BoostTime
+                600'000,             // BoostRefillTime
+                200,                 // BoostPercentage
+                10,                  // BurstPercentage
+                1_KB,                // DefaultPostponedRequestWeight
+                10_MB,               // MaxPostponedWeight
+                5,                   // MaxWriteCostMultiplier
+                10'000,              // MaxPostponedTime
+                15,                  // MaxPostponedCount
+                performanceProfile   // ClientPerformanceProfile
             );
         }
 
@@ -2069,45 +2001,45 @@ Y_UNIT_TEST_SUITE(TModel)
             kikimrConfig.SetBlocksCount(1024_GB / 4_KB);
             kikimrConfig.SetBlockSize(4_KB);
             SetupPerformanceProfile(
-                storageType,       // storageType
-                2,                 // allocationUnits
-                200,               // unitReadIops
-                2,                 // unitReadBandwidth (MiB)
-                400,               // unitWriteIops
-                4,                 // unitWriteBandwidth (MiB)
-                200'000,           // maxReadIops
-                1'024,             // maxReadBandwidth (MiB)
-                400'000,           // maxWriteIops
-                2'048,             // maxWriteBandwidth (MiB)
-                30'000,            // boostTime (30s)
-                600'000,           // boostRefilleTime (10m)
-                2,                 // unitBoost
-                10,                // burstPercentage
-                1_KB,              // defaultPostponedRequestWeight
-                10_MB,             // maxPostponedWeight
-                5,                 // maxWriteCostMultiplier
-                10'000,            // maxPostponedTime (10s)
-                15,                // maxPostponedCount
-                kikimrConfig,      // kikimrConfig
-                storageConfig,     // storageConfig
-                performanceProfile // clientPerformanceProfile
+                storageType,         // storageType
+                2,                   // allocationUnits
+                200,                 // unitReadIops
+                2,                   // unitReadBandwidth (MiB)
+                400,                 // unitWriteIops
+                4,                   // unitWriteBandwidth (MiB)
+                200'000,             // maxReadIops
+                1'024,               // maxReadBandwidth (MiB)
+                400'000,             // maxWriteIops
+                2'048,               // maxWriteBandwidth (MiB)
+                30'000,              // boostTime (30s)
+                600'000,             // boostRefilleTime (10m)
+                2,                   // unitBoost
+                10,                  // burstPercentage
+                1_KB,                // defaultPostponedRequestWeight
+                10_MB,               // maxPostponedWeight
+                5,                   // maxWriteCostMultiplier
+                10'000,              // maxPostponedTime (10s)
+                15,                  // maxPostponedCount
+                kikimrConfig,        // kikimrConfig
+                storageConfig,       // storageConfig
+                performanceProfile   // clientPerformanceProfile
             );
             DO_TEST(
-                true,              // ThrottlingEnabled
-                102'400,           // MaxReadIops
-                1024_MB,           // MaxReadBandwidth
-                204'800,           // MaxWriteIops
-                2048_MB,           // MaxWriteBandwidth
-                30'000,            // BoostTime
-                600'000,           // BoostRefillTime
-                0,                 // BoostPercentage
-                10,                // BurstPercentage
-                1_KB,              // DefaultPostponedRequestWeight
-                10_MB,             // MaxPostponedWeight
-                5,                 // MaxWriteCostMultiplier
-                10'000,            // MaxPostponedTime
-                15,                // MaxPostponedCount
-                performanceProfile // ClientPerformanceProfile
+                true,                // ThrottlingEnabled
+                102'400,             // MaxReadIops
+                1024_MB,             // MaxReadBandwidth
+                204'800,             // MaxWriteIops
+                2048_MB,             // MaxWriteBandwidth
+                30'000,              // BoostTime
+                600'000,             // BoostRefillTime
+                0,                   // BoostPercentage
+                10,                  // BurstPercentage
+                1_KB,                // DefaultPostponedRequestWeight
+                10_MB,               // MaxPostponedWeight
+                5,                   // MaxWriteCostMultiplier
+                10'000,              // MaxPostponedTime
+                15,                  // MaxPostponedCount
+                performanceProfile   // ClientPerformanceProfile
             );
         }
 
@@ -2117,45 +2049,45 @@ Y_UNIT_TEST_SUITE(TModel)
             kikimrConfig.SetBlocksCount(1024_GB / 4_KB);
             kikimrConfig.SetBlockSize(4_KB);
             SetupPerformanceProfile(
-                storageType,       // storageType
-                2,                 // allocationUnits
-                200,               // unitReadIops
-                2,                 // unitReadBandwidth (MiB)
-                400,               // unitWriteIops
-                4,                 // unitWriteBandwidth (MiB)
-                50'000,            // maxReadIops
-                256,               // maxReadBandwidth (MiB)
-                100'000,           // maxWriteIops
-                512,               // maxWriteBandwidth (MiB)
-                30'000,            // boostTime (30s)
-                600'000,           // boostRefilleTime (10m)
-                0,                 // unitBoost
-                10,                // burstPercentage
-                1_KB,              // defaultPostponedRequestWeight
-                10_MB,             // maxPostponedWeight
-                5,                 // maxWriteCostMultiplier
-                10'000,            // maxPostponedTime (10s)
-                15,                // maxPostponedCount
-                kikimrConfig,      // kikimrConfig
-                storageConfig,     // storageConfig
-                performanceProfile // clientPerformanceProfile
+                storageType,         // storageType
+                2,                   // allocationUnits
+                200,                 // unitReadIops
+                2,                   // unitReadBandwidth (MiB)
+                400,                 // unitWriteIops
+                4,                   // unitWriteBandwidth (MiB)
+                50'000,              // maxReadIops
+                256,                 // maxReadBandwidth (MiB)
+                100'000,             // maxWriteIops
+                512,                 // maxWriteBandwidth (MiB)
+                30'000,              // boostTime (30s)
+                600'000,             // boostRefilleTime (10m)
+                0,                   // unitBoost
+                10,                  // burstPercentage
+                1_KB,                // defaultPostponedRequestWeight
+                10_MB,               // maxPostponedWeight
+                5,                   // maxWriteCostMultiplier
+                10'000,              // maxPostponedTime (10s)
+                15,                  // maxPostponedCount
+                kikimrConfig,        // kikimrConfig
+                storageConfig,       // storageConfig
+                performanceProfile   // clientPerformanceProfile
             );
             DO_TEST(
-                true,              // ThrottlingEnabled
-                50'000,            // MaxReadIops
-                256_MB,            // MaxReadBandwidth
-                100'000,           // MaxWriteIops
-                512_MB,            // MaxWriteBandwidth
-                30'000,            // BoostTime
-                600'000,           // BoostRefillTime
-                0,                 // BoostPercentage
-                10,                // BurstPercentage
-                1_KB,              // DefaultPostponedRequestWeight
-                10_MB,             // MaxPostponedWeight
-                5,                 // MaxWriteCostMultiplier
-                10'000,            // MaxPostponedTime
-                15,                // MaxPostponedCount
-                performanceProfile // ClientPerformanceProfile
+                true,                // ThrottlingEnabled
+                50'000,              // MaxReadIops
+                256_MB,              // MaxReadBandwidth
+                100'000,             // MaxWriteIops
+                512_MB,              // MaxWriteBandwidth
+                30'000,              // BoostTime
+                600'000,             // BoostRefillTime
+                0,                   // BoostPercentage
+                10,                  // BurstPercentage
+                1_KB,                // DefaultPostponedRequestWeight
+                10_MB,               // MaxPostponedWeight
+                5,                   // MaxWriteCostMultiplier
+                10'000,              // MaxPostponedTime
+                15,                  // MaxPostponedCount
+                performanceProfile   // ClientPerformanceProfile
             );
         }
     }
@@ -2163,72 +2095,74 @@ Y_UNIT_TEST_SUITE(TModel)
     Y_UNIT_TEST_F(ShouldSetupFileStorePerformanceProfileHDD, TConfigs)
     {
         TestPerformanceProfile(
-            ::NCloud::NProto::STORAGE_MEDIA_HDD, // storageType
-            DefaultBlocksCount,                  // blocksCount
-            DefaultBlockSize,                    // blockSize
-            KikimrConfig,                        // kikimrConfig
-            StorageConfig,                       // storageConfig
-            {}                                   // performanceProfile
+            ::NCloud::NProto::STORAGE_MEDIA_HDD,   // storageType
+            DefaultBlocksCount,                    // blocksCount
+            DefaultBlockSize,                      // blockSize
+            KikimrConfig,                          // kikimrConfig
+            StorageConfig,                         // storageConfig
+            {}                                     // performanceProfile
         );
     }
 
     Y_UNIT_TEST_F(ShouldSetupFileStorePerformanceProfileSSD, TConfigs)
     {
         TestPerformanceProfile(
-            ::NCloud::NProto::STORAGE_MEDIA_SSD, // storageType
-            DefaultBlocksCount,                  // blocksCount
-            DefaultBlockSize,                    // blockSize
-            KikimrConfig,                        // kikimrConfig
-            StorageConfig,                       // storageConfig
-            {}                                   // performanceProfile
+            ::NCloud::NProto::STORAGE_MEDIA_SSD,   // storageType
+            DefaultBlocksCount,                    // blocksCount
+            DefaultBlockSize,                      // blockSize
+            KikimrConfig,                          // kikimrConfig
+            StorageConfig,                         // storageConfig
+            {}                                     // performanceProfile
         );
     }
 
     Y_UNIT_TEST_F(ShouldSetupFileStorePerformanceProfileHybrid, TConfigs)
     {
         TestPerformanceProfile(
-            ::NCloud::NProto::STORAGE_MEDIA_HYBRID, // storageType
-            DefaultBlocksCount,                     // blocksCount
-            DefaultBlockSize,                       // blockSize
-            KikimrConfig,                           // kikimrConfig
-            StorageConfig,                          // storageConfig
-            {}                                      // performanceProfile
+            ::NCloud::NProto::STORAGE_MEDIA_HYBRID,   // storageType
+            DefaultBlocksCount,                       // blocksCount
+            DefaultBlockSize,                         // blockSize
+            KikimrConfig,                             // kikimrConfig
+            StorageConfig,                            // storageConfig
+            {}                                        // performanceProfile
         );
     }
 
     Y_UNIT_TEST_F(ShouldSetupFileStorePerformanceProfileHDDFromClient, TConfigs)
     {
         TestPerformanceProfile(
-            ::NCloud::NProto::STORAGE_MEDIA_HDD, // storageType
-            DefaultBlocksCount,                  // blocksCount
-            DefaultBlockSize,                    // blockSize
-            KikimrConfig,                        // kikimrConfig
-            StorageConfig,                       // storageConfig
-            ClientPerformanceProfile             // performanceProfile
+            ::NCloud::NProto::STORAGE_MEDIA_HDD,   // storageType
+            DefaultBlocksCount,                    // blocksCount
+            DefaultBlockSize,                      // blockSize
+            KikimrConfig,                          // kikimrConfig
+            StorageConfig,                         // storageConfig
+            ClientPerformanceProfile               // performanceProfile
         );
     }
 
     Y_UNIT_TEST_F(ShouldSetupFileStorePerformanceProfileSSDFromClient, TConfigs)
     {
         TestPerformanceProfile(
-            ::NCloud::NProto::STORAGE_MEDIA_SSD, // storageType
-            DefaultBlocksCount,                  // blocksCount
-            DefaultBlockSize,                    // blockSize
-            KikimrConfig,                        // kikimrConfig
-            StorageConfig,                       // storageConfig
-            ClientPerformanceProfile             // performanceProfile
+            ::NCloud::NProto::STORAGE_MEDIA_SSD,   // storageType
+            DefaultBlocksCount,                    // blocksCount
+            DefaultBlockSize,                      // blockSize
+            KikimrConfig,                          // kikimrConfig
+            StorageConfig,                         // storageConfig
+            ClientPerformanceProfile               // performanceProfile
         );
     }
 
-    Y_UNIT_TEST_F(ShouldSetupFileStorePerformanceProfileHybridFromClient, TConfigs)
+    Y_UNIT_TEST_F(
+        ShouldSetupFileStorePerformanceProfileHybridFromClient,
+        TConfigs)
     {
         TestPerformanceProfile(
-            ::NCloud::NProto::STORAGE_MEDIA_HYBRID, // storageType
-            DefaultBlocksCount,                     // blocksCount
-            DefaultBlockSize,                       // blockSize
-            KikimrConfig,                           // kikimrConfig
-            StorageConfig,                          // storageConfig
-            ClientPerformanceProfile                // performanceProfile
+            ::NCloud::NProto::STORAGE_MEDIA_HYBRID,   // storageType
+            DefaultBlocksCount,                       // blocksCount
+            DefaultBlockSize,                         // blockSize
+            KikimrConfig,                             // kikimrConfig
+            StorageConfig,                            // storageConfig
+            ClientPerformanceProfile                  // performanceProfile
         );
     }
 

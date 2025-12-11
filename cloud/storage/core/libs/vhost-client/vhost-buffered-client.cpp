@@ -7,12 +7,13 @@ namespace NVHost {
 ////////////////////////////////////////////////////////////////////////////////
 
 TBufferedClient::TBufferedClient(TString sockPath, TBufferedClientParams params)
-    : QueueBufferSize {params.QueueBufferSize}
-    , Impl {std::move(sockPath), TClientParams {
-        .QueueCount = params.QueueCount,
-        .QueueSize = params.QueueSize,
-        .MemorySize = QueueBufferSize * params.QueueSize
-    }}
+    : QueueBufferSize{params.QueueBufferSize}
+    , Impl{
+          std::move(sockPath),
+          TClientParams{
+              .QueueCount = params.QueueCount,
+              .QueueSize = params.QueueSize,
+              .MemorySize = QueueBufferSize * params.QueueSize}}
 {}
 
 ui64 TBufferedClient::GetBufferSize() const
@@ -46,9 +47,9 @@ bool TBufferedClient::Write(
     const TVector<char>& inBuffer,
     TVector<char>& outBuffer)
 {
-    TVector<TVector<char>> outBuffers {std::move(outBuffer)};
+    TVector<TVector<char>> outBuffers{std::move(outBuffer)};
 
-    const bool ok = Write({ inBuffer }, outBuffers);
+    const bool ok = Write({inBuffer}, outBuffers);
 
     outBuffer = std::move(outBuffers[0]);
 
@@ -62,14 +63,15 @@ bool TBufferedClient::Write(
     TSgList stagingInBuffers;
     TSgList stagingOutBuffers;
 
-    Y_DEFER {
+    Y_DEFER
+    {
         for (std::span buf: stagingInBuffers) {
             Allocator->Deallocate(buf);
         }
         for (std::span buf: stagingOutBuffers) {
             Allocator->Deallocate(buf);
         }
-    };
+    }
 
     stagingInBuffers.reserve(inBuffers.size());
     for (auto& in: inBuffers) {
@@ -94,8 +96,8 @@ bool TBufferedClient::Write(
         totalLen += out.size();
     }
 
-    const size_t n = Impl.WriteAsync(0, stagingInBuffers, stagingOutBuffers)
-        .GetValueSync();
+    const size_t n =
+        Impl.WriteAsync(0, stagingInBuffers, stagingOutBuffers).GetValueSync();
 
     for (size_t i = 0; i != stagingOutBuffers.size(); ++i) {
         std::memcpy(
@@ -106,4 +108,4 @@ bool TBufferedClient::Write(
     return 0 < n && n <= totalLen;
 }
 
-} // namespace NVHost
+}   // namespace NVHost

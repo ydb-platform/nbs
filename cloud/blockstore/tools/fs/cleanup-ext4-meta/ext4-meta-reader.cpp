@@ -35,11 +35,11 @@ NPcre::TPcre<char> CreateRE(const char* s)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TExt4MetaReader final
-    : public IExt4MetaReader
+class TExt4MetaReader final: public IExt4MetaReader
 {
 private:
-    const NPcre::TPcre<char> GroupRE = CreateRE(R"(Group (\d+): \(Blocks (\d+)\-(\d+)\))");
+    const NPcre::TPcre<char> GroupRE =
+        CreateRE(R"(Group (\d+): \(Blocks (\d+)\-(\d+)\))");
 
     // Primary superblock at 0, Group descriptors at 1-12
     const NPcre::TPcre<char> PrimarySuperblockRegExp = CreateRE(
@@ -49,16 +49,17 @@ private:
     const NPcre::TPcre<char> BackupSuperblockRegExp = CreateRE(
         R"(Backup superblock at (\d+), Group descriptors at (\d+)\-(\d+))");
 
-    const NPcre::TPcre<char> ReservedGDTBlocksRegExp = CreateRE(R"(Reserved GDT blocks at (\d+)\-(\d+))");
+    const NPcre::TPcre<char> ReservedGDTBlocksRegExp =
+        CreateRE(R"(Reserved GDT blocks at (\d+)\-(\d+))");
 
     // Block bitmap at 20447233 (bg #624 + 1)(, csum 0x00000000)?
     // Block bitmap at 1037 (+1037), csum 0xf64b0223
-    const NPcre::TPcre<char> BlockBitmapRegExp = CreateRE(
-        R"(Block bitmap at (\d+) \([^)]+\)(, csum 0x([a-z0-9]+))?)");
+    const NPcre::TPcre<char> BlockBitmapRegExp =
+        CreateRE(R"(Block bitmap at (\d+) \([^)]+\)(, csum 0x([a-z0-9]+))?)");
 
     // Inode bitmap at 20447249 (bg #624 + 17)(, csum 0x00000000)?
-    const NPcre::TPcre<char> InodeBitmapRegExp = CreateRE(
-        R"(Inode bitmap at (\d+) \([^)]+\)(, csum 0x([0-9a-z]+))?)");
+    const NPcre::TPcre<char> InodeBitmapRegExp =
+        CreateRE(R"(Inode bitmap at (\d+) \([^)]+\)(, csum 0x([0-9a-z]+))?)");
 
     const NPcre::TPcre<char> FreeBlocksRegExp = CreateRE(
         R"((\d+) free blocks, (\d+) free inodes, \d+ directories, (\d+) unused inodes)");
@@ -99,7 +100,9 @@ public:
                 continue;
             }
 
-            if (line.StartsWith("Filesystem features") && line.Contains("metadata_csum")) {
+            if (line.StartsWith("Filesystem features") &&
+                line.Contains("metadata_csum"))
+            {
                 sb.MetadataCsumFeature = true;
             }
         }
@@ -120,15 +123,14 @@ public:
             groupDescr.GroupNum = FromMatch<ui32>(line, match[1]);
             groupDescr.Blocks = {
                 FromMatch<ui64>(line, match[2]),
-                FromMatch<ui64>(line, match[3])
-            };
+                FromMatch<ui64>(line, match[3])};
         } else {
             Y_ABORT_UNLESS(false, "can't parse group info: %s", line.c_str());
         }
 
         while (stream.ReadLine(line)) {
             line = StripStringLeft(line);
-            if (line.StartsWith("Free inodes")) { // end of group
+            if (line.StartsWith("Free inodes")) {   // end of group
                 break;
             }
 
@@ -148,7 +150,8 @@ public:
 
                 groupDescr.BlockBitmap = FromMatch<ui64>(line, match[1]);
                 if (match.size() > 3) {
-                    groupDescr.BlockBitmapCS = IntFromMatch<ui64, 16>(line, match[3]);
+                    groupDescr.BlockBitmapCS =
+                        IntFromMatch<ui64, 16>(line, match[3]);
                 } else {
                     groupDescr.BlockBitmapCS = -1;
                 }
@@ -161,14 +164,17 @@ public:
 
                 groupDescr.InodeBitmap = FromMatch<ui64>(line, match[1]);
                 if (match.size() > 3) {
-                    groupDescr.InodeBitmapCS = IntFromMatch<ui64, 16>(line, match[3]);
+                    groupDescr.InodeBitmapCS =
+                        IntFromMatch<ui64, 16>(line, match[3]);
                 } else {
                     groupDescr.InodeBitmapCS = -1;
                 }
                 continue;
             }
 
-            if (auto match = PrimarySuperblockRegExp.Capture(line); !match.empty()) {
+            if (auto match = PrimarySuperblockRegExp.Capture(line);
+                !match.empty())
+            {
                 Y_ABORT_UNLESS(!groupDescr.PrimarySuperblock);
                 Y_ABORT_UNLESS(!groupDescr.GroupDescriptors);
 
@@ -176,13 +182,14 @@ public:
 
                 groupDescr.GroupDescriptors = TBlockRange{
                     FromMatch<ui64>(line, match[2]),
-                    FromMatch<ui64>(line, match[3])
-                };
+                    FromMatch<ui64>(line, match[3])};
 
                 continue;
             }
 
-            if (auto match = BackupSuperblockRegExp.Capture(line); !match.empty()) {
+            if (auto match = BackupSuperblockRegExp.Capture(line);
+                !match.empty())
+            {
                 Y_ABORT_UNLESS(!groupDescr.BackupSuperblock);
                 Y_ABORT_UNLESS(!groupDescr.GroupDescriptors);
 
@@ -190,19 +197,19 @@ public:
 
                 groupDescr.GroupDescriptors = TBlockRange{
                     FromMatch<ui64>(line, match[2]),
-                    FromMatch<ui64>(line, match[3])
-                };
+                    FromMatch<ui64>(line, match[3])};
 
                 continue;
             }
 
-            if (auto match = ReservedGDTBlocksRegExp.Capture(line); !match.empty()) {
+            if (auto match = ReservedGDTBlocksRegExp.Capture(line);
+                !match.empty())
+            {
                 Y_ABORT_UNLESS(!groupDescr.ReservedGDTBlocks);
 
                 groupDescr.ReservedGDTBlocks = TBlockRange{
                     FromMatch<ui64>(line, match[1]),
-                    FromMatch<ui64>(line, match[2])
-                };
+                    FromMatch<ui64>(line, match[2])};
 
                 continue;
             }

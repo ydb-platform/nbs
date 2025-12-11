@@ -28,60 +28,60 @@ TDuration MSeconds(ui64 x)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_CLIENT_CONFIG(xxx)                                          \
-    xxx(Host,                   TString,          "localhost"                 )\
-    xxx(Port,                   ui32,             0                           )\
-    xxx(InsecurePort,           ui32,             9766                        )\
-    xxx(MaxMessageSize,         ui32,             64*1024*1024                )\
-    xxx(ThreadsCount,           ui32,             1                           )\
-                                                                               \
-    xxx(RequestTimeout,                 TDuration,      Seconds(30)           )\
-    xxx(RequestTimeoutIncrementOnRetry, TDuration,      Seconds(30)           )\
-    xxx(RequestTimeoutMax,              TDuration,      Minutes(2)            )\
-    xxx(RetryTimeout,                   TDuration,      Minutes(5)            )\
-    xxx(RetryTimeoutIncrement,          TDuration,      MSeconds(500)         )\
-    xxx(ConnectionErrorMaxRetryTimeout, TDuration,      MSeconds(100)         )\
-    xxx(GrpcReconnectBackoff,           TDuration,      MSeconds(100)         )\
-    xxx(DiskRegistryBasedDiskInitialRetryTimeout,  TDuration,  MSeconds(500)  )\
-    xxx(YDBBasedDiskInitialRetryTimeout,           TDuration,  MSeconds(500)  )\
-    xxx(EnableListBasedRetryRules,      bool,           false                 )\
-    xxx(NonRetriableErrorsForReliableMedia,                                    \
-        TVector<EWellKnownResultCodes>,                                        \
-        {})                                                                    \
-    xxx(NonRetriableErrorsForUnreliableMedia,                                  \
-        TVector<EWellKnownResultCodes>,                                        \
-        {})                                                                    \
-                                                                               \
-    xxx(MemoryQuotaBytes,       ui32,             0                           )\
-    xxx(SecurePort,             ui32,             0                           )\
-    xxx(RootCertsFile,          TString,          {}                          )\
-    xxx(CertFile,               TString,          {}                          )\
-    xxx(CertPrivateKeyFile,     TString,          {}                          )\
-    xxx(AuthToken,              TString,          {}                          )\
-    xxx(UnixSocketPath,         TString,          {}                          )\
-    xxx(GrpcThreadsLimit,       ui32,             4                           )\
-    xxx(InstanceId,             TString,          {}                          )\
-    xxx(MaxRequestSize,         ui32,             4*1024*1024                 )\
-    xxx(ClientId,               TString,          {}                          )\
-    xxx(IpcType,                NProto::EClientIpcType, NProto::IPC_GRPC      )\
-    xxx(NbdThreadsCount,        ui32,             1                           )\
-    xxx(NbdSocketSuffix,        TString,          {}                          )\
-    xxx(NbdStructuredReply,     bool,             false                       )\
-    xxx(NbdUseNbsErrors,        bool,             false                       )\
-    xxx(RemountDeadline,        TDuration,        MSeconds(500)               )\
-    xxx(NvmeDeviceTransportId,  TString,          {}                          )\
-    xxx(NvmeDeviceNqn,          TString,          {}                          )\
-    xxx(ScsiDeviceUrl,          TString,          {}                          )\
-    xxx(ScsiInitiatorIqn,       TString,          {}                          )\
-    xxx(RdmaDeviceAddress,      TString,          {}                          )\
-    xxx(RdmaDevicePort,         ui32,             0                           )\
-    xxx(LocalNonreplDisableDurableClient,         bool, false                 )\
-    xxx(SkipCertVerification,   bool,             false                       )\
-// BLOCKSTORE_CLIENT_CONFIG
+#define BLOCKSTORE_CLIENT_CONFIG(xxx)                                       \
+    xxx(Host, TString, "localhost")                                         \
+    xxx(Port, ui32, 0)                                                      \
+    xxx(InsecurePort, ui32, 9766)                                           \
+    xxx(MaxMessageSize, ui32, 64 * 1024 * 1024)                             \
+    xxx(ThreadsCount, ui32, 1)                                              \
+                                                                            \
+    xxx(RequestTimeout, TDuration, Seconds(30))                             \
+    xxx(RequestTimeoutIncrementOnRetry, TDuration, Seconds(30))             \
+    xxx(RequestTimeoutMax, TDuration, Minutes(2))                           \
+    xxx(RetryTimeout, TDuration, Minutes(5))                                \
+    xxx(RetryTimeoutIncrement, TDuration, MSeconds(500))                    \
+    xxx(ConnectionErrorMaxRetryTimeout, TDuration, MSeconds(100))           \
+    xxx(GrpcReconnectBackoff, TDuration, MSeconds(100))                     \
+    xxx(DiskRegistryBasedDiskInitialRetryTimeout, TDuration, MSeconds(500)) \
+    xxx(YDBBasedDiskInitialRetryTimeout, TDuration, MSeconds(500))          \
+    xxx(EnableListBasedRetryRules, bool, false)                             \
+    xxx(NonRetriableErrorsForReliableMedia,                                 \
+        TVector<EWellKnownResultCodes>,                                     \
+        {})                                                                 \
+    xxx(NonRetriableErrorsForUnreliableMedia,                               \
+        TVector<EWellKnownResultCodes>,                                     \
+        {})                                                                 \
+                                                                            \
+    xxx(MemoryQuotaBytes, ui32, 0)                                          \
+    xxx(SecurePort, ui32, 0)                                                \
+    xxx(RootCertsFile, TString, {})                                         \
+    xxx(CertFile, TString, {})                                              \
+    xxx(CertPrivateKeyFile, TString, {})                                    \
+    xxx(AuthToken, TString, {})                                             \
+    xxx(UnixSocketPath, TString, {})                                        \
+    xxx(GrpcThreadsLimit, ui32, 4)                                          \
+    xxx(InstanceId, TString, {})                                            \
+    xxx(MaxRequestSize, ui32, 4 * 1024 * 1024)                              \
+    xxx(ClientId, TString, {})                                              \
+    xxx(IpcType, NProto::EClientIpcType, NProto::IPC_GRPC)                  \
+    xxx(NbdThreadsCount, ui32, 1)                                           \
+    xxx(NbdSocketSuffix, TString, {})                                       \
+    xxx(NbdStructuredReply, bool, false)                                    \
+    xxx(NbdUseNbsErrors, bool, false)                                       \
+    xxx(RemountDeadline, TDuration, MSeconds(500))                          \
+    xxx(NvmeDeviceTransportId, TString, {})                                 \
+    xxx(NvmeDeviceNqn, TString, {})                                         \
+    xxx(ScsiDeviceUrl, TString, {})                                         \
+    xxx(ScsiInitiatorIqn, TString, {})                                      \
+    xxx(RdmaDeviceAddress, TString, {})                                     \
+    xxx(RdmaDevicePort, ui32, 0)                                            \
+    xxx(LocalNonreplDisableDurableClient, bool, false)                      \
+    xxx(SkipCertVerification, bool, false)                                  \
+    // BLOCKSTORE_CLIENT_CONFIG
 
-#define BLOCKSTORE_CLIENT_DECLARE_CONFIG(name, type, value)                    \
-    Y_DECLARE_UNUSED static const type Default##name = value;                  \
-// BLOCKSTORE_CLIENT_DECLARE_CONFIG
+#define BLOCKSTORE_CLIENT_DECLARE_CONFIG(name, type, value)   \
+    Y_DECLARE_UNUSED static const type Default##name = value; \
+    // BLOCKSTORE_CLIENT_DECLARE_CONFIG
 
 BLOCKSTORE_CLIENT_CONFIG(BLOCKSTORE_CLIENT_DECLARE_CONFIG)
 
@@ -102,8 +102,7 @@ TDuration ConvertValue<TDuration, const ui32&>(const ui32& value)
 }
 
 template <>
-TRequestThresholds
-ConvertValue<TRequestThresholds, TProtoRequestThresholds>(
+TRequestThresholds ConvertValue<TRequestThresholds, TProtoRequestThresholds>(
     const TProtoRequestThresholds value)
 {
     return ConvertRequestThresholds(value);
@@ -130,7 +129,9 @@ bool IsEmpty(const google::protobuf::RepeatedField<T>& value)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IOutputStream& operator <<(IOutputStream& out, const NProto::EClientIpcType& ipcType)
+IOutputStream& operator<<(
+    IOutputStream& out,
+    const NProto::EClientIpcType& ipcType)
 {
     switch (ipcType) {
         case NProto::IPC_GRPC:
@@ -220,8 +221,10 @@ BLOCKSTORE_CLIENT_CONFIG(BLOCKSTORE_CONFIG_GETTER)
 
 #undef BLOCKSTORE_CONFIG_GETTER
 
-TRequestThresholds TClientAppConfig::GetRequestThresholds() const {
-    return ConvertValue<TRequestThresholds>(ClientConfig.GetRequestThresholds());
+TRequestThresholds TClientAppConfig::GetRequestThresholds() const
+{
+    return ConvertValue<TRequestThresholds>(
+        ClientConfig.GetRequestThresholds());
 }
 
 void TClientAppConfig::Dump(IOutputStream& out) const
@@ -239,16 +242,21 @@ void TClientAppConfig::Dump(IOutputStream& out) const
 
 void TClientAppConfig::DumpHtml(IOutputStream& out) const
 {
-#define BLOCKSTORE_CONFIG_DUMP(name, ...)                                      \
-    TABLER() {                                                                 \
-        TABLED() { out << #name; }                                             \
-        TABLED() { DumpImpl(Get##name(), out); }                               \
-    }                                                                          \
-// BLOCKSTORE_CONFIG_DUMP
+#define BLOCKSTORE_CONFIG_DUMP(name, ...) \
+    TABLER () {                           \
+        TABLED () {                       \
+            out << #name;                 \
+        }                                 \
+        TABLED () {                       \
+            DumpImpl(Get##name(), out);   \
+        }                                 \
+    }                                     \
+    // BLOCKSTORE_CONFIG_DUMP
 
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
+    HTML (out) {
+        TABLE_CLASS ("table table-condensed") {
+            TABLEBODY()
+            {
                 BLOCKSTORE_CLIENT_CONFIG(BLOCKSTORE_CONFIG_DUMP);
             }
         }

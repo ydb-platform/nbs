@@ -49,14 +49,14 @@ public:
     using TResponseProto = NProto::TWriteDeviceBlocksResponse;
 
     TRdmaMultiWriteBlocksResponseHandler(
-            TActorSystem* actorSystem,
-            TNonreplicatedPartitionConfigPtr partConfig,
-            TRequestInfoPtr requestInfo,
-            ui32 requestBlockCount,
-            size_t replicationTargetCount,
-            NActors::TActorId volumeActorId,
-            NActors::TActorId parentActorId,
-            ui64 requestId)
+        TActorSystem* actorSystem,
+        TNonreplicatedPartitionConfigPtr partConfig,
+        TRequestInfoPtr requestInfo,
+        ui32 requestBlockCount,
+        size_t replicationTargetCount,
+        NActors::TActorId volumeActorId,
+        NActors::TActorId parentActorId,
+        ui64 requestId)
         : TBase(
               actorSystem,
               std::move(partConfig),
@@ -76,19 +76,18 @@ public:
     {
         Y_UNUSED(ctx, data);
 
-        bool subResponsesOk =
-            proto.GetReplicationResponses().size() ==
-                static_cast<int>(ReplicationTargetCount) &&
-            AllOf(
-                proto.GetReplicationResponses(),
-                [](const NProto::TError& subResponseError)
-                { return subResponseError.GetCode() == S_OK; });
+        bool subResponsesOk = proto.GetReplicationResponses().size() ==
+                                  static_cast<int>(ReplicationTargetCount) &&
+                              AllOf(
+                                  proto.GetReplicationResponses(),
+                                  [](const NProto::TError& subResponseError) {
+                                      return subResponseError.GetCode() == S_OK;
+                                  });
         if (!subResponsesOk) {
             TString subResponses = Accumulate(
                 proto.GetReplicationResponses(),
                 TString{},
-                [](const TString& acc, const NProto::TError& err)
-                {
+                [](const TString& acc, const NProto::TError& err) {
                     return acc ? acc + "," + FormatError(err)
                                : FormatError(err);
                 });
@@ -99,8 +98,7 @@ public:
         return {};
     }
 
-    std::unique_ptr<NActors::IEventBase> CreateResponse(
-        NProto::TError error)
+    std::unique_ptr<NActors::IEventBase> CreateResponse(NProto::TError error)
     {
         auto response = std::make_unique<
             TEvNonreplPartitionPrivate::TEvMultiAgentWriteResponse>(
@@ -234,7 +232,8 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
     if (deviceRequests.size() != 1) {
         // TMultiAgentWriteActor perform TEvMultiAgentWriteRequest only if all
         // TEvGetDeviceForRangeRequests to replicas have returned success. These
-        // requests are response with an error if the request hits two disk-agents.
+        // requests are response with an error if the request hits two
+        // disk-agents.
         ReportMultiAgentRequestAffectsTwoDevices(
             "rdmaActor",
             {{"disk", PartConfig->GetName()}, {"range", msg->Record.Range}});
@@ -310,8 +309,7 @@ void TNonreplicatedPartitionRdmaActor::HandleMultiAgentWrite(
         ep->SendRequest(std::move(req), requestInfo->CallContext);
 
     TRequestContext sentRequestCtx{
-        {.DeviceIdx = deviceRequest.DeviceIdx,
-         .SentRequestId = sentRequestId}};
+        {.DeviceIdx = deviceRequest.DeviceIdx, .SentRequestId = sentRequestId}};
 
     RequestsInProgress.AddWriteRequest(requestId, sentRequestCtx);
 }

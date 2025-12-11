@@ -56,7 +56,9 @@ STFUNC(TDiskRegistryMock::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvDiskRegistry::TEvRegisterAgentRequest, HandleRegisterAgent);
-        HFunc(TEvDiskRegistry::TEvUpdateAgentStatsRequest, HandleUpdateAgentStats);
+        HFunc(
+            TEvDiskRegistry::TEvUpdateAgentStatsRequest,
+            HandleUpdateAgentStats);
         HFunc(TEvDiskRegistryProxy::TEvSubscribeRequest, HandleSubscribe);
 
         default:
@@ -109,7 +111,7 @@ void TDiskRegistryMock::HandleSubscribe(
         ctx,
         *ev,
         std::make_unique<TEvDiskRegistryProxy::TEvSubscribeResponse>(
-            true)); // connected
+            true));   // connected
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -175,7 +177,9 @@ TFuture<void> TTestSpdkEnv::UnregisterDevice(const TString& name)
     return MakeFuture();
 }
 
-TFuture<void> TTestSpdkEnv::EnableHistogram(const TString& deviceName, bool enable)
+TFuture<void> TTestSpdkEnv::EnableHistogram(
+    const TString& deviceName,
+    bool enable)
 {
     Y_UNUSED(deviceName);
     Y_UNUSED(enable);
@@ -194,11 +198,10 @@ TFuture<NSpdk::TDeviceStats> TTestSpdkEnv::QueryDeviceStats(const TString& name)
 {
     auto& device = Devices.at(name);
 
-    return MakeFuture(NSpdk::TDeviceStats {
+    return MakeFuture(NSpdk::TDeviceStats{
         .DeviceUUID = {},
         .BlockSize = device.GetBlockSize(),
-        .BlocksCount = device.GetBlocksCount()
-    });
+        .BlocksCount = device.GetBlocksCount()});
 }
 
 TFuture<NSpdk::ISpdkTargetPtr> TTestSpdkEnv::CreateNVMeTarget(
@@ -211,16 +214,14 @@ TFuture<NSpdk::ISpdkTargetPtr> TTestSpdkEnv::CreateNVMeTarget(
     Y_UNUSED(transportIds);
 
     return MakeFuture<NSpdk::ISpdkTargetPtr>(
-        std::make_shared<TTestSpdkTarget>(
-            SecureEraseCount,
-            SecureEraseResult));
+        std::make_shared<TTestSpdkTarget>(SecureEraseCount, SecureEraseResult));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TTestSpdkTarget::TTestSpdkTarget(
-        TAtomic& eraseCount,
-        NThreading::TPromise<NProto::TError>& eraseResult)
+    TAtomic& eraseCount,
+    NThreading::TPromise<NProto::TError>& eraseResult)
     : EraseCount(eraseCount)
     , EraseResult(eraseResult)
 {}
@@ -231,14 +232,16 @@ NSpdk::ISpdkDevicePtr TTestSpdkTarget::GetDevice(const TString& name)
 
     auto device = std::make_shared<NSpdk::TTestSpdkDevice>();
 
-    device->EraseHandler = [&] (auto method) {
+    device->EraseHandler = [&](auto method)
+    {
         Y_UNUSED(method);
 
         AtomicIncrement(EraseCount);
         return EraseResult.GetFuture();
     };
 
-    auto handler = [&] (auto... args) {
+    auto handler = [&](auto... args)
+    {
         Y_UNUSED(args...);
 
         return MakeFuture(NProto::TError());
@@ -263,7 +266,7 @@ TTestEnv::~TTestEnv()
 ////////////////////////////////////////////////////////////////////////////////
 
 TTestEnvBuilder::TTestEnvBuilder(TTestActorRuntime& runtime)
-        : Runtime(runtime)
+    : Runtime(runtime)
 {}
 
 TTestEnvBuilder& TTestEnvBuilder::With(NSpdk::ISpdkEnvPtr spdk)
@@ -290,7 +293,8 @@ TTestEnvBuilder& TTestEnvBuilder::With(NProto::TDiskAgentConfig config)
     return *this;
 }
 
-TTestEnvBuilder& TTestEnvBuilder::WithAgents(TVector<NProto::TDiskAgentConfig> configs)
+TTestEnvBuilder& TTestEnvBuilder::WithAgents(
+    TVector<NProto::TDiskAgentConfig> configs)
 {
     AdditionalAgentConfigsProto = std::move(configs);
     return *this;
@@ -302,13 +306,15 @@ TTestEnvBuilder& TTestEnvBuilder::With(INvmeManagerPtr nvmeManager)
     return *this;
 }
 
-TTestEnvBuilder& TTestEnvBuilder::With(NProto::TStorageServiceConfig storageServiceConfig)
+TTestEnvBuilder& TTestEnvBuilder::With(
+    NProto::TStorageServiceConfig storageServiceConfig)
 {
     StorageServiceConfig = std::move(storageServiceConfig);
     return *this;
 }
 
-TTestEnvBuilder& TTestEnvBuilder::With(TDiskRegistryState::TPtr diskRegistryState)
+TTestEnvBuilder& TTestEnvBuilder::With(
+    TDiskRegistryState::TPtr diskRegistryState)
 {
     DiskRegistryState = std::move(diskRegistryState);
     return *this;
@@ -321,20 +327,23 @@ TTestEnv TTestEnvBuilder::Build()
         TBlockStoreComponents::END,
         GetComponentName);
 
-    // for (ui32 i = TBlockStoreComponents::START; i < TBlockStoreComponents::END; ++i) {
+    // for (ui32 i = TBlockStoreComponents::START; i <
+    // TBlockStoreComponents::END; ++i) {
     //    Runtime.SetLogPriority(i, NLog::PRI_DEBUG);
     // }
     // Runtime.SetLogPriority(NLog::InvalidComponent, NLog::PRI_DEBUG);
 
     Runtime.SetLogPriority(TBlockStoreComponents::DISK_AGENT, NLog::PRI_INFO);
-    Runtime.SetLogPriority(TBlockStoreComponents::DISK_AGENT_WORKER, NLog::PRI_INFO);
+    Runtime.SetLogPriority(
+        TBlockStoreComponents::DISK_AGENT_WORKER,
+        NLog::PRI_INFO);
 
     Runtime.SetRegistrationObserverFunc(
-        [] (auto& runtime, const auto& parentId, const auto& actorId)
-    {
-        Y_UNUSED(parentId);
-        runtime.EnableScheduleForActor(actorId);
-    });
+        [](auto& runtime, const auto& parentId, const auto& actorId)
+        {
+            Y_UNUSED(parentId);
+            runtime.EnableScheduleForActor(actorId);
+        });
 
     if (!DiskRegistryState) {
         DiskRegistryState = MakeIntrusive<TDiskRegistryState>();
@@ -347,13 +356,12 @@ TTestEnv TTestEnvBuilder::Build()
             TMailboxType::Simple,
             0));
 
-    auto allocator = CreateCachingAllocator(
-        TDefaultAllocator::Instance(), 0, 0, 0);
+    auto allocator =
+        CreateCachingAllocator(TDefaultAllocator::Instance(), 0, 0, 0);
     auto config = std::make_shared<TStorageConfig>(
         std::move(StorageServiceConfig),
         std::make_shared<NFeatures::TFeaturesConfig>(
-            NCloud::NProto::TFeaturesConfig())
-    );
+            NCloud::NProto::TFeaturesConfig()));
     auto agentConfig = std::make_shared<TDiskAgentConfig>(
         std::move(AgentConfigProto),
         "the-rack",
@@ -374,7 +382,8 @@ TTestEnv TTestEnvBuilder::Build()
         }
 
         if (!StorageProvider) {
-            StorageProvider = CreateTestStorageProvider(FileIOService, NvmeManager);
+            StorageProvider =
+                CreateTestStorageProvider(FileIOService, NvmeManager);
         }
     } else {
         Spdk->Start();
@@ -405,7 +414,7 @@ TTestEnv TTestEnvBuilder::Build()
         firstDiskAgentNodeIndex);
 
     ui32 additionalDiskAgentNodeIndex = 1;
-    for (auto& additionalAgent : AdditionalAgentConfigsProto) {
+    for (auto& additionalAgent: AdditionalAgentConfigsProto) {
         auto diskAgent = CreateDiskAgent(
             config,
             std::make_shared<TDiskAgentConfig>(
@@ -424,7 +433,8 @@ TTestEnv TTestEnvBuilder::Build()
             CreateThreadPool("Background", 1));
 
         Runtime.AddLocalService(
-            MakeDiskAgentServiceId(Runtime.GetNodeId(additionalDiskAgentNodeIndex)),
+            MakeDiskAgentServiceId(
+                Runtime.GetNodeId(additionalDiskAgentNodeIndex)),
             TActorSetupCmd(diskAgent.release(), TMailboxType::Simple, 0),
             additionalDiskAgentNodeIndex);
         ++additionalDiskAgentNodeIndex;
@@ -436,8 +446,7 @@ TTestEnv TTestEnvBuilder::Build()
         Runtime,
         NKikimr::CreateTestTabletInfo(
             NKikimr::MakeBSControllerID(0),
-            NKikimr::TTabletTypes::BSController
-        ),
+            NKikimr::TTabletTypes::BSController),
         &NKikimr::CreateFlatBsController,
         0));
 
@@ -447,8 +456,7 @@ TTestEnv TTestEnvBuilder::Build()
         .FileIOService = FileIOService,
         .NvmeManager = NvmeManager,
         .DiskAgentActorId =
-            MakeDiskAgentServiceId(Runtime.GetNodeId(firstDiskAgentNodeIndex))
-    };
+            MakeDiskAgentServiceId(Runtime.GetNodeId(firstDiskAgentNodeIndex))};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -503,10 +511,8 @@ NProto::TFileDeviceArgs FileDevice(TString uuid, TString path)
     return args;
 }
 
-NProto::TNVMeDeviceArgs NVMeDevice(
-    TString baseName,
-    TVector<TString> uuids,
-    TString transportId)
+NProto::TNVMeDeviceArgs
+NVMeDevice(TString baseName, TVector<TString> uuids, TString transportId)
 {
     NProto::TNVMeDeviceArgs args;
 
@@ -555,8 +561,7 @@ NProto::TMemoryDeviceArgs PrepareMemoryDevice(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TErrorStorage final
-    : public IStorage
+struct TErrorStorage final: public IStorage
 {
     template <typename T>
     TFuture<T> MakeResponse()
@@ -617,23 +622,19 @@ struct TErrorStorage final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestStorage final
-    : public IStorage
+struct TTestStorage final: public IStorage
 {
     IStoragePtr Impl;
 
     explicit TTestStorage(IStoragePtr impl)
         : Impl(impl)
-    {
-    }
+    {}
 
     TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TZeroBlocksRequest> request) override
     {
-        return Impl->ZeroBlocks(
-            std::move(callContext),
-            std::move(request));
+        return Impl->ZeroBlocks(std::move(callContext), std::move(request));
     }
 
     TFuture<NProto::TReadBlocksLocalResponse> ReadBlocksLocal(
@@ -658,11 +659,11 @@ struct TTestStorage final
         NProto::EDeviceEraseMethod method) override
     {
         switch (method) {
-        case NProto::DEVICE_ERASE_METHOD_ZERO_FILL:
-            return Impl->EraseDevice(method);
+            case NProto::DEVICE_ERASE_METHOD_ZERO_FILL:
+                return Impl->EraseDevice(method);
 
-        default:
-            return MakeFuture(NProto::TError());
+            default:
+                return MakeFuture(NProto::TError());
         }
     }
 
@@ -679,8 +680,7 @@ struct TTestStorage final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestStorageProvider final
-    : public IStorageProvider
+struct TTestStorageProvider final: public IStorageProvider
 {
     IStorageProviderPtr Impl;
 
@@ -703,11 +703,12 @@ struct TTestStorageProvider final
         }
 
         auto result = NewPromise<IStoragePtr>();
-        Impl->CreateStorage(volume, clientId, accessMode).Apply(
-            [&] (auto& future)
-            {
-                result.SetValue(std::make_shared<TTestStorage>(future.GetValue()));
-            });
+        Impl->CreateStorage(volume, clientId, accessMode)
+            .Apply(
+                [&](auto& future) {
+                    result.SetValue(
+                        std::make_shared<TTestStorage>(future.GetValue()));
+                });
         return result.GetFuture();
     }
 };

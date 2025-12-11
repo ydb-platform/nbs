@@ -17,7 +17,8 @@ void TInFlightRequest::Start(TInstant currentTs)
     RequestStats->RequestStarted(*CallContext);
 
     ProfileLogRequest.SetTimestampMcs(currentTs.MicroSeconds());
-    ProfileLogRequest.SetRequestType(static_cast<ui32>(CallContext->RequestType));
+    ProfileLogRequest.SetRequestType(
+        static_cast<ui32>(CallContext->RequestType));
 }
 
 void TInFlightRequest::Complete(
@@ -32,11 +33,11 @@ void TInFlightRequest::Complete(
         currentTs.MicroSeconds() - ProfileLogRequest.GetTimestampMcs());
     ProfileLogRequest.SetErrorCode(error.GetCode());
 
-    if (ProfileLogRequest.HasLockInfo() ||
-        ProfileLogRequest.HasNodeInfo() ||
+    if (ProfileLogRequest.HasLockInfo() || ProfileLogRequest.HasNodeInfo() ||
         !ProfileLogRequest.GetRanges().empty())
     {
-        ProfileLog->Write({CallContext->FileSystemId, std::move(ProfileLogRequest)});
+        ProfileLog->Write(
+            {CallContext->FileSystemId, std::move(ProfileLogRequest)});
     }
 }
 
@@ -83,9 +84,7 @@ TSessionInfo* TStorageServiceState::CreateSession(
         session->TabletId = tabletId;
 
         Sessions.PushBack(session.get());
-        SessionById.emplace(
-            session->SessionId,
-            session.get());
+        SessionById.emplace(session->SessionId, session.get());
 
         sessionInfo = session.release();
     } else {
@@ -119,9 +118,7 @@ TSessionInfo* TStorageServiceState::FindSession(const TString& sessionId) const
     return nullptr;
 }
 
-bool TStorageServiceState::RemoveSession(
-    const TString& sessionId,
-    ui64 seqNo)
+bool TStorageServiceState::RemoveSession(const TString& sessionId, ui64 seqNo)
 {
     auto it = SessionById.find(sessionId);
     if (it != SessionById.end()) {
@@ -176,7 +173,8 @@ void TStorageServiceState::RegisterLocalFileStore(
     bool isShard,
     NProtoPrivate::TFileSystemConfig config)
 {
-    // in case new instance registered before old unregistered or config was updated
+    // in case new instance registered before old unregistered or config was
+    // updated
     if (auto it = LocalFileStores.find(id); it != LocalFileStores.end()) {
         if (generation < it->second.Generation) {
             return;

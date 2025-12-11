@@ -12,13 +12,12 @@ struct TComponent
     TString Name;
 };
 
-#define FILESTORE_DECLARE_COMPONENT(component)                                 \
-    { TFileStoreComponents::component, "NFS_" #component },                    \
-// FILESTORE_DECLARE_COMPONENT
+#define FILESTORE_DECLARE_COMPONENT(component) \
+    {TFileStoreComponents::component,          \
+     "NFS_" #component},   // FILESTORE_DECLARE_COMPONENT
 
 static const TComponent Components[] = {
-    FILESTORE_COMPONENTS(FILESTORE_DECLARE_COMPONENT)
-};
+    FILESTORE_COMPONENTS(FILESTORE_DECLARE_COMPONENT)};
 
 #undef FILESTORE_DECLARE_COMPONENT
 

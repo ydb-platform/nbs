@@ -19,9 +19,12 @@ void TVolumeBalancerActor::HandleHttpInfo(
 {
     const auto& request = ev->Get()->Request;
 
-    TString uri { request.GetUri() };
-    LOG_DEBUG(ctx, TBlockStoreComponents::VOLUME_BALANCER,
-        "HTTP request: %s", uri.c_str());
+    TString uri{request.GetUri()};
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::VOLUME_BALANCER,
+        "HTTP request: %s",
+        uri.c_str());
 
     TStringStream out;
 
@@ -29,10 +32,7 @@ void TVolumeBalancerActor::HandleHttpInfo(
         State->RenderHtml(out, ctx.Now());
     }
 
-    NCloud::Reply(
-        ctx,
-        *ev,
-        std::make_unique<NMon::TEvHttpInfoRes>(out.Str()));
+    NCloud::Reply(ctx, *ev, std::make_unique<NMon::TEvHttpInfoRes>(out.Str()));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

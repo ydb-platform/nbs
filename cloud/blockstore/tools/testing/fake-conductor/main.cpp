@@ -34,7 +34,7 @@ int main(int argc, char** argv)
 
     NDiscovery::TFakeConductor conductor(port);
     TVector<NDiscovery::THostInfo> hostInfo;
-    for (const auto& instance : instances) {
+    for (const auto& instance: instances) {
         TStringBuf group, host;
         TStringBuf(instance).Split('/', group, host);
         hostInfo.push_back({TString{group}, TString{host}});

@@ -24,34 +24,28 @@ TString ValidateUpdateConfigRequest(
 
     if (oldBlockSize != newBlockSize) {
         return TStringBuilder()
-            << "it's not allowed to change blockSize"
-            << " (old: " << oldBlockSize
-            << ", new: " << newBlockSize
-            << ")";
+               << "it's not allowed to change blockSize"
+               << " (old: " << oldBlockSize << ", new: " << newBlockSize << ")";
     }
 
     const ui32 oldChannelCount = oldConfig.ExplicitChannelProfilesSize();
     const ui32 newChannelCount = newConfig.ExplicitChannelProfilesSize();
 
     if (oldChannelCount > newChannelCount) {
-        return TStringBuilder()
-            << "it's not allowed to decrease channelCount"
-            << " (old: " << oldChannelCount
-            << ", new: " << newChannelCount
-            << ")";
+        return TStringBuilder() << "it's not allowed to decrease channelCount"
+                                << " (old: " << oldChannelCount
+                                << ", new: " << newChannelCount << ")";
     }
 
     using TChannelDiff = std::tuple<ui32, EChannelDataKind, EChannelDataKind>;
     TVector<TChannelDiff> changedChannels;
 
     for (ui32 c = 0; c < oldChannelCount; ++c) {
-        const auto oldDataKind = static_cast<EChannelDataKind>(oldConfig
-            .GetExplicitChannelProfiles(c)
-            .GetDataKind());
+        const auto oldDataKind = static_cast<EChannelDataKind>(
+            oldConfig.GetExplicitChannelProfiles(c).GetDataKind());
 
-        const auto newDataKind = static_cast<EChannelDataKind>(newConfig
-            .GetExplicitChannelProfiles(c)
-            .GetDataKind());
+        const auto newDataKind = static_cast<EChannelDataKind>(
+            newConfig.GetExplicitChannelProfiles(c).GetDataKind());
 
         if (oldDataKind != newDataKind) {
             changedChannels.emplace_back(c, oldDataKind, newDataKind);
@@ -59,14 +53,14 @@ TString ValidateUpdateConfigRequest(
     }
 
     if (changedChannels) {
-        auto error = TStringBuilder()
+        auto error =
+            TStringBuilder()
             << "it's not allowed to change dataKind of existing channels [";
 
         for (const auto& [c, oldDataKind, newDataKind]: changedChannels) {
             error << " (channel: " << c
-                << ", oldDataKind: " << ToString(oldDataKind)
-                << ", newDataKind: " << ToString(newDataKind)
-                << ") ";
+                  << ", oldDataKind: " << ToString(oldDataKind)
+                  << ", newDataKind: " << ToString(newDataKind) << ") ";
         }
 
         error << "]";
@@ -80,9 +74,8 @@ TString ValidateUpdateConfigRequest(
         TVector<TChannelDesc> badNewChannels;
 
         for (ui32 c = oldChannelCount; c < newChannelCount; ++c) {
-            const auto dataKind = static_cast<EChannelDataKind>(newConfig
-                .GetExplicitChannelProfiles(c)
-                .GetDataKind());
+            const auto dataKind = static_cast<EChannelDataKind>(
+                newConfig.GetExplicitChannelProfiles(c).GetDataKind());
 
             if (dataKind != EChannelDataKind::Mixed) {
                 badNewChannels.emplace_back(c, dataKind);
@@ -90,13 +83,12 @@ TString ValidateUpdateConfigRequest(
         }
 
         if (badNewChannels) {
-            auto error = TStringBuilder()
-                << "it's allowed to add new channels with Mixed dataKind only [";
+            auto error = TStringBuilder() << "it's allowed to add new channels "
+                                             "with Mixed dataKind only [";
 
             for (const auto& [c, dataKind]: badNewChannels) {
                 error << " (channel: " << c
-                    << ", dataKind: " << ToString(dataKind)
-                    << ") ";
+                      << ", dataKind: " << ToString(dataKind) << ") ";
             }
 
             error << "]";
@@ -136,7 +128,9 @@ void TIndexTabletActor::HandleUpdateConfig(
             Config->GetAutomaticShardCreationEnabled());
         newConfig.SetShardAllocationUnit(Config->GetShardAllocationUnit());
 
-        LOG_INFO(ctx,TFileStoreComponents::TABLET,
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s Starting tablet config initialization [txId: %d]"
             ", autosharding [%d, %lu]",
             LogTag.c_str(),
@@ -155,8 +149,7 @@ void TIndexTabletActor::HandleUpdateConfig(
     }
 
     // Setting the fields that schemeshard is not aware of.
-    *newConfig.MutableShardFileSystemIds() =
-        oldConfig.GetShardFileSystemIds();
+    *newConfig.MutableShardFileSystemIds() = oldConfig.GetShardFileSystemIds();
     newConfig.SetShardNo(oldConfig.GetShardNo());
     newConfig.SetMainFileSystemId(oldConfig.GetMainFileSystemId());
     newConfig.SetAutomaticShardCreationEnabled(
@@ -169,7 +162,9 @@ void TIndexTabletActor::HandleUpdateConfig(
 
     // Config update occured due to alter/resize.
     if (auto error = ValidateUpdateConfigRequest(oldConfig, newConfig)) {
-        LOG_ERROR(ctx, TFileStoreComponents::TABLET,
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s Failed to update config [txId: %lu]: %s",
             LogTag.c_str(),
             txId,
@@ -193,7 +188,9 @@ void TIndexTabletActor::HandleUpdateConfig(
     const ui64 newBlockCount = newConfig.GetBlocksCount();
 
     if (oldBlockCount > newBlockCount) {
-        LOG_WARN(ctx, TFileStoreComponents::TABLET,
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s BlocksCount will be decreased %lu -> %lu [txId: %lu]",
             LogTag.c_str(),
             oldBlockCount,
@@ -247,7 +244,9 @@ void TIndexTabletActor::CompleteTx_UpdateConfig(
     RegisterStatCounters(ctx.Now());
     ResetThrottlingPolicy();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s Sending OK response for UpdateConfig with version=%u",
         LogTag.c_str(),
         args.FileSystem.GetVersion());
@@ -278,31 +277,40 @@ void TIndexTabletActor::HandleConfigureShards(
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     NProto::TError error;
     if (!IsMainTablet() && !msg->Record.GetForce()) {
-        error = MakeError(E_INVALID_STATE, TStringBuilder() << "can't configure"
-            << " shards for a shard (ShardNo=" << GetFileSystem().GetShardNo()
-            << ")");
+        error = MakeError(
+            E_INVALID_STATE,
+            TStringBuilder()
+                << "can't configure" << " shards for a shard (ShardNo="
+                << GetFileSystem().GetShardNo() << ")");
     }
 
     if (!HasError(error) && !msg->Record.GetForce()) {
         if (msg->Record.GetShardFileSystemIds().size() < shardIds.size()) {
-            error = MakeError(E_ARGUMENT, TStringBuilder() << "new shard list"
-                " is smaller than prev shard list: "
-                << msg->Record.GetShardFileSystemIds().size() << " < "
-                << shardIds.size());
+            error = MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "new shard list"
+                                    " is smaller than prev shard list: "
+                                 << msg->Record.GetShardFileSystemIds().size()
+                                 << " < " << shardIds.size());
         } else if (
             msg->Record.ShardFileSystemIdsSize() > Config->GetMaxShardCount())
         {
-            error = MakeError(E_ARGUMENT, TStringBuilder() << "new shard list"
-                " is bigger than limit: "
-                << msg->Record.GetShardFileSystemIds().size() << " > "
-                << Config->GetMaxShardCount());
+            error = MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "new shard list"
+                                    " is bigger than limit: "
+                                 << msg->Record.GetShardFileSystemIds().size()
+                                 << " > " << Config->GetMaxShardCount());
         } else {
             for (int i = 0; i < shardIds.size(); ++i) {
                 if (shardIds[i] != msg->Record.GetShardFileSystemIds(i)) {
-                    error = MakeError(E_ARGUMENT, TStringBuilder() << "shard"
-                        " change not allowed, pos=" << i << ", prev="
-                        << shardIds[i] << ", new="
-                        << msg->Record.GetShardFileSystemIds(i));
+                    error = MakeError(
+                        E_ARGUMENT,
+                        TStringBuilder()
+                            << "shard"
+                               " change not allowed, pos="
+                            << i << ", prev=" << shardIds[i] << ", new="
+                            << msg->Record.GetShardFileSystemIds(i));
                     break;
                 }
             }
@@ -369,7 +377,9 @@ void TIndexTabletActor::CompleteTx_ConfigureShards(
     const TActorContext& ctx,
     TTxIndexTablet::TConfigureShards& args)
 {
-    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s Configured shards, new shard list: %s",
         LogTag.c_str(),
         JoinSeq(",", GetFileSystem().GetShardFileSystemIds()).c_str());
@@ -410,8 +420,8 @@ void TIndexTabletActor::HandleConfigureAsShard(
             std::make_unique<TEvIndexTablet::TEvConfigureAsShardResponse>();
         *response->Record.MutableError() = MakeError(
             E_ARGUMENT,
-            TStringBuilder() << "ShardNo change not allowed: "
-                << currentShardNo << " != " << msg->Record.GetShardNo());
+            TStringBuilder() << "ShardNo change not allowed: " << currentShardNo
+                             << " != " << msg->Record.GetShardNo());
 
         NCloud::Reply(ctx, *requestInfo, std::move(response));
         return;
@@ -463,7 +473,9 @@ void TIndexTabletActor::CompleteTx_ConfigureAsShard(
     const TActorContext& ctx,
     TTxIndexTablet::TConfigureAsShard& args)
 {
-    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s Configured as shard, ShardNo: %u, new shard list: %s",
         LogTag.c_str(),
         args.Request.GetShardNo(),

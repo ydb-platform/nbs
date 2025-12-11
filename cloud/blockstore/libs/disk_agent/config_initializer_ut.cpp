@@ -8,15 +8,15 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
+
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/version/version.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
-#include <library/cpp/testing/unittest/registar.h>
-
 #include <library/cpp/protobuf/util/pb_io.h>
+#include <library/cpp/testing/unittest/registar.h>
 
 #include <util/datetime/cputimer.h>
 #include <util/folder/tempdir.h>
@@ -60,7 +60,8 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         {
             auto* featureCfg = featuresCfg.Add();
             featureCfg->SetName("Cloud.NBS.FeaturesConfig");
-            auto configStr = R"(Features { Name: "Balancer" Whitelist { CloudIds: "yc.disk-manager.cloud" }})";
+            auto configStr =
+                R"(Features { Name: "Balancer" Whitelist { CloudIds: "yc.disk-manager.cloud" }})";
             featureCfg->SetConfig(configStr);
         }
 
@@ -73,11 +74,15 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
 
         ci.ApplyCustomCMSConfigs(appCfg);
         UNIT_ASSERT_VALUES_EQUAL(true, !!ci.StorageConfig);
-        UNIT_ASSERT_VALUES_EQUAL(true, ci.StorageConfig->IsBalancerFeatureEnabled(
-            "yc.disk-manager.cloud",
-            "yc.disk-manager.folder",
-            ""));
-        UNIT_ASSERT_VALUES_EQUAL(true, ci.StorageConfig->GetMultipartitionVolumesEnabled());
+        UNIT_ASSERT_VALUES_EQUAL(
+            true,
+            ci.StorageConfig->IsBalancerFeatureEnabled(
+                "yc.disk-manager.cloud",
+                "yc.disk-manager.folder",
+                ""));
+        UNIT_ASSERT_VALUES_EQUAL(
+            true,
+            ci.StorageConfig->GetMultipartitionVolumesEnabled());
     }
 
     Y_UNIT_TEST(ShouldUpdateStorageConfigWithFeaturesFromCms)
@@ -105,17 +110,22 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         {
             auto* featureCfg = featuresCfg.Add();
             featureCfg->SetName("Cloud.NBS.FeaturesConfig");
-            auto configStr = R"(Features { Name: "Balancer" Whitelist { CloudIds: "yc.disk-manager.cloud" }})";
+            auto configStr =
+                R"(Features { Name: "Balancer" Whitelist { CloudIds: "yc.disk-manager.cloud" }})";
             featureCfg->SetConfig(configStr);
         }
 
         ci.ApplyCustomCMSConfigs(appCfg);
         UNIT_ASSERT_VALUES_EQUAL(true, !!ci.StorageConfig);
-        UNIT_ASSERT_VALUES_EQUAL(true, ci.StorageConfig->IsBalancerFeatureEnabled(
-            "yc.disk-manager.cloud",
-            "yc.disk-manager.folder",
-            ""));
-        UNIT_ASSERT_VALUES_EQUAL(true, ci.StorageConfig->GetMultipartitionVolumesEnabled());
+        UNIT_ASSERT_VALUES_EQUAL(
+            true,
+            ci.StorageConfig->IsBalancerFeatureEnabled(
+                "yc.disk-manager.cloud",
+                "yc.disk-manager.folder",
+                ""));
+        UNIT_ASSERT_VALUES_EQUAL(
+            true,
+            ci.StorageConfig->GetMultipartitionVolumesEnabled());
     }
 
     Y_UNIT_TEST(ShouldAdaptNodeRegistrationParams)

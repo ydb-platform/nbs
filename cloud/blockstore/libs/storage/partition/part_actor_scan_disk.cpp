@@ -22,21 +22,21 @@ constexpr ui64 MaxUniqueId = std::numeric_limits<ui64>::max();
 TString StringifyScanDiskBatchTx(const TTxPartition::TScanDiskBatch& args)
 {
     return TStringBuilder()
-        << " StartBlobId: ["
-        <<  args.StartBlobId.CommitId() << ':' << args.StartBlobId.UniqueId() << ']'
-        << " BlobCountToVisit: " << args.BlobCountToVisit
-        << " FinalBlobId: ["
-        << args.FinalBlobId.CommitId() << ':' << args.FinalBlobId.UniqueId() << ']'
-        << " VisitCount: " << args.VisitCount
-        << " LastVisitedBlobId: ["
-        << args.LastVisitedBlobId.CommitId() << ':' << args.LastVisitedBlobId.UniqueId() << ']'
-        << " BlobsToReadInCurrentBatchSize: " << args.BlobsToReadInCurrentBatch.size();
+           << " StartBlobId: [" << args.StartBlobId.CommitId() << ':'
+           << args.StartBlobId.UniqueId() << ']'
+           << " BlobCountToVisit: " << args.BlobCountToVisit
+           << " FinalBlobId: [" << args.FinalBlobId.CommitId() << ':'
+           << args.FinalBlobId.UniqueId() << ']'
+           << " VisitCount: " << args.VisitCount << " LastVisitedBlobId: ["
+           << args.LastVisitedBlobId.CommitId() << ':'
+           << args.LastVisitedBlobId.UniqueId() << ']'
+           << " BlobsToReadInCurrentBatchSize: "
+           << args.BlobsToReadInCurrentBatch.size();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TScanDiskVisitor final
-    : public IBlobsIndexVisitor
+class TScanDiskVisitor final: public IBlobsIndexVisitor
 {
 private:
     const TTabletStorageInfo& TabletInfo;
@@ -44,8 +44,8 @@ private:
 
 public:
     TScanDiskVisitor(
-            const TTabletStorageInfo& tabletInfo,
-            TTxPartition::TScanDiskBatch& args)
+        const TTabletStorageInfo& tabletInfo,
+        TTxPartition::TScanDiskBatch& args)
         : TabletInfo(tabletInfo)
         , Args(args)
     {}
@@ -78,8 +78,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TScanDiskActor final
-    : public TActorBootstrapped<TScanDiskActor>
+class TScanDiskActor final: public TActorBootstrapped<TScanDiskActor>
 {
 private:
     const TActorId Tablet;
@@ -138,11 +137,11 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TScanDiskActor::TScanDiskActor(
-        const TActorId& tablet,
-        ui32 blobsPerBatch,
-        ui64 finalCommitId,
-        TDuration retryTimeout,
-        TBlockBuffer blockBuffer)
+    const TActorId& tablet,
+    ui32 blobsPerBatch,
+    ui64 finalCommitId,
+    TDuration retryTimeout,
+    TBlockBuffer blockBuffer)
     : Tablet(tablet)
     , BlobsPerBatch(blobsPerBatch)
     , FinalBlobId(MakePartialBlobId(finalCommitId, Max()))
@@ -150,7 +149,7 @@ TScanDiskActor::TScanDiskActor(
     , GuardedBuffer(std::move(blockBuffer))
 {}
 
-void TScanDiskActor::Bootstrap(const TActorContext &ctx)
+void TScanDiskActor::Bootstrap(const TActorContext& ctx)
 {
     SendScanDiskBatchRequest(ctx);
     Become(&TThis::StateWork);
@@ -158,11 +157,12 @@ void TScanDiskActor::Bootstrap(const TActorContext &ctx)
 
 void TScanDiskActor::SendScanDiskBatchRequest(const TActorContext& ctx)
 {
-    auto request = std::make_unique<TEvPartitionPrivate::TEvScanDiskBatchRequest>(
-        MakeIntrusive<TCallContext>(),
-        BlobIdToRead,
-        BlobsPerBatch,
-        FinalBlobId);
+    auto request =
+        std::make_unique<TEvPartitionPrivate::TEvScanDiskBatchRequest>(
+            MakeIntrusive<TCallContext>(),
+            BlobIdToRead,
+            BlobsPerBatch,
+            FinalBlobId);
 
     NCloud::Send(ctx, Tablet, std::move(request));
 }
@@ -172,9 +172,7 @@ void TScanDiskActor::NotifyCompleted(
     const NProto::TError& error)
 {
     using TEvent = TEvPartitionPrivate::TEvScanDiskCompleted;
-    auto response = std::make_unique<TEvent>(
-            error,
-            std::move(BrokenBlobs));
+    auto response = std::make_unique<TEvent>(error, std::move(BrokenBlobs));
 
     NCloud::Send(ctx, Tablet, std::move(response));
     Die(ctx);
@@ -191,22 +189,19 @@ void TScanDiskActor::SendReadBlobRequest(
     const auto& blobMark = RequestsInCurrentBatch[requestIndex];
     TVector<ui16> blobOffsets{0};
 
-    auto request = std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
-        blobMark.BlobId,
-        MakeBlobStorageProxyID(blobMark.BSGroupId),
-        std::move(blobOffsets),
-        std::move(subSgList),
-        blobMark.BSGroupId,
-        false,           // async
-        TInstant::Max(), // deadline
-        false            // shouldCalculateChecksums
-    );
+    auto request =
+        std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
+            blobMark.BlobId,
+            MakeBlobStorageProxyID(blobMark.BSGroupId),
+            std::move(blobOffsets),
+            std::move(subSgList),
+            blobMark.BSGroupId,
+            false,             // async
+            TInstant::Max(),   // deadline
+            false              // shouldCalculateChecksums
+        );
 
-    NCloud::Send(
-        ctx,
-        Tablet,
-        std::move(request),
-        requestIndex);
+    NCloud::Send(ctx, Tablet, std::move(request), requestIndex);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -281,7 +276,9 @@ void TScanDiskActor::HandleScanDiskBatchResponse(
     ReadBlobResponsesCounter = 0;
 
     RequestsInCurrentBatch = std::move(msg->BlobsInBatch);
-    for (ui32 requestIndex = 0; requestIndex < RequestsInCurrentBatch.size(); ++requestIndex) {
+    for (ui32 requestIndex = 0; requestIndex < RequestsInCurrentBatch.size();
+         ++requestIndex)
+    {
         SendReadBlobRequest(ctx, requestIndex);
     }
 }
@@ -365,9 +362,9 @@ NProto::TError TPartitionActor::DoHandleScanDisk(
 
     State->StartScanDisk();
 
-    blobsPerBatch = Min(
-        static_cast<ui64>(blobsPerBatch),
-        State->GetMixedBlobsCount() + State->GetMergedBlobsCount());
+    blobsPerBatch =
+        Min(static_cast<ui64>(blobsPerBatch),
+            State->GetMixedBlobsCount() + State->GetMergedBlobsCount());
 
     const auto actorId = NCloud::Register(
         ctx,
@@ -387,8 +384,7 @@ void TPartitionActor::HandleGetScanDiskStatus(
     const TEvVolume::TEvGetScanDiskStatusRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto response =
-        std::make_unique<TEvVolume::TEvGetScanDiskStatusResponse>();
+    auto response = std::make_unique<TEvVolume::TEvGetScanDiskStatusResponse>();
     NProto::TError result;
 
     if (State) {
@@ -423,10 +419,8 @@ void TPartitionActor::HandleScanDiskBatch(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -438,11 +432,10 @@ void TPartitionActor::HandleScanDiskBatch(
 
     State->UpdateScanDiskProgress();
 
-    auto replyError = [=] (
-        const TActorContext& ctx,
-        TRequestInfo& requestInfo,
-        ui32 errorCode,
-        TString errorReason)
+    auto replyError = [=](const TActorContext& ctx,
+                          TRequestInfo& requestInfo,
+                          ui32 errorCode,
+                          TString errorReason)
     {
         auto response =
             std::make_unique<TEvPartitionPrivate::TEvScanDiskBatchResponse>(

@@ -10,29 +10,28 @@ namespace NCloud::NFileStore::NStorage {
 
 Y_UNIT_TEST_SUITE(TShardBalancerTest)
 {
-#define ASSERT_NO_SB_ERROR(fileSize, expectedShardId) {                        \
-    TString shardId;                                                           \
-    const auto error = balancer.SelectShard(fileSize, &shardId);               \
-    UNIT_ASSERT_VALUES_EQUAL_C(                                                \
-        S_OK,                                                                  \
-        error.GetCode(),                                                       \
-        error.GetMessage());                                                   \
-    UNIT_ASSERT_VALUES_EQUAL(expectedShardId, shardId);                        \
-}                                                                              \
-// ASSERT_NO_ERROR
+#define ASSERT_NO_SB_ERROR(fileSize, expectedShardId)                          \
+    {                                                                          \
+        TString shardId;                                                       \
+        const auto error = balancer.SelectShard(fileSize, &shardId);           \
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage()); \
+        UNIT_ASSERT_VALUES_EQUAL(expectedShardId, shardId);                    \
+    }                                                                          \
+    // ASSERT_NO_ERROR
 
-#define ASSERT_SB_ERROR(fileSize, expectedCode) {                              \
-    TString shardId;                                                           \
-    const auto error = balancer.SelectShard(fileSize, &shardId);               \
-    UNIT_ASSERT_VALUES_EQUAL_C(                                                \
-        expectedCode,                                                          \
-        error.GetCode(),                                                       \
-        error.GetMessage());                                                   \
-}                                                                              \
-// ASSERT_ERROR
+#define ASSERT_SB_ERROR(fileSize, expectedCode)                      \
+    {                                                                \
+        TString shardId;                                             \
+        const auto error = balancer.SelectShard(fileSize, &shardId); \
+        UNIT_ASSERT_VALUES_EQUAL_C(                                  \
+            expectedCode,                                            \
+            error.GetCode(),                                         \
+            error.GetMessage());                                     \
+    }                                                                \
+    // ASSERT_ERROR
 
-constexpr ui32 BlockSize = 4_KB;
-constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
+    constexpr ui32 BlockSize = 4_KB;
+    constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
 
     Y_UNIT_TEST(ShouldBalanceShardsRoundRobin)
     {
@@ -432,14 +431,13 @@ constexpr ui32 MaxFileBlocks = 300_GB / BlockSize;
 
         // If we fill up all the shards with less than 1 TiB left it should not
         // be possible to select any shard
-        balancer.Update(
-            TVector<TShardStats>(
-                shardCount,
-                TShardStats{
-                    .TotalBlocksCount = 5_TB / 4_KB,
-                    .UsedBlocksCount = (5_TB - 500_GB) / 4_KB,
-                    .CurrentLoad = 0,
-                    .Suffer = 0}));
+        balancer.Update(TVector<TShardStats>(
+            shardCount,
+            TShardStats{
+                .TotalBlocksCount = 5_TB / 4_KB,
+                .UsedBlocksCount = (5_TB - 500_GB) / 4_KB,
+                .CurrentLoad = 0,
+                .Suffer = 0}));
         for (ui64 i = 0; i < iterations; ++i) {
             ASSERT_SB_ERROR(1_TB, E_FS_NOSPC);
         }

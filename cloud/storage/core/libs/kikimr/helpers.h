@@ -5,12 +5,11 @@
 #include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <contrib/ydb/library/actors/core/actor.h>
-#include <contrib/ydb/library/actors/core/event.h>
-
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/protos/base.pb.h>
 #include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/event.h>
 
 #include <util/generic/string.h>
 
@@ -18,8 +17,12 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError MakeKikimrError(NKikimrProto::EReplyStatus status, TString errorReason = {});
-NProto::TError MakeSchemeShardError(NKikimrScheme::EStatus status, TString errorReason = {});
+NProto::TError MakeKikimrError(
+    NKikimrProto::EReplyStatus status,
+    TString errorReason = {});
+NProto::TError MakeSchemeShardError(
+    NKikimrScheme::EStatus status,
+    TString errorReason = {});
 
 inline void PipeSend(
     const NActors::TActorContext& ctx,

@@ -23,8 +23,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct ICookie
-    : public std::enable_shared_from_this<ICookie>
+struct ICookie: public std::enable_shared_from_this<ICookie>
 {
     virtual ~ICookie() = default;
 };
@@ -38,8 +37,7 @@ using TConnectionPtr = std::shared_ptr<TConnection>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEndpoint final
-    : public ICookie
+struct TEndpoint final: public ICookie
 {
     const IClientStoragePtr ClientStorage;
     const bool MultiClient;
@@ -50,9 +48,9 @@ struct TEndpoint final
     TSet<TConnectionPtr> Connections;
 
     TEndpoint(
-            IClientStoragePtr clientStorage,
-            bool multiClient,
-            NProto::ERequestSource source)
+        IClientStoragePtr clientStorage,
+        bool multiClient,
+        NProto::ERequestSource source)
         : ClientStorage(std::move(clientStorage))
         , MultiClient(multiClient)
         , Source(source)
@@ -67,18 +65,20 @@ struct TEndpoint final
         if (auto err = Socket.Bind(&endPoint, DEF_LOCAL_SOCK_MODE)) {
             NProto::TError error;
             error.SetCode(MAKE_BLOCKSTORE_ERROR(err));
-            error.SetMessage(TStringBuilder()
-                << "failed to bind socket " << socketPath.Quote()
-                << ": " << LastSystemErrorText(-err));
+            error.SetMessage(
+                TStringBuilder()
+                << "failed to bind socket " << socketPath.Quote() << ": "
+                << LastSystemErrorText(-err));
             return error;
         }
 
         if (auto err = Socket.Listen(backlog)) {
             NProto::TError error;
             error.SetCode(MAKE_BLOCKSTORE_ERROR(err));
-            error.SetMessage(TStringBuilder()
-                << "failed to listen on socket " << socketPath.Quote()
-                << ": " << LastSystemErrorText(-err));
+            error.SetMessage(
+                TStringBuilder()
+                << "failed to listen on socket " << socketPath.Quote() << ": "
+                << LastSystemErrorText(-err));
             return error;
         }
 
@@ -87,9 +87,10 @@ struct TEndpoint final
         if (auto err = Chmod(socketPath.c_str(), accessMode)) {
             NProto::TError error;
             error.SetCode(MAKE_BLOCKSTORE_ERROR(err));
-            error.SetMessage(TStringBuilder()
-                << "failed to chmod socket " << socketPath.Quote()
-                << ": " << LastSystemErrorText(-err));
+            error.SetMessage(
+                TStringBuilder()
+                << "failed to chmod socket " << socketPath.Quote() << ": "
+                << LastSystemErrorText(-err));
             return error;
         }
 
@@ -110,8 +111,7 @@ using TEndpointPtr = std::shared_ptr<TEndpoint>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TConnection final
-    : public ICookie
+struct TConnection final: public ICookie
 {
     TEndpoint* Endpoint;
     TSocketHolder Socket;
@@ -136,8 +136,7 @@ struct TConnection final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TEndpointPoller::TImpl final
-    : public ISimpleThread
+class TEndpointPoller::TImpl final: public ISimpleThread
 {
 private:
     TSocketPoller SocketPoller;
@@ -190,15 +189,16 @@ public:
             if (Endpoints.find(unixSocketPath) != Endpoints.end()) {
                 NProto::TError error;
                 error.SetCode(E_INVALID_STATE);
-                error.SetMessage(TStringBuilder()
-                    << "endpoint " << unixSocketPath.Quote()
-                    << " has already been started");
+                error.SetMessage(
+                    TStringBuilder() << "endpoint " << unixSocketPath.Quote()
+                                     << " has already been started");
                 return error;
             }
 
-            auto error = SafeExecute<NProto::TError>([&] {
-                return endpoint->Open(unixSocketPath, backlog, accessMode);
-            });
+            auto error = SafeExecute<NProto::TError>(
+                [&] {
+                    return endpoint->Open(unixSocketPath, backlog, accessMode);
+                });
             if (HasError(error)) {
                 return error;
             }
@@ -220,9 +220,9 @@ public:
             if (it == Endpoints.end()) {
                 NProto::TError error;
                 error.SetCode(S_ALREADY);
-                error.SetMessage(TStringBuilder()
-                    << "endpoint " << unixSocketPath.Quote()
-                    << " has already been stopped");
+                error.SetMessage(
+                    TStringBuilder() << "endpoint " << unixSocketPath.Quote()
+                                     << " has already been stopped");
                 return error;
             }
 
@@ -258,9 +258,8 @@ private:
 
         bool running = true;
         while (running) {
-            size_t cookieCount = SocketPoller.Wait(
-                cookies.data(),
-                cookies.size());
+            size_t cookieCount =
+                SocketPoller.Wait(cookies.data(), cookies.size());
 
             with_lock (CookieLock) {
                 for (size_t i = 0; i < cookieCount; ++i) {
@@ -273,7 +272,7 @@ private:
 
                     auto cookiePtr = cookie->shared_from_this();
                     if (CookieHolders.find(cookiePtr) != CookieHolders.end()) {
-                        //event is unwaited, skip it
+                        // event is unwaited, skip it
                         continue;
                     }
 
@@ -300,9 +299,8 @@ private:
         TSocketHolder socket(fd);
 
         if (!socket.Closed()) {
-            auto connection = std::make_shared<TConnection>(
-                endpoint,
-                std::move(socket));
+            auto connection =
+                std::make_shared<TConnection>(endpoint, std::move(socket));
 
             if (!endpoint->MultiClient) {
                 while (!endpoint->Connections.empty()) {
@@ -367,7 +365,8 @@ NProto::TError TEndpointPoller::StartListenEndpoint(
         std::move(clientStorage));
 }
 
-NProto::TError TEndpointPoller::StopListenEndpoint(const TString& unixSocketPath)
+NProto::TError TEndpointPoller::StopListenEndpoint(
+    const TString& unixSocketPath)
 {
     return Impl->StopListenEndpoint(unixSocketPath);
 }

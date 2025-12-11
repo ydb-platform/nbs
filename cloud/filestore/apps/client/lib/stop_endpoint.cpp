@@ -6,8 +6,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TStopEndpointCommand final
-    : public TEndpointCommand
+class TStopEndpointCommand final: public TEndpointCommand
 {
 private:
     TString SocketPath;
@@ -29,9 +28,7 @@ public:
         request->SetSocketPath(SocketPath);
 
         auto response = WaitFor(
-            Client->StopEndpoint(
-                std::move(callContext),
-                std::move(request)));
+            Client->StopEndpoint(std::move(callContext), std::move(request)));
 
         if (HasError(response)) {
             ythrow TServiceError(response.GetError());

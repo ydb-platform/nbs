@@ -42,8 +42,7 @@ NProto::TEncryptionDesc GetDefaultEncryption()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestEncryptionKeyProvider final
-    : IEncryptionKeyProvider
+struct TTestEncryptionKeyProvider final: IEncryptionKeyProvider
 {
     TFuture<TResponse> GetKey(
         const NProto::TEncryptionSpec& spec,
@@ -58,8 +57,7 @@ struct TTestEncryptionKeyProvider final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestEncryptor final
-    : public IEncryptor
+struct TTestEncryptor final: public IEncryptor
 {
     NProto::TError Encrypt(
         TBlockDataRef srcRef,
@@ -158,12 +156,13 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         auto encryptionDesc = GetDefaultEncryption();
 
         testClient->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                const auto& spec = request->GetEncryptionSpec();
-                UNIT_ASSERT(encryptionDesc.GetMode() == spec.GetMode());
-                UNIT_ASSERT(encryptionDesc.GetKeyHash() == spec.GetKeyHash());
-                return MakeFuture<NProto::TMountVolumeResponse>();
-            };
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            const auto& spec = request->GetEncryptionSpec();
+            UNIT_ASSERT(encryptionDesc.GetMode() == spec.GetMode());
+            UNIT_ASSERT(encryptionDesc.GetKeyHash() == spec.GetKeyHash());
+            return MakeFuture<NProto::TMountVolumeResponse>();
+        };
 
         {
             auto encryptionClient = CreateEncryptionClient(
@@ -196,12 +195,13 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         auto testClient = std::make_shared<TTestService>();
 
         testClient->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                const auto& spec = request->GetEncryptionSpec();
-                UNIT_ASSERT(encryptionDesc.GetMode() == spec.GetMode());
-                UNIT_ASSERT(encryptionDesc.GetKeyHash() == spec.GetKeyHash());
-                return MakeFuture<NProto::TMountVolumeResponse>();
-            };
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            const auto& spec = request->GetEncryptionSpec();
+            UNIT_ASSERT(encryptionDesc.GetMode() == spec.GetMode());
+            UNIT_ASSERT(encryptionDesc.GetKeyHash() == spec.GetKeyHash());
+            return MakeFuture<NProto::TMountVolumeResponse>();
+        };
 
         {
             auto encryptionClient1 = CreateEncryptionClient(
@@ -266,24 +266,26 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             NProto::EZP_WRITE_ENCRYPTED_ZEROS);
 
         testClient->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                Y_UNUSED(request);
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            Y_UNUSED(request);
 
-                NProto::TMountVolumeResponse response;
-                response.MutableVolume()->SetBlockSize(blockSize);
-                return MakeFuture(std::move(response));
-            };
+            NProto::TMountVolumeResponse response;
+            response.MutableVolume()->SetBlockSize(blockSize);
+            return MakeFuture(std::move(response));
+        };
 
         testClient->WriteBlocksHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksRequest> request) {
-                const auto& buffers = request->GetBlocks().GetBuffers();
+            [&](std::shared_ptr<NProto::TWriteBlocksRequest> request)
+        {
+            const auto& buffers = request->GetBlocks().GetBuffers();
 
-                for (int i = 0; i < buffers.size(); ++i) {
-                    storageBlocks[i] = buffers[i];
-                }
+            for (int i = 0; i < buffers.size(); ++i) {
+                storageBlocks[i] = buffers[i];
+            }
 
-                return MakeFuture(NProto::TWriteBlocksResponse());
-            };
+            return MakeFuture(NProto::TWriteBlocksResponse());
+        };
 
         auto mountResponse = MountVolume(*encryptionClient);
         UNIT_ASSERT(!HasError(mountResponse));
@@ -304,7 +306,9 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         UNIT_ASSERT(!HasError(response));
 
         for (int i = 0; i < storageBlocksCount; ++i) {
-            TBlockDataRef block(storageBlocks[i].data(), storageBlocks[i].size());
+            TBlockDataRef block(
+                storageBlocks[i].data(),
+                storageBlocks[i].size());
 
             if (i < blocksCount) {
                 TString decrypted(block.Size(), 0);
@@ -340,29 +344,31 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             NProto::EZP_WRITE_ENCRYPTED_ZEROS);
 
         testClient->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                Y_UNUSED(request);
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            Y_UNUSED(request);
 
-                NProto::TMountVolumeResponse response;
-                response.MutableVolume()->SetBlockSize(blockSize);
-                return MakeFuture(std::move(response));
-            };
+            NProto::TMountVolumeResponse response;
+            response.MutableVolume()->SetBlockSize(blockSize);
+            return MakeFuture(std::move(response));
+        };
 
         testClient->WriteBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) {
-                auto guard = request->Sglist.Acquire();
-                UNIT_ASSERT(guard);
-                const auto& sglist = guard.Get();
+            [&](std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+        {
+            auto guard = request->Sglist.Acquire();
+            UNIT_ASSERT(guard);
+            const auto& sglist = guard.Get();
 
-                for (size_t i = 0; i < sglist.size(); ++i) {
-                    UNIT_ASSERT(storageBlocks[i].size() == sglist[i].Size());
-                    auto* dst = const_cast<char*>(storageBlocks[i].data());
-                    auto* src = sglist[i].Data();
-                    memcpy(dst, src, sglist[i].Size());
-                }
+            for (size_t i = 0; i < sglist.size(); ++i) {
+                UNIT_ASSERT(storageBlocks[i].size() == sglist[i].Size());
+                auto* dst = const_cast<char*>(storageBlocks[i].data());
+                auto* src = sglist[i].Data();
+                memcpy(dst, src, sglist[i].Size());
+            }
 
-                return MakeFuture(NProto::TWriteBlocksLocalResponse());
-            };
+            return MakeFuture(NProto::TWriteBlocksLocalResponse());
+        };
 
         auto mountResponse = MountVolume(*encryptionClient);
         UNIT_ASSERT(!HasError(mountResponse));
@@ -388,7 +394,9 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         UNIT_ASSERT(!HasError(response));
 
         for (int i = 0; i < storageBlocksCount; ++i) {
-            TBlockDataRef block(storageBlocks[i].data(), storageBlocks[i].size());
+            TBlockDataRef block(
+                storageBlocks[i].data(),
+                storageBlocks[i].size());
 
             if (i < blocksCount) {
                 TString decrypted(block.Size(), 0);
@@ -430,57 +438,67 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         zRequest->SetBlocksCount(6);
         zRequest->SetFlags(42);
         zRequest->SetSessionId("testSessionId");
-        UNIT_ASSERT_VALUES_EQUAL(6, GetFieldCount<NProto::TZeroBlocksRequest>());
+        UNIT_ASSERT_VALUES_EQUAL(
+            6,
+            GetFieldCount<NProto::TZeroBlocksRequest>());
 
         NProto::TWriteBlocksLocalResponse wResponse;
         wResponse.MutableError()->SetMessage("testMessage");
         wResponse.MutableTrace()->SetRequestStartTime(42);
         wResponse.SetThrottlerDelay(13);
-        UNIT_ASSERT_VALUES_EQUAL(3, GetFieldCount<NProto::TWriteBlocksResponse>());
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            GetFieldCount<NProto::TWriteBlocksResponse>());
 
         testClient->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                Y_UNUSED(request);
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            Y_UNUSED(request);
 
-                NProto::TMountVolumeResponse response;
-                response.MutableVolume()->SetBlockSize(blockSize);
-                return MakeFuture(std::move(response));
-            };
+            NProto::TMountVolumeResponse response;
+            response.MutableVolume()->SetBlockSize(blockSize);
+            return MakeFuture(std::move(response));
+        };
 
         testClient->WriteBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksLocalRequest> wRequest) {
-                auto guard = wRequest->Sglist.Acquire();
-                UNIT_ASSERT(guard);
-                const auto& sglist = guard.Get();
+            [&](std::shared_ptr<NProto::TWriteBlocksLocalRequest> wRequest)
+        {
+            auto guard = wRequest->Sglist.Acquire();
+            UNIT_ASSERT(guard);
+            const auto& sglist = guard.Get();
 
-                for (size_t i = 0; i < sglist.size(); ++i) {
-                    size_t n = i + wRequest->GetStartIndex();
-                    UNIT_ASSERT(storageBlocks[n].size() == sglist[i].Size());
-                    auto* dst = const_cast<char*>(storageBlocks[n].data());
-                    auto* src = sglist[i].Data();
-                    memcpy(dst, src, sglist[i].Size());
-                }
+            for (size_t i = 0; i < sglist.size(); ++i) {
+                size_t n = i + wRequest->GetStartIndex();
+                UNIT_ASSERT(storageBlocks[n].size() == sglist[i].Size());
+                auto* dst = const_cast<char*>(storageBlocks[n].data());
+                auto* src = sglist[i].Data();
+                memcpy(dst, src, sglist[i].Size());
+            }
 
-                UNIT_ASSERT_VALUES_EQUAL(
-                    zRequest->MutableHeaders()->GetClientId(),
-                    wRequest->MutableHeaders()->GetClientId());
-                UNIT_ASSERT_VALUES_EQUAL(
-                    zRequest->GetDiskId(),
-                    wRequest->GetDiskId());
-                UNIT_ASSERT_VALUES_EQUAL(
-                    zRequest->GetStartIndex(),
-                    wRequest->GetStartIndex());
-                UNIT_ASSERT_VALUES_EQUAL(
-                    zRequest->GetFlags(),
-                    wRequest->GetFlags());
-                UNIT_ASSERT_VALUES_EQUAL(
-                    zRequest->GetSessionId(),
-                    wRequest->GetSessionId());
-                UNIT_ASSERT_VALUES_EQUAL(6, GetFieldCount<NProto::TZeroBlocksRequest>());
-                UNIT_ASSERT_VALUES_EQUAL(8, GetFieldCount<NProto::TWriteBlocksRequest>());
+            UNIT_ASSERT_VALUES_EQUAL(
+                zRequest->MutableHeaders()->GetClientId(),
+                wRequest->MutableHeaders()->GetClientId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                zRequest->GetDiskId(),
+                wRequest->GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                zRequest->GetStartIndex(),
+                wRequest->GetStartIndex());
+            UNIT_ASSERT_VALUES_EQUAL(
+                zRequest->GetFlags(),
+                wRequest->GetFlags());
+            UNIT_ASSERT_VALUES_EQUAL(
+                zRequest->GetSessionId(),
+                wRequest->GetSessionId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                6,
+                GetFieldCount<NProto::TZeroBlocksRequest>());
+            UNIT_ASSERT_VALUES_EQUAL(
+                8,
+                GetFieldCount<NProto::TWriteBlocksRequest>());
 
-                return MakeFuture(wResponse);
-            };
+            return MakeFuture(wResponse);
+        };
 
         auto mountResponse = MountVolume(*encryptionClient);
         UNIT_ASSERT(!HasError(mountResponse));
@@ -500,11 +518,17 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         UNIT_ASSERT_VALUES_EQUAL(
             wResponse.GetThrottlerDelay(),
             zResponse.GetThrottlerDelay());
-        UNIT_ASSERT_VALUES_EQUAL(3, GetFieldCount<NProto::TWriteBlocksResponse>());
-        UNIT_ASSERT_VALUES_EQUAL(3, GetFieldCount<NProto::TZeroBlocksResponse>());
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            GetFieldCount<NProto::TWriteBlocksResponse>());
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            GetFieldCount<NProto::TZeroBlocksResponse>());
 
         for (size_t i = 0; i < storageBlocksCount; ++i) {
-            TBlockDataRef block(storageBlocks[i].data(), storageBlocks[i].size());
+            TBlockDataRef block(
+                storageBlocks[i].data(),
+                storageBlocks[i].size());
 
             if (zRequest->GetStartIndex() <= i &&
                 i < zRequest->GetStartIndex() + zRequest->GetBlocksCount())
@@ -615,32 +639,34 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             NProto::EZP_WRITE_ENCRYPTED_ZEROS);
 
         testClient->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                Y_UNUSED(request);
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            Y_UNUSED(request);
 
-                NProto::TMountVolumeResponse response;
-                response.MutableVolume()->SetBlockSize(blockSize);
-                return MakeFuture(std::move(response));
-            };
+            NProto::TMountVolumeResponse response;
+            response.MutableVolume()->SetBlockSize(blockSize);
+            return MakeFuture(std::move(response));
+        };
 
         testClient->ReadBlocksHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksRequest> request) {
-                NProto::TReadBlocksResponse response;
+            [&](std::shared_ptr<NProto::TReadBlocksRequest> request)
+        {
+            NProto::TReadBlocksResponse response;
 
-                auto sglist = ResizeIOVector(
-                    *response.MutableBlocks(),
-                    request->GetBlocksCount(),
-                    blockSize);
+            auto sglist = ResizeIOVector(
+                *response.MutableBlocks(),
+                request->GetBlocksCount(),
+                blockSize);
 
-                for (size_t i = 0; i < request->GetBlocksCount(); ++i) {
-                    TString buf(blockSize, 'a' + i);
-                    TBlockDataRef bufRef(buf.data(), buf.size());
-                    auto err = testEncryptor->Encrypt(bufRef, sglist[i], i);
-                    UNIT_ASSERT_EQUAL_C(S_OK, err.GetCode(), err);
-                }
+            for (size_t i = 0; i < request->GetBlocksCount(); ++i) {
+                TString buf(blockSize, 'a' + i);
+                TBlockDataRef bufRef(buf.data(), buf.size());
+                auto err = testEncryptor->Encrypt(bufRef, sglist[i], i);
+                UNIT_ASSERT_EQUAL_C(S_OK, err.GetCode(), err);
+            }
 
-                return MakeFuture(std::move(response));
-            };
+            return MakeFuture(std::move(response));
+        };
 
         auto mountResponse = MountVolume(*encryptionClient);
         UNIT_ASSERT(!HasError(mountResponse));
@@ -679,32 +705,34 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             NProto::EZP_WRITE_ENCRYPTED_ZEROS);
 
         testClient->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                Y_UNUSED(request);
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            Y_UNUSED(request);
 
-                NProto::TMountVolumeResponse response;
-                response.MutableVolume()->SetBlockSize(blockSize);
-                return MakeFuture(std::move(response));
-            };
+            NProto::TMountVolumeResponse response;
+            response.MutableVolume()->SetBlockSize(blockSize);
+            return MakeFuture(std::move(response));
+        };
 
         testClient->ReadBlocksHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksRequest> request) {
-                NProto::TReadBlocksResponse response;
+            [&](std::shared_ptr<NProto::TReadBlocksRequest> request)
+        {
+            NProto::TReadBlocksResponse response;
 
-                auto sglist = ResizeIOVector(
-                    *response.MutableBlocks(),
-                    request->GetBlocksCount(),
-                    blockSize);
+            auto sglist = ResizeIOVector(
+                *response.MutableBlocks(),
+                request->GetBlocksCount(),
+                blockSize);
 
-                for (size_t i = 0; i < request->GetBlocksCount(); ++i) {
-                    std::memset(
-                        const_cast<char*>(sglist[i].Data()),
-                        0,
-                        sglist[i].Size());
-                }
+            for (size_t i = 0; i < request->GetBlocksCount(); ++i) {
+                std::memset(
+                    const_cast<char*>(sglist[i].Data()),
+                    0,
+                    sglist[i].Size());
+            }
 
-                return MakeFuture(std::move(response));
-            };
+            return MakeFuture(std::move(response));
+        };
 
         auto mountResponse = MountVolume(*encryptionClient);
         UNIT_ASSERT(!HasError(mountResponse));
@@ -743,29 +771,31 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             NProto::EZP_WRITE_ENCRYPTED_ZEROS);
 
         testClient->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                Y_UNUSED(request);
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            Y_UNUSED(request);
 
-                NProto::TMountVolumeResponse response;
-                response.MutableVolume()->SetBlockSize(blockSize);
-                return MakeFuture(std::move(response));
-            };
+            NProto::TMountVolumeResponse response;
+            response.MutableVolume()->SetBlockSize(blockSize);
+            return MakeFuture(std::move(response));
+        };
 
         testClient->ReadBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksLocalRequest> request) {
-                auto guard = request->Sglist.Acquire();
-                UNIT_ASSERT(guard);
-                auto& sglist = guard.Get();
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            auto guard = request->Sglist.Acquire();
+            UNIT_ASSERT(guard);
+            auto& sglist = guard.Get();
 
-                for (size_t i = 0; i < request->GetBlocksCount(); ++i) {
-                    TString buf(blockSize, 'a' + i);
-                    TBlockDataRef bufRef(buf.data(), buf.size());
-                    auto err = testEncryptor->Encrypt(bufRef, sglist[i], i);
-                    UNIT_ASSERT_EQUAL_C(S_OK, err.GetCode(), err);
-                }
+            for (size_t i = 0; i < request->GetBlocksCount(); ++i) {
+                TString buf(blockSize, 'a' + i);
+                TBlockDataRef bufRef(buf.data(), buf.size());
+                auto err = testEncryptor->Encrypt(bufRef, sglist[i], i);
+                UNIT_ASSERT_EQUAL_C(S_OK, err.GetCode(), err);
+            }
 
-                return MakeFuture(NProto::TReadBlocksLocalResponse());
-            };
+            return MakeFuture(NProto::TReadBlocksLocalResponse());
+        };
 
         auto mountResponse = MountVolume(*encryptionClient);
         UNIT_ASSERT(!HasError(mountResponse));
@@ -794,8 +824,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         auto logging = CreateLoggingService("console");
         const int blockSize = 4;
         const int blocksCount = 16;
-        std::array<ui8, blocksCount> encryptedBlockMask
-            = {{0, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0}};
+        std::array<ui8, blocksCount> encryptedBlockMask = {
+            {0, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0}};
 
         auto testClient = std::make_shared<TTestService>();
         auto testEncryptor = std::make_shared<TTestEncryptor>();
@@ -808,50 +838,52 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             NProto::EZP_WRITE_ENCRYPTED_ZEROS);
 
         testClient->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                Y_UNUSED(request);
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            Y_UNUSED(request);
 
-                NProto::TMountVolumeResponse response;
-                response.MutableVolume()->SetBlockSize(blockSize);
-                response.MutableVolume()->SetStorageMediaKind(mediaKind);
-                return MakeFuture(std::move(response));
-            };
+            NProto::TMountVolumeResponse response;
+            response.MutableVolume()->SetBlockSize(blockSize);
+            response.MutableVolume()->SetStorageMediaKind(mediaKind);
+            return MakeFuture(std::move(response));
+        };
 
         testClient->ReadBlocksHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksRequest> request) {
-                NProto::TReadBlocksResponse response;
+            [&](std::shared_ptr<NProto::TReadBlocksRequest> request)
+        {
+            NProto::TReadBlocksResponse response;
 
-                auto sglist = ResizeIOVector(
-                    *response.MutableBlocks(),
-                    request->GetBlocksCount(),
-                    blockSize);
+            auto sglist = ResizeIOVector(
+                *response.MutableBlocks(),
+                request->GetBlocksCount(),
+                blockSize);
 
-                TString bitmaskStr(request->GetBlocksCount() / 8 + 1, 0);
-                for (size_t i = 0; i < request->GetBlocksCount(); ++i) {
-                    if (!encryptedBlockMask[i]) {
-                        size_t byte = i / 8;
-                        size_t bit = i % 8;
-                        bitmaskStr[byte] = (bitmaskStr[byte] | (1 << bit));
-                    }
-
-                    char value = 'a' + i;
-
-                    if (encryptedBlockMask[i]) {
-                        TString buf(blockSize, value);
-                        TBlockDataRef bufRef(buf.data(), buf.size());
-                        auto err = testEncryptor->Encrypt(bufRef, sglist[i], i);
-                        UNIT_ASSERT_EQUAL_C(S_OK, err.GetCode(), err);
-                    } else {
-                        memset(
-                            const_cast<char*>(sglist[i].Data()),
-                            value,
-                            blockSize);
-                    }
+            TString bitmaskStr(request->GetBlocksCount() / 8 + 1, 0);
+            for (size_t i = 0; i < request->GetBlocksCount(); ++i) {
+                if (!encryptedBlockMask[i]) {
+                    size_t byte = i / 8;
+                    size_t bit = i % 8;
+                    bitmaskStr[byte] = (bitmaskStr[byte] | (1 << bit));
                 }
 
-                response.SetUnencryptedBlockMask(bitmaskStr);
-                return MakeFuture(std::move(response));
-            };
+                char value = 'a' + i;
+
+                if (encryptedBlockMask[i]) {
+                    TString buf(blockSize, value);
+                    TBlockDataRef bufRef(buf.data(), buf.size());
+                    auto err = testEncryptor->Encrypt(bufRef, sglist[i], i);
+                    UNIT_ASSERT_EQUAL_C(S_OK, err.GetCode(), err);
+                } else {
+                    memset(
+                        const_cast<char*>(sglist[i].Data()),
+                        value,
+                        blockSize);
+                }
+            }
+
+            response.SetUnencryptedBlockMask(bitmaskStr);
+            return MakeFuture(std::move(response));
+        };
 
         auto mountResponse = MountVolume(*encryptionClient);
         UNIT_ASSERT(!HasError(mountResponse));
@@ -878,30 +910,37 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         }
     }
 
-#define BLOCKSTORE_IMPLEMENT_TEST(mediaKind, name, ...)                        \
-    Y_UNIT_TEST(ShouldDecryptOverlayBlocksInReadBlocksFor##name)               \
-    {                                                                          \
-        DoDecryptOverlayBlocksInReadBlocks(mediaKind);                         \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_TEST
+#define BLOCKSTORE_IMPLEMENT_TEST(mediaKind, name, ...)          \
+    Y_UNIT_TEST(ShouldDecryptOverlayBlocksInReadBlocksFor##name) \
+    {                                                            \
+        DoDecryptOverlayBlocksInReadBlocks(mediaKind);           \
+    }                                                            \
+    // BLOCKSTORE_IMPLEMENT_TEST
 
     BLOCKSTORE_IMPLEMENT_TEST(NCloud::NProto::STORAGE_MEDIA_SSD, SSD)
     BLOCKSTORE_IMPLEMENT_TEST(NCloud::NProto::STORAGE_MEDIA_HYBRID, Hybrid)
     BLOCKSTORE_IMPLEMENT_TEST(NCloud::NProto::STORAGE_MEDIA_HDD, HDD)
-    BLOCKSTORE_IMPLEMENT_TEST(NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED, SSDNonreplicated)
-    BLOCKSTORE_IMPLEMENT_TEST(NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2, SSDMirror2)
-    BLOCKSTORE_IMPLEMENT_TEST(NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3, SSDMirror3)
+    BLOCKSTORE_IMPLEMENT_TEST(
+        NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+        SSDNonreplicated)
+    BLOCKSTORE_IMPLEMENT_TEST(
+        NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2,
+        SSDMirror2)
+    BLOCKSTORE_IMPLEMENT_TEST(
+        NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+        SSDMirror3)
     BLOCKSTORE_IMPLEMENT_TEST(NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL, SSDLocal)
 
 #undef BLOCKSTORE_IMPLEMENT_TEST
 
-    void DoDecryptOverlayBlocksInReadBlocksLocal(NProto::EStorageMediaKind mediaKind)
+    void DoDecryptOverlayBlocksInReadBlocksLocal(
+        NProto::EStorageMediaKind mediaKind)
     {
         auto logging = CreateLoggingService("console");
         const int blockSize = 4;
         const int blocksCount = 16;
-        std::array<ui8, blocksCount> encryptedBlockMask
-            = {{0, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0}};
+        std::array<ui8, blocksCount> encryptedBlockMask = {
+            {0, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0}};
 
         auto testClient = std::make_shared<TTestService>();
         auto testEncryptor = std::make_shared<TTestEncryptor>();
@@ -914,48 +953,50 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             NProto::EZP_WRITE_ENCRYPTED_ZEROS);
 
         testClient->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                Y_UNUSED(request);
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            Y_UNUSED(request);
 
-                NProto::TMountVolumeResponse response;
-                response.MutableVolume()->SetBlockSize(blockSize);
-                response.MutableVolume()->SetStorageMediaKind(mediaKind);
-                return MakeFuture(std::move(response));
-            };
+            NProto::TMountVolumeResponse response;
+            response.MutableVolume()->SetBlockSize(blockSize);
+            response.MutableVolume()->SetStorageMediaKind(mediaKind);
+            return MakeFuture(std::move(response));
+        };
 
         testClient->ReadBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksLocalRequest> request) {
-                auto guard = request->Sglist.Acquire();
-                UNIT_ASSERT(guard);
-                auto& sglist = guard.Get();
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            auto guard = request->Sglist.Acquire();
+            UNIT_ASSERT(guard);
+            auto& sglist = guard.Get();
 
-                TString bitmaskStr(request->GetBlocksCount() / 8 + 1, 0);
-                for (size_t i = 0; i < request->GetBlocksCount(); ++i) {
-                    if (!encryptedBlockMask[i]) {
-                        size_t byte = i / 8;
-                        size_t bit = i % 8;
-                        bitmaskStr[byte] = (bitmaskStr[byte] | (1 << bit));
-                    }
-
-                    char value = 'a' + i;
-
-                    if (encryptedBlockMask[i]) {
-                        TString buf(blockSize, value);
-                        TBlockDataRef bufRef(buf.data(), buf.size());
-                        auto err = testEncryptor->Encrypt(bufRef, sglist[i], i);
-                        UNIT_ASSERT_EQUAL_C(S_OK, err.GetCode(), err);
-                    } else {
-                        memset(
-                            const_cast<char*>(sglist[i].Data()),
-                            value,
-                            blockSize);
-                    }
+            TString bitmaskStr(request->GetBlocksCount() / 8 + 1, 0);
+            for (size_t i = 0; i < request->GetBlocksCount(); ++i) {
+                if (!encryptedBlockMask[i]) {
+                    size_t byte = i / 8;
+                    size_t bit = i % 8;
+                    bitmaskStr[byte] = (bitmaskStr[byte] | (1 << bit));
                 }
 
-                NProto::TReadBlocksLocalResponse response;
-                response.SetUnencryptedBlockMask(bitmaskStr);
-                return MakeFuture(std::move(response));
-            };
+                char value = 'a' + i;
+
+                if (encryptedBlockMask[i]) {
+                    TString buf(blockSize, value);
+                    TBlockDataRef bufRef(buf.data(), buf.size());
+                    auto err = testEncryptor->Encrypt(bufRef, sglist[i], i);
+                    UNIT_ASSERT_EQUAL_C(S_OK, err.GetCode(), err);
+                } else {
+                    memset(
+                        const_cast<char*>(sglist[i].Data()),
+                        value,
+                        blockSize);
+                }
+            }
+
+            NProto::TReadBlocksLocalResponse response;
+            response.SetUnencryptedBlockMask(bitmaskStr);
+            return MakeFuture(std::move(response));
+        };
 
         auto mountResponse = MountVolume(*encryptionClient);
         UNIT_ASSERT(!HasError(mountResponse));
@@ -984,24 +1025,31 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         }
     }
 
-#define BLOCKSTORE_IMPLEMENT_TEST(mediaKind, name, ...)                        \
-    Y_UNIT_TEST(ShouldDecryptOverlayBlocksInReadBlocksLocalFor##name)          \
-    {                                                                          \
-        DoDecryptOverlayBlocksInReadBlocksLocal(mediaKind);                    \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_TEST
+#define BLOCKSTORE_IMPLEMENT_TEST(mediaKind, name, ...)               \
+    Y_UNIT_TEST(ShouldDecryptOverlayBlocksInReadBlocksLocalFor##name) \
+    {                                                                 \
+        DoDecryptOverlayBlocksInReadBlocksLocal(mediaKind);           \
+    }                                                                 \
+    // BLOCKSTORE_IMPLEMENT_TEST
 
     BLOCKSTORE_IMPLEMENT_TEST(NCloud::NProto::STORAGE_MEDIA_SSD, SSD)
     BLOCKSTORE_IMPLEMENT_TEST(NCloud::NProto::STORAGE_MEDIA_HYBRID, Hybrid)
     BLOCKSTORE_IMPLEMENT_TEST(NCloud::NProto::STORAGE_MEDIA_HDD, HDD)
-    BLOCKSTORE_IMPLEMENT_TEST(NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED, SSDNonreplicated)
-    BLOCKSTORE_IMPLEMENT_TEST(NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2, SSDMirror2)
-    BLOCKSTORE_IMPLEMENT_TEST(NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3, SSDMirror3)
+    BLOCKSTORE_IMPLEMENT_TEST(
+        NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+        SSDNonreplicated)
+    BLOCKSTORE_IMPLEMENT_TEST(
+        NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2,
+        SSDMirror2)
+    BLOCKSTORE_IMPLEMENT_TEST(
+        NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3,
+        SSDMirror3)
     BLOCKSTORE_IMPLEMENT_TEST(NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL, SSDLocal)
 
 #undef BLOCKSTORE_IMPLEMENT_TEST
 
-    Y_UNIT_TEST(SnapshotEncryptionClientShouldClearUnencryptedBlocksInReadBlocksResponse)
+    Y_UNIT_TEST(
+        SnapshotEncryptionClientShouldClearUnencryptedBlocksInReadBlocksResponse)
     {
         auto logging = CreateLoggingService("console");
         TString bitmaskStr;
@@ -1009,15 +1057,16 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         auto testClient = std::make_shared<TTestService>();
 
         testClient->ReadBlocksHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksRequest> request) {
-                NProto::TReadBlocksResponse response;
-                ResizeIOVector(
-                    *response.MutableBlocks(),
-                    request->GetBlocksCount(),
-                    DefaultBlockSize);
-                response.SetUnencryptedBlockMask(bitmaskStr);
-                return MakeFuture(response);
-            };
+            [&](std::shared_ptr<NProto::TReadBlocksRequest> request)
+        {
+            NProto::TReadBlocksResponse response;
+            ResizeIOVector(
+                *response.MutableBlocks(),
+                request->GetBlocksCount(),
+                DefaultBlockSize);
+            response.SetUnencryptedBlockMask(bitmaskStr);
+            return MakeFuture(response);
+        };
 
         auto encryptionClient = CreateSnapshotEncryptionClient(
             testClient,
@@ -1048,7 +1097,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         }
     }
 
-    Y_UNIT_TEST(SnapshotEncryptionClientShouldClearUnencryptedBlocksInReadBlocksLocalResponse)
+    Y_UNIT_TEST(
+        SnapshotEncryptionClientShouldClearUnencryptedBlocksInReadBlocksLocalResponse)
     {
         auto logging = CreateLoggingService("console");
         TString bitmaskStr;
@@ -1056,19 +1106,20 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         auto testClient = std::make_shared<TTestService>();
 
         testClient->ReadBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksLocalRequest> request) {
-                NProto::TReadBlocksLocalResponse response;
-                auto guard = request->Sglist.Acquire();
-                UNIT_ASSERT(guard);
-                const auto& sglist = guard.Get();
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            NProto::TReadBlocksLocalResponse response;
+            auto guard = request->Sglist.Acquire();
+            UNIT_ASSERT(guard);
+            const auto& sglist = guard.Get();
 
-                for (const auto& buffer: sglist) {
-                    memset(const_cast<char*>(buffer.Data()), 'x', buffer.Size());
-                }
+            for (const auto& buffer: sglist) {
+                memset(const_cast<char*>(buffer.Data()), 'x', buffer.Size());
+            }
 
-                response.SetUnencryptedBlockMask(bitmaskStr);
-                return MakeFuture(response);
-            };
+            response.SetUnencryptedBlockMask(bitmaskStr);
+            return MakeFuture(response);
+        };
 
         auto encryptionClient = CreateSnapshotEncryptionClient(
             testClient,
@@ -1078,10 +1129,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         auto blocksCount = 4 * 8;
 
         TVector<TString> blocks;
-        auto sglist = ResizeBlocks(
-            blocks,
-            blocksCount,
-            TString(DefaultBlockSize, 'a'));
+        auto sglist =
+            ResizeBlocks(blocks, blocksCount, TString(DefaultBlockSize, 'a'));
 
         auto ctx = MakeIntrusive<TCallContext>();
         auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
@@ -1123,8 +1172,9 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             std::make_shared<NProto::TZeroBlocksRequest>());
 
         auto response = future.GetValue(TDuration::Seconds(5));
-        UNIT_ASSERT(HasError(response)
-            && response.GetError().GetCode() == E_NOT_IMPLEMENTED);
+        UNIT_ASSERT(
+            HasError(response) &&
+            response.GetError().GetCode() == E_NOT_IMPLEMENTED);
     }
 
     Y_UNIT_TEST(ShouldHandleRequestsAfterDestroyClient)
@@ -1142,11 +1192,12 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             NProto::EZP_WRITE_ENCRYPTED_ZEROS);
 
         testClient->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest>) {
-                NProto::TMountVolumeResponse response;
-                response.MutableVolume()->SetBlockSize(DefaultBlockSize);
-                return MakeFuture(response);
-            };
+            [&](std::shared_ptr<NProto::TMountVolumeRequest>)
+        {
+            NProto::TMountVolumeResponse response;
+            response.MutableVolume()->SetBlockSize(DefaultBlockSize);
+            return MakeFuture(response);
+        };
 
         auto response = MountVolume(*encryptionClient);
         UNIT_ASSERT(!HasError(response));
@@ -1154,65 +1205,69 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         auto trigger = NewPromise<void>();
 
         testClient->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest>) {
-                return trigger.GetFuture().Apply([] (const auto&) {
-                    return NProto::TMountVolumeResponse();
-                });
-            };
+            [&](std::shared_ptr<NProto::TMountVolumeRequest>)
+        {
+            return trigger.GetFuture().Apply(
+                [](const auto&) { return NProto::TMountVolumeResponse(); });
+        };
 
         testClient->ReadBlocksHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksRequest>) {
-                return trigger.GetFuture().Apply([] (const auto&) {
-                    return NProto::TReadBlocksResponse();
-                });
-            };
+            [&](std::shared_ptr<NProto::TReadBlocksRequest>)
+        {
+            return trigger.GetFuture().Apply(
+                [](const auto&) { return NProto::TReadBlocksResponse(); });
+        };
 
         testClient->WriteBlocksHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksRequest>) {
-                return trigger.GetFuture().Apply([] (const auto&) {
-                    return NProto::TWriteBlocksResponse();
-                });
-            };
+            [&](std::shared_ptr<NProto::TWriteBlocksRequest>)
+        {
+            return trigger.GetFuture().Apply(
+                [](const auto&) { return NProto::TWriteBlocksResponse(); });
+        };
 
         testClient->ReadBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksLocalRequest>) {
-                return trigger.GetFuture().Apply([] (const auto&) {
-                    return NProto::TReadBlocksLocalResponse();
-                });
-            };
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest>)
+        {
+            return trigger.GetFuture().Apply(
+                [](const auto&) { return NProto::TReadBlocksLocalResponse(); });
+        };
 
         testClient->WriteBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksLocalRequest>) {
-                return trigger.GetFuture().Apply([] (const auto&) {
-                    return NProto::TWriteBlocksLocalResponse();
-                });
-            };
+            [&](std::shared_ptr<NProto::TWriteBlocksLocalRequest>)
+        {
+            return trigger.GetFuture().Apply(
+                [](const auto&)
+                { return NProto::TWriteBlocksLocalResponse(); });
+        };
 
         testClient->ZeroBlocksHandler =
-            [&] (std::shared_ptr<NProto::TZeroBlocksRequest>) {
-                return trigger.GetFuture().Apply([] (const auto&) {
-                    return NProto::TZeroBlocksResponse();
-                });
-            };
+            [&](std::shared_ptr<NProto::TZeroBlocksRequest>)
+        {
+            return trigger.GetFuture().Apply(
+                [](const auto&) { return NProto::TZeroBlocksResponse(); });
+        };
 
         auto readRequest = std::make_shared<NProto::TReadBlocksRequest>();
         readRequest->SetBlocksCount(blocksCount);
 
         auto writeRequest = std::make_shared<NProto::TWriteBlocksRequest>();
-        ResizeIOVector(*writeRequest->MutableBlocks(), blocksCount, DefaultBlockSize);
+        ResizeIOVector(
+            *writeRequest->MutableBlocks(),
+            blocksCount,
+            DefaultBlockSize);
 
         TVector<TString> blocks;
-        auto sglist = ResizeBlocks(
-            blocks,
-            blocksCount,
-            TString(DefaultBlockSize, 'x'));
+        auto sglist =
+            ResizeBlocks(blocks, blocksCount, TString(DefaultBlockSize, 'x'));
 
-        auto localReadRequest = std::make_shared<NProto::TReadBlocksLocalRequest>();
+        auto localReadRequest =
+            std::make_shared<NProto::TReadBlocksLocalRequest>();
         localReadRequest->SetBlocksCount(blocksCount);
         localReadRequest->BlockSize = DefaultBlockSize;
         localReadRequest->Sglist = TGuardedSgList(sglist);
 
-        auto localWriteRequest = std::make_shared<NProto::TWriteBlocksLocalRequest>();
+        auto localWriteRequest =
+            std::make_shared<NProto::TWriteBlocksLocalRequest>();
         localWriteRequest->BlocksCount = blocksCount;
         localWriteRequest->BlockSize = DefaultBlockSize;
         localWriteRequest->Sglist = TGuardedSgList(sglist);
@@ -1255,18 +1310,26 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             trigger.SetValue();
 
             auto mountResponse = mountFuture.GetValue(TDuration::Seconds(5));
-            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, mountResponse.GetError().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_REJECTED,
+                mountResponse.GetError().GetCode());
 
             auto readResponse = readFuture.GetValue(TDuration::Seconds(5));
-            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, readResponse.GetError().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_REJECTED,
+                readResponse.GetError().GetCode());
 
             auto writeResponse = writeFuture.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_C(!HasError(writeResponse), writeResponse);
 
-            auto localReadResponse = localReadFuture.GetValue(TDuration::Seconds(5));
-            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, localReadResponse.GetError().GetCode());
+            auto localReadResponse =
+                localReadFuture.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_REJECTED,
+                localReadResponse.GetError().GetCode());
 
-            auto localWriteResponse = localWriteFuture.GetValue(TDuration::Seconds(5));
+            auto localWriteResponse =
+                localWriteFuture.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_C(!HasError(localWriteResponse), localWriteResponse);
 
             auto zeroResponse = zeroFuture.GetValue(TDuration::Seconds(5));
@@ -1310,7 +1373,9 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
                 MakeIntrusive<TCallContext>(),
                 zeroRequest);
             auto zeroResponse = zeroFuture.GetValue(TDuration::Seconds(5));
-            UNIT_ASSERT_VALUES_EQUAL(E_NOT_IMPLEMENTED, zeroResponse.GetError().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_NOT_IMPLEMENTED,
+                zeroResponse.GetError().GetCode());
 
             encryptionClient.reset();
             trigger.SetValue();
@@ -1324,17 +1389,20 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             auto writeResponse = writeFuture.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_C(!HasError(writeResponse), writeResponse);
 
-            auto localReadResponse = localReadFuture.GetValue(TDuration::Seconds(5));
+            auto localReadResponse =
+                localReadFuture.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_C(!HasError(localReadResponse), localReadResponse);
 
-            auto localWriteResponse = localWriteFuture.GetValue(TDuration::Seconds(5));
+            auto localWriteResponse =
+                localWriteFuture.GetValue(TDuration::Seconds(5));
             UNIT_ASSERT_C(!HasError(localWriteResponse), localWriteResponse);
         }
     }
 
     Y_UNIT_TEST_F(ShouldCreateEncryptionClientDependingOnVolumeConfig, TFixture)
     {
-        auto fillWithEncryption = [&] (auto& sglist, ui32 blocksCount) mutable {
+        auto fillWithEncryption = [&](auto& sglist, ui32 blocksCount) mutable
+        {
             for (ui32 i = 0; i != blocksCount; ++i) {
                 TString buf(BlockSize, 'a' + i);
                 TBlockDataRef bufRef(buf.data(), buf.size());
@@ -1343,7 +1411,8 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             }
         };
 
-        auto fillWithoutEncryption = [&] (auto& sglist, ui32 blocksCount) mutable {
+        auto fillWithoutEncryption = [&](auto& sglist, ui32 blocksCount) mutable
+        {
             for (ui32 i = 0; i != blocksCount; ++i) {
                 auto& block = sglist[i];
                 memset(const_cast<char*>(block.Data()), 'a' + i, block.Size());
@@ -1354,18 +1423,19 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
 
         // Mount a volume encrypted with ENCRYPTION_AES_XTS without encryption
         testClient->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                UNIT_ASSERT(!request->HasEncryptionSpec());
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            UNIT_ASSERT(!request->HasEncryptionSpec());
 
-                NProto::TEncryptionDesc encryption;
-                encryption.SetMode(NProto::ENCRYPTION_AES_XTS);
-                encryption.SetKeyHash("testKeyHash");
+            NProto::TEncryptionDesc encryption;
+            encryption.SetMode(NProto::ENCRYPTION_AES_XTS);
+            encryption.SetKeyHash("testKeyHash");
 
-                NProto::TMountVolumeResponse response;
-                *response.MutableVolume()->MutableEncryptionDesc() = encryption;
+            NProto::TMountVolumeResponse response;
+            *response.MutableVolume()->MutableEncryptionDesc() = encryption;
 
-                return MakeFuture(std::move(response));
-            };
+            return MakeFuture(std::move(response));
+        };
 
         {
             auto encryptionClient = CreateVolumeEncryptionClient(
@@ -1384,48 +1454,51 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
 
         // Mount an encrypted Volume
         testClient->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                UNIT_ASSERT(!request->HasEncryptionSpec());
-                NProto::TMountVolumeResponse response;
-                auto& volume = *response.MutableVolume();
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            UNIT_ASSERT(!request->HasEncryptionSpec());
+            NProto::TMountVolumeResponse response;
+            auto& volume = *response.MutableVolume();
 
-                volume.SetBlockSize(BlockSize);
+            volume.SetBlockSize(BlockSize);
 
-                NProto::TEncryptionDesc& desc = *volume.MutableEncryptionDesc();
-                desc.SetMode(NProto::ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY);
-                desc.MutableEncryptionKey()->SetKekId(KekId);
-                desc.MutableEncryptionKey()->SetEncryptedDEK(
-                    Base64Encode(EncryptionKey));
+            NProto::TEncryptionDesc& desc = *volume.MutableEncryptionDesc();
+            desc.SetMode(NProto::ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY);
+            desc.MutableEncryptionKey()->SetKekId(KekId);
+            desc.MutableEncryptionKey()->SetEncryptedDEK(
+                Base64Encode(EncryptionKey));
 
-                return MakeFuture(std::move(response));
-            };
+            return MakeFuture(std::move(response));
+        };
 
         // Let's try to read from the encrypted Volume
 
         testClient->ReadBlocksHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksRequest> request) {
-                UNIT_ASSERT_VALUES_EQUAL(0, request->GetStartIndex());
+            [&](std::shared_ptr<NProto::TReadBlocksRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(0, request->GetStartIndex());
 
-                NProto::TReadBlocksResponse response;
+            NProto::TReadBlocksResponse response;
 
-                auto sglist = ResizeIOVector(
-                    *response.MutableBlocks(),
-                    request->GetBlocksCount(),
-                    BlockSize);
+            auto sglist = ResizeIOVector(
+                *response.MutableBlocks(),
+                request->GetBlocksCount(),
+                BlockSize);
 
-                fillWithEncryption(sglist, request->GetBlocksCount());
+            fillWithEncryption(sglist, request->GetBlocksCount());
 
-                return MakeFuture(std::move(response));
-            };
+            return MakeFuture(std::move(response));
+        };
 
         testClient->ReadBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksLocalRequest> request) {
-                auto guard = request->Sglist.Acquire();
-                UNIT_ASSERT(guard);
-                fillWithEncryption(guard.Get(), request->GetBlocksCount());
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            auto guard = request->Sglist.Acquire();
+            UNIT_ASSERT(guard);
+            fillWithEncryption(guard.Get(), request->GetBlocksCount());
 
-                return MakeFuture(NProto::TReadBlocksLocalResponse());
-            };
+            return MakeFuture(NProto::TReadBlocksLocalResponse());
+        };
 
         {
             auto encryptionClient = CreateVolumeEncryptionClient(
@@ -1492,41 +1565,44 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
 
         // Mount an unencrypted Volume
         testClient->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                UNIT_ASSERT(!request->HasEncryptionSpec());
-                NProto::TMountVolumeResponse response;
-                auto& volume = *response.MutableVolume();
-                volume.SetBlockSize(BlockSize);
-                return MakeFuture(std::move(response));
-            };
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            UNIT_ASSERT(!request->HasEncryptionSpec());
+            NProto::TMountVolumeResponse response;
+            auto& volume = *response.MutableVolume();
+            volume.SetBlockSize(BlockSize);
+            return MakeFuture(std::move(response));
+        };
 
         // Let's try to read from the unencrypted Volume
 
         testClient->ReadBlocksHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksRequest> request) {
-                UNIT_ASSERT_VALUES_EQUAL(0, request->GetStartIndex());
+            [&](std::shared_ptr<NProto::TReadBlocksRequest> request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(0, request->GetStartIndex());
 
-                NProto::TReadBlocksResponse response;
+            NProto::TReadBlocksResponse response;
 
-                auto sglist = ResizeIOVector(
-                    *response.MutableBlocks(),
-                    request->GetBlocksCount(),
-                    BlockSize);
+            auto sglist = ResizeIOVector(
+                *response.MutableBlocks(),
+                request->GetBlocksCount(),
+                BlockSize);
 
-                fillWithoutEncryption(sglist, request->GetBlocksCount());
+            fillWithoutEncryption(sglist, request->GetBlocksCount());
 
-                return MakeFuture(std::move(response));
-            };
+            return MakeFuture(std::move(response));
+        };
 
         testClient->ReadBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksLocalRequest> request) {
-                auto guard = request->Sglist.Acquire();
-                UNIT_ASSERT(guard);
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            auto guard = request->Sglist.Acquire();
+            UNIT_ASSERT(guard);
 
-                fillWithoutEncryption(guard.Get(), request->GetBlocksCount());
+            fillWithoutEncryption(guard.Get(), request->GetBlocksCount());
 
-                return MakeFuture(NProto::TReadBlocksLocalResponse());
-            };
+            return MakeFuture(NProto::TReadBlocksLocalResponse());
+        };
 
         {
             auto encryptionClient = CreateVolumeEncryptionClient(

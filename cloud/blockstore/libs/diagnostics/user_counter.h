@@ -45,4 +45,4 @@ void UnregisterServerVolumeInstance(
     const TString& diskId,
     const TString& instanceId);
 
-} // NCloud::NBlockStore::NUserCounter
+}   // namespace NCloud::NBlockStore::NUserCounter

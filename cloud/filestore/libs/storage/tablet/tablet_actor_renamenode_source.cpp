@@ -57,12 +57,12 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TRenameNodeInDestinationActor::TRenameNodeInDestinationActor(
-        TString logTag,
-        TRequestInfoPtr requestInfo,
-        const TActorId& parentId,
-        NProtoPrivate::TRenameNodeInDestinationRequest request,
-        ui64 requestId,
-        ui64 opLogEntryId)
+    TString logTag,
+    TRequestInfoPtr requestInfo,
+    const TActorId& parentId,
+    NProtoPrivate::TRenameNodeInDestinationRequest request,
+    ui64 requestId,
+    ui64 opLogEntryId)
     : LogTag(std::move(logTag))
     , RequestInfo(std::move(requestInfo))
     , ParentId(parentId)
@@ -92,9 +92,7 @@ void TRenameNodeInDestinationActor::SendRequest(const TActorContext& ctx)
         Request.GetNewParentId(),
         Request.GetNewName().c_str());
 
-    ctx.Send(
-        MakeIndexTabletProxyServiceId(),
-        request.release());
+    ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
 }
 
 void TRenameNodeInDestinationActor::HandleRenameNodeInDestinationResponse(
@@ -168,13 +166,15 @@ void TRenameNodeInDestinationActor::ReplyAndDie(
     NProtoPrivate::TRenameNodeInDestinationResponse response)
 {
     using TResponse = TEvIndexTabletPrivate::TEvNodeRenamedInDestination;
-    ctx.Send(ParentId, std::make_unique<TResponse>(
-        std::move(RequestInfo),
-        Request.GetHeaders().GetSessionId(),
-        RequestId,
-        OpLogEntryId,
-        Request.GetOriginalRequest(), // TODO: move
-        std::move(response)));
+    ctx.Send(
+        ParentId,
+        std::make_unique<TResponse>(
+            std::move(RequestInfo),
+            Request.GetHeaders().GetSessionId(),
+            RequestId,
+            OpLogEntryId,
+            Request.GetOriginalRequest(),   // TODO: move
+            std::move(response)));
 
     Die(ctx);
 }
@@ -244,9 +244,9 @@ bool TIndexTabletActor::PrepareTx_PrepareRenameNodeInSource(
     }
 
     if (!args.ChildRef->IsExternal()) {
-        auto message = ReportRenameNodeRequestForLocalNode(TStringBuilder()
-            << "PrepareRenameNodeInSource: "
-            << args.Request.ShortDebugString());
+        auto message = ReportRenameNodeRequestForLocalNode(
+            TStringBuilder() << "PrepareRenameNodeInSource: "
+                             << args.Request.ShortDebugString());
         args.Error = MakeError(E_ARGUMENT, std::move(message));
         return true;
     }
@@ -261,7 +261,7 @@ void TIndexTabletActor::ExecuteTx_PrepareRenameNodeInSource(
 {
     FILESTORE_VALIDATE_TX_ERROR(RenameNode, args);
     if (args.Error.GetCode() == S_ALREADY) {
-        return; // nothing to do
+        return;   // nothing to do
     }
 
     TIndexTabletDatabaseProxy db(tx.DB, args.NodeUpdates);
@@ -277,8 +277,7 @@ void TIndexTabletActor::ExecuteTx_PrepareRenameNodeInSource(
     args.OpLogEntry.SetEntryId(args.CommitId);
     auto* shardRequest =
         args.OpLogEntry.MutableRenameNodeInDestinationRequest();
-    shardRequest->MutableHeaders()->CopyFrom(
-        args.Request.GetHeaders());
+    shardRequest->MutableHeaders()->CopyFrom(args.Request.GetHeaders());
     shardRequest->SetFileSystemId(args.NewParentShardId);
     shardRequest->SetNewParentId(args.Request.GetNewParentId());
     shardRequest->SetNewName(args.Request.GetNewName());
@@ -301,7 +300,8 @@ void TIndexTabletActor::ExecuteTx_PrepareRenameNodeInSource(
 
     auto* session = FindSession(args.SessionId);
     if (!session) {
-        auto message = ReportSessionNotFoundInTx(TStringBuilder()
+        auto message = ReportSessionNotFoundInTx(
+            TStringBuilder()
             << "RenameNode: " << args.Request.ShortDebugString());
         args.Error = MakeError(E_INVALID_STATE, std::move(message));
         return;
@@ -330,7 +330,8 @@ void TIndexTabletActor::CompleteTx_PrepareRenameNodeInSource(
     }
 
     if (!HasError(args.Error) && !args.ChildRef) {
-        auto message = ReportChildRefIsNull(TStringBuilder()
+        auto message = ReportChildRefIsNull(
+            TStringBuilder()
             << "RenameNode: " << args.Request.ShortDebugString());
         args.Error = MakeError(E_INVALID_STATE, std::move(message));
     }
@@ -340,12 +341,14 @@ void TIndexTabletActor::CompleteTx_PrepareRenameNodeInSource(
 
         if (!op.HasRenameNodeInDestinationRequest()) {
             auto message = ReportNoRenameNodeInDestinationRequest(
-                TStringBuilder() << "RenameNode: "
-                    << args.Request.ShortDebugString());
+                TStringBuilder()
+                << "RenameNode: " << args.Request.ShortDebugString());
             args.Error = MakeError(E_INVALID_STATE, std::move(message));
         } else {
             auto& shardRequest = *op.MutableRenameNodeInDestinationRequest();
-            LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::TABLET,
                 "%s Renaming node in dst shard upon RenameNode: %s, %lu",
                 LogTag.c_str(),
                 shardRequest.GetFileSystemId().c_str(),
@@ -363,10 +366,7 @@ void TIndexTabletActor::CompleteTx_PrepareRenameNodeInSource(
 
     UnlockNodeRef({args.ParentNodeId, args.Name});
 
-    Metrics.RenameNode.Update(
-        1,
-        0,
-        ctx.Now() - args.RequestInfo->StartedTs);
+    Metrics.RenameNode.Update(1, 0, ctx.Now() - args.RequestInfo->StartedTs);
 
     auto response =
         std::make_unique<TEvService::TEvRenameNodeResponse>(args.Error);
@@ -443,8 +443,8 @@ bool TIndexTabletActor::PrepareTx_CommitRenameNodeInSource(
 
     if (!args.ChildRef || !args.ChildRef->IsExternal()) {
         auto message = ReportBadChildRefUponCommitRenameNodeInSource(
-            TStringBuilder() << "CommitRenameNodeInSource: "
-            << args.Request.ShortDebugString());
+            TStringBuilder()
+            << "CommitRenameNodeInSource: " << args.Request.ShortDebugString());
         args.Error = MakeError(E_INVALID_STATE, std::move(message));
         return true;
     }

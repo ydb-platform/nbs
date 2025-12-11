@@ -21,13 +21,12 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestDumpable
-    : public IDumpable
+struct TTestDumpable: public IDumpable
 {
     void Dump(IOutputStream& out) const override
     {
         Y_UNUSED(out);
-    };
+    }
 
     void DumpHtml(IOutputStream& out) const override
     {
@@ -37,7 +36,6 @@ struct TTestDumpable
 
 ////////////////////////////////////////////////////////////////////////////////
 
-
 auto UpdateStatsWithRequestResultedInRetriableError(
     IServerStatsPtr serverStats,
     IMonitoringServicePtr monitoring,
@@ -46,14 +44,9 @@ auto UpdateStatsWithRequestResultedInRetriableError(
 {
     TLog log;
 
-    TMetricRequest request {EBlockStoreRequest::WriteBlocks};
-    serverStats->PrepareMetricRequest(
-        request,
-        "client",
-        "volume",
-        0,
-        4096,
-        false);
+    TMetricRequest request{EBlockStoreRequest::WriteBlocks};
+    serverStats
+        ->PrepareMetricRequest(request, "client", "volume", 0, 4096, false);
 
     auto callContext = MakeIntrusive<TCallContext>();
     callContext->SetSilenceRetriableErrors(silenceRetriableErrors);
@@ -85,18 +78,17 @@ void CheckRetriableError(
     bool silenceRetriableErrors,
     ui64 expected)
 {
-    auto instanceCounters =
-        UpdateStatsWithRequestResultedInRetriableError(
-            serverStats,
-            monitoring,
-            silenceRetriableErrors,
-            false /*not a hw problem*/);
+    auto instanceCounters = UpdateStatsWithRequestResultedInRetriableError(
+        serverStats,
+        monitoring,
+        silenceRetriableErrors,
+        false /*not a hw problem*/);
 
     UNIT_ASSERT_VALUES_EQUAL(
         expected,
-        instanceCounters
-        ->GetSubgroup("request", "WriteBlocks")
-        ->GetCounter("Errors/Retriable", true)->Val());
+        instanceCounters->GetSubgroup("request", "WriteBlocks")
+            ->GetCounter("Errors/Retriable", true)
+            ->Val());
 }
 
 void CheckHwProblems(
@@ -106,12 +98,11 @@ void CheckHwProblems(
     bool isHwProblem,
     ui64 expected)
 {
-    auto instanceCounters =
-        UpdateStatsWithRequestResultedInRetriableError(
-            serverStats,
-            monitoring,
-            silenceRetriableErrors,
-            isHwProblem);
+    auto instanceCounters = UpdateStatsWithRequestResultedInRetriableError(
+        serverStats,
+        monitoring,
+        silenceRetriableErrors,
+        isHwProblem);
 
     UNIT_ASSERT_VALUES_EQUAL(
         expected,
@@ -129,9 +120,8 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
         auto timer = std::make_shared<TTestTimer>();
         auto monitoring = CreateMonitoringServiceStub();
 
-        auto serverGroup = monitoring
-            ->GetCounters()
-            ->GetSubgroup("counters", "blockstore");
+        auto serverGroup =
+            monitoring->GetCounters()->GetSubgroup("counters", "blockstore");
 
         auto volumeStats = CreateVolumeStats(
             monitoring,
@@ -157,14 +147,9 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
         volume.SetFolderId("folder");
         serverStats->MountVolume(volume, "client", "instance");
 
-        TMetricRequest request {EBlockStoreRequest::WriteBlocks};
-        serverStats->PrepareMetricRequest(
-            request,
-            "client",
-            "volume",
-            0,
-            4096,
-            false);
+        TMetricRequest request{EBlockStoreRequest::WriteBlocks};
+        serverStats
+            ->PrepareMetricRequest(request, "client", "volume", 0, 4096, false);
 
         UNIT_ASSERT_VALUES_UNEQUAL(0, request.VolumeInfo.use_count());
 
@@ -177,25 +162,23 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             EBlockStoreRequest::WriteBlocks,
             TRequestTime{
                 .TotalTime = TDuration::Hours(1),
-                .ExecutionTime = TDuration::Hours(1)
-            }
-        );
+                .ExecutionTime = TDuration::Hours(1)});
 
         serverStats->UpdateStats(false);
 
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration::Hours(1).MicroSeconds(),
-            monitoring
-            ->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server_volume")
-            ->GetSubgroup("host", "cluster")
-            ->GetSubgroup("volume", "volume")
-            ->GetSubgroup("instance", "instance")
-            ->GetSubgroup("cloud", "cloud")
-            ->GetSubgroup("folder", "folder")
-            ->GetSubgroup("request", "WriteBlocks")
-            ->GetCounter("MaxTime")->Val());
+            monitoring->GetCounters()
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "server_volume")
+                ->GetSubgroup("host", "cluster")
+                ->GetSubgroup("volume", "volume")
+                ->GetSubgroup("instance", "instance")
+                ->GetSubgroup("cloud", "cloud")
+                ->GetSubgroup("folder", "folder")
+                ->GetSubgroup("request", "WriteBlocks")
+                ->GetCounter("MaxTime")
+                ->Val());
     }
 
     Y_UNIT_TEST(ShouldSilenceErrorsIfCallContextHasSilenceRetriable)
@@ -203,9 +186,8 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
         auto timer = std::make_shared<TTestTimer>();
         auto monitoring = CreateMonitoringServiceStub();
 
-        auto serverGroup = monitoring
-            ->GetCounters()
-            ->GetSubgroup("counters", "blockstore");
+        auto serverGroup =
+            monitoring->GetCounters()->GetSubgroup("counters", "blockstore");
 
         auto volumeStats = CreateVolumeStats(
             monitoring,
@@ -241,9 +223,8 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
         auto timer = std::make_shared<TTestTimer>();
         auto monitoring = CreateMonitoringServiceStub();
 
-        auto serverGroup = monitoring
-            ->GetCounters()
-            ->GetSubgroup("counters", "blockstore");
+        auto serverGroup =
+            monitoring->GetCounters()->GetSubgroup("counters", "blockstore");
 
         auto volumeStats = CreateVolumeStats(
             monitoring,
@@ -269,14 +250,9 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
         volume.SetFolderId("folder");
         serverStats->MountVolume(volume, "client", "instance");
 
-        TMetricRequest request {EBlockStoreRequest::WriteBlocks};
-        serverStats->PrepareMetricRequest(
-            request,
-            "client",
-            "volume",
-            0,
-            4096,
-            false);
+        TMetricRequest request{EBlockStoreRequest::WriteBlocks};
+        serverStats
+            ->PrepareMetricRequest(request, "client", "volume", 0, 4096, false);
 
         UNIT_ASSERT_VALUES_UNEQUAL(0, request.VolumeInfo.use_count());
 
@@ -291,36 +267,34 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             EBlockStoreRequest::WriteBlocks,
             TRequestTime{
                 .TotalTime = TDuration::Hours(1),
-                .ExecutionTime = TDuration::Hours(1)
-            }
-        );
+                .ExecutionTime = TDuration::Hours(1)});
 
         serverStats->UpdateStats(false);
 
         // Expect MaxTime will not be calculated for server component
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration().MicroSeconds(),
-            monitoring
-            ->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server")
-            ->GetSubgroup("request", "WriteBlocks")
-            ->GetCounter("MaxTime")->Val());
+            monitoring->GetCounters()
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "server")
+                ->GetSubgroup("request", "WriteBlocks")
+                ->GetCounter("MaxTime")
+                ->Val());
 
         // Expect MaxTime will be calculated for server_volume component
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration::Hours(1).MicroSeconds(),
-            monitoring
-            ->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "server_volume")
-            ->GetSubgroup("host", "cluster")
-            ->GetSubgroup("volume", "volume")
-            ->GetSubgroup("instance", "instance")
-            ->GetSubgroup("cloud", "cloud")
-            ->GetSubgroup("folder", "folder")
-            ->GetSubgroup("request", "WriteBlocks")
-            ->GetCounter("MaxTime")->Val());
+            monitoring->GetCounters()
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "server_volume")
+                ->GetSubgroup("host", "cluster")
+                ->GetSubgroup("volume", "volume")
+                ->GetSubgroup("instance", "instance")
+                ->GetSubgroup("cloud", "cloud")
+                ->GetSubgroup("folder", "folder")
+                ->GetSubgroup("request", "WriteBlocks")
+                ->GetCounter("MaxTime")
+                ->Val());
     }
 
     void DoTestShouldCountHwProblems(
@@ -329,9 +303,8 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
         auto timer = std::make_shared<TTestTimer>();
         auto monitoring = CreateMonitoringServiceStub();
 
-        auto serverGroup = monitoring
-            ->GetCounters()
-            ->GetSubgroup("counters", "blockstore");
+        auto serverGroup =
+            monitoring->GetCounters()->GetSubgroup("counters", "blockstore");
 
         auto volumeStats = CreateVolumeStats(
             monitoring,
@@ -396,53 +369,42 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
                 {}),
             CreateVolumeStatsStub());
 
-        TMetricRequest request {EBlockStoreRequest::DescribeVolume};
+        TMetricRequest request{EBlockStoreRequest::DescribeVolume};
         request.CellRequest = true;
-        serverStats->PrepareMetricRequest(
-            request,
-            "",
-            "",
-            0,
-            0,
-            false);
+        serverStats->PrepareMetricRequest(request, "", "", 0, 0, false);
 
         auto callContext = MakeIntrusive<TCallContext>();
 
-        serverStats->RequestStarted(
-            log,
-            request,
-            *callContext,
-            "");
+        serverStats->RequestStarted(log, request, *callContext, "");
 
         serverStats->RequestCompleted(
             log,
             request,
             *callContext,
-            MakeError(S_OK, "not found")
-        );
+            MakeError(S_OK, "not found"));
 
         serverStats->UpdateStats(false);
 
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            monitoring
-            ->GetCounters()
-            ->GetSubgroup("request", "DescribeVolume")
-            ->GetCounter("Count", true)->Val());
+            monitoring->GetCounters()
+                ->GetSubgroup("request", "DescribeVolume")
+                ->GetCounter("Count", true)
+                ->Val());
 
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            monitoring
-            ->GetCounters()
-            ->GetSubgroup("request", "DescribeVolume")
-            ->GetCounter("Errors/Fatal")->Val());
+            monitoring->GetCounters()
+                ->GetSubgroup("request", "DescribeVolume")
+                ->GetCounter("Errors/Fatal")
+                ->Val());
 
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            monitoring
-            ->GetCounters()
-            ->GetSubgroup("request", "DescribeVolume")
-            ->GetCounter("Errors")->Val());
+            monitoring->GetCounters()
+                ->GetSubgroup("request", "DescribeVolume")
+                ->GetCounter("Errors")
+                ->Val());
     }
 }
 

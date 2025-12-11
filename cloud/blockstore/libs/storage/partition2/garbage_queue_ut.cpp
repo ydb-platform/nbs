@@ -37,7 +37,9 @@ Y_UNIT_TEST_SUITE(TGarbageQueue2Test)
             queue.AddNewBlob(TPartialBlobId(1, step, 3, 1024, 0, 0));
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(queue.GetNewBlobsCount(MakeCommitId(1, 10)), 10);
+        UNIT_ASSERT_VALUES_EQUAL(
+            queue.GetNewBlobsCount(MakeCommitId(1, 10)),
+            10);
         UNIT_ASSERT_VALUES_EQUAL(queue.GetNewBlobsCount(MakeCommitId(1, 5)), 5);
         UNIT_ASSERT_VALUES_EQUAL(queue.GetNewBlobsCount(MakeCommitId(1, 1)), 1);
 
@@ -64,7 +66,9 @@ Y_UNIT_TEST_SUITE(TGarbageQueue2Test)
             queue.AddNewBlob(TPartialBlobId(1, step, 3, 1024, 0, 0));
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(queue.GetNewBlobsCount(MakeCommitId(1, 10)), 10);
+        UNIT_ASSERT_VALUES_EQUAL(
+            queue.GetNewBlobsCount(MakeCommitId(1, 10)),
+            10);
 
         for (ui32 i = 5; i <= Steps.size(); ++i) {
             queue.AddGarbageBlob(TPartialBlobId(1, i, 3, 1024, 0, 0));
@@ -87,7 +91,9 @@ Y_UNIT_TEST_SUITE(TGarbageQueue2Test)
             queue.AddNewBlob(TPartialBlobId(1, step, 3, 1024, 0, 0));
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(queue.GetNewBlobsCount(MakeCommitId(1, 10)), 10);
+        UNIT_ASSERT_VALUES_EQUAL(
+            queue.GetNewBlobsCount(MakeCommitId(1, 10)),
+            10);
 
         for (ui32 step: Steps) {
             queue.AddGarbageBlob(TPartialBlobId(1, step, 3, 1024, 0, 0));
@@ -116,7 +122,9 @@ Y_UNIT_TEST_SUITE(TGarbageQueue2Test)
             queue.AddGarbageBlob(TPartialBlobId(1, i, 3, 1024, 0, 0));
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(queue.GetCollectCommitId(), MakeCommitId(1, 4));
+        UNIT_ASSERT_VALUES_EQUAL(
+            queue.GetCollectCommitId(),
+            MakeCommitId(1, 4));
 
         // TODO
     }

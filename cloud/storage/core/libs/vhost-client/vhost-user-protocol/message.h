@@ -1,5 +1,5 @@
 #pragma once
-//https://qemu-project.gitlab.io/qemu/interop/vhost-user.html
+// https://qemu-project.gitlab.io/qemu/interop/vhost-user.html
 
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
@@ -8,19 +8,19 @@ namespace NVHostUser {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template<typename Type>
+template <typename Type>
 bool BitIsSet(Type data, size_t bit)
 {
     return data & (static_cast<Type>(1) << bit);
 }
 
-template<typename Type>
+template <typename Type>
 Type& SetBit(Type& data, size_t bit)
 {
     return data |= (static_cast<Type>(1) << bit);
 }
 
-template<typename Type>
+template <typename Type>
 Type& ResetBit(Type& data, size_t bit)
 {
     return data &= ~(static_cast<Type>(1) << bit);
@@ -39,7 +39,7 @@ public:
 protected:
     enum EVhostUserRequest
     {
-        //Don't rename these constants. Names are taken from specification
+        // Don't rename these constants. Names are taken from specification
         VHOST_USER_NONE = 0,
         VHOST_USER_GET_FEATURES = 1,
         VHOST_USER_SET_FEATURES = 2,
@@ -83,10 +83,11 @@ protected:
     };
 
     static int Send(int sock, const TVhostUserMsgBase& data);
-    static int SendFds(int sock, const TVhostUserMsgBase& data, const TVector<int>& fds);
+    static int
+    SendFds(int sock, const TVhostUserMsgBase& data, const TVector<int>& fds);
 
     static int Recv(int sock, TVhostUserMsgBase& data);
     static int RecvFds(int sock, TVhostUserMsgBase& data, TVector<int>& fds);
 };
 
-} // namespace NVHostUser
+}   // namespace NVHostUser

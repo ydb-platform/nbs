@@ -26,8 +26,7 @@ struct IStorageProvider
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IStorageProviderPtr CreateDefaultStorageProvider(
-    IBlockStorePtr service);
+IStorageProviderPtr CreateDefaultStorageProvider(IBlockStorePtr service);
 
 IStorageProviderPtr CreateMultiStorageProvider(
     TVector<IStorageProviderPtr> storageProviders);

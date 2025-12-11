@@ -6,8 +6,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TClientStorageStub final
-    : public IClientStorage
+struct TClientStorageStub final: public IClientStorage
 {
     void AddClient(
         const TSocketHolder& socket,

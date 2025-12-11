@@ -15,15 +15,12 @@ TFreeList ParseFreeSpaceLine(const TString& line)
 
     TFreeList fl;
 
-    stream
-        >> fl.GroupNo
-        >> fl.Offset
-        >> fl.Count;
+    stream >> fl.GroupNo >> fl.Offset >> fl.Count;
 
     return fl;
 }
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -45,7 +42,6 @@ TSuperBlock ParseSuperBlock(IInputStream& stream)
         } else if (name == "sectsize") {
             sb.SectorSize = FromString<ui64>(value);
         }
-
     }
 
     return sb;

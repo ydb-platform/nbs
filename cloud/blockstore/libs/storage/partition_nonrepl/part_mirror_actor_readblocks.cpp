@@ -30,8 +30,8 @@ ui32 CalculateChecksum(
 {
     Y_UNUSED(request);
 
-    // If checksum is already calculated by the disk agent, we can use it instead
-    // of calculating it again.
+    // If checksum is already calculated by the disk agent, we can use it
+    // instead of calculating it again.
     if (response.HasChecksum() && response.GetChecksum().GetByteCount() > 0) {
         return response.GetChecksum().GetChecksum();
     }
@@ -47,8 +47,8 @@ ui32 CalculateChecksum(
     const TEvService::TEvReadBlocksLocalRequest::ProtoRecordType& request,
     const TEvService::TEvReadBlocksLocalResponse::ProtoRecordType& response)
 {
-    // If checksum is already calculated by the disk agent, we can use it instead
-    // of calculating it again.
+    // If checksum is already calculated by the disk agent, we can use it
+    // instead of calculating it again.
     if (response.HasChecksum() && response.GetChecksum().GetByteCount() > 0) {
         return response.GetChecksum().GetChecksum();
     }
@@ -69,8 +69,7 @@ ui32 CalculateChecksum(
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
-class TRequestActor final
-    : public TActorBootstrapped<TRequestActor<TMethod>>
+class TRequestActor final: public TActorBootstrapped<TRequestActor<TMethod>>
 {
 private:
     const TRequestInfoPtr RequestInfo;
@@ -137,14 +136,14 @@ private:
 
 template <typename TMethod>
 TRequestActor<TMethod>::TRequestActor(
-        TRequestInfoPtr requestInfo,
-        const TVector<TActorId>& partitions,
-        typename TMethod::TRequest::ProtoRecordType request,
-        const TBlockRange64 range,
-        TString diskId,
-        TActorId parentActorId,
-        ui64 requestIdentityKey,
-        bool shouldReportBlockRangeOnFailure)
+    TRequestInfoPtr requestInfo,
+    const TVector<TActorId>& partitions,
+    typename TMethod::TRequest::ProtoRecordType request,
+    const TBlockRange64 range,
+    TString diskId,
+    TActorId parentActorId,
+    ui64 requestIdentityKey,
+    bool shouldReportBlockRangeOnFailure)
     : RequestInfo(std::move(requestInfo))
     , Partitions(partitions)
     , Request(std::move(request))
@@ -222,7 +221,9 @@ void TRequestActor<TMethod>::CompareChecksums(const TActorContext& ctx)
     for (ui32 i = 1; i < ResponseChecksums.size(); ++i) {
         const auto checksum = ResponseChecksums[i];
         if (firstChecksum != checksum) {
-            TSet<ui32> checksums(ResponseChecksums.begin(), ResponseChecksums.end());
+            TSet<ui32> checksums(
+                ResponseChecksums.begin(),
+                ResponseChecksums.end());
 
             TStringBuilder errorMessage;
             if (ResponseChecksums.size() == 3) {
@@ -294,15 +295,19 @@ void TRequestActor<TMethod>::HandleChecksumUndelivery(
 {
     Y_UNUSED(ev);
 
-    LOG_WARN(ctx, TBlockStoreComponents::PARTITION_WORKER,
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
         "[%s] %s (ChecksumBlocks) request undelivered to some nonrepl"
         " partitions",
         DiskId.c_str(),
         TMethod::Name);
 
-    *Response.MutableError() = MakeError(E_REJECTED, TStringBuilder()
-        << TMethod::Name << " (ChecksumBlocks) request undelivered to some"
-        << " nonrepl partitions");
+    *Response.MutableError() = MakeError(
+        E_REJECTED,
+        TStringBuilder() << TMethod::Name
+                         << " (ChecksumBlocks) request undelivered to some"
+                         << " nonrepl partitions");
     Done(ctx);
 }
 
@@ -348,13 +353,17 @@ void TRequestActor<TMethod>::HandleUndelivery(
 {
     Y_UNUSED(ev);
 
-    LOG_WARN(ctx, TBlockStoreComponents::PARTITION_WORKER,
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::PARTITION_WORKER,
         "[%s] %s request undelivered to some nonrepl partitions",
         DiskId.c_str(),
         TMethod::Name);
 
-    *Response.MutableError() = MakeError(E_REJECTED, TStringBuilder()
-        << TMethod::Name << " request undelivered to some nonrepl partitions");
+    *Response.MutableError() = MakeError(
+        E_REJECTED,
+        TStringBuilder() << TMethod::Name
+                         << " request undelivered to some nonrepl partitions");
     Done(ctx);
 }
 
@@ -368,7 +377,9 @@ void TRequestActor<TMethod>::HandleResponse(
     ProcessMirrorActorError(*record.MutableError());
 
     if (HasError(record)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::PARTITION_WORKER,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::PARTITION_WORKER,
             "[%s] %s got error from nonreplicated partition: %s",
             DiskId.c_str(),
             TMethod::Name,

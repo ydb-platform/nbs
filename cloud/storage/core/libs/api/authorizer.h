@@ -2,9 +2,9 @@
 
 #include "public.h"
 
+#include <cloud/storage/core/libs/auth/auth_scheme.h>
 #include <cloud/storage/core/libs/kikimr/components.h>
 #include <cloud/storage/core/libs/kikimr/events.h>
-#include <cloud/storage/core/libs/auth/auth_scheme.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
 
@@ -14,9 +14,9 @@ namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define STORAGE_AUTH_REQUESTS(xxx, ...)                                        \
-    xxx(Authorization,   __VA_ARGS__)                                          \
-// STORAGE_AUTH_REQUESTS
+#define STORAGE_AUTH_REQUESTS(xxx, ...) \
+    xxx(Authorization, __VA_ARGS__)     \
+    // STORAGE_AUTH_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -31,9 +31,7 @@ struct TEvAuth
         const TString Token;
         const TPermissionList Permissions;
 
-        TAuthorizationRequest(
-                TString token,
-                TPermissionList permissions)
+        TAuthorizationRequest(TString token, TPermissionList permissions)
             : Token(std::move(token))
             , Permissions(std::move(permissions))
         {}
@@ -57,7 +55,8 @@ struct TEvAuth
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TStorageEvents::AUTH_END,
+    static_assert(
+        EvEnd < (int)TStorageEvents::AUTH_END,
         "EvEnd expected to be < TStorageEvents::AUTH_END");
 
     STORAGE_AUTH_REQUESTS(STORAGE_DECLARE_EVENTS)

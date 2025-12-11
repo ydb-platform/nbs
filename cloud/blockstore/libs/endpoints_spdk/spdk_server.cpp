@@ -37,8 +37,7 @@ static const TString NETMASK_ANY = "ANY";
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSpdkDeviceWrapper final
-    : public ISpdkDevice
+class TSpdkDeviceWrapper final: public ISpdkDevice
 {
 private:
     const ISessionPtr Session;
@@ -72,10 +71,8 @@ public:
         return {};
     }
 
-    TFuture<NProto::TError> Read(
-        void* buf,
-        ui64 fileOffset,
-        ui32 bytesCount) override
+    TFuture<NProto::TError>
+    Read(void* buf, ui64 fileOffset, ui32 bytesCount) override
     {
         auto callContext = MakeIntrusive<TCallContext>(CreateRequestId());
 
@@ -86,33 +83,32 @@ public:
         request->SetBlocksCount(bytesCount / BlockSize);
         request->BlockSize = BlockSize;
 
-        auto sgListOrError = SgListNormalize(
-            { (char *)buf, bytesCount },
-            BlockSize);
+        auto sgListOrError =
+            SgListNormalize({(char*)buf, bytesCount}, BlockSize);
 
         if (HasError(sgListOrError)) {
             return MakeFuture(sgListOrError.GetError());
         }
 
-        auto guardedSgList = TGuardedSgList{ sgListOrError.ExtractResult() };
+        auto guardedSgList = TGuardedSgList{sgListOrError.ExtractResult()};
         request->Sglist = guardedSgList;
 
         auto future = Session->ReadBlocksLocal(
             std::move(callContext),
             std::move(request));
 
-        return future.Apply([=] (auto future) mutable {
-            guardedSgList.Close();
+        return future.Apply(
+            [=](auto future) mutable
+            {
+                guardedSgList.Close();
 
-            auto response = ExtractResponse(future);
-            return response.GetError();
-        });
+                auto response = ExtractResponse(future);
+                return response.GetError();
+            });
     }
 
-    TFuture<NProto::TError> Read(
-        TSgList sglist,
-        ui64 fileOffset,
-        ui32 bytesCount) override
+    TFuture<NProto::TError>
+    Read(TSgList sglist, ui64 fileOffset, ui32 bytesCount) override
     {
         auto callContext = MakeIntrusive<TCallContext>(CreateRequestId());
 
@@ -128,25 +124,25 @@ public:
             return MakeFuture(sgListOrError.GetError());
         }
 
-        auto guardedSgList = TGuardedSgList{ sgListOrError.ExtractResult() };
+        auto guardedSgList = TGuardedSgList{sgListOrError.ExtractResult()};
         request->Sglist = guardedSgList;
 
         auto future = Session->ReadBlocksLocal(
             std::move(callContext),
             std::move(request));
 
-        return future.Apply([=] (auto future) mutable {
-            guardedSgList.Close();
+        return future.Apply(
+            [=](auto future) mutable
+            {
+                guardedSgList.Close();
 
-            auto response = ExtractResponse(future);
-            return response.GetError();
-        });
+                auto response = ExtractResponse(future);
+                return response.GetError();
+            });
     }
 
-    TFuture<NProto::TError> Write(
-        void* buf,
-        ui64 fileOffset,
-        ui32 bytesCount) override
+    TFuture<NProto::TError>
+    Write(void* buf, ui64 fileOffset, ui32 bytesCount) override
     {
         auto callContext = MakeIntrusive<TCallContext>(CreateRequestId());
 
@@ -157,33 +153,32 @@ public:
         request->BlocksCount = bytesCount / BlockSize;
         request->BlockSize = BlockSize;
 
-        auto sgListOrError = SgListNormalize(
-            { (char *)buf, bytesCount },
-            BlockSize);
+        auto sgListOrError =
+            SgListNormalize({(char*)buf, bytesCount}, BlockSize);
 
         if (HasError(sgListOrError)) {
             return MakeFuture(sgListOrError.GetError());
         }
 
-        auto guardedSgList = TGuardedSgList{ sgListOrError.ExtractResult() };
+        auto guardedSgList = TGuardedSgList{sgListOrError.ExtractResult()};
         request->Sglist = guardedSgList;
 
         auto future = Session->WriteBlocksLocal(
             std::move(callContext),
             std::move(request));
 
-        return future.Apply([=] (auto future) mutable {
-            guardedSgList.Close();
+        return future.Apply(
+            [=](auto future) mutable
+            {
+                guardedSgList.Close();
 
-            auto response = ExtractResponse(future);
-            return response.GetError();
-        });
+                auto response = ExtractResponse(future);
+                return response.GetError();
+            });
     }
 
-    TFuture<NProto::TError> Write(
-        TSgList sglist,
-        ui64 fileOffset,
-        ui32 bytesCount) override
+    TFuture<NProto::TError>
+    Write(TSgList sglist, ui64 fileOffset, ui32 bytesCount) override
     {
         auto callContext = MakeIntrusive<TCallContext>(CreateRequestId());
 
@@ -199,19 +194,21 @@ public:
             return MakeFuture(sgListOrError.GetError());
         }
 
-        auto guardedSgList = TGuardedSgList{ sgListOrError.ExtractResult() };
+        auto guardedSgList = TGuardedSgList{sgListOrError.ExtractResult()};
         request->Sglist = guardedSgList;
 
         auto future = Session->WriteBlocksLocal(
             std::move(callContext),
             std::move(request));
 
-        return future.Apply([=] (auto future) mutable {
-            guardedSgList.Close();
+        return future.Apply(
+            [=](auto future) mutable
+            {
+                guardedSgList.Close();
 
-            auto response = ExtractResponse(future);
-            return response.GetError();
-        });
+                auto response = ExtractResponse(future);
+                return response.GetError();
+            });
     }
 
     TFuture<NProto::TError> WriteZeroes(
@@ -226,14 +223,15 @@ public:
         request->SetStartIndex(fileOffset / BlockSize);
         request->SetBlocksCount(bytesCount / BlockSize);
 
-        auto future = Session->ZeroBlocks(
-            std::move(callContext),
-            std::move(request));
+        auto future =
+            Session->ZeroBlocks(std::move(callContext), std::move(request));
 
-        return future.Apply([] (auto future) {
-            auto response = ExtractResponse(future);
-            return response.GetError();
-        });
+        return future.Apply(
+            [](auto future)
+            {
+                auto response = ExtractResponse(future);
+                return response.GetError();
+            });
     }
 
     TFuture<NProto::TError> Erase(NProto::EDeviceEraseMethod method) override
@@ -252,8 +250,7 @@ struct TSpdkEndpoint
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TNVMeEndpointListener final
-    : public IEndpointListener
+class TNVMeEndpointListener final: public IEndpointListener
 {
 private:
     const ISpdkEnvPtr Env;
@@ -267,11 +264,11 @@ private:
 
 public:
     TNVMeEndpointListener(
-            ISpdkEnvPtr env,
-            ILoggingServicePtr logging,
-            IServerStatsPtr serverStats,
-            TExecutorPtr executor,
-            const TNVMeEndpointConfig& config)
+        ISpdkEnvPtr env,
+        ILoggingServicePtr logging,
+        IServerStatsPtr serverStats,
+        TExecutorPtr executor,
+        const TNVMeEndpointConfig& config)
         : Env(std::move(env))
         , Logging(std::move(logging))
         , ServerStats(std::move(serverStats))
@@ -284,9 +281,8 @@ public:
         const NProto::TVolume& volume,
         ISessionPtr session) override
     {
-        return Executor->Execute([=, this] {
-            return DoStartEndpoint(request, volume, session);
-        });
+        return Executor->Execute(
+            [=, this] { return DoStartEndpoint(request, volume, session); });
     }
 
     TFuture<NProto::TError> AlterEndpoint(
@@ -301,9 +297,8 @@ public:
 
     TFuture<NProto::TError> StopEndpoint(const TString& socketPath) override
     {
-        return Executor->Execute([=, this] {
-            return DoStopEndpoint(socketPath);
-        });
+        return Executor->Execute([=, this]
+                                 { return DoStopEndpoint(socketPath); });
     }
 
     NProto::TError RefreshEndpoint(
@@ -334,14 +329,14 @@ private:
     {
         if (!Initialized) {
             for (const auto& transportId: Config.TransportIDs) {
-                auto transportRes = Executor->ResultOrError(
-                    Env->AddTransport(transportId));
+                auto transportRes =
+                    Executor->ResultOrError(Env->AddTransport(transportId));
                 if (HasError(transportRes)) {
                     return transportRes.GetError();
                 }
 
-                auto listenRes = Executor->ResultOrError(
-                    Env->StartListen(transportId));
+                auto listenRes =
+                    Executor->ResultOrError(Env->StartListen(transportId));
                 if (HasError(listenRes)) {
                     return listenRes.GetError();
                 }
@@ -355,8 +350,10 @@ private:
 
         auto it = Endpoints.find(socketPath);
         if (it != Endpoints.end()) {
-            return MakeError(S_ALREADY, TStringBuilder()
-                << "endpoint already started " << socketPath.Quote());
+            return MakeError(
+                S_ALREADY,
+                TStringBuilder()
+                    << "endpoint already started " << socketPath.Quote());
         }
 
         auto device = std::make_shared<TSpdkDeviceWrapper>(
@@ -365,38 +362,33 @@ private:
 
         auto targetName = Config.Nqn + socketPath;
 
-        auto registerRes = Executor->ResultOrError(
-            Env->RegisterDeviceWrapper(
-                std::move(device),
-                CreateGuidAsString(),
-                volume.GetBlocksCount(),
-                volume.GetBlockSize()));
+        auto registerRes = Executor->ResultOrError(Env->RegisterDeviceWrapper(
+            std::move(device),
+            CreateGuidAsString(),
+            volume.GetBlocksCount(),
+            volume.GetBlockSize()));
         if (HasError(registerRes)) {
             return registerRes.GetError();
         }
 
         auto deviceName = registerRes.GetResult();
 
-        TVector<TString> devices = { deviceName };
+        TVector<TString> devices = {deviceName};
 
         auto targetRes = Executor->ResultOrError(
-            Env->CreateNVMeTarget(
-                targetName,
-                devices,
-                Config.TransportIDs));
+            Env->CreateNVMeTarget(targetName, devices, Config.TransportIDs));
         if (HasError(targetRes)) {
             return targetRes.GetError();
         }
 
         auto target = targetRes.GetResult();
 
-        auto startRes = Executor->ResultOrError(
-            target->StartAsync());
+        auto startRes = Executor->ResultOrError(target->StartAsync());
         if (HasError(startRes)) {
             return startRes.GetError();
         }
 
-        Endpoints.emplace(socketPath, TSpdkEndpoint { deviceName, target });
+        Endpoints.emplace(socketPath, TSpdkEndpoint{deviceName, target});
         return {};
     }
 
@@ -404,20 +396,21 @@ private:
     {
         auto it = Endpoints.find(socketPath);
         if (it == Endpoints.end()) {
-            return MakeError(S_FALSE, TStringBuilder()
-                << "endpoint not started " << socketPath.Quote());
+            return MakeError(
+                S_FALSE,
+                TStringBuilder()
+                    << "endpoint not started " << socketPath.Quote());
         }
 
         auto& endpoint = it->second;
 
-        auto stopRes = Executor->ResultOrError(
-            endpoint.Target->StopAsync());
+        auto stopRes = Executor->ResultOrError(endpoint.Target->StopAsync());
         if (HasError(stopRes)) {
             return stopRes.GetError();
         }
 
-        auto unregisterRes = Executor->ResultOrError(
-            Env->UnregisterDevice(endpoint.Device));
+        auto unregisterRes =
+            Executor->ResultOrError(Env->UnregisterDevice(endpoint.Device));
         if (HasError(unregisterRes)) {
             return unregisterRes.GetError();
         }
@@ -429,8 +422,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSCSIEndpointListener final
-    : public IEndpointListener
+class TSCSIEndpointListener final: public IEndpointListener
 {
 private:
     const ISpdkEnvPtr Env;
@@ -444,11 +436,11 @@ private:
 
 public:
     TSCSIEndpointListener(
-            ISpdkEnvPtr env,
-            ILoggingServicePtr logging,
-            IServerStatsPtr serverStats,
-            TExecutorPtr executor,
-            const TSCSIEndpointConfig& config)
+        ISpdkEnvPtr env,
+        ILoggingServicePtr logging,
+        IServerStatsPtr serverStats,
+        TExecutorPtr executor,
+        const TSCSIEndpointConfig& config)
         : Env(std::move(env))
         , Logging(std::move(logging))
         , ServerStats(std::move(serverStats))
@@ -461,9 +453,8 @@ public:
         const NProto::TVolume& volume,
         ISessionPtr session) override
     {
-        return Executor->Execute([=, this] {
-            return DoStartEndpoint(request, volume, session);
-        });
+        return Executor->Execute(
+            [=, this] { return DoStartEndpoint(request, volume, session); });
     }
 
     TFuture<NProto::TError> AlterEndpoint(
@@ -478,9 +469,8 @@ public:
 
     TFuture<NProto::TError> StopEndpoint(const TString& socketPath) override
     {
-        return Executor->Execute([=, this] {
-            return DoStopEndpoint(socketPath);
-        });
+        return Executor->Execute([=, this]
+                                 { return DoStopEndpoint(socketPath); });
     }
 
     NProto::TError RefreshEndpoint(
@@ -518,14 +508,14 @@ private:
                 Config.InitiatorIqn ? Config.InitiatorIqn : IQN_ANY,
                 Config.InitiatorMask ? Config.InitiatorMask : NETMASK_ANY);
 
-            auto portalRes = Executor->ResultOrError(
-                Env->CreatePortalGroup(1, { portal }));
+            auto portalRes =
+                Executor->ResultOrError(Env->CreatePortalGroup(1, {portal}));
             if (HasError(portalRes)) {
                 return portalRes.GetError();
             }
 
             auto initiatorRes = Executor->ResultOrError(
-                Env->CreateInitiatorGroup(1, { initiator }));
+                Env->CreateInitiatorGroup(1, {initiator}));
             if (HasError(initiatorRes)) {
                 return initiatorRes.GetError();
             }
@@ -538,20 +528,21 @@ private:
 
         auto it = Endpoints.find(socketPath);
         if (it != Endpoints.end()) {
-            return MakeError(S_ALREADY, TStringBuilder()
-                << "endpoint already started " << socketPath.Quote());
+            return MakeError(
+                S_ALREADY,
+                TStringBuilder()
+                    << "endpoint already started " << socketPath.Quote());
         }
 
         auto device = std::make_shared<TSpdkDeviceWrapper>(
             std::move(session),
             volume.GetBlockSize());
 
-        auto registerRes = Executor->ResultOrError(
-            Env->RegisterDeviceWrapper(
-                std::move(device),
-                CreateGuidAsString(),
-                volume.GetBlocksCount(),
-                volume.GetBlockSize()));
+        auto registerRes = Executor->ResultOrError(Env->RegisterDeviceWrapper(
+            std::move(device),
+            CreateGuidAsString(),
+            volume.GetBlocksCount(),
+            volume.GetBlockSize()));
         if (HasError(registerRes)) {
             return registerRes.GetError();
         }
@@ -559,30 +550,26 @@ private:
         auto deviceName = registerRes.GetResult();
 
         TVector<ISpdkEnv::TDevice> devices = {
-            { deviceName, 0 },
+            {deviceName, 0},
         };
         TVector<ISpdkEnv::TGroupMapping> groups = {
-            { 1, 1 },
+            {1, 1},
         };
 
         auto targetRes = Executor->ResultOrError(
-            Env->CreateSCSITarget(
-                socketPath,
-                devices,
-                groups));
+            Env->CreateSCSITarget(socketPath, devices, groups));
         if (HasError(targetRes)) {
             return targetRes.GetError();
         }
 
         auto target = targetRes.GetResult();
 
-        auto startRes = Executor->ResultOrError(
-            target->StartAsync());
+        auto startRes = Executor->ResultOrError(target->StartAsync());
         if (HasError(startRes)) {
             return startRes.GetError();
         }
 
-        Endpoints.emplace(socketPath, TSpdkEndpoint { deviceName, target });
+        Endpoints.emplace(socketPath, TSpdkEndpoint{deviceName, target});
         return {};
     }
 
@@ -590,20 +577,21 @@ private:
     {
         auto it = Endpoints.find(socketPath);
         if (it == Endpoints.end()) {
-            return MakeError(S_FALSE, TStringBuilder()
-                << "endpoint not started " << socketPath.Quote());
+            return MakeError(
+                S_FALSE,
+                TStringBuilder()
+                    << "endpoint not started " << socketPath.Quote());
         }
 
         auto& endpoint = it->second;
 
-        auto stopRes = Executor->ResultOrError(
-            endpoint.Target->StopAsync());
+        auto stopRes = Executor->ResultOrError(endpoint.Target->StopAsync());
         if (HasError(stopRes)) {
             return stopRes.GetError();
         }
 
-        auto unregisterRes = Executor->ResultOrError(
-            Env->UnregisterDevice(endpoint.Device));
+        auto unregisterRes =
+            Executor->ResultOrError(Env->UnregisterDevice(endpoint.Device));
         if (HasError(unregisterRes)) {
             return unregisterRes.GetError();
         }

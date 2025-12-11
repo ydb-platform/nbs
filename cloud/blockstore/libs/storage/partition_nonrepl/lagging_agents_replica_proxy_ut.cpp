@@ -121,14 +121,14 @@ struct TTestEnv
     {}
 
     TTestEnv(
-            TTestBasicRuntime& runtime,
-            TDevices devices,
-            TVector<TDevices> replicas,
-            TMigrations migrations,
-            bool localRequests,
-            THashSet<TString> freshDeviceIds,
-            THashSet<TString> outdatedDeviceIds,
-            NProto::TStorageServiceConfig configBase)
+        TTestBasicRuntime& runtime,
+        TDevices devices,
+        TVector<TDevices> replicas,
+        TMigrations migrations,
+        bool localRequests,
+        THashSet<TString> freshDeviceIds,
+        THashSet<TString> outdatedDeviceIds,
+        NProto::TStorageServiceConfig configBase)
         : Runtime(runtime)
         , Devices(std::move(devices))
         , Replicas(std::move(replicas))
@@ -417,20 +417,19 @@ struct TTestEnv
     TActorId GetControllerActorId(ui32 replicaIndex)
     {
         if (!Controllers.contains(replicaIndex)) {
-            auto controller =
-                std::make_unique<TLaggingAgentsReplicaProxyActor>(
-                    Config,
-                    CreateDiagnosticsConfig(),
-                    PartConfig->Fork(GetReplicaDevices(replicaIndex)),
-                    Migrations,
-                    replicaIndex,
-                    CreateProfileLogStub(),
-                    CreateBlockDigestGeneratorStub(),
-                    "",   // rwClientId
-                    ReplicaActors[replicaIndex],
-                    // Normally this would be mirror actor, but for testing
-                    // purposes easier to read data from next replica.
-                    ReplicaActors[(replicaIndex + 1) % ReplicaCount]);
+            auto controller = std::make_unique<TLaggingAgentsReplicaProxyActor>(
+                Config,
+                CreateDiagnosticsConfig(),
+                PartConfig->Fork(GetReplicaDevices(replicaIndex)),
+                Migrations,
+                replicaIndex,
+                CreateProfileLogStub(),
+                CreateBlockDigestGeneratorStub(),
+                "",   // rwClientId
+                ReplicaActors[replicaIndex],
+                // Normally this would be mirror actor, but for testing
+                // purposes easier to read data from next replica.
+                ReplicaActors[(replicaIndex + 1) % ReplicaCount]);
 
             const auto actorId = Runtime.Register(controller.release(), 0);
             Runtime.DispatchEvents({}, TDuration::MilliSeconds(10));

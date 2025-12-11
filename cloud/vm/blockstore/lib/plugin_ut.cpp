@@ -69,14 +69,15 @@ NProto::EClientIpcType GetIpcType(EEndpointType endpointType)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestClient final
-    : public IClient
+struct TTestClient final: public IClient
 {
     IBlockStorePtr TcpEndpoint;
     IBlockStorePtr UdsEndpoint;
 
-    void Start() override {}
-    void Stop() override {}
+    void Start() override
+    {}
+    void Stop() override
+    {}
 
     IBlockStorePtr CreateEndpoint() override
     {
@@ -100,8 +101,7 @@ struct TTestClient final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestThrottlerPolicy final
-    : public IThrottlerPolicy
+struct TTestThrottlerPolicy final: public IThrottlerPolicy
 {
     ui32 Count = 0;
 
@@ -130,13 +130,14 @@ struct TTestThrottlerPolicy final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestNbdClient final
-    : public NBD::IClient
+struct TTestNbdClient final: public NBD::IClient
 {
     IBlockStorePtr Endpoint;
 
-    void Start() override {}
-    void Stop() override {}
+    void Start() override
+    {}
+    void Stop() override
+    {}
 
     IBlockStorePtr CreateEndpoint(
         const TNetworkAddress& connectAddress,
@@ -172,10 +173,10 @@ private:
 
 public:
     TBootstrap(
-            EEndpointType endpointType,
-            IBlockStorePtr clientEndpoint,
-            ITimerPtr timer,
-            ISchedulerPtr scheduler)
+        EEndpointType endpointType,
+        IBlockStorePtr clientEndpoint,
+        ITimerPtr timer,
+        ISchedulerPtr scheduler)
         : Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Logging(CreateLoggingService("console"))
@@ -337,7 +338,7 @@ std::unique_ptr<TBootstrap> CreateBootstrap(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCompletion : BlockPlugin_Completion
+struct TCompletion: BlockPlugin_Completion
 {
     using TCallbackFn = void(BlockPlugin_Completion* comp);
     using TCallback = std::function<TCallbackFn>;
@@ -352,7 +353,9 @@ struct TCompletion : BlockPlugin_Completion
         delete static_cast<TCallback*>(custom_data);
     }
 
-    static int CompleteRequest(BlockPluginHost* host, BlockPlugin_Completion* comp)
+    static int CompleteRequest(
+        BlockPluginHost* host,
+        BlockPlugin_Completion* comp)
     {
         Y_UNUSED(host);
 
@@ -381,8 +384,7 @@ int CompleteRequest(BlockPluginHost* host, BlockPlugin_Completion* comp)
     return BLOCK_PLUGIN_E_OK;
 }
 
-BlockPluginHost gBlockPluginHost =
-{
+BlockPluginHost gBlockPluginHost = {
     .magic = BLOCK_PLUGIN_MAGIC,
     .version_major = BLOCK_PLUGIN_API_VERSION_MAJOR,
     .version_minor = BLOCK_PLUGIN_API_VERSION_MINOR,
@@ -393,7 +395,7 @@ BlockPluginHost gBlockPluginHost =
     .log_message = LogMessage,
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -405,36 +407,40 @@ Y_UNIT_TEST_SUITE(TPluginTest)
 
         bool started = false;
         bool stopped = false;
-        client->StartHandler = [&] () {
+        client->StartHandler = [&]()
+        {
             started = true;
         };
-        client->StopHandler = [&] () {
+        client->StopHandler = [&]()
+        {
             stopped = true;
         };
 
         client->MountVolumeHandler =
-            [] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
-                UNIT_ASSERT_EQUAL(request->GetToken(), DefaultMountToken);
+            [](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
+            UNIT_ASSERT_EQUAL(request->GetToken(), DefaultMountToken);
 
-                NProto::TMountVolumeResponse response;
-                response.SetSessionId("1");
+            NProto::TMountVolumeResponse response;
+            response.SetSessionId("1");
 
-                auto& volume = *response.MutableVolume();
-                volume.SetDiskId(request->GetDiskId());
-                volume.SetBlockSize(DefaultBlockSize);
-                volume.SetBlocksCount(DefaultBlocksCount);
+            auto& volume = *response.MutableVolume();
+            volume.SetDiskId(request->GetDiskId());
+            volume.SetBlockSize(DefaultBlockSize);
+            volume.SetBlocksCount(DefaultBlocksCount);
 
-                return MakeFuture(response);
-            };
+            return MakeFuture(response);
+        };
 
         client->UnmountVolumeHandler =
-            [] (std::shared_ptr<NProto::TUnmountVolumeRequest> request) {
-                UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
-                UNIT_ASSERT_EQUAL(request->GetSessionId(), "1");
-                NProto::TUnmountVolumeResponse response;
-                return MakeFuture(response);
-            };
+            [](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        {
+            UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
+            UNIT_ASSERT_EQUAL(request->GetSessionId(), "1");
+            NProto::TUnmountVolumeResponse response;
+            return MakeFuture(response);
+        };
 
         auto bootstrap = CreateBootstrap(endpointType, client);
         bootstrap->Start();
@@ -502,32 +508,40 @@ Y_UNIT_TEST_SUITE(TPluginTest)
 
         bool started = false;
         bool stopped = false;
-        client->StartHandler = [&] () { started = true; };
-        client->StopHandler = [&] () { stopped = true; };
+        client->StartHandler = [&]()
+        {
+            started = true;
+        };
+        client->StopHandler = [&]()
+        {
+            stopped = true;
+        };
 
         client->MountVolumeHandler =
-            [] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
-                UNIT_ASSERT_EQUAL(request->GetToken(), DefaultMountToken);
+            [](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
+            UNIT_ASSERT_EQUAL(request->GetToken(), DefaultMountToken);
 
-                NProto::TMountVolumeResponse response;
-                response.SetSessionId("1");
+            NProto::TMountVolumeResponse response;
+            response.SetSessionId("1");
 
-                auto& volume = *response.MutableVolume();
-                volume.SetDiskId(request->GetDiskId());
-                volume.SetBlockSize(DefaultBlockSize);
-                volume.SetBlocksCount(DefaultBlocksCount);
+            auto& volume = *response.MutableVolume();
+            volume.SetDiskId(request->GetDiskId());
+            volume.SetBlockSize(DefaultBlockSize);
+            volume.SetBlocksCount(DefaultBlocksCount);
 
-                return MakeFuture(response);
-            };
+            return MakeFuture(response);
+        };
 
         client->UnmountVolumeHandler =
-            [] (std::shared_ptr<NProto::TUnmountVolumeRequest> request) {
-                UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
-                UNIT_ASSERT_EQUAL(request->GetSessionId(), "1");
-                NProto::TUnmountVolumeResponse response;
-                return MakeFuture(response);
-            };
+            [](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        {
+            UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
+            UNIT_ASSERT_EQUAL(request->GetSessionId(), "1");
+            NProto::TUnmountVolumeResponse response;
+            return MakeFuture(response);
+        };
 
         auto bootstrap = CreateBootstrap(endpointType, client);
         bootstrap->Start();
@@ -562,10 +576,8 @@ Y_UNIT_TEST_SUITE(TPluginTest)
 
         {
             TPromise<int> completionPromise = NewPromise<int>();
-            TCompletion comp(
-                [&] (BlockPlugin_Completion* comp) {
-                    completionPromise.SetValue(comp->status);
-                });
+            TCompletion comp([&](BlockPlugin_Completion* comp)
+                             { completionPromise.SetValue(comp->status); });
 
             TSessionConfig sessionConfig;
             sessionConfig.DiskId = mountConfig.GetDiskId();
@@ -588,10 +600,8 @@ Y_UNIT_TEST_SUITE(TPluginTest)
 
         {
             TPromise<int> completionPromise = NewPromise<int>();
-            TCompletion comp(
-                [&] (BlockPlugin_Completion* comp) {
-                    completionPromise.SetValue(comp->status);
-                });
+            TCompletion comp([&](BlockPlugin_Completion* comp)
+                             { completionPromise.SetValue(comp->status); });
 
             int error = plugin->UnmountVolumeAsync(&volume, &comp);
             UNIT_ASSERT_EQUAL(error, BLOCK_PLUGIN_E_OK);
@@ -625,49 +635,54 @@ Y_UNIT_TEST_SUITE(TPluginTest)
         auto client = std::make_shared<TTestService>();
 
         client->MountVolumeHandler =
-            [] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
-                UNIT_ASSERT_EQUAL(request->GetToken(), DefaultMountToken);
+            [](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
+            UNIT_ASSERT_EQUAL(request->GetToken(), DefaultMountToken);
 
-                NProto::TMountVolumeResponse response;
-                response.SetSessionId("1");
+            NProto::TMountVolumeResponse response;
+            response.SetSessionId("1");
 
-                auto& volume = *response.MutableVolume();
-                volume.SetDiskId(request->GetDiskId());
-                volume.SetBlockSize(DefaultBlockSize);
-                volume.SetBlocksCount(1024);
+            auto& volume = *response.MutableVolume();
+            volume.SetDiskId(request->GetDiskId());
+            volume.SetBlockSize(DefaultBlockSize);
+            volume.SetBlocksCount(1024);
 
-                return MakeFuture(response);
-            };
+            return MakeFuture(response);
+        };
 
         client->UnmountVolumeHandler =
-            [] (std::shared_ptr<NProto::TUnmountVolumeRequest> request) {
-                UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
-                UNIT_ASSERT_EQUAL(request->GetSessionId(), "1");
-                NProto::TUnmountVolumeResponse response;
-                return MakeFuture(response);
-            };
+            [](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        {
+            UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
+            UNIT_ASSERT_EQUAL(request->GetSessionId(), "1");
+            NProto::TUnmountVolumeResponse response;
+            return MakeFuture(response);
+        };
 
         client->ReadBlocksLocalHandler =
-            [] (std::shared_ptr<NProto::TReadBlocksLocalRequest> request) {
-                UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
-                UNIT_ASSERT_EQUAL(request->GetSessionId(), "1");
-                return MakeFuture(NProto::TReadBlocksLocalResponse());
-            };
+            [](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
+            UNIT_ASSERT_EQUAL(request->GetSessionId(), "1");
+            return MakeFuture(NProto::TReadBlocksLocalResponse());
+        };
 
         client->WriteBlocksLocalHandler =
-            [] (std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) {
-                UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
-                UNIT_ASSERT_EQUAL(request->GetSessionId(), "1");
-                return MakeFuture(NProto::TWriteBlocksLocalResponse());
-            };
+            [](std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+        {
+            UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
+            UNIT_ASSERT_EQUAL(request->GetSessionId(), "1");
+            return MakeFuture(NProto::TWriteBlocksLocalResponse());
+        };
 
         client->ZeroBlocksHandler =
-            [] (std::shared_ptr<NProto::TZeroBlocksRequest> request) {
-                UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
-                UNIT_ASSERT_EQUAL(request->GetSessionId(), "1");
-                return MakeFuture(NProto::TZeroBlocksResponse());
-            };
+            [](std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        {
+            UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
+            UNIT_ASSERT_EQUAL(request->GetSessionId(), "1");
+            return MakeFuture(NProto::TZeroBlocksResponse());
+        };
 
         auto bootstrap = CreateBootstrap(endpointType, client);
         bootstrap->Start();
@@ -713,10 +728,8 @@ Y_UNIT_TEST_SUITE(TPluginTest)
             request.bp_iov = &vector;
 
             TPromise<int> completionPromise = NewPromise<int>();
-            TCompletion comp(
-                [&] (BlockPlugin_Completion* comp) {
-                    completionPromise.SetValue(comp->status);
-                });
+            TCompletion comp([&](BlockPlugin_Completion* comp)
+                             { completionPromise.SetValue(comp->status); });
 
             error = plugin->SubmitRequest(&volume, &request.header, &comp);
             UNIT_ASSERT_EQUAL(error, BLOCK_PLUGIN_E_OK);
@@ -734,10 +747,8 @@ Y_UNIT_TEST_SUITE(TPluginTest)
             request.bp_iov = &vector;
 
             TPromise<int> completionPromise = NewPromise<int>();
-            TCompletion comp(
-                [&] (BlockPlugin_Completion* comp) {
-                    completionPromise.SetValue(comp->status);
-                });
+            TCompletion comp([&](BlockPlugin_Completion* comp)
+                             { completionPromise.SetValue(comp->status); });
 
             error = plugin->SubmitRequest(&volume, &request.header, &comp);
             UNIT_ASSERT_EQUAL(error, BLOCK_PLUGIN_E_OK);
@@ -752,10 +763,8 @@ Y_UNIT_TEST_SUITE(TPluginTest)
             request.header.size = sizeof(request);
 
             TPromise<int> completionPromise = NewPromise<int>();
-            TCompletion comp(
-                [&] (BlockPlugin_Completion* comp) {
-                    completionPromise.SetValue(comp->status);
-                });
+            TCompletion comp([&](BlockPlugin_Completion* comp)
+                             { completionPromise.SetValue(comp->status); });
 
             error = plugin->SubmitRequest(&volume, &request.header, &comp);
             UNIT_ASSERT_EQUAL(error, BLOCK_PLUGIN_E_OK);
@@ -790,28 +799,30 @@ Y_UNIT_TEST_SUITE(TPluginTest)
         auto client = std::make_shared<TTestService>();
 
         client->MountVolumeHandler =
-            [] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
-                UNIT_ASSERT_EQUAL(request->GetToken(), DefaultMountToken);
+            [](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
+            UNIT_ASSERT_EQUAL(request->GetToken(), DefaultMountToken);
 
-                NProto::TMountVolumeResponse response;
-                response.SetSessionId("1");
+            NProto::TMountVolumeResponse response;
+            response.SetSessionId("1");
 
-                auto& volume = *response.MutableVolume();
-                volume.SetDiskId(request->GetDiskId());
-                volume.SetBlockSize(DefaultBlockSize);
-                volume.SetBlocksCount(DefaultBlocksCount);
+            auto& volume = *response.MutableVolume();
+            volume.SetDiskId(request->GetDiskId());
+            volume.SetBlockSize(DefaultBlockSize);
+            volume.SetBlocksCount(DefaultBlocksCount);
 
-                return MakeFuture(response);
-            };
+            return MakeFuture(response);
+        };
 
         client->UnmountVolumeHandler =
-            [] (std::shared_ptr<NProto::TUnmountVolumeRequest> request) {
-                UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
-                UNIT_ASSERT_EQUAL(request->GetSessionId(), "1");
-                NProto::TUnmountVolumeResponse response;
-                return MakeFuture(response);
-            };
+            [](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        {
+            UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
+            UNIT_ASSERT_EQUAL(request->GetSessionId(), "1");
+            NProto::TUnmountVolumeResponse response;
+            return MakeFuture(response);
+        };
 
         auto bootstrap = CreateBootstrap(endpointType, client);
         bootstrap->Start();
@@ -881,40 +892,43 @@ Y_UNIT_TEST_SUITE(TPluginTest)
         auto trigger = NewPromise<void>();
 
         client->MountVolumeHandler =
-            [] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture(NProto::TMountVolumeResponse());
-            };
+            [](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture(NProto::TMountVolumeResponse());
+        };
 
         client->UnmountVolumeHandler =
-            [] (std::shared_ptr<NProto::TUnmountVolumeRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture(NProto::TUnmountVolumeResponse());
-            };
+            [](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture(NProto::TUnmountVolumeResponse());
+        };
 
         client->ReadBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TReadBlocksLocalRequest> request) {
-                Y_UNUSED(request);
-                return trigger.GetFuture().Apply([] (const auto&) {
-                    return NProto::TReadBlocksLocalResponse();
-                });
-            };
+            [&](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            Y_UNUSED(request);
+            return trigger.GetFuture().Apply(
+                [](const auto&) { return NProto::TReadBlocksLocalResponse(); });
+        };
 
         client->WriteBlocksLocalHandler =
-            [&] (std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) {
-                Y_UNUSED(request);
-                return trigger.GetFuture().Apply([] (const auto&) {
-                    return NProto::TWriteBlocksLocalResponse();
-                });
-            };
+            [&](std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+        {
+            Y_UNUSED(request);
+            return trigger.GetFuture().Apply(
+                [](const auto&)
+                { return NProto::TWriteBlocksLocalResponse(); });
+        };
 
         client->ZeroBlocksHandler =
-            [&] (std::shared_ptr<NProto::TZeroBlocksRequest> request) {
-                Y_UNUSED(request);
-                return trigger.GetFuture().Apply([] (const auto&) {
-                    return NProto::TZeroBlocksResponse();
-                });
-            };
+            [&](std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        {
+            Y_UNUSED(request);
+            return trigger.GetFuture().Apply(
+                [](const auto&) { return NProto::TZeroBlocksResponse(); });
+        };
 
         auto bootstrap = CreateBootstrap(EEndpointType::Tcp, client);
         bootstrap->Start();
@@ -949,10 +963,8 @@ Y_UNIT_TEST_SUITE(TPluginTest)
         UNIT_ASSERT_EQUAL(error, BLOCK_PLUGIN_E_OK);
 
         TPromise<int> zeroPromise = NewPromise<int>();
-        TCompletion zeroComp(
-            [&] (BlockPlugin_Completion* comp) {
-                zeroPromise.SetValue(comp->status);
-            });
+        TCompletion zeroComp([&](BlockPlugin_Completion* comp)
+                             { zeroPromise.SetValue(comp->status); });
         {
             BlockPlugin_ZeroBlocks request = {};
             request.header.type = BLOCK_PLUGIN_ZERO_BLOCKS;
@@ -963,10 +975,8 @@ Y_UNIT_TEST_SUITE(TPluginTest)
         }
 
         TPromise<int> writePromise = NewPromise<int>();
-        TCompletion writeComp(
-            [&] (BlockPlugin_Completion* comp) {
-                writePromise.SetValue(comp->status);
-            });
+        TCompletion writeComp([&](BlockPlugin_Completion* comp)
+                              { writePromise.SetValue(comp->status); });
         {
             BlockPlugin_IOVector vector = {};
 
@@ -980,10 +990,8 @@ Y_UNIT_TEST_SUITE(TPluginTest)
         }
 
         TPromise<int> readPromise = NewPromise<int>();
-        TCompletion readComp(
-            [&] (BlockPlugin_Completion* comp) {
-                readPromise.SetValue(comp->status);
-            });
+        TCompletion readComp([&](BlockPlugin_Completion* comp)
+                             { readPromise.SetValue(comp->status); });
         {
             BlockPlugin_IOVector vector = {};
 
@@ -996,12 +1004,12 @@ Y_UNIT_TEST_SUITE(TPluginTest)
             UNIT_ASSERT_EQUAL(error, BLOCK_PLUGIN_E_OK);
         }
 
-        TIncompleteRequestsCollector collector = [] (
-            TCallContext& callContext,
-            IVolumeInfoPtr volumeInfo,
-            NCloud::NProto::EStorageMediaKind mediaKind,
-            EBlockStoreRequest requestType,
-            TRequestTime time) -> size_t
+        TIncompleteRequestsCollector collector =
+            [](TCallContext& callContext,
+               IVolumeInfoPtr volumeInfo,
+               NCloud::NProto::EStorageMediaKind mediaKind,
+               EBlockStoreRequest requestType,
+               TRequestTime time) -> size_t
         {
             Y_UNUSED(callContext);
             Y_UNUSED(volumeInfo);
@@ -1036,48 +1044,53 @@ Y_UNIT_TEST_SUITE(TPluginTest)
         auto client = std::make_shared<TTestService>();
 
         client->MountVolumeHandler =
-            [] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
-                UNIT_ASSERT_EQUAL(request->GetToken(), DefaultMountToken);
+            [](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
+            UNIT_ASSERT_EQUAL(request->GetToken(), DefaultMountToken);
 
-                NProto::TMountVolumeResponse response;
-                response.SetSessionId("testSessionId");
+            NProto::TMountVolumeResponse response;
+            response.SetSessionId("testSessionId");
 
-                auto& volume = *response.MutableVolume();
-                volume.SetDiskId(request->GetDiskId());
-                volume.SetBlockSize(DefaultBlockSize);
-                volume.SetBlocksCount(1024);
+            auto& volume = *response.MutableVolume();
+            volume.SetDiskId(request->GetDiskId());
+            volume.SetBlockSize(DefaultBlockSize);
+            volume.SetBlocksCount(1024);
 
-                return MakeFuture(response);
-            };
+            return MakeFuture(response);
+        };
 
         client->UnmountVolumeHandler =
-            [] (std::shared_ptr<NProto::TUnmountVolumeRequest> request) {
-                UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
-                UNIT_ASSERT_EQUAL(request->GetSessionId(), "testSessionId");
-                return MakeFuture(NProto::TUnmountVolumeResponse());
-            };
+            [](std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        {
+            UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
+            UNIT_ASSERT_EQUAL(request->GetSessionId(), "testSessionId");
+            return MakeFuture(NProto::TUnmountVolumeResponse());
+        };
 
         client->ReadBlocksLocalHandler =
-            [] (std::shared_ptr<NProto::TReadBlocksLocalRequest> request) {
-                UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
-                UNIT_ASSERT_EQUAL(request->GetSessionId(), "testSessionId");
-                return MakeFuture(NProto::TReadBlocksLocalResponse());
-            };
+            [](std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
+            UNIT_ASSERT_EQUAL(request->GetSessionId(), "testSessionId");
+            return MakeFuture(NProto::TReadBlocksLocalResponse());
+        };
 
         client->WriteBlocksLocalHandler =
-            [] (std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) {
-                UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
-                UNIT_ASSERT_EQUAL(request->GetSessionId(), "testSessionId");
-                return MakeFuture(NProto::TWriteBlocksLocalResponse());
-            };
+            [](std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+        {
+            UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
+            UNIT_ASSERT_EQUAL(request->GetSessionId(), "testSessionId");
+            return MakeFuture(NProto::TWriteBlocksLocalResponse());
+        };
 
         client->ZeroBlocksHandler =
-            [] (std::shared_ptr<NProto::TZeroBlocksRequest> request) {
-                UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
-                UNIT_ASSERT_EQUAL(request->GetSessionId(), "testSessionId");
-                return MakeFuture(NProto::TZeroBlocksResponse());
-            };
+            [](std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        {
+            UNIT_ASSERT_EQUAL(request->GetDiskId(), DefaultDiskId);
+            UNIT_ASSERT_EQUAL(request->GetSessionId(), "testSessionId");
+            return MakeFuture(NProto::TZeroBlocksResponse());
+        };
 
         auto bootstrap = CreateBootstrap(endpointType, client);
         bootstrap->Start();
@@ -1154,10 +1167,8 @@ Y_UNIT_TEST_SUITE(TPluginTest)
             request.bp_iov = &vector;
 
             TPromise<int> completionPromise = NewPromise<int>();
-            TCompletion comp(
-                [&] (BlockPlugin_Completion* comp) {
-                    completionPromise.SetValue(comp->status);
-                });
+            TCompletion comp([&](BlockPlugin_Completion* comp)
+                             { completionPromise.SetValue(comp->status); });
 
             error = plugin->SubmitRequest(&volume, &request.header, &comp);
             UNIT_ASSERT_EQUAL(error, BLOCK_PLUGIN_E_OK);
@@ -1177,10 +1188,8 @@ Y_UNIT_TEST_SUITE(TPluginTest)
             request.bp_iov = &vector;
 
             TPromise<int> completionPromise = NewPromise<int>();
-            TCompletion comp(
-                [&] (BlockPlugin_Completion* comp) {
-                    completionPromise.SetValue(comp->status);
-                });
+            TCompletion comp([&](BlockPlugin_Completion* comp)
+                             { completionPromise.SetValue(comp->status); });
 
             error = plugin->SubmitRequest(&volume, &request.header, &comp);
             UNIT_ASSERT_EQUAL(error, BLOCK_PLUGIN_E_OK);
@@ -1197,10 +1206,8 @@ Y_UNIT_TEST_SUITE(TPluginTest)
             request.header.size = sizeof(request);
 
             TPromise<int> completionPromise = NewPromise<int>();
-            TCompletion comp(
-                [&] (BlockPlugin_Completion* comp) {
-                    completionPromise.SetValue(comp->status);
-                });
+            TCompletion comp([&](BlockPlugin_Completion* comp)
+                             { completionPromise.SetValue(comp->status); });
 
             error = plugin->SubmitRequest(&volume, &request.header, &comp);
             UNIT_ASSERT_EQUAL(error, BLOCK_PLUGIN_E_OK);

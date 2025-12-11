@@ -15,8 +15,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TPartitionSchema
-    : public NKikimr::NIceDb::Schema
+struct TPartitionSchema: public NKikimr::NIceDb::Schema
 {
     enum EChannels
     {
@@ -27,11 +26,9 @@ struct TPartitionSchema
         MaxDataChannel = FirstDataChannel + MaxMergedChannelCount - 1,
     };
 
-    struct Meta
-        : public TTableSchema<1>
+    struct Meta: public TTableSchema<1>
     {
-        struct Id
-            : public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
+        struct Id: public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
         {
         };
 
@@ -42,23 +39,18 @@ struct TPartitionSchema
         };
 
         using TKey = TableKey<Id>;
-        using TColumns = TableColumns<
-            Id,
-            PartitionMeta>;
+        using TColumns = TableColumns<Id, PartitionMeta>;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
     };
 
-    struct FreshBlocksIndex
-        : public TTableSchema<2>
+    struct FreshBlocksIndex: public TTableSchema<2>
     {
-        struct BlockIndex
-            : public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
+        struct BlockIndex: public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
         {
         };
 
-        struct CommitId
-            : public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
+        struct CommitId: public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
@@ -69,30 +61,21 @@ struct TPartitionSchema
         };
 
         using TKey = TableKey<BlockIndex, CommitId>;
-        using TColumns = TableColumns<
-            BlockIndex,
-            CommitId,
-            BlockContent
-        >;
+        using TColumns = TableColumns<BlockIndex, CommitId, BlockContent>;
 
-        using StoragePolicy = TStoragePolicy<
-            LogChannel,
-            NKikimr::NTable::NPage::ECache::Ever
-        >;
+        using StoragePolicy =
+            TStoragePolicy<LogChannel, NKikimr::NTable::NPage::ECache::Ever>;
 
         using Precharge = NoAutoPrecharge;
     };
 
-    struct MixedBlocksIndex
-        : public TTableSchema<3>
+    struct MixedBlocksIndex: public TTableSchema<3>
     {
-        struct BlockIndex
-            : public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
+        struct BlockIndex: public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
         {
         };
 
-        struct CommitId
-            : public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
+        struct CommitId: public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
@@ -101,13 +84,11 @@ struct TPartitionSchema
         {
         };
 
-        struct BlobId
-            : public Column<4, NKikimr::NScheme::NTypeIds::Uint64>
+        struct BlobId: public Column<4, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
-        struct BlobOffset
-            : public Column<5, NKikimr::NScheme::NTypeIds::Uint32>
+        struct BlobOffset: public Column<5, NKikimr::NScheme::NTypeIds::Uint32>
         {
         };
 
@@ -117,48 +98,41 @@ struct TPartitionSchema
             CommitId,
             BlobCommitId,
             BlobId,
-            BlobOffset
-        >;
+            BlobOffset>;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
-        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
+        using CompactionPolicy =
+            TCompactionPolicy<ECompactionPolicy::IndexTable>;
         using Precharge = NoAutoPrecharge;
     };
 
-    struct MergedBlocksIndex
-        : public TTableSchema<4>
+    struct MergedBlocksIndex: public TTableSchema<4>
     {
-        struct RangeStart
-            : public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
+        struct RangeStart: public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
         {
         };
 
-        struct RangeEnd
-            : public Column<2, NKikimr::NScheme::NTypeIds::Uint32>
+        struct RangeEnd: public Column<2, NKikimr::NScheme::NTypeIds::Uint32>
         {
         };
 
-        struct CommitId
-            : public Column<3, NKikimr::NScheme::NTypeIds::Uint64>
+        struct CommitId: public Column<3, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
-        struct BlobId
-            : public Column<4, NKikimr::NScheme::NTypeIds::Uint64>
+        struct BlobId: public Column<4, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
         // Deprecated.
-        struct HoleMask
-            : public Column<5, NKikimr::NScheme::NTypeIds::String>
+        struct HoleMask: public Column<5, NKikimr::NScheme::NTypeIds::String>
         {
-            using Type = TStringBuf;    // THoleMask
+            using Type = TStringBuf;   // THoleMask
         };
 
-        struct SkipMask
-            : public Column<6, NKikimr::NScheme::NTypeIds::String>
+        struct SkipMask: public Column<6, NKikimr::NScheme::NTypeIds::String>
         {
-            using Type = TStringBuf;    // TBlockMask
+            using Type = TStringBuf;   // TBlockMask
         };
 
         using TKey = TableKey<RangeEnd, CommitId>;
@@ -168,139 +142,108 @@ struct TPartitionSchema
             CommitId,
             BlobId,
             HoleMask,
-            SkipMask
-        >;
+            SkipMask>;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
-        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
+        using CompactionPolicy =
+            TCompactionPolicy<ECompactionPolicy::IndexTable>;
         using Precharge = NoAutoPrecharge;
     };
 
-    struct BlobsIndex
-        : public TTableSchema<5>
+    struct BlobsIndex: public TTableSchema<5>
     {
-        struct CommitId
-            : public Column<1, NKikimr::NScheme::NTypeIds::Uint64>
+        struct CommitId: public Column<1, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
-        struct BlobId
-            : public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
+        struct BlobId: public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
-        struct BlobMeta
-            : public Column<3, NKikimr::NScheme::NTypeIds::String>
+        struct BlobMeta: public Column<3, NKikimr::NScheme::NTypeIds::String>
         {
             using Type = NProto::TBlobMeta;
         };
 
-        struct BlockMask
-            : public Column<4, NKikimr::NScheme::NTypeIds::String>
+        struct BlockMask: public Column<4, NKikimr::NScheme::NTypeIds::String>
         {
-            using Type = TStringBuf;    // TBlockMask
+            using Type = TStringBuf;   // TBlockMask
         };
 
         using TKey = TableKey<CommitId, BlobId>;
-        using TColumns = TableColumns<
-            CommitId,
-            BlobId,
-            BlobMeta,
-            BlockMask
-        >;
+        using TColumns = TableColumns<CommitId, BlobId, BlobMeta, BlockMask>;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
-        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
+        using CompactionPolicy =
+            TCompactionPolicy<ECompactionPolicy::IndexTable>;
         using Precharge = NoAutoPrecharge;
     };
 
-    struct CompactionMap
-        : public TTableSchema<6>
+    struct CompactionMap: public TTableSchema<6>
     {
-        struct BlockIndex
-            : public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
+        struct BlockIndex: public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
         {
         };
 
-        struct BlobCount
-            : public Column<2, NKikimr::NScheme::NTypeIds::Uint32>
+        struct BlobCount: public Column<2, NKikimr::NScheme::NTypeIds::Uint32>
         {
         };
 
-        struct BlockCount
-            : public Column<3, NKikimr::NScheme::NTypeIds::Uint32>
+        struct BlockCount: public Column<3, NKikimr::NScheme::NTypeIds::Uint32>
         {
         };
 
         using TKey = TableKey<BlockIndex>;
-        using TColumns = TableColumns<
-            BlockIndex,
-            BlobCount,
-            BlockCount>;
+        using TColumns = TableColumns<BlockIndex, BlobCount, BlockCount>;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
     };
 
-    struct CleanupQueue
-        : public TTableSchema<7>
+    struct CleanupQueue: public TTableSchema<7>
     {
         struct DeletionCommitId
             : public Column<1, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
-        struct CommitId
-            : public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
+        struct CommitId: public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
-        struct BlobId
-            : public Column<3, NKikimr::NScheme::NTypeIds::Uint64>
+        struct BlobId: public Column<3, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
         using TKey = TableKey<DeletionCommitId, CommitId, BlobId>;
-        using TColumns = TableColumns<
-            DeletionCommitId,
-            CommitId,
-            BlobId
-        >;
+        using TColumns = TableColumns<DeletionCommitId, CommitId, BlobId>;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
     };
 
-    struct GarbageBlobs
-        : public TTableSchema<8>
+    struct GarbageBlobs: public TTableSchema<8>
     {
-        struct CommitId
-            : public Column<1, NKikimr::NScheme::NTypeIds::Uint64>
+        struct CommitId: public Column<1, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
-        struct BlobId
-            : public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
+        struct BlobId: public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
         using TKey = TableKey<CommitId, BlobId>;
-        using TColumns = TableColumns<
-            CommitId,
-            BlobId
-        >;
+        using TColumns = TableColumns<CommitId, BlobId>;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
     };
 
-    struct Checkpoints
-        : public TTableSchema<9>
+    struct Checkpoints: public TTableSchema<9>
     {
         struct CheckpointId
             : public Column<1, NKikimr::NScheme::NTypeIds::String>
         {
         };
 
-        struct CommitId
-            : public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
+        struct CommitId: public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
@@ -309,19 +252,16 @@ struct TPartitionSchema
         {
         };
 
-        struct DateCreated
-            : public Column<4, NKikimr::NScheme::NTypeIds::Uint64>
+        struct DateCreated: public Column<4, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
-        struct Stats
-            : public Column<5, NKikimr::NScheme::NTypeIds::String>
+        struct Stats: public Column<5, NKikimr::NScheme::NTypeIds::String>
         {
             using Type = NProto::TPartitionStats;
         };
 
-        struct DataDeleted
-            : public Column<6, NKikimr::NScheme::NTypeIds::Bool>
+        struct DataDeleted: public Column<6, NKikimr::NScheme::NTypeIds::Bool>
         {
         };
 
@@ -332,90 +272,70 @@ struct TPartitionSchema
             IdempotenceId,
             DateCreated,
             Stats,
-            DataDeleted
-        >;
+            DataDeleted>;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
     };
 
-    struct UsedBlocks
-        : public TTableSchema<10>
+    struct UsedBlocks: public TTableSchema<10>
     {
-        struct RangeIndex
-            : public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
+        struct RangeIndex: public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
         {
         };
 
-        struct Bitmap
-            : public Column<2, NKikimr::NScheme::NTypeIds::String>
+        struct Bitmap: public Column<2, NKikimr::NScheme::NTypeIds::String>
         {
             using Type = TStringBuf;
         };
 
         using TKey = TableKey<RangeIndex>;
-        using TColumns = TableColumns<
-            RangeIndex,
-            Bitmap>;
+        using TColumns = TableColumns<RangeIndex, Bitmap>;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
     };
 
-    struct LogicalUsedBlocks
-        : public TTableSchema<11>
+    struct LogicalUsedBlocks: public TTableSchema<11>
     {
-        struct RangeIndex
-            : public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
+        struct RangeIndex: public Column<1, NKikimr::NScheme::NTypeIds::Uint32>
         {
         };
 
-        struct Bitmap
-            : public Column<2, NKikimr::NScheme::NTypeIds::String>
+        struct Bitmap: public Column<2, NKikimr::NScheme::NTypeIds::String>
         {
             using Type = TStringBuf;
         };
 
         using TKey = TableKey<RangeIndex>;
-        using TColumns = TableColumns<
-            RangeIndex,
-            Bitmap>;
+        using TColumns = TableColumns<RangeIndex, Bitmap>;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
     };
 
     // merged blobs that are not confirmed yet
-    struct UnconfirmedBlobs
-        : public TTableSchema<12>
+    struct UnconfirmedBlobs: public TTableSchema<12>
     {
-        struct CommitId
-            : public Column<1, NKikimr::NScheme::NTypeIds::Uint64>
+        struct CommitId: public Column<1, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
-        struct BlobId
-            : public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
+        struct BlobId: public Column<2, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
-        struct RangeStart
-            : public Column<3, NKikimr::NScheme::NTypeIds::Uint32>
+        struct RangeStart: public Column<3, NKikimr::NScheme::NTypeIds::Uint32>
         {
         };
 
-        struct RangeEnd
-            : public Column<4, NKikimr::NScheme::NTypeIds::Uint32>
+        struct RangeEnd: public Column<4, NKikimr::NScheme::NTypeIds::Uint32>
         {
         };
 
         using TKey = TableKey<CommitId, BlobId>;
-        using TColumns = TableColumns<
-            CommitId,
-            BlobId,
-            RangeStart,
-            RangeEnd
-        >;
+        using TColumns = TableColumns<CommitId, BlobId, RangeStart, RangeEnd>;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
-        using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
+        using CompactionPolicy =
+            TCompactionPolicy<ECompactionPolicy::IndexTable>;
         using Precharge = NoAutoPrecharge;
     };
 
@@ -431,13 +351,10 @@ struct TPartitionSchema
         Checkpoints,
         UsedBlocks,
         LogicalUsedBlocks,
-        UnconfirmedBlobs
-    >;
+        UnconfirmedBlobs>;
 
-    using TSettings = SchemaSettings<
-        ExecutorLogBatching<true>,
-        ExecutorLogFlushPeriod<0>
-    >;
+    using TSettings =
+        SchemaSettings<ExecutorLogBatching<true>, ExecutorLogFlushPeriod<0> >;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

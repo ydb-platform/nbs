@@ -11,8 +11,7 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IComputeClient
-    : public IStartable
+struct IComputeClient: public IStartable
 {
     using TResponse = TResultOrError<TString>;
 

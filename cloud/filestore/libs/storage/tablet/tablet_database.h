@@ -25,40 +25,40 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_FILESYSTEM_STATS(xxx, ...)                                   \
-    xxx(LastNodeId,             __VA_ARGS__)                                   \
-    xxx(LastLockId,             __VA_ARGS__)                                   \
-    xxx(LastCollectCommitId,    __VA_ARGS__)                                   \
-    xxx(LastXAttr,              __VA_ARGS__)                                   \
-    xxx(HasXAttrs,              __VA_ARGS__)                                   \
-                                                                               \
-    xxx(UsedNodesCount,         __VA_ARGS__)                                   \
-    xxx(UsedSessionsCount,      __VA_ARGS__)                                   \
-    xxx(UsedHandlesCount,       __VA_ARGS__)                                   \
-    xxx(UsedLocksCount,         __VA_ARGS__)                                   \
-    xxx(UsedBlocksCount,        __VA_ARGS__)                                   \
-                                                                               \
-    xxx(FreshBlocksCount,           __VA_ARGS__)                               \
-    xxx(MixedBlocksCount,           __VA_ARGS__)                               \
-    xxx(MixedBlobsCount,            __VA_ARGS__)                               \
-    xxx(DeletionMarkersCount,       __VA_ARGS__)                               \
-    xxx(GarbageQueueSize,           __VA_ARGS__)                               \
-    xxx(GarbageBlocksCount,         __VA_ARGS__)                               \
-    xxx(CheckpointNodesCount,       __VA_ARGS__)                               \
-    xxx(CheckpointBlocksCount,      __VA_ARGS__)                               \
-    xxx(CheckpointBlobsCount,       __VA_ARGS__)                               \
-    xxx(FreshBytesCount,            __VA_ARGS__)                               \
-    xxx(AttrsUsedBytesCount,        __VA_ARGS__)                               \
-    xxx(DeletedFreshBytesCount,     __VA_ARGS__)                               \
-    xxx(LargeDeletionMarkersCount,  __VA_ARGS__)                               \
-// FILESTORE_FILESYSTEM_STATS
+#define FILESTORE_FILESYSTEM_STATS(xxx, ...)    \
+    xxx(LastNodeId, __VA_ARGS__)                \
+    xxx(LastLockId, __VA_ARGS__)                \
+    xxx(LastCollectCommitId, __VA_ARGS__)       \
+    xxx(LastXAttr, __VA_ARGS__)                 \
+    xxx(HasXAttrs, __VA_ARGS__)                 \
+                                                \
+    xxx(UsedNodesCount, __VA_ARGS__)            \
+    xxx(UsedSessionsCount, __VA_ARGS__)         \
+    xxx(UsedHandlesCount, __VA_ARGS__)          \
+    xxx(UsedLocksCount, __VA_ARGS__)            \
+    xxx(UsedBlocksCount, __VA_ARGS__)           \
+                                                \
+    xxx(FreshBlocksCount, __VA_ARGS__)          \
+    xxx(MixedBlocksCount, __VA_ARGS__)          \
+    xxx(MixedBlobsCount, __VA_ARGS__)           \
+    xxx(DeletionMarkersCount, __VA_ARGS__)      \
+    xxx(GarbageQueueSize, __VA_ARGS__)          \
+    xxx(GarbageBlocksCount, __VA_ARGS__)        \
+    xxx(CheckpointNodesCount, __VA_ARGS__)      \
+    xxx(CheckpointBlocksCount, __VA_ARGS__)     \
+    xxx(CheckpointBlobsCount, __VA_ARGS__)      \
+    xxx(FreshBytesCount, __VA_ARGS__)           \
+    xxx(AttrsUsedBytesCount, __VA_ARGS__)       \
+    xxx(DeletedFreshBytesCount, __VA_ARGS__)    \
+    xxx(LargeDeletionMarkersCount, __VA_ARGS__) \
+    // FILESTORE_FILESYSTEM_STATS
 
-#define FILESTORE_DUPCACHE_REQUESTS(xxx, ...)                                  \
-    xxx(CreateHandle,   __VA_ARGS__)                                           \
-    xxx(CreateNode,     __VA_ARGS__)                                           \
-    xxx(RenameNode,     __VA_ARGS__)                                           \
-    xxx(UnlinkNode,     __VA_ARGS__)                                           \
-// FILESTORE_DUPCACHE_REQUESTS
+#define FILESTORE_DUPCACHE_REQUESTS(xxx, ...) \
+    xxx(CreateHandle, __VA_ARGS__)            \
+    xxx(CreateNode, __VA_ARGS__)              \
+    xxx(RenameNode, __VA_ARGS__)              \
+    xxx(UnlinkNode, __VA_ARGS__)              \
+    // FILESTORE_DUPCACHE_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -84,11 +84,11 @@ public:
     void WriteStorageConfig(const NProto::TStorageConfig& storageConfig);
     bool ReadStorageConfig(TMaybe<NProto::TStorageConfig>& storageConfig);
 
-#define FILESTORE_DECLARE_STATS(name, ...)                                     \
-    void Write##name(ui64 value);                                              \
-// FILESTORE_DECLARE_STATS
+#define FILESTORE_DECLARE_STATS(name, ...) \
+    void Write##name(ui64 value);          \
+    // FILESTORE_DECLARE_STATS
 
-FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
+    FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
 
 #undef FILESTORE_DECLARE_STATS
 
@@ -101,15 +101,11 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     // Nodes
     //
 
-    virtual void WriteNode(
-        ui64 nodeId,
-        ui64 commitId,
-        const NProto::TNode& attrs);
+    virtual void
+    WriteNode(ui64 nodeId, ui64 commitId, const NProto::TNode& attrs);
     virtual void DeleteNode(ui64 nodeId);
-    virtual bool ReadNode(
-        ui64 nodeId,
-        ui64 commitId,
-        TMaybe<TNode>& node) override;
+    virtual bool
+    ReadNode(ui64 nodeId, ui64 commitId, TMaybe<TNode>& node) override;
     virtual bool ReadNodes(
         ui64 startNodeId,
         ui64 maxNodes,
@@ -128,10 +124,8 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
 
     virtual void DeleteNodeVer(ui64 nodeId, ui64 commitId);
 
-    virtual bool ReadNodeVer(
-        ui64 nodeId,
-        ui64 commitId,
-        TMaybe<TNode>& node) override;
+    virtual bool
+    ReadNodeVer(ui64 nodeId, ui64 commitId, TMaybe<TNode>& node) override;
 
     //
     // NodeAttrs
@@ -169,10 +163,8 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         const TString& value,
         ui64 version);
 
-    virtual void DeleteNodeAttrVer(
-        ui64 nodeId,
-        ui64 commitId,
-        const TString& name);
+    virtual void
+    DeleteNodeAttrVer(ui64 nodeId, ui64 commitId, const TString& name);
 
     virtual bool ReadNodeAttrVer(
         ui64 nodeId,
@@ -241,10 +233,8 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         const TString& shardId,
         const TString& shardNodeName);
 
-    virtual void DeleteNodeRefVer(
-        ui64 nodeId,
-        ui64 commitId,
-        const TString& name);
+    virtual void
+    DeleteNodeRefVer(ui64 nodeId, ui64 commitId, const TString& name);
 
     virtual bool ReadNodeRefVer(
         ui64 nodeId,
@@ -305,25 +295,21 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
     void DeleteSessionDupCacheEntry(const TString& sessionId, ui64 entryId);
     bool ReadSessionDupCacheEntries(TVector<NProto::TDupCacheEntry>& entries);
 
-
     //
     // SessionHistory
     //
 
     void WriteSessionHistoryEntry(const NProto::TSessionHistoryEntry& entry);
     void DeleteSessionHistoryEntry(ui64 entryId);
-    bool ReadSessionHistoryEntries(TVector<NProto::TSessionHistoryEntry>& entries);
-
+    bool ReadSessionHistoryEntries(
+        TVector<NProto::TSessionHistoryEntry>& entries);
 
     //
     // FreshBytes
     //
 
-    void WriteFreshBytes(
-        ui64 nodeId,
-        ui64 commitId,
-        ui64 offset,
-        TStringBuf data);
+    void
+    WriteFreshBytes(ui64 nodeId, ui64 commitId, ui64 offset, TStringBuf data);
 
     void WriteFreshBytesDeletionMarker(
         ui64 nodeId,
@@ -428,10 +414,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         ui32 blockIndex,
         ui32 blocksCount);
 
-    void DeleteLargeDeletionMarker(
-        ui64 nodeId,
-        ui64 commitId,
-        ui32 blockIndex);
+    void DeleteLargeDeletionMarker(ui64 nodeId, ui64 commitId, ui32 blockIndex);
 
     bool ReadLargeDeletionMarkers(TVector<TDeletionMarker>& deletionMarkers);
 
@@ -549,10 +532,7 @@ public:
     // Nodes
     //
 
-    bool ReadNode(
-        ui64 nodeId,
-        ui64 commitId,
-        TMaybe<TNode>& node) final;
+    bool ReadNode(ui64 nodeId, ui64 commitId, TMaybe<TNode>& node) final;
 
     bool ReadNodes(
         ui64 startNodeId,
@@ -560,10 +540,8 @@ public:
         ui64& nextNodeId,
         TVector<TNode>& nodes) final;
 
-    void WriteNode(
-        ui64 nodeId,
-        ui64 commitId,
-        const NProto::TNode& attrs) override;
+    void
+    WriteNode(ui64 nodeId, ui64 commitId, const NProto::TNode& attrs) override;
 
     void DeleteNode(ui64 nodeId) override;
 
@@ -610,10 +588,8 @@ public:
         const TString& value,
         ui64 version) override;
 
-    void DeleteNodeAttrVer(
-        ui64 nodeId,
-        ui64 commitId,
-        const TString& name) override;
+    void
+    DeleteNodeAttrVer(ui64 nodeId, ui64 commitId, const TString& name) override;
 
     //
     // NodeRefs
@@ -665,10 +641,8 @@ public:
         const TString& shardId,
         const TString& shardNodeName) override;
 
-    void DeleteNodeRefVer(
-        ui64 nodeId,
-        ui64 commitId,
-        const TString& name) override;
+    void
+    DeleteNodeRefVer(ui64 nodeId, ui64 commitId, const TString& name) override;
 
 private:
     TVector<TInMemoryIndexState::TIndexStateRequest>& NodeUpdates;

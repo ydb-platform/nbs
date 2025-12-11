@@ -801,7 +801,8 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         // Send WriteBlocks and ZeroBlocks to leader during migration
         size_t writtenBlockCount = 0;
         for (ui64 pos = 0; pos < fixture.VolumeBlockCount; pos += 2048) {
-            bool success = fixture.WriteBlocks(TBlockRange64::MakeOneBlock(pos + 1));
+            bool success =
+                fixture.WriteBlocks(TBlockRange64::MakeOneBlock(pos + 1));
             writtenBlockCount += success ? 1 : 0;
             success = fixture.ZeroBlocks(TBlockRange64::MakeOneBlock(pos + 2));
             writtenBlockCount += success ? 1 : 0;
@@ -813,7 +814,8 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             TDispatchOptions options;
             options.CustomFinalCondition = [&]
             {
-                return followerState == TFollowerDiskInfo::EState::LeadershipTransferred;
+                return followerState ==
+                       TFollowerDiskInfo::EState::LeadershipTransferred;
             };
             fixture.Runtime->DispatchEvents(options, TDuration::Seconds(10));
             UNIT_ASSERT_EQUAL(
@@ -935,7 +937,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
     }
 
     void DoShouldPrepareFollowerVolumeWithReboot(
-        TFixture& fixture,
+        TFixture & fixture,
         NProto::EStorageMediaKind leaderMediaType,
         NProto::EStorageMediaKind followerMediaType)
     {
@@ -1196,13 +1198,13 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                     std::make_unique<TEvService::TEvDestroyVolumeResponse>(
                         MakeError(
                             volumeDestructionRequestCount == 1 ? E_REJECTED
-                                                            : S_OK));
+                                                               : S_OK));
 
                 auto responseEvent = std::make_unique<IEventHandle>(
                     event->Sender,
                     event->Recipient,
                     response.release(),
-                    0, // flags
+                    0,   // flags
                     event->Cookie);
                 runtime.SendAsync(responseEvent.release());
 
@@ -1286,7 +1288,8 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             TDispatchOptions options;
             options.CustomFinalCondition = [&]
             {
-                return followerState == TFollowerDiskInfo::EState::LeadershipTransferred;
+                return followerState ==
+                       TFollowerDiskInfo::EState::LeadershipTransferred;
             };
             Runtime->DispatchEvents(options, TDuration::Seconds(10));
             UNIT_ASSERT_EQUAL(
@@ -1457,7 +1460,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
 
     Y_UNIT_TEST_F(ShouldGoIntoErrorStateIfTheFollowerDiskDisappears, TFixture)
     {
-       // Intercept leader state changes
+        // Intercept leader state changes
         TTestActorRuntimeBase::TEventFilter prevFilter;
         std::optional<TFollowerDiskInfo::EState> followerState;
         NActors::TActorId leaderVolumeActorId;
@@ -1561,9 +1564,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                 return followerState == TFollowerDiskInfo::EState::Error;
             };
             Runtime->DispatchEvents(options, TDuration::Seconds(10));
-            UNIT_ASSERT_EQUAL(
-                TFollowerDiskInfo::EState::Error,
-                followerState);
+            UNIT_ASSERT_EQUAL(TFollowerDiskInfo::EState::Error, followerState);
         }
 
         // Waiting for the leader volume actor poisoned by

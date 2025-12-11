@@ -66,14 +66,14 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDiskAgentChecksumActor::TDiskAgentChecksumActor(
-        TRequestInfoPtr requestInfo,
-        NProto::TChecksumBlocksRequest request,
-        TRequestTimeoutPolicy timeoutPolicy,
-        TVector<TDeviceRequest> deviceRequests,
-        TNonreplicatedPartitionConfigPtr partConfig,
-        TActorId volumeActorId,
-        const TActorId& part,
-        TChildLogTitle logTitle)
+    TRequestInfoPtr requestInfo,
+    NProto::TChecksumBlocksRequest request,
+    TRequestTimeoutPolicy timeoutPolicy,
+    TVector<TDeviceRequest> deviceRequests,
+    TNonreplicatedPartitionConfigPtr partConfig,
+    TActorId volumeActorId,
+    const TActorId& part,
+    TChildLogTitle logTitle)
     : TDiskAgentBaseRequestActor(
           std::move(requestInfo),
           GetRequestId(request),
@@ -172,7 +172,8 @@ void TDiskAgentChecksumActor::HandleChecksumDeviceBlocksResponse(
 
     const auto& deviceRequest = DeviceRequests[ev->Cookie];
     const auto rangeStart = deviceRequest.BlockRange.Start;
-    const auto rangeSize = deviceRequest.DeviceBlockRange.Size() * PartConfig->GetBlockSize();
+    const auto rangeSize =
+        deviceRequest.DeviceBlockRange.Size() * PartConfig->GetBlockSize();
     Checksums[rangeStart] = {msg->Record.GetChecksum(), rangeSize};
 
     if (++RequestsCompleted < DeviceRequests.size()) {
@@ -184,7 +185,8 @@ void TDiskAgentChecksumActor::HandleChecksumDeviceBlocksResponse(
         checksum.Combine(partialChecksum.Value, partialChecksum.Size);
     }
 
-    auto response = std::make_unique<TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse>();
+    auto response = std::make_unique<
+        TEvNonreplPartitionPrivate::TEvChecksumBlocksResponse>();
     response->Record.SetChecksum(checksum.GetValue());
 
     Done(ctx, std::move(response), EStatus::Success);
@@ -215,10 +217,11 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocks(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo<TEvNonreplPartitionPrivate::TChecksumBlocksMethod>(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo<TEvNonreplPartitionPrivate::TChecksumBlocksMethod>(
+            ev->Sender,
+            ev->Cookie,
+            msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -274,8 +277,9 @@ void TNonreplicatedPartitionActor::HandleChecksumBlocksCompleted(
         "%s Complete checksum blocks",
         LogTitle.GetWithTime().c_str());
 
-    const auto requestBytes = msg->Stats.GetSysChecksumCounters().GetBlocksCount()
-        * PartConfig->GetBlockSize();
+    const auto requestBytes =
+        msg->Stats.GetSysChecksumCounters().GetBlocksCount() *
+        PartConfig->GetBlockSize();
     const auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ChecksumBlocks.AddRequest(time, requestBytes);
     NetworkBytes += sizeof(ui64);   //  Checksum is sent as a 64-bit integer.

@@ -1,10 +1,11 @@
 #include "service_actor.h"
 
+#include "cloud/blockstore/libs/storage/ss_proxy/ss_proxy_actor.h"
+
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
-#include "cloud/blockstore/libs/storage/ss_proxy/ss_proxy_actor.h"
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -79,17 +80,15 @@ private:
         const TEvVolume::TEvWaitReadyResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    bool ValidateTag(
-        const TActorContext& ctx,
-        const TString& tag);
+    bool ValidateTag(const TActorContext& ctx, const TString& tag);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TModifyTagsActionActor::TModifyTagsActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input,
-        TResponseCreateFunc createResponse)
+    TRequestInfoPtr requestInfo,
+    TString input,
+    TResponseCreateFunc createResponse)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
     , CreateResponse(std::move(createResponse))
@@ -101,10 +100,8 @@ bool TModifyTagsActionActor::ValidateTag(
 {
     for (const auto c: tag) {
         if (!IsAlnum(c) && c != '-' && c != '_' && c != '=' && c != '.') {
-            auto error = MakeError(
-                E_ARGUMENT,
-                Sprintf("Invalid tag: %s", tag.c_str())
-            );
+            auto error =
+                MakeError(E_ARGUMENT, Sprintf("Invalid tag: %s", tag.c_str()));
             ReplyAndDie(ctx, std::move(error));
             return false;
         }
@@ -128,8 +125,7 @@ void TModifyTagsActionActor::Bootstrap(const TActorContext& ctx)
     if (!Request.TagsToAddSize() && !Request.TagsToRemoveSize()) {
         auto error = MakeError(
             E_ARGUMENT,
-            "Either TagsToAdd or TagsToRemove should be supplied"
-        );
+            "Either TagsToAdd or TagsToRemove should be supplied");
         ReplyAndDie(ctx, std::move(error));
         return;
     }
@@ -158,14 +154,17 @@ void TModifyTagsActionActor::DescribeVolume(const TActorContext& ctx)
 {
     Become(&TThis::StateDescribeVolume);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Sending describe request for volume %s",
         Request.GetDiskId().Quote().c_str());
 
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
-        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(Request.GetDiskId()));
+        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+            Request.GetDiskId()));
 }
 
 void TModifyTagsActionActor::AlterVolume(
@@ -176,12 +175,17 @@ void TModifyTagsActionActor::AlterVolume(
 {
     Become(&TThis::StateAlterVolume);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Sending ModifyTags->Alter request for %s",
         path.Quote().c_str());
 
     auto request = CreateModifySchemeRequestForAlterVolume(
-        path, pathId, version, VolumeConfig);
+        path,
+        pathId,
+        version,
+        VolumeConfig);
     NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request));
 }
 
@@ -192,11 +196,7 @@ void TModifyTagsActionActor::WaitReady(const TActorContext& ctx)
     auto request = std::make_unique<TEvVolume::TEvWaitReadyRequest>();
     request->Record.SetDiskId(Request.GetDiskId());
 
-    NCloud::Send(
-        ctx,
-        MakeVolumeProxyServiceId(),
-        std::move(request)
-    );
+    NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
 }
 
 void TModifyTagsActionActor::ReplyAndDie(
@@ -225,7 +225,9 @@ void TModifyTagsActionActor::HandleDescribeVolumeResponse(
 
     auto error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "Volume %s: describe failed: %s",
             Request.GetDiskId().Quote().c_str(),
             FormatError(error).c_str());
@@ -240,8 +242,7 @@ void TModifyTagsActionActor::HandleDescribeVolumeResponse(
 
     if (!VolumeConfig.GetVersion()) {
         VolumeConfig.SetVersion(
-            volumeDescription.GetVolumeConfig().GetVersion()
-        );
+            volumeDescription.GetVolumeConfig().GetVersion());
     }
 
     TSet<TString> tags;
@@ -297,7 +298,9 @@ void TModifyTagsActionActor::HandleAlterVolumeResponse(
     ui32 errorCode = error.GetCode();
 
     if (FAILED(errorCode)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "ModifyTags->Alter of volume %s failed: %s",
             Request.GetDiskId().Quote().c_str(),
             msg->GetErrorReason().c_str());
@@ -306,7 +309,9 @@ void TModifyTagsActionActor::HandleAlterVolumeResponse(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Sending WaitReady request to volume %s",
         Request.GetDiskId().Quote().c_str());
 
@@ -321,12 +326,16 @@ void TModifyTagsActionActor::HandleWaitReadyResponse(
     NProto::TError error = msg->GetError();
 
     if (HasError(error)) {
-        LOG_ERROR(ctx, TBlockStoreComponents::SERVICE,
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "ModifyTags->WaitReady request failed for volume %s, error: %s",
             Request.GetDiskId().Quote().c_str(),
             msg->GetErrorReason().Quote().c_str());
     } else {
-        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::SERVICE,
             "Successfully modified tags for volume %s",
             Request.GetDiskId().Quote().c_str());
     }
@@ -339,7 +348,9 @@ void TModifyTagsActionActor::HandleWaitReadyResponse(
 STFUNC(TModifyTagsActionActor::StateDescribeVolume)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvSSProxy::TEvDescribeVolumeResponse, HandleDescribeVolumeResponse);
+        HFunc(
+            TEvSSProxy::TEvDescribeVolumeResponse,
+            HandleDescribeVolumeResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -388,10 +399,8 @@ void TServiceActor::HandleAddTags(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     NPrivateProto::TModifyTagsRequest modifyTagsRequest;
     modifyTagsRequest.SetDiskId(msg->DiskId);

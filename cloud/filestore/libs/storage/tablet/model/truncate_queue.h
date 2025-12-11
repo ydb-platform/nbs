@@ -14,7 +14,8 @@ namespace NCloud::NFileStore::NStorage {
 class TTruncateQueue
 {
 public:
-    struct TEntry {
+    struct TEntry
+    {
         ui64 NodeId = 0;
         TByteRange Range;
     };

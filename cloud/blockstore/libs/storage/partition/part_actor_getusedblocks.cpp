@@ -21,10 +21,8 @@ void TPartitionActor::HandleGetUsedBlocks(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -49,13 +47,15 @@ bool TPartitionActor::PrepareGetUsedBlocks(
     TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
 
-    return db.ReadUsedBlocksRaw([&args](TCompressedBitmap::TSerializedChunk chunk) {
-        if (!TCompressedBitmap::IsZeroChunk(chunk)) {
-            auto* usedBlock = args.UsedBlocks.Add();
-            usedBlock->SetChunkIdx(chunk.ChunkIdx);
-            usedBlock->SetData(chunk.Data.data(), chunk.Data.size());
-        }
-    });
+    return db.ReadUsedBlocksRaw(
+        [&args](TCompressedBitmap::TSerializedChunk chunk)
+        {
+            if (!TCompressedBitmap::IsZeroChunk(chunk)) {
+                auto* usedBlock = args.UsedBlocks.Add();
+                usedBlock->SetChunkIdx(chunk.ChunkIdx);
+                usedBlock->SetData(chunk.Data.data(), chunk.Data.size());
+            }
+        });
 }
 
 void TPartitionActor::ExecuteGetUsedBlocks(

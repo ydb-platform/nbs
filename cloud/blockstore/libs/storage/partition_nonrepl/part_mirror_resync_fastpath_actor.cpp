@@ -19,12 +19,12 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 ////////////////////////////////////////////////////////////////////////////////
 
 TMirrorPartitionResyncFastPathActor::TMirrorPartitionResyncFastPathActor(
-        TRequestInfoPtr requestInfo,
-        ui32 blockSize,
-        TBlockRange64 range,
-        TGuardedSgList sgList,
-        TVector<TReplicaDescriptor> replicas,
-        TString clientId)
+    TRequestInfoPtr requestInfo,
+    ui32 blockSize,
+    TBlockRange64 range,
+    TGuardedSgList sgList,
+    TVector<TReplicaDescriptor> replicas,
+    TString clientId)
     : RequestInfo(std::move(requestInfo))
     , BlockSize(blockSize)
     , Range(range)

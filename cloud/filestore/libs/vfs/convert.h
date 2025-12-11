@@ -15,7 +15,7 @@ struct TFileStore;
 struct TFileStoreStats;
 struct TNodeAttr;
 
-}   // NProto
+}   // namespace NProto
 
 namespace NCloud::NFileStore::NVFS {
 
@@ -34,8 +34,8 @@ void ConvertStat(
 
 inline TInstant ConvertTimeSpec(const timespec& t)
 {
-    return TInstant::Seconds(t.tv_sec)
-         + TDuration::MicroSeconds(t.tv_nsec / 1000);
+    return TInstant::Seconds(t.tv_sec) +
+           TDuration::MicroSeconds(t.tv_nsec / 1000);
 }
 
 inline timespec ConvertTimeSpec(TInstant t)

@@ -26,12 +26,14 @@ TResultOrError<TString> TStorageServiceActor::SelectShard(
     const ui32 shardNo) const
 {
     const bool multiTabletForwardingEnabled =
-        StorageConfig->GetMultiTabletForwardingEnabled()
-        && !disableMultiTabletForwarding;
+        StorageConfig->GetMultiTabletForwardingEnabled() &&
+        !disableMultiTabletForwarding;
     if (multiTabletForwardingEnabled && shardNo) {
         const auto& shardIds = filestore.GetShardFileSystemIds();
         if (shardIds.size() < static_cast<int>(shardNo)) {
-            LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::SERVICE,
                 "[%s][%lu] forward %s #%lu - invalid shardNo: %u/%d"
                 " (legacy handle?)",
                 sessionId.Quote().c_str(),
@@ -42,12 +44,14 @@ TResultOrError<TString> TStorageServiceActor::SelectShard(
                 shardIds.size());
 
             // TODO(#1350): uncomment when there are no legacy handles anymore
-            //return MakeError(E_INVALID_STATE, TStringBuilder() << "shardNo="
+            // return MakeError(E_INVALID_STATE, TStringBuilder() << "shardNo="
             //        << shardNo << ", shardIds.size=" << shardIds.size());
             return TString();
         }
 
-        LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::SERVICE,
             "[%s][%lu] forward %s #%lu to shard %s",
             sessionId.Quote().c_str(),
             seqNo,
@@ -74,7 +78,9 @@ void TStorageServiceActor::ForwardRequest(
     const auto& sessionId = GetSessionId(msg->Record);
     const ui64 seqNo = GetSessionSeqNo(msg->Record);
 
-    LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE,
         "[%s][%lu] forward %s #%lu",
         sessionId.Quote().c_str(),
         seqNo,
@@ -103,8 +109,8 @@ void TStorageServiceActor::ForwardRequest(
         MakeIndexTabletProxyServiceId(),
         SelfId(),
         ev->ReleaseBase().Release(),
-        0,          // flags
-        cookie,     // cookie
+        0,        // flags
+        cookie,   // cookie
         // forwardOnNondelivery
         nullptr);
 
@@ -125,7 +131,9 @@ void TStorageServiceActor::ForwardRequestToShard(
     const auto& sessionId = GetSessionId(msg->Record);
     const ui64 seqNo = GetSessionSeqNo(msg->Record);
 
-    LOG_DEBUG(ctx, TFileStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE,
         "[%s][%lu] forward %s #%lu",
         sessionId.Quote().c_str(),
         seqNo,
@@ -175,8 +183,8 @@ void TStorageServiceActor::ForwardRequestToShard(
         MakeIndexTabletProxyServiceId(),
         SelfId(),
         ev->ReleaseBase().Release(),
-        0,          // flags
-        cookie,     // cookie
+        0,        // flags
+        cookie,   // cookie
         // forwardOnNondelivery
         nullptr);
 
@@ -185,57 +193,58 @@ void TStorageServiceActor::ForwardRequestToShard(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_FORWARD_REQUEST(name, ns)                                    \
-    void TStorageServiceActor::Handle##name(                                   \
-        const ns::TEv##name##Request::TPtr& ev,                                \
-        const TActorContext& ctx)                                              \
-    {                                                                          \
-        ForwardRequest<ns::T##name##Method>(ctx, ev);                          \
-    }                                                                          \
+#define FILESTORE_FORWARD_REQUEST(name, ns)           \
+    void TStorageServiceActor::Handle##name(          \
+        const ns::TEv##name##Request::TPtr& ev,       \
+        const TActorContext& ctx)                     \
+    {                                                 \
+        ForwardRequest<ns::T##name##Method>(ctx, ev); \
+    }
 
-    FILESTORE_SERVICE_REQUESTS_FWD(FILESTORE_FORWARD_REQUEST, TEvService)
+FILESTORE_SERVICE_REQUESTS_FWD(FILESTORE_FORWARD_REQUEST, TEvService)
 
 #undef FILESTORE_FORWARD_REQUEST
 
-#define FILESTORE_FORWARD_REQUEST_TO_SHARD_BY_NODE_ID(name, ns)                \
-    void TStorageServiceActor::Handle##name(                                   \
-        const ns::TEv##name##Request::TPtr& ev,                                \
-        const TActorContext& ctx)                                              \
-    {                                                                          \
-        ForwardRequestToShard<ns::T##name##Method>(                            \
-            ctx,                                                               \
-            ev,                                                                \
-            ExtractShardNo(ev->Get()->Record.GetNodeId()));                    \
-    }                                                                          \
+#define FILESTORE_FORWARD_REQUEST_TO_SHARD_BY_NODE_ID(name, ns) \
+    void TStorageServiceActor::Handle##name(                    \
+        const ns::TEv##name##Request::TPtr& ev,                 \
+        const TActorContext& ctx)                               \
+    {                                                           \
+        ForwardRequestToShard<ns::T##name##Method>(             \
+            ctx,                                                \
+            ev,                                                 \
+            ExtractShardNo(ev->Get()->Record.GetNodeId()));     \
+    }
 
-    FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_NODE_ID(
-        FILESTORE_FORWARD_REQUEST_TO_SHARD_BY_NODE_ID,
-        TEvService)
-
-#undef FILESTORE_FORWARD_REQUEST_TO_SHARD_BY_NODE_ID
-
-#define FILESTORE_FORWARD_REQUEST_TO_SHARD_BY_HANDLE(name, ns)                 \
-    void TStorageServiceActor::Handle##name(                                   \
-        const ns::TEv##name##Request::TPtr& ev,                                \
-        const TActorContext& ctx)                                              \
-    {                                                                          \
-        ForwardRequestToShard<ns::T##name##Method>(                            \
-            ctx,                                                               \
-            ev,                                                                \
-            ExtractShardNo(ev->Get()->Record.GetHandle()));                    \
-    }                                                                          \
-
-    FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_HANDLE(
-        FILESTORE_FORWARD_REQUEST_TO_SHARD_BY_HANDLE,
-        TEvService)
+FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_NODE_ID(
+    FILESTORE_FORWARD_REQUEST_TO_SHARD_BY_NODE_ID,
+    TEvService)
 
 #undef FILESTORE_FORWARD_REQUEST_TO_SHARD_BY_NODE_ID
 
-#define FILESTORE_DEFINE_HANDLE_FORWARD(name, ns)                              \
-template void TStorageServiceActor::ForwardRequest<ns::T##name##Method>(       \
-    const TActorContext&, const ns::TEv##name##Request::TPtr&);                \
+#define FILESTORE_FORWARD_REQUEST_TO_SHARD_BY_HANDLE(name, ns) \
+    void TStorageServiceActor::Handle##name(                   \
+        const ns::TEv##name##Request::TPtr& ev,                \
+        const TActorContext& ctx)                              \
+    {                                                          \
+        ForwardRequestToShard<ns::T##name##Method>(            \
+            ctx,                                               \
+            ev,                                                \
+            ExtractShardNo(ev->Get()->Record.GetHandle()));    \
+    }
 
-    FILESTORE_SERVICE_REQUESTS_HANDLE(FILESTORE_DEFINE_HANDLE_FORWARD, TEvService)
+FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_HANDLE(
+    FILESTORE_FORWARD_REQUEST_TO_SHARD_BY_HANDLE,
+    TEvService)
+
+#undef FILESTORE_FORWARD_REQUEST_TO_SHARD_BY_NODE_ID
+
+#define FILESTORE_DEFINE_HANDLE_FORWARD(name, ns)                            \
+    template void TStorageServiceActor::ForwardRequest<ns::T##name##Method>( \
+        const TActorContext&,                                                \
+        const ns::TEv##name##Request::TPtr&);
+
+FILESTORE_SERVICE_REQUESTS_HANDLE(FILESTORE_DEFINE_HANDLE_FORWARD, TEvService)
 
 #undef FILESTORE_DEFINE_HANDLE_FORWARD
 

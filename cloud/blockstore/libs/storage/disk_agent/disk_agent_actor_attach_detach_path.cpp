@@ -1,8 +1,8 @@
 #include "disk_agent_actor.h"
 
-#include <util/string/join.h>
-
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+
+#include <util/string/join.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -72,7 +72,7 @@ void TDiskAgentActor::HandlePathsDetached(
     Y_DEFER
     {
         PendingAttachDetachPathsRequest.Reset();
-    };
+    }
 
     if (HasError(error)) {
         LOG_ERROR(

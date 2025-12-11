@@ -11,8 +11,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TReplaceActor final
-    : public TActorBootstrapped<TReplaceActor>
+class TReplaceActor final: public TActorBootstrapped<TReplaceActor>
 {
 private:
     const TChildLogTitle LogTitle;
@@ -53,13 +52,13 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TReplaceActor::TReplaceActor(
-        TChildLogTitle logTitle,
-        const TActorId& owner,
-        TRequestInfoPtr request,
-        TString diskId,
-        TString deviceId,
-        TString deviceReplacementId,
-        TInstant timestamp)
+    TChildLogTitle logTitle,
+    const TActorId& owner,
+    TRequestInfoPtr request,
+    TString diskId,
+    TString deviceId,
+    TString deviceReplacementId,
+    TInstant timestamp)
     : LogTitle(std::move(logTitle))
     , Owner(owner)
     , Request(std::move(request))
@@ -73,18 +72,17 @@ void TReplaceActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
-    auto request = std::make_unique<TEvDiskRegistryPrivate::TEvReplaceDiskDeviceRequest>(
-        DiskId,
-        DeviceId,
-        DeviceReplacementId,
-        Timestamp);
+    auto request =
+        std::make_unique<TEvDiskRegistryPrivate::TEvReplaceDiskDeviceRequest>(
+            DiskId,
+            DeviceId,
+            DeviceReplacementId,
+            Timestamp);
 
     NCloud::Send(ctx, Owner, std::move(request));
 }
 
-void TReplaceActor::ReplyAndDie(
-    const TActorContext& ctx,
-    NProto::TError error)
+void TReplaceActor::ReplyAndDie(const TActorContext& ctx, NProto::TError error)
 {
     auto response = std::make_unique<TEvDiskRegistry::TEvReplaceDeviceResponse>(
         std::move(error));
@@ -194,10 +192,8 @@ void TDiskRegistryActor::HandleReplaceDiskDevice(
 
     using TMethod = TEvDiskRegistryPrivate::TReplaceDiskDeviceMethod;
 
-    auto requestInfo = CreateRequestInfo<TMethod>(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo<TMethod>(ev->Sender, ev->Cookie, msg->CallContext);
 
     ExecuteTx<TReplaceDevice>(
         ctx,
@@ -260,8 +256,9 @@ void TDiskRegistryActor::CompleteReplaceDevice(
     NotifyUsers(ctx);
     PublishDiskStates(ctx);
 
-    auto response = std::make_unique<TEvDiskRegistryPrivate::TEvReplaceDiskDeviceResponse>(
-        args.Error);
+    auto response =
+        std::make_unique<TEvDiskRegistryPrivate::TEvReplaceDiskDeviceResponse>(
+            args.Error);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }

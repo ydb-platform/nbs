@@ -43,8 +43,8 @@ public:
             recipient,
             Sender,
             request.release(),
-            0,          // flags
-            0,          // cookie
+            0,   // flags
+            0,   // cookie
             // forwardOnNondelivery
             nullptr);
 
@@ -56,7 +56,8 @@ public:
     {
         TAutoPtr<NActors::IEventHandle> handle;
         Runtime.GrabEdgeEventRethrow<TResponse>(handle);
-        return std::unique_ptr<TResponse>(handle->Release<TResponse>().Release());
+        return std::unique_ptr<TResponse>(
+            handle->Release<TResponse>().Release());
     }
 
     auto CreateWaitReadyRequest(const TString& fileSystemId)
@@ -74,32 +75,32 @@ public:
         return request;
     }
 
-#define FILESTORE_DECLARE_METHOD(name, ns)                                     \
-    template <typename... Args>                                                \
-    void Send##name##Request(Args&&... args)                                   \
-    {                                                                          \
-        auto request = Create##name##Request(std::forward<Args>(args)...);     \
-        SendRequest(MakeIndexTabletProxyServiceId(), std::move(request));      \
-    }                                                                          \
-                                                                               \
-    std::unique_ptr<ns::TEv##name##Response> Recv##name##Response()            \
-    {                                                                          \
-        return RecvResponse<ns::TEv##name##Response>();                        \
-    }                                                                          \
-                                                                               \
-    template <typename... Args>                                                \
-    std::unique_ptr<ns::TEv##name##Response> name(Args&&... args)              \
-    {                                                                          \
-        auto request = Create##name##Request(std::forward<Args>(args)...);     \
-        SendRequest(MakeIndexTabletProxyServiceId(), std::move(request));      \
-                                                                               \
-        auto response = RecvResponse<ns::TEv##name##Response>();               \
-        UNIT_ASSERT_C(                                                         \
-            SUCCEEDED(response->GetStatus()),                                  \
-            response->GetErrorReason());                                       \
-        return response;                                                       \
-    }                                                                          \
-// FILESTORE_DECLARE_METHOD
+#define FILESTORE_DECLARE_METHOD(name, ns)                                 \
+    template <typename... Args>                                            \
+    void Send##name##Request(Args&&... args)                               \
+    {                                                                      \
+        auto request = Create##name##Request(std::forward<Args>(args)...); \
+        SendRequest(MakeIndexTabletProxyServiceId(), std::move(request));  \
+    }                                                                      \
+                                                                           \
+    std::unique_ptr<ns::TEv##name##Response> Recv##name##Response()        \
+    {                                                                      \
+        return RecvResponse<ns::TEv##name##Response>();                    \
+    }                                                                      \
+                                                                           \
+    template <typename... Args>                                            \
+    std::unique_ptr<ns::TEv##name##Response> name(Args&&... args)          \
+    {                                                                      \
+        auto request = Create##name##Request(std::forward<Args>(args)...); \
+        SendRequest(MakeIndexTabletProxyServiceId(), std::move(request));  \
+                                                                           \
+        auto response = RecvResponse<ns::TEv##name##Response>();           \
+        UNIT_ASSERT_C(                                                     \
+            SUCCEEDED(response->GetStatus()),                              \
+            response->GetErrorReason());                                   \
+        return response;                                                   \
+    }                                                                      \
+    // FILESTORE_DECLARE_METHOD
 
     FILESTORE_SERVICE_REQUESTS(FILESTORE_DECLARE_METHOD, TEvService)
     FILESTORE_TABLET_REQUESTS(FILESTORE_DECLARE_METHOD, TEvIndexTablet)

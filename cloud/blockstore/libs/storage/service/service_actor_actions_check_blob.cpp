@@ -4,11 +4,11 @@
 
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/base/logoblob.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
+
 #include <library/cpp/json/json_reader.h>
 
 #include <util/string/builder.h>
@@ -37,9 +37,7 @@ private:
     bool IndexOnly = false;
 
 public:
-    TCheckBlobActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TCheckBlobActionActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -64,8 +62,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TCheckBlobActionActor::TCheckBlobActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -74,7 +72,9 @@ void TCheckBlobActionActor::Bootstrap(const TActorContext& ctx)
 {
     NJson::TJsonValue input;
     if (!NJson::ReadJsonTree(Input, &input, false)) {
-        HandleError(ctx, MakeError(E_ARGUMENT, "Input should be in JSON format"));
+        HandleError(
+            ctx,
+            MakeError(E_ARGUMENT, "Input should be in JSON format"));
         return;
     }
 
@@ -126,13 +126,9 @@ void TCheckBlobActionActor::CheckBlob(const TActorContext& ctx)
         TInstant::Max(),
         NKikimrBlobStorage::AsyncRead,
         false,
-        IndexOnly
-    );
+        IndexOnly);
 
-    SendToBSProxy(
-        ctx,
-        BSGroupId,
-        request.release());
+    SendToBSProxy(ctx, BSGroupId, request.release());
 }
 
 void TCheckBlobActionActor::HandleSuccess(
@@ -141,10 +137,10 @@ void TCheckBlobActionActor::HandleSuccess(
     const TString& errorReason)
 {
     auto response = std::make_unique<TEvService::TEvExecuteActionResponse>();
-    response->Record.SetOutput(TStringBuilder()
-        << "{ \"Status\": \"" << NKikimrProto::EReplyStatus_Name(status) << "\""
-        << ", \"Reason\": \"" << errorReason << "\""
-        << "}");
+    response->Record.SetOutput(
+        TStringBuilder() << "{ \"Status\": \""
+                         << NKikimrProto::EReplyStatus_Name(status) << "\""
+                         << ", \"Reason\": \"" << errorReason << "\"" << "}");
 
     LWTRACK(
         ResponseSent_Service,
@@ -160,7 +156,8 @@ void TCheckBlobActionActor::HandleError(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(error);
+    auto response =
+        std::make_unique<TEvService::TEvExecuteActionResponse>(error);
 
     LWTRACK(
         ResponseSent_Service,
@@ -186,7 +183,9 @@ void TCheckBlobActionActor::HandleGetResult(
     }
 
     if (msg->ResponseSz != 1) {
-        auto error = MakeError(E_FAIL, "TEvBlobStorage::TEvGet response size is invalid");
+        auto error = MakeError(
+            E_FAIL,
+            "TEvBlobStorage::TEvGet response size is invalid");
         HandleError(ctx, error);
         return;
     }

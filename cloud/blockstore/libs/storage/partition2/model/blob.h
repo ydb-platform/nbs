@@ -10,9 +10,9 @@
 #include <cloud/storage/core/libs/common/guarded_sglist.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
-#include <library/cpp/containers/stack_vector/stack_vec.h>
-
 #include <contrib/ydb/library/actors/core/actorid.h>
+
+#include <library/cpp/containers/stack_vector/stack_vec.h>
 
 #include <util/digest/multi.h>
 #include <util/generic/hash.h>
@@ -35,10 +35,11 @@ struct TBlob
 
     TBlob() = default;
 
-    TBlob(const TPartialBlobId& blobId,
-          TBlockRanges blockRanges,
-          ui16 blockCount,
-          ui16 checkpointBlockCount)
+    TBlob(
+        const TPartialBlobId& blobId,
+        TBlockRanges blockRanges,
+        ui16 blockCount,
+        ui16 checkpointBlockCount)
         : BlobId(blobId)
         , BlockRanges(std::move(blockRanges))
         , BlockCount(blockCount)
@@ -61,9 +62,9 @@ struct TWriteBlob
     {}
 
     TWriteBlob(
-            const TPartialBlobId& blobId,
-            TVector<TBlock> blocks,
-            TBlockBuffer blobContent)
+        const TPartialBlobId& blobId,
+        TVector<TBlock> blocks,
+        TBlockBuffer blobContent)
         : BlobId(blobId)
         , Blocks(std::move(blocks))
         , BlobContent(std::move(blobContent))
@@ -110,15 +111,15 @@ struct TBlockRef
     TBlockRef() = default;
 
     TBlockRef(
-            const TBlock& block,
-            const TPartialBlobId& blobId,
-            ui16 blobOffset)
+        const TBlock& block,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset)
         : Block(block)
         , BlobId(blobId)
         , BlobOffset(blobOffset)
     {}
 
-    bool operator <(const TBlockRef& other) const
+    bool operator<(const TBlockRef& other) const
     {
         return Block.BlockIndex < other.Block.BlockIndex;
     }
@@ -141,11 +142,11 @@ struct TBlobRefs
     {}
 
     TBlobRefs(
-            const TPartialBlobId& blobId,
-            const NActors::TActorId& proxy,
-            TVector<TBlock> blocks,
-            TVector<ui16> dataBlobOffsets,
-            ui32 groupId)
+        const TPartialBlobId& blobId,
+        const NActors::TActorId& proxy,
+        TVector<TBlock> blocks,
+        TVector<ui16> dataBlobOffsets,
+        ui32 groupId)
         : BlobId(blobId)
         , Proxy(proxy)
         , Blocks(std::move(blocks))
@@ -153,7 +154,7 @@ struct TBlobRefs
         , GroupId(groupId)
     {}
 
-    bool operator <(const TBlobRefs& other) const
+    bool operator<(const TBlobRefs& other) const
     {
         return BlobId < other.BlobId;
     }
@@ -161,12 +162,10 @@ struct TBlobRefs
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TBlobRefsList : TVector<TBlobRefs>
+struct TBlobRefsList: TVector<TBlobRefs>
 {
-    void AddBlock(
-        const TBlock& block,
-        const TPartialBlobId& blobId,
-        ui16 blobOffset)
+    void
+    AddBlock(const TBlock& block, const TPartialBlobId& blobId, ui16 blobOffset)
     {
         Y_ABORT_UNLESS(blobOffset != InvalidBlobOffset);
 
@@ -192,8 +191,7 @@ struct TAffectedBlobInfo
     TAffectedBlobInfo(TPartialBlobId blobId, TVector<TBlock> blocks)
         : BlobId(blobId)
         , Blocks(std::move(blocks))
-    {
-    }
+    {}
 };
 
 using TAffectedBlobInfos = TVector<TAffectedBlobInfo>;
@@ -214,9 +212,8 @@ struct TBlobUpdate
 
     bool operator==(const TBlobUpdate& other) const
     {
-        return BlockRange == other.BlockRange
-            && CommitId == other.CommitId
-            && DeletionId == other.DeletionId;
+        return BlockRange == other.BlockRange && CommitId == other.CommitId &&
+               DeletionId == other.DeletionId;
     }
 };
 
@@ -228,9 +225,6 @@ struct TBlobUpdateHash
     }
 };
 
-using TBlobUpdatesByFresh = THashSet<
-    TBlobUpdate,
-    TBlobUpdateHash
->;
+using TBlobUpdatesByFresh = THashSet<TBlobUpdate, TBlobUpdateHash>;
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

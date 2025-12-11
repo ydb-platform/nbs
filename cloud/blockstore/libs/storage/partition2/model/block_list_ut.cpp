@@ -20,11 +20,8 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
 
         TVector<TBlock> blocks;
         for (size_t i = 0; i < 100; ++i) {
-            blocks.emplace_back(
-                blockIndex + i,
-                commitId,
-                InvalidCommitId,
-                false);
+            blocks
+                .emplace_back(blockIndex + i, commitId, InvalidCommitId, false);
         }
 
         auto list = BuildBlockList(blocks);
@@ -40,7 +37,9 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
             auto block = list.FindBlock(blocks[50].BlockIndex);
             UNIT_ASSERT(block);
             UNIT_ASSERT_VALUES_EQUAL(block->BlobOffset, 50);
-            UNIT_ASSERT_VALUES_EQUAL(block->MinCommitId, blocks[50].MinCommitId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                block->MinCommitId,
+                blocks[50].MinCommitId);
         }
         {
             auto block = list.FindBlock(100500);
@@ -56,10 +55,12 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
         TVector<TBlock> blocks;
         for (size_t i = 0; i < 1000; ++i) {
             auto blockIndex = firstBlockIndex + RandomNumber(10000u);
-            auto it = FindIf(blocks, [=] (const auto& b) {
-                return b.MaxCommitId == InvalidCommitId
-                    && blockIndex == b.BlockIndex;
-            });
+            auto it = FindIf(
+                blocks,
+                [=](const auto& b) {
+                    return b.MaxCommitId == InvalidCommitId &&
+                           blockIndex == b.BlockIndex;
+                });
             ui64 commitId;
             if (it == blocks.end()) {
                 commitId = initialCommitId + RandomNumber(10u);
@@ -69,20 +70,15 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
             }
 
             bool zeroed = RandomNumber(10u) == 0;
-            blocks.emplace_back(
-                blockIndex,
-                commitId,
-                InvalidCommitId,
-                zeroed);
+            blocks.emplace_back(blockIndex, commitId, InvalidCommitId, zeroed);
         }
 
         auto list = BuildBlockList(blocks);
         ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(blocks, list.GetBlocks());
 
         for (ui32 i = 0; i < 1000; ++i) {
-            auto block = list.FindBlock(
-                blocks[i].BlockIndex,
-                blocks[i].MaxCommitId - 1);
+            auto block =
+                list.FindBlock(blocks[i].BlockIndex, blocks[i].MaxCommitId - 1);
             UNIT_ASSERT(block);
             UNIT_ASSERT_VALUES_EQUAL(block->BlobOffset, i);
             UNIT_ASSERT_VALUES_EQUAL(block->MinCommitId, blocks[i].MinCommitId);
@@ -101,11 +97,8 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
 
         TVector<TBlock> blocks;
         for (size_t i = 0; i < 100; ++i) {
-            blocks.emplace_back(
-                blockIndex,
-                commitId + i,
-                InvalidCommitId,
-                false);
+            blocks
+                .emplace_back(blockIndex, commitId + i, InvalidCommitId, false);
         }
 
         auto list = BuildBlockList(blocks);
@@ -168,7 +161,7 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
                 blockIndex + i,
                 commitId,
                 InvalidCommitId,
-                i % 2 == 0);  // zeroed
+                i % 2 == 0);   // zeroed
         }
 
         auto list = BuildBlockList(blocks);
@@ -184,7 +177,9 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
             auto block = list.FindBlock(blocks[50].BlockIndex);
             UNIT_ASSERT(block);
             UNIT_ASSERT_VALUES_EQUAL(block->BlobOffset, 50);
-            UNIT_ASSERT_VALUES_EQUAL(block->MinCommitId, blocks[50].MinCommitId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                block->MinCommitId,
+                blocks[50].MinCommitId);
         }
         {
             auto block = list.FindBlock(100500);
@@ -203,7 +198,7 @@ Y_UNIT_TEST_SUITE(TBlockListTest)
                 blockIndex,
                 commitId + i,
                 InvalidCommitId,
-                i % 2 == 0);  // zeroed
+                i % 2 == 0);   // zeroed
         }
 
         auto list = BuildBlockList(blocks);

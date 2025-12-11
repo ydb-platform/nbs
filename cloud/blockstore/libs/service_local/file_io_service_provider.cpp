@@ -12,8 +12,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TFileIOServiceProvider final
-    : public IFileIOServiceProvider
+class TFileIOServiceProvider final: public IFileIOServiceProvider
 {
 private:
     const ui32 PathsPerServices;
@@ -24,8 +23,8 @@ private:
 
 public:
     explicit TFileIOServiceProvider(
-            ui32 pathsPerServices,
-            IFileIOServiceFactoryPtr factory)
+        ui32 pathsPerServices,
+        IFileIOServiceFactoryPtr factory)
         : PathsPerServices{Max(pathsPerServices, 1U)}
         , Factory(std::move(factory))
     {}
@@ -64,13 +63,11 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TSingleFileIOServiceProvider final
-    : IFileIOServiceProvider
+struct TSingleFileIOServiceProvider final: IFileIOServiceProvider
 {
     IFileIOServicePtr FileIO;
 
-    explicit TSingleFileIOServiceProvider(
-            IFileIOServicePtr fileIO)
+    explicit TSingleFileIOServiceProvider(IFileIOServicePtr fileIO)
         : FileIO{std::move(fileIO)}
     {}
 

@@ -1,8 +1,8 @@
 #pragma once
 
-#include <library/cpp/threading/future/future.h>
-
 #include <contrib/libs/linux-headers/linux/fuse.h>
+
+#include <library/cpp/threading/future/future.h>
 
 #include <util/generic/string.h>
 
@@ -44,9 +44,7 @@ struct TRequestBuffer
     {
         size_t len = sizeof(TSelf) + dataSize;
         void* buffer = ::operator new(len);
-        return TPtr {
-            new (buffer) TSelf(len)
-        };
+        return TPtr{new (buffer) TSelf(len)};
     }
 };
 
@@ -68,19 +66,23 @@ struct TRequestBuffer<THeader, TBody, true>
     {
         size_t len = sizeof(TSelf) + dataSize;
         void* buffer = ::operator new(len);
-        return TPtr {
-            new (buffer) TSelf(len)
-        };
+        return TPtr{new (buffer) TSelf(len)};
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template<typename TInPayload, typename TOutPayload, typename TResult>
+template <typename TInPayload, typename TOutPayload, typename TResult>
 struct TRequestBase
 {
-    using TIn = TRequestBuffer<fuse_in_header, TInPayload, std::is_void<TInPayload>::value>;
-    using TOut = TRequestBuffer<fuse_out_header, TOutPayload, std::is_void<TOutPayload>::value>;
+    using TIn = TRequestBuffer<
+        fuse_in_header,
+        TInPayload,
+        std::is_void<TInPayload>::value>;
+    using TOut = TRequestBuffer<
+        fuse_out_header,
+        TOutPayload,
+        std::is_void<TOutPayload>::value>;
 
     TIn::TPtr In = TIn::Create();
     TOut::TPtr Out = TOut::Create();
@@ -106,11 +108,17 @@ struct TRequestBase
     virtual void SetResult() = 0;
 };
 
-template<typename TInPayload, typename TOutPayload>
+template <typename TInPayload, typename TOutPayload>
 struct TRequestBase<TInPayload, TOutPayload, void>
 {
-    using TIn = TRequestBuffer<fuse_in_header, TInPayload, std::is_void<TInPayload>::value>;
-    using TOut = TRequestBuffer<fuse_out_header, TOutPayload, std::is_void<TOutPayload>::value>;
+    using TIn = TRequestBuffer<
+        fuse_in_header,
+        TInPayload,
+        std::is_void<TInPayload>::value>;
+    using TOut = TRequestBuffer<
+        fuse_out_header,
+        TOutPayload,
+        std::is_void<TOutPayload>::value>;
 
     TIn::TPtr In = TIn::Create();
     TOut::TPtr Out = TOut::Create();
@@ -130,8 +138,7 @@ struct TRequestBase<TInPayload, TOutPayload, void>
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TInitRequest
-    : public TRequestBase<fuse_init_in, fuse_init_out, void>
+struct TInitRequest: public TRequestBase<fuse_init_in, fuse_init_out, void>
 {
     static constexpr int DefaultFlags =
         FUSE_ASYNC_READ | FUSE_POSIX_LOCKS | FUSE_ATOMIC_O_TRUNC |
@@ -139,10 +146,10 @@ struct TInitRequest
         FUSE_SPLICE_WRITE | FUSE_SPLICE_MOVE | FUSE_SPLICE_READ |
         FUSE_FLOCK_LOCKS | FUSE_HAS_IOCTL_DIR | FUSE_AUTO_INVAL_DATA |
         FUSE_DO_READDIRPLUS | FUSE_READDIRPLUS_AUTO | FUSE_ASYNC_DIO |
-        FUSE_WRITEBACK_CACHE | FUSE_NO_OPEN_SUPPORT |
-        FUSE_PARALLEL_DIROPS | FUSE_HANDLE_KILLPRIV | FUSE_POSIX_ACL |
-        FUSE_ABORT_ERROR | FUSE_MAX_PAGES | FUSE_CACHE_SYMLINKS |
-        FUSE_NO_OPENDIR_SUPPORT | FUSE_EXPLICIT_INVAL_DATA;
+        FUSE_WRITEBACK_CACHE | FUSE_NO_OPEN_SUPPORT | FUSE_PARALLEL_DIROPS |
+        FUSE_HANDLE_KILLPRIV | FUSE_POSIX_ACL | FUSE_ABORT_ERROR |
+        FUSE_MAX_PAGES | FUSE_CACHE_SYMLINKS | FUSE_NO_OPENDIR_SUPPORT |
+        FUSE_EXPLICIT_INVAL_DATA;
 
     explicit TInitRequest(int flags = DefaultFlags)
     {
@@ -155,8 +162,7 @@ struct TInitRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDestroyRequest
-    : public TRequestBase<void, void, void>
+struct TDestroyRequest: public TRequestBase<void, void, void>
 {
     TDestroyRequest()
     {
@@ -207,8 +213,7 @@ struct TOpenHandleRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TLookupRequest
-    : public TRequestBase<char[4096], fuse_entry_out, ui64>
+struct TLookupRequest: public TRequestBase<char[4096], fuse_entry_out, ui64>
 {
     TLookupRequest(const TString& name, ui64 nodeId)
     {
@@ -227,8 +232,7 @@ struct TLookupRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TWriteRequest
-    : public TRequestBase<fuse_write_in, fuse_write_out, ui32>
+struct TWriteRequest: public TRequestBase<fuse_write_in, fuse_write_out, ui32>
 {
     TWriteRequest(ui64 nodeId, ui64 handle, ui64 offset, TStringBuf buffer)
     {
@@ -247,8 +251,7 @@ struct TWriteRequest
     }
 };
 
-struct TReadRequest
-    : public TRequestBase<fuse_read_in, ui32, ui32>
+struct TReadRequest: public TRequestBase<fuse_read_in, ui32, ui32>
 {
     TReadRequest(ui64 nodeId, ui64 handle, ui64 offset, ui64 size)
     {
@@ -273,8 +276,7 @@ struct TReadRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TOpenDirRequest
-    : public TRequestBase<fuse_open_in, fuse_open_out, ui64>
+struct TOpenDirRequest: public TRequestBase<fuse_open_in, fuse_open_out, ui64>
 {
     TOpenDirRequest(ui64 nodeId)
     {
@@ -289,8 +291,7 @@ struct TOpenDirRequest
     }
 };
 
-struct TReadDirRequest
-    : public TRequestBase<fuse_read_in, void, ui32>
+struct TReadDirRequest: public TRequestBase<fuse_read_in, void, ui32>
 {
     TReadDirRequest(ui64 nodeId, ui64 fh, ui64 offset = 0, ui32 size = 4096)
     {
@@ -313,8 +314,7 @@ struct TReadDirRequest
     }
 };
 
-struct TReleaseDirRequest
-    : public TRequestBase<fuse_release_in, void, void>
+struct TReleaseDirRequest: public TRequestBase<fuse_release_in, void, void>
 {
     TReleaseDirRequest(ui64 nodeId, ui64 fh)
     {
@@ -326,8 +326,7 @@ struct TReleaseDirRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TForgetRequest
-    : public TRequestBase<fuse_forget_in, void, void>
+struct TForgetRequest: public TRequestBase<fuse_forget_in, void, void>
 {
     TForgetRequest(ui64 nodeId, ui64 c)
     {
@@ -339,8 +338,7 @@ struct TForgetRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TInterruptRequest
-    : public TRequestBase<fuse_interrupt_in, void, void>
+struct TInterruptRequest: public TRequestBase<fuse_interrupt_in, void, void>
 {
     TInterruptRequest(ui64 reqId)
     {
@@ -350,8 +348,7 @@ struct TInterruptRequest
 };
 
 // will cause reply_error from do_interrupt
-struct TBrokenInterruptRequest
-    : public TRequestBase<void, void, void>
+struct TBrokenInterruptRequest: public TRequestBase<void, void, void>
 {
     TBrokenInterruptRequest(int reqId)
     {
@@ -362,8 +359,7 @@ struct TBrokenInterruptRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TAcquireLockRequest
-    : public TRequestBase<fuse_lk_in, void, void>
+struct TAcquireLockRequest: public TRequestBase<fuse_lk_in, void, void>
 {
     TAcquireLockRequest(ui64 flags, ui64 type, bool setlkw = true)
     {
@@ -415,7 +411,8 @@ struct TGetXAttrValueRequest
 };
 
 // See https://lists.gnu.org/archive/html/qemu-devel/2021-06/msg06153.html
-struct fuse_setxattr_in_compat {
+struct fuse_setxattr_in_compat
+{
     uint32_t size;
     uint32_t flags;
 };
@@ -423,7 +420,10 @@ struct fuse_setxattr_in_compat {
 struct TSetXAttrValueRequest
     : public TRequestBase<fuse_setxattr_in_compat, void, ui32>
 {
-    TSetXAttrValueRequest(const TString& name, const TString& value, ui64 nodeId)
+    TSetXAttrValueRequest(
+        const TString& name,
+        const TString& value,
+        ui64 nodeId)
     {
         In = TIn::Create(name.size() + value.size() + 2);
         In->Header.opcode = FUSE_SETXATTR;
@@ -441,8 +441,7 @@ struct TSetXAttrValueRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TReleaseRequest
-    : public TRequestBase<fuse_release_in, void, void>
+struct TReleaseRequest: public TRequestBase<fuse_release_in, void, void>
 {
     TReleaseRequest(ui64 nodeId, ui64 fh)
     {
@@ -454,8 +453,7 @@ struct TReleaseRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFsyncRequest
-    : public TRequestBase<fuse_fsync_in, void, void>
+struct TFsyncRequest: public TRequestBase<fuse_fsync_in, void, void>
 {
     TFsyncRequest(ui64 nodeId, ui64 fh, bool datasync)
     {
@@ -466,8 +464,7 @@ struct TFsyncRequest
     }
 };
 
-struct TFsyncDirRequest
-    : public TRequestBase<fuse_fsync_in, void, void>
+struct TFsyncDirRequest: public TRequestBase<fuse_fsync_in, void, void>
 {
     TFsyncDirRequest(ui64 nodeId, ui64 fh, bool datasync)
     {
@@ -480,8 +477,7 @@ struct TFsyncDirRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFlushRequest
-    : public TRequestBase<fuse_flush_in, void, void>
+struct TFlushRequest: public TRequestBase<fuse_flush_in, void, void>
 {
     TFlushRequest(ui64 nodeId, ui64 fh)
     {

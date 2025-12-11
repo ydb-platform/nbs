@@ -1,7 +1,6 @@
 #include "volume_session_actor.h"
 
 #include "service_actor.h"
-
 #include "volume_client_actor.h"
 
 #include <cloud/blockstore/libs/storage/api/volume.h>
@@ -9,7 +8,6 @@
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
 #include <contrib/ydb/core/tablet/tablet_setup.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -83,16 +81,16 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TUnmountRequestActor::TUnmountRequestActor(
-        TChildLogTitle logTitle,
-        TStorageConfigPtr config,
-        TRequestInfoPtr requestInfo,
-        TString diskId,
-        TString clientId,
-        NProto::EVolumeMountMode mountMode,
-        NProto::EControlRequestSource source,
-        TActorId sessionActorId,
-        TActorId volumeProxy,
-        ui64 tabletId)
+    TChildLogTitle logTitle,
+    TStorageConfigPtr config,
+    TRequestInfoPtr requestInfo,
+    TString diskId,
+    TString clientId,
+    NProto::EVolumeMountMode mountMode,
+    NProto::EControlRequestSource source,
+    TActorId sessionActorId,
+    TActorId volumeProxy,
+    ui64 tabletId)
     : LogTitle(std::move(logTitle))
     , Config(std::move(config))
     , RequestInfo(std::move(requestInfo))
@@ -153,18 +151,20 @@ void TUnmountRequestActor::RequestVolumeStop(const TActorContext& ctx)
 
 void TUnmountRequestActor::ReplyAndDie(const TActorContext& ctx)
 {
-    auto response = std::make_unique<TEvService::TEvUnmountVolumeResponse>(Error);
+    auto response =
+        std::make_unique<TEvService::TEvUnmountVolumeResponse>(Error);
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 
     // notify service
-    auto notify = std::make_unique<TEvServicePrivate::TEvUnmountRequestProcessed>(
-        Error,
-        DiskId,
-        ClientId,
-        RequestInfo->Sender,
-        Source,
-        DiskRecreated);
+    auto notify =
+        std::make_unique<TEvServicePrivate::TEvUnmountRequestProcessed>(
+            Error,
+            DiskId,
+            ClientId,
+            RequestInfo->Sender,
+            Source,
+            DiskRecreated);
 
     NCloud::Send(ctx, SessionActorId, std::move(notify));
 
@@ -223,10 +223,9 @@ void TUnmountRequestActor::HandleDescribeVolumeResponse(
 
         Error = MakeError(S_ALREADY, "Volume is already destroyed");
     } else if (msg->GetStatus() == NKikimrScheme::StatusSuccess) {
-        auto volumeTabletId = msg->
-            PathDescription.
-            GetBlockStoreVolumeDescription().
-            GetVolumeTabletId();
+        auto volumeTabletId =
+            msg->PathDescription.GetBlockStoreVolumeDescription()
+                .GetVolumeTabletId();
 
         if (volumeTabletId != TabletId) {
             DiskRecreated = true;
@@ -255,11 +254,17 @@ void TUnmountRequestActor::HandleStopVolumeResponse(
 STFUNC(TUnmountRequestActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
-        HFunc(TEvSSProxy::TEvDescribeVolumeResponse, HandleDescribeVolumeResponse);
+        HFunc(
+            TEvSSProxy::TEvDescribeVolumeResponse,
+            HandleDescribeVolumeResponse);
 
-        HFunc(TEvVolume::TEvRemoveClientResponse, HandleVolumeRemoveClientResponse);
+        HFunc(
+            TEvVolume::TEvRemoveClientResponse,
+            HandleVolumeRemoveClientResponse);
 
-        HFunc(TEvServicePrivate::TEvStopVolumeResponse, HandleStopVolumeResponse);
+        HFunc(
+            TEvServicePrivate::TEvStopVolumeResponse,
+            HandleStopVolumeResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -279,7 +284,8 @@ void TVolumeSessionActor::SendUnmountVolumeResponse(
     const TEvService::TEvUnmountVolumeRequest::TPtr& ev,
     NProto::TError error)
 {
-    auto response = std::make_unique<TEvService::TEvUnmountVolumeResponse>(error);
+    auto response =
+        std::make_unique<TEvService::TEvUnmountVolumeResponse>(error);
 
     NCloud::Reply(ctx, *ev, std::move(response));
 }
@@ -319,10 +325,8 @@ void TVolumeSessionActor::HandleUnmountVolume(
         LogTitle.GetWithTime().c_str(),
         clientId.Quote().c_str());
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     auto mountMode = NProto::VOLUME_MOUNT_REMOTE;
     auto* clientInfo = VolumeInfo->GetClientInfo(clientId);
@@ -362,8 +366,8 @@ void TVolumeSessionActor::HandleUnmountRequestProcessed(
             LogTitle.GetWithTime().c_str(),
             clientId.Quote().c_str());
 
-        if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable
-                && msg->RequestSender == SelfId())
+        if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable &&
+            msg->RequestSender == SelfId())
         {
             // this failed request was issued because of inactivity timeout
             // and it failed with retriable error -> retry it
@@ -375,10 +379,8 @@ void TVolumeSessionActor::HandleUnmountRequestProcessed(
                 LogTitle.GetWithTime().c_str(),
                 clientId.Quote().c_str());
 
-            auto requestInfo = CreateRequestInfo(
-                SelfId(),
-                0,
-                MakeIntrusive<TCallContext>());
+            auto requestInfo =
+                CreateRequestInfo(SelfId(), 0, MakeIntrusive<TCallContext>());
 
             auto mountMode = NProto::VOLUME_MOUNT_REMOTE;
             auto* clientInfo = VolumeInfo->GetClientInfo(clientId);
@@ -436,7 +438,8 @@ void TVolumeSessionActor::HandleUnmountRequestProcessed(
 
         if (msg->VolumeSessionRestartRequired) {
             // fail outstanding mount and unmount requests
-            // so that the next mount/unmount request triggers a describe request
+            // so that the next mount/unmount request triggers a describe
+            // request
             FailPendingRequestsAndDie(
                 ctx,
                 MakeError(E_REJECTED, "Disk tablet is changed. Retrying"));

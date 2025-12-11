@@ -289,7 +289,7 @@ typename TMethod::TRequest::TPtr TVolumeActor::WrapRequest(
             volumeRequestId,
             blockRange,
             traceTime);
-    }  else if constexpr (IsDescribeBlocksMethod<TMethod>) {
+    } else if constexpr (IsDescribeBlocksMethod<TMethod>) {
         RequestTimeTracker.OnRequestStarted(
             TRequestsTimeTracker::ERequestType::Describe,
             volumeRequestId,
@@ -315,9 +315,10 @@ void TVolumeActor::SendRequestToPartition(
         TabletID(),
         "Empty partition list");
 
-    auto partActorId = State->IsDiskRegistryMediaKind()
-        ? State->GetDiskRegistryBasedPartitionActor()
-        : State->GetPartitions()[partitionId].GetTopActorId();
+    auto partActorId =
+        State->IsDiskRegistryMediaKind()
+            ? State->GetDiskRegistryBasedPartitionActor()
+            : State->GetPartitions()[partitionId].GetTopActorId();
 
     if (State->GetPartitions()) {
         LOG_TRACE(
@@ -557,7 +558,8 @@ void TVolumeActor::ReplyToDuplicateRequests(
     NProto::TError error;
     error.SetCode(resultCode);
     if (HasError(error)) {
-        error.SetMessage(TStringBuilder()
+        error.SetMessage(
+            TStringBuilder()
             << "Duplicate request intersects with a failed inflight write or"
             << " zero request");
     }
@@ -566,33 +568,46 @@ void TVolumeActor::ReplyToDuplicateRequests(
         NActors::IEventBasePtr response;
         switch (duplicateRequest.EventType) {
             case TEvService::EvWriteBlocksRequest: {
-                auto response = std::make_unique<TEvService::TEvWriteBlocksResponse>(error);
+                auto response =
+                    std::make_unique<TEvService::TEvWriteBlocksResponse>(error);
                 FillResponse<TEvService::TWriteBlocksMethod>(
                     *response,
                     *duplicateRequest.CallContext,
                     duplicateRequest.ReceiveTime);
 
-                NCloud::Reply(ctx, *duplicateRequest.Event, std::move(response));
+                NCloud::Reply(
+                    ctx,
+                    *duplicateRequest.Event,
+                    std::move(response));
                 break;
             }
 
             case TEvService::EvWriteBlocksLocalRequest: {
-                auto response = std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(error);
+                auto response =
+                    std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
+                        error);
                 FillResponse<TEvService::TWriteBlocksLocalMethod>(
                     *response,
                     *duplicateRequest.CallContext,
                     duplicateRequest.ReceiveTime);
-                NCloud::Reply(ctx, *duplicateRequest.Event, std::move(response));
+                NCloud::Reply(
+                    ctx,
+                    *duplicateRequest.Event,
+                    std::move(response));
                 break;
             }
 
             case TEvService::EvZeroBlocksRequest: {
-                auto response = std::make_unique<TEvService::TEvZeroBlocksResponse>(error);
+                auto response =
+                    std::make_unique<TEvService::TEvZeroBlocksResponse>(error);
                 FillResponse<TEvService::TZeroBlocksMethod>(
                     *response,
                     *duplicateRequest.CallContext,
                     duplicateRequest.ReceiveTime);
-                NCloud::Reply(ctx, *duplicateRequest.Event, std::move(response));
+                NCloud::Reply(
+                    ctx,
+                    *duplicateRequest.Event,
+                    std::move(response));
                 break;
             }
 
@@ -601,7 +616,8 @@ void TVolumeActor::ReplyToDuplicateRequests(
                     0,
                     TWellKnownEntityTypes::TABLET,
                     TabletID(),
-                    TStringBuilder() << "unexpected duplicate event type: "
+                    TStringBuilder()
+                        << "unexpected duplicate event type: "
                         << static_cast<ui32>(duplicateRequest.EventType));
             }
         }
@@ -659,14 +675,13 @@ void TVolumeActor::ForwardRequest(
 
     bool isTraced = false;
 
-    if (ev->Recipient != ev->GetRecipientRewrite())
-    {
+    if (ev->Recipient != ev->GetRecipientRewrite()) {
         if (TraceSerializer->IsTraced(msg->CallContext->LWOrbit)) {
             isTraced = true;
             now = msg->Record.GetHeaders().GetInternal().GetTraceTs();
         } else if (TraceSerializer->HandleTraceRequest(
-            msg->Record.GetHeaders().GetInternal().GetTrace(),
-            msg->CallContext->LWOrbit))
+                       msg->Record.GetHeaders().GetInternal().GetTrace(),
+                       msg->CallContext->LWOrbit))
         {
             isTraced = true;
             msg->Record.MutableHeaders()->MutableInternal()->SetTraceTs(now);
@@ -681,10 +696,10 @@ void TVolumeActor::ForwardRequest(
 
     UpdateIngestTimeStats<TMethod>(ev, ctx.Now());
 
-    auto replyError = [&] (NProto::TError error)
+    auto replyError = [&](NProto::TError error)
     {
-        auto response = std::make_unique<typename TMethod::TResponse>(
-            std::move(error));
+        auto response =
+            std::make_unique<typename TMethod::TResponse>(std::move(error));
 
         FillResponse<TMethod>(*response, *msg->CallContext, now);
 
@@ -712,9 +727,10 @@ void TVolumeActor::ForwardRequest(
 
     if (State->IsDiskRegistryMediaKind()) {
         if (State->GetMeta().GetDevices().empty()) {
-            replyError(MakeError(E_REJECTED, TStringBuilder()
-                << "Storage not allocated for volume: "
-                << State->GetDiskId().Quote()));
+            replyError(MakeError(
+                E_REJECTED,
+                TStringBuilder() << "Storage not allocated for volume: "
+                                 << State->GetDiskId().Quote()));
             return;
         }
     }
@@ -893,9 +909,8 @@ void TVolumeActor::ForwardRequest(
         }
     }
 
-    if (RequiresReadWriteAccess<TMethod>
-            && State->GetRejectWrite()
-            && !forceWrite)
+    if (RequiresReadWriteAccess<TMethod> && State->GetRejectWrite() &&
+        !forceWrite)
     {
         replyError(MakeError(E_REJECTED, "Writes blocked"));
         return;
@@ -944,8 +959,9 @@ void TVolumeActor::ForwardRequest(
         if (RequiresReadWriteAccess<TMethod> && !CanExecuteWriteRequest()) {
             replyError(MakeError(
                 E_REJECTED,
-                TStringBuilder() // NBS-4447. Do not change message.
-                    << "Checkpoint reject request. " << TMethod::Name << " is not allowed "
+                TStringBuilder()   // NBS-4447. Do not change message.
+                    << "Checkpoint reject request. " << TMethod::Name
+                    << " is not allowed "
                     << (State->IsDiskRegistryMediaKind()
                             ? "if a checkpoint exists"
                             : "during checkpoint creation")));
@@ -1005,13 +1021,16 @@ void TVolumeActor::ForwardRequest(
             blockRange);
 
         if (!addResult.Added) {
-            if (addResult.DuplicateRequestId
-                    == TRequestsInFlight::InvalidRequestId)
+            if (addResult.DuplicateRequestId ==
+                TRequestsInFlight::InvalidRequestId)
             {
-                replyError(MakeError(E_REJECTED, TStringBuilder()
-                    << "Request " << TMethod::Name
-                    << " intersects with inflight write or zero request"
-                    << " (block range: " << DescribeRange(blockRange) << ")"));
+                replyError(MakeError(
+                    E_REJECTED,
+                    TStringBuilder()
+                        << "Request " << TMethod::Name
+                        << " intersects with inflight write or zero request"
+                        << " (block range: " << DescribeRange(blockRange)
+                        << ")"));
                 return;
             }
 
@@ -1022,12 +1041,13 @@ void TVolumeActor::ForwardRequest(
                 msg->CallContext->RequestId,
                 addResult.DuplicateRequestId);
 
-            DuplicateWriteAndZeroRequests[addResult.DuplicateRequestId].push_back({
-                ev->Get()->CallContext,
-                static_cast<TEvService::EEvents>(TMethod::TRequest::EventType),
-                NActors::IEventHandlePtr(ev.Release()),
-                now
-            });
+            DuplicateWriteAndZeroRequests[addResult.DuplicateRequestId]
+                .push_back(
+                    {ev->Get()->CallContext,
+                     static_cast<TEvService::EEvents>(
+                         TMethod::TRequest::EventType),
+                     NActors::IEventHandlePtr(ev.Release()),
+                     now});
             ++DuplicateRequestCount;
 
             LOG_DEBUG(
@@ -1077,45 +1097,44 @@ void TVolumeActor::ForwardRequest(
     }
 }
 
-#define BLOCKSTORE_FORWARD_REQUEST(name, ns)                                   \
-    void TVolumeActor::Handle##name(                                           \
-        const ns::TEv##name##Request::TPtr& ev,                                \
-        const TActorContext& ctx)                                              \
-    {                                                                          \
-        BLOCKSTORE_VOLUME_COUNTER(name);                                       \
-        ForwardRequest<ns::T##name##Method>(ctx, ev);                          \
-    }                                                                          \
-                                                                               \
-    void TVolumeActor::Handle##name##Response(                                 \
-        const ns::TEv##name##Response::TPtr& ev,                               \
-        const NActors::TActorContext& ctx)                                     \
-    {                                                                          \
-        ForwardResponse<ns::T##name##Method>(ctx, ev);                         \
-    }                                                                          \
-// BLOCKSTORE_FORWARD_REQUEST
+#define BLOCKSTORE_FORWARD_REQUEST(name, ns)           \
+    void TVolumeActor::Handle##name(                   \
+        const ns::TEv##name##Request::TPtr& ev,        \
+        const TActorContext& ctx)                      \
+    {                                                  \
+        BLOCKSTORE_VOLUME_COUNTER(name);               \
+        ForwardRequest<ns::T##name##Method>(ctx, ev);  \
+    }                                                  \
+                                                       \
+    void TVolumeActor::Handle##name##Response(         \
+        const ns::TEv##name##Response::TPtr& ev,       \
+        const NActors::TActorContext& ctx)             \
+    {                                                  \
+        ForwardResponse<ns::T##name##Method>(ctx, ev); \
+    }                                                  \
+    // BLOCKSTORE_FORWARD_REQUEST
 
-BLOCKSTORE_FORWARD_REQUEST(ReadBlocks,               TEvService)
-BLOCKSTORE_FORWARD_REQUEST(WriteBlocks,              TEvService)
-BLOCKSTORE_FORWARD_REQUEST(ZeroBlocks,               TEvService)
-BLOCKSTORE_FORWARD_REQUEST(CreateCheckpoint,         TEvService)
-BLOCKSTORE_FORWARD_REQUEST(DeleteCheckpoint,         TEvService)
-BLOCKSTORE_FORWARD_REQUEST(GetChangedBlocks,         TEvService)
-BLOCKSTORE_FORWARD_REQUEST(GetCheckpointStatus,      TEvService)
-BLOCKSTORE_FORWARD_REQUEST(ReadBlocksLocal,          TEvService)
-BLOCKSTORE_FORWARD_REQUEST(WriteBlocksLocal,         TEvService)
+BLOCKSTORE_FORWARD_REQUEST(ReadBlocks, TEvService)
+BLOCKSTORE_FORWARD_REQUEST(WriteBlocks, TEvService)
+BLOCKSTORE_FORWARD_REQUEST(ZeroBlocks, TEvService)
+BLOCKSTORE_FORWARD_REQUEST(CreateCheckpoint, TEvService)
+BLOCKSTORE_FORWARD_REQUEST(DeleteCheckpoint, TEvService)
+BLOCKSTORE_FORWARD_REQUEST(GetChangedBlocks, TEvService)
+BLOCKSTORE_FORWARD_REQUEST(GetCheckpointStatus, TEvService)
+BLOCKSTORE_FORWARD_REQUEST(ReadBlocksLocal, TEvService)
+BLOCKSTORE_FORWARD_REQUEST(WriteBlocksLocal, TEvService)
 
-BLOCKSTORE_FORWARD_REQUEST(DescribeBlocks,           TEvVolume)
-BLOCKSTORE_FORWARD_REQUEST(GetUsedBlocks,            TEvVolume)
-BLOCKSTORE_FORWARD_REQUEST(GetPartitionInfo,         TEvVolume)
-BLOCKSTORE_FORWARD_REQUEST(CompactRange,             TEvVolume)
-BLOCKSTORE_FORWARD_REQUEST(GetCompactionStatus,      TEvVolume)
-BLOCKSTORE_FORWARD_REQUEST(DeleteCheckpointData,     TEvVolume)
-BLOCKSTORE_FORWARD_REQUEST(RebuildMetadata,          TEvVolume)
+BLOCKSTORE_FORWARD_REQUEST(DescribeBlocks, TEvVolume)
+BLOCKSTORE_FORWARD_REQUEST(GetUsedBlocks, TEvVolume)
+BLOCKSTORE_FORWARD_REQUEST(GetPartitionInfo, TEvVolume)
+BLOCKSTORE_FORWARD_REQUEST(CompactRange, TEvVolume)
+BLOCKSTORE_FORWARD_REQUEST(GetCompactionStatus, TEvVolume)
+BLOCKSTORE_FORWARD_REQUEST(DeleteCheckpointData, TEvVolume)
+BLOCKSTORE_FORWARD_REQUEST(RebuildMetadata, TEvVolume)
 BLOCKSTORE_FORWARD_REQUEST(GetRebuildMetadataStatus, TEvVolume)
-BLOCKSTORE_FORWARD_REQUEST(ScanDisk,                 TEvVolume)
-BLOCKSTORE_FORWARD_REQUEST(GetScanDiskStatus,        TEvVolume)
-BLOCKSTORE_FORWARD_REQUEST(CheckRange,               TEvVolume)
-
+BLOCKSTORE_FORWARD_REQUEST(ScanDisk, TEvVolume)
+BLOCKSTORE_FORWARD_REQUEST(GetScanDiskStatus, TEvVolume)
+BLOCKSTORE_FORWARD_REQUEST(CheckRange, TEvVolume)
 
 #undef BLOCKSTORE_FORWARD_REQUEST
 

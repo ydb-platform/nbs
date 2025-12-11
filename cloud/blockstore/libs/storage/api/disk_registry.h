@@ -2,10 +2,9 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/libs/storage/protos_ydb/disk.pb.h>
-
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
+#include <cloud/blockstore/libs/storage/protos_ydb/disk.pb.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
 
@@ -13,68 +12,68 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_DISK_REGISTRY_REQUESTS_LOCAL(xxx, ...)                      \
-    xxx(WaitReady,          __VA_ARGS__)                                       \
-// BLOCKSTORE_DISK_REGISTRY_REQUESTS
+#define BLOCKSTORE_DISK_REGISTRY_REQUESTS_LOCAL(xxx, ...) \
+    xxx(WaitReady, __VA_ARGS__)                           \
+    // BLOCKSTORE_DISK_REGISTRY_REQUESTS
 
-#define BLOCKSTORE_DISK_REGISTRY_REQUESTS_PROTO(xxx, ...)                      \
-    xxx(RegisterAgent,                      __VA_ARGS__)                       \
-    xxx(UnregisterAgent,                    __VA_ARGS__)                       \
-    xxx(AllocateDisk,                       __VA_ARGS__)                       \
-    xxx(DeallocateDisk,                     __VA_ARGS__)                       \
-    xxx(AcquireDisk,                        __VA_ARGS__)                       \
-    xxx(ReleaseDisk,                        __VA_ARGS__)                       \
-    xxx(DescribeDisk,                       __VA_ARGS__)                       \
-    xxx(UpdateConfig,                       __VA_ARGS__)                       \
-    xxx(DescribeConfig,                     __VA_ARGS__)                       \
-    xxx(UpdateAgentStats,                   __VA_ARGS__)                       \
-    xxx(ReplaceDevice,                      __VA_ARGS__)                       \
-    xxx(ChangeDeviceState,                  __VA_ARGS__)                       \
-    xxx(ChangeAgentState,                   __VA_ARGS__)                       \
-    xxx(FinishMigration,                    __VA_ARGS__)                       \
-    xxx(BackupDiskRegistryState,            __VA_ARGS__)                       \
-    xxx(SetWritableState,                   __VA_ARGS__)                       \
-    xxx(MarkDiskForCleanup,                 __VA_ARGS__)                       \
-    xxx(SetUserId,                          __VA_ARGS__)                       \
-    xxx(UpdateDiskBlockSize,                __VA_ARGS__)                       \
-    xxx(UpdateDiskReplicaCount,             __VA_ARGS__)                       \
-    xxx(MarkReplacementDevice,              __VA_ARGS__)                       \
-    xxx(SuspendDevice,                      __VA_ARGS__)                       \
-    xxx(UpdatePlacementGroupSettings,       __VA_ARGS__)                       \
-    xxx(RestoreDiskRegistryState,           __VA_ARGS__)                       \
-    xxx(CreateDiskFromDevices,              __VA_ARGS__)                       \
-    xxx(ChangeDiskDevice,                   __VA_ARGS__)                       \
-    xxx(DisableAgent,                       __VA_ARGS__)                       \
-    xxx(StartForceMigration,                __VA_ARGS__)                       \
-    xxx(UpdateDiskRegistryAgentListParams,  __VA_ARGS__)                       \
-    xxx(GetDependentDisks,                  __VA_ARGS__)                       \
-    xxx(AllocateCheckpoint,                 __VA_ARGS__)                       \
-    xxx(DeallocateCheckpoint,               __VA_ARGS__)                       \
-    xxx(GetCheckpointDataState,             __VA_ARGS__)                       \
-    xxx(SetCheckpointDataState,             __VA_ARGS__)                       \
-    xxx(GetAgentNodeId,                     __VA_ARGS__)                       \
-    xxx(AddOutdatedLaggingDevices,          __VA_ARGS__)                       \
-    xxx(GetClusterCapacity,                 __VA_ARGS__)                       \
+#define BLOCKSTORE_DISK_REGISTRY_REQUESTS_PROTO(xxx, ...) \
+    xxx(RegisterAgent, __VA_ARGS__)                       \
+    xxx(UnregisterAgent, __VA_ARGS__)                     \
+    xxx(AllocateDisk, __VA_ARGS__)                        \
+    xxx(DeallocateDisk, __VA_ARGS__)                      \
+    xxx(AcquireDisk, __VA_ARGS__)                         \
+    xxx(ReleaseDisk, __VA_ARGS__)                         \
+    xxx(DescribeDisk, __VA_ARGS__)                        \
+    xxx(UpdateConfig, __VA_ARGS__)                        \
+    xxx(DescribeConfig, __VA_ARGS__)                      \
+    xxx(UpdateAgentStats, __VA_ARGS__)                    \
+    xxx(ReplaceDevice, __VA_ARGS__)                       \
+    xxx(ChangeDeviceState, __VA_ARGS__)                   \
+    xxx(ChangeAgentState, __VA_ARGS__)                    \
+    xxx(FinishMigration, __VA_ARGS__)                     \
+    xxx(BackupDiskRegistryState, __VA_ARGS__)             \
+    xxx(SetWritableState, __VA_ARGS__)                    \
+    xxx(MarkDiskForCleanup, __VA_ARGS__)                  \
+    xxx(SetUserId, __VA_ARGS__)                           \
+    xxx(UpdateDiskBlockSize, __VA_ARGS__)                 \
+    xxx(UpdateDiskReplicaCount, __VA_ARGS__)              \
+    xxx(MarkReplacementDevice, __VA_ARGS__)               \
+    xxx(SuspendDevice, __VA_ARGS__)                       \
+    xxx(UpdatePlacementGroupSettings, __VA_ARGS__)        \
+    xxx(RestoreDiskRegistryState, __VA_ARGS__)            \
+    xxx(CreateDiskFromDevices, __VA_ARGS__)               \
+    xxx(ChangeDiskDevice, __VA_ARGS__)                    \
+    xxx(DisableAgent, __VA_ARGS__)                        \
+    xxx(StartForceMigration, __VA_ARGS__)                 \
+    xxx(UpdateDiskRegistryAgentListParams, __VA_ARGS__)   \
+    xxx(GetDependentDisks, __VA_ARGS__)                   \
+    xxx(AllocateCheckpoint, __VA_ARGS__)                  \
+    xxx(DeallocateCheckpoint, __VA_ARGS__)                \
+    xxx(GetCheckpointDataState, __VA_ARGS__)              \
+    xxx(SetCheckpointDataState, __VA_ARGS__)              \
+    xxx(GetAgentNodeId, __VA_ARGS__)                      \
+    xxx(AddOutdatedLaggingDevices, __VA_ARGS__)           \
+    xxx(GetClusterCapacity, __VA_ARGS__)                  \
 // BLOCKSTORE_DISK_REGISTRY_REQUESTS_PROTO
 
 // requests forwarded from service to disk_registry
-#define BLOCKSTORE_DISK_REGISTRY_REQUESTS_FWD_SERVICE(xxx, ...)                \
-    xxx(CreatePlacementGroup,           __VA_ARGS__)                           \
-    xxx(DestroyPlacementGroup,          __VA_ARGS__)                           \
-    xxx(AlterPlacementGroupMembership,  __VA_ARGS__)                           \
-    xxx(ListPlacementGroups,            __VA_ARGS__)                           \
-    xxx(DescribePlacementGroup,         __VA_ARGS__)                           \
-    xxx(CmsAction,                      __VA_ARGS__)                           \
-    xxx(QueryAvailableStorage,          __VA_ARGS__)                           \
-    xxx(ResumeDevice,                   __VA_ARGS__)                           \
-    xxx(QueryAgentsInfo,                __VA_ARGS__)                           \
-    xxx(ListDiskStates,                 __VA_ARGS__)                           \
-// BLOCKSTORE_DISK_REGISTRY_REQUESTS_FWD_SERVICE
+#define BLOCKSTORE_DISK_REGISTRY_REQUESTS_FWD_SERVICE(xxx, ...) \
+    xxx(CreatePlacementGroup, __VA_ARGS__)                      \
+    xxx(DestroyPlacementGroup, __VA_ARGS__)                     \
+    xxx(AlterPlacementGroupMembership, __VA_ARGS__)             \
+    xxx(ListPlacementGroups, __VA_ARGS__)                       \
+    xxx(DescribePlacementGroup, __VA_ARGS__)                    \
+    xxx(CmsAction, __VA_ARGS__)                                 \
+    xxx(QueryAvailableStorage, __VA_ARGS__)                     \
+    xxx(ResumeDevice, __VA_ARGS__)                              \
+    xxx(QueryAgentsInfo, __VA_ARGS__)                           \
+    xxx(ListDiskStates, __VA_ARGS__)                            \
+    // BLOCKSTORE_DISK_REGISTRY_REQUESTS_FWD_SERVICE
 
-#define BLOCKSTORE_DISK_REGISTRY_REQUESTS(xxx, ...)                            \
-    BLOCKSTORE_DISK_REGISTRY_REQUESTS_LOCAL(xxx,  __VA_ARGS__)                 \
-    BLOCKSTORE_DISK_REGISTRY_REQUESTS_PROTO(xxx,  __VA_ARGS__)                 \
-// BLOCKSTORE_DISK_REGISTRY_REQUESTS
+#define BLOCKSTORE_DISK_REGISTRY_REQUESTS(xxx, ...)           \
+    BLOCKSTORE_DISK_REGISTRY_REQUESTS_LOCAL(xxx, __VA_ARGS__) \
+    BLOCKSTORE_DISK_REGISTRY_REQUESTS_PROTO(xxx, __VA_ARGS__) \
+    // BLOCKSTORE_DISK_REGISTRY_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -223,7 +222,8 @@ struct TEvDiskRegistry
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TBlockStoreEvents::DISK_REGISTRY_END,
+    static_assert(
+        EvEnd < (int)TBlockStoreEvents::DISK_REGISTRY_END,
         "EvEnd expected to be < TBlockStoreEvents::DISK_REGISTRY_END");
 
     BLOCKSTORE_DISK_REGISTRY_REQUESTS_LOCAL(BLOCKSTORE_DECLARE_EVENTS)

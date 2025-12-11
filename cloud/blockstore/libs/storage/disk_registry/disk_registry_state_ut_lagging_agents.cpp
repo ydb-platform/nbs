@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/storage/disk_registry/testlib/test_state.h>
 #include <cloud/blockstore/libs/storage/testlib/test_executor.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -97,9 +98,7 @@ void CreateMirror3Disk(TTestExecutor& executor, TDiskRegistryState& state)
         });
 }
 
-void DeleteDisksToNotify(
-    TTestExecutor& executor,
-    TDiskRegistryState& state)
+void DeleteDisksToNotify(TTestExecutor& executor, TDiskRegistryState& state)
 {
     executor.WriteTx(
         [&](TDiskRegistryDatabase db) mutable

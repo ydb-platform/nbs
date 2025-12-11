@@ -8,23 +8,19 @@ using namespace NKikimr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_COUNTER_NAME(name, category, ...)    #category "/" #name,
+#define FILESTORE_COUNTER_NAME(name, category, ...) #category "/" #name,
 
 const char* const TIndexTabletCounters::SimpleCounterNames[] = {
-    FILESTORE_TABLET_SIMPLE_COUNTERS(FILESTORE_COUNTER_NAME)
-};
+    FILESTORE_TABLET_SIMPLE_COUNTERS(FILESTORE_COUNTER_NAME)};
 
 const char* const TIndexTabletCounters::CumulativeCounterNames[] = {
-    FILESTORE_TABLET_CUMULATIVE_COUNTERS(FILESTORE_COUNTER_NAME)
-};
+    FILESTORE_TABLET_CUMULATIVE_COUNTERS(FILESTORE_COUNTER_NAME)};
 
 const char* const TIndexTabletCounters::PercentileCounterNames[] = {
-    FILESTORE_TABLET_PERCENTILE_COUNTERS(FILESTORE_COUNTER_NAME)
-};
+    FILESTORE_TABLET_PERCENTILE_COUNTERS(FILESTORE_COUNTER_NAME)};
 
 const char* const TIndexTabletCounters::TransactionTypeNames[] = {
-    FILESTORE_TABLET_TRANSACTIONS(FILESTORE_COUNTER_NAME, Tx)
-};
+    FILESTORE_TABLET_TRANSACTIONS(FILESTORE_COUNTER_NAME, Tx)};
 
 #undef FILESTORE_COUNTER_NAME
 

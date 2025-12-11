@@ -12,8 +12,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRequestFilterAccept
-    : public IRequestFilter
+class TRequestFilterAccept: public IRequestFilter
 {
 public:
     NProto::TProfileLogRecord GetFilteredRecord(
@@ -25,8 +24,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRequestFilterByFileSystemId
-    : public IRequestFilter
+class TRequestFilterByFileSystemId: public IRequestFilter
 {
 private:
     const IRequestFilterPtr NextFilter;
@@ -35,8 +33,8 @@ private:
 
 public:
     TRequestFilterByFileSystemId(
-            IRequestFilterPtr nextFilter,
-            TString fileSystemId)
+        IRequestFilterPtr nextFilter,
+        TString fileSystemId)
         : NextFilter(std::move(nextFilter))
         , FileSystemId(std::move(fileSystemId))
     {}
@@ -54,8 +52,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRequestFilterByNodeId
-    : public IRequestFilter
+class TRequestFilterByNodeId: public IRequestFilter
 {
 private:
     const IRequestFilterPtr NextFilter;
@@ -63,9 +60,7 @@ private:
     const ui64 NodeId;
 
 public:
-    TRequestFilterByNodeId(
-            IRequestFilterPtr nextFilter,
-            ui64 nodeId)
+    TRequestFilterByNodeId(IRequestFilterPtr nextFilter, ui64 nodeId)
         : NextFilter(std::move(nextFilter))
         , NodeId(nodeId)
     {}
@@ -76,10 +71,14 @@ public:
         NProto::TProfileLogRecord answer;
         for (const auto& profileLogRequest: record.GetRequests()) {
             switch (profileLogRequest.GetRequestType()) {
-                case static_cast<ui32>(NStorage::EFileStoreSystemRequest::ReadBlob):
-                case static_cast<ui32>(NStorage::EFileStoreSystemRequest::WriteBlob):
-                case static_cast<ui32>(NStorage::EFileStoreSystemRequest::DeleteGarbage):
-                case static_cast<ui32>(NStorage::EFileStoreSystemRequest::CollectGarbage):
+                case static_cast<ui32>(
+                    NStorage::EFileStoreSystemRequest::ReadBlob):
+                case static_cast<ui32>(
+                    NStorage::EFileStoreSystemRequest::WriteBlob):
+                case static_cast<ui32>(
+                    NStorage::EFileStoreSystemRequest::DeleteGarbage):
+                case static_cast<ui32>(
+                    NStorage::EFileStoreSystemRequest::CollectGarbage):
                 case static_cast<ui32>(EFileStoreRequest::CreateCheckpoint):
                 case static_cast<ui32>(EFileStoreRequest::DestroyCheckpoint):
                     continue;
@@ -119,7 +118,7 @@ public:
                 }
             }
 
-            for (const auto& range : profileLogRequest.GetRanges()) {
+            for (const auto& range: profileLogRequest.GetRanges()) {
                 if (range.HasNodeId() && range.GetNodeId() == NodeId) {
                     answer.MutableRequests()->Add(
                         NProto::TProfileLogRequestInfo(profileLogRequest));
@@ -139,8 +138,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRequestFilterByHandle
-    : public IRequestFilter
+class TRequestFilterByHandle: public IRequestFilter
 {
 private:
     const IRequestFilterPtr NextFilter;
@@ -148,9 +146,7 @@ private:
     const ui64 Handle;
 
 public:
-    TRequestFilterByHandle(
-            IRequestFilterPtr nextFilter,
-            ui64 handle)
+    TRequestFilterByHandle(IRequestFilterPtr nextFilter, ui64 handle)
         : NextFilter(std::move(nextFilter))
         , Handle(handle)
     {}
@@ -161,7 +157,8 @@ public:
         NProto::TProfileLogRecord answer;
         for (const auto& profileLogRequest: record.GetRequests()) {
             switch (profileLogRequest.GetRequestType()) {
-                case static_cast<ui32>(NStorage::EFileStoreSystemRequest::CollectGarbage):
+                case static_cast<ui32>(
+                    NStorage::EFileStoreSystemRequest::CollectGarbage):
                     continue;
                 default:
                     break;
@@ -185,7 +182,7 @@ public:
                 }
             }
 
-            for (const auto& range : profileLogRequest.GetRanges()) {
+            for (const auto& range: profileLogRequest.GetRanges()) {
                 if (range.HasHandle() && range.GetHandle() == Handle) {
                     answer.MutableRequests()->Add(
                         NProto::TProfileLogRequestInfo(profileLogRequest));
@@ -205,8 +202,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRequestFilterByRequestType
-    : public IRequestFilter
+class TRequestFilterByRequestType: public IRequestFilter
 {
 private:
     const IRequestFilterPtr NextFilter;
@@ -215,8 +211,8 @@ private:
 
 public:
     TRequestFilterByRequestType(
-            IRequestFilterPtr nextFilter,
-            TSet<ui32> requestTypes)
+        IRequestFilterPtr nextFilter,
+        TSet<ui32> requestTypes)
         : NextFilter(std::move(nextFilter))
         , RequestTypes(std::move(requestTypes))
     {}
@@ -243,8 +239,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRequestFilterByRange
-    : public IRequestFilter
+class TRequestFilterByRange: public IRequestFilter
 {
 private:
     const IRequestFilterPtr NextFilter;
@@ -253,10 +248,10 @@ private:
 
 public:
     TRequestFilterByRange(
-            IRequestFilterPtr nextFilter,
-            ui64 start,
-            ui64 count,
-            ui32 blockSize)
+        IRequestFilterPtr nextFilter,
+        ui64 start,
+        ui64 count,
+        ui32 blockSize)
         : NextFilter(std::move(nextFilter))
         , ByteRange(start, count, blockSize)
     {}
@@ -267,8 +262,10 @@ public:
         NProto::TProfileLogRecord answer;
         for (const auto& profileLogRequest: record.GetRequests()) {
             switch (profileLogRequest.GetRequestType()) {
-                case static_cast<ui32>(NStorage::EFileStoreSystemRequest::CollectGarbage):
-                case static_cast<ui32>(NStorage::EFileStoreSystemRequest::DeleteGarbage):
+                case static_cast<ui32>(
+                    NStorage::EFileStoreSystemRequest::CollectGarbage):
+                case static_cast<ui32>(
+                    NStorage::EFileStoreSystemRequest::DeleteGarbage):
                     continue;
                 default:
                     break;
@@ -299,8 +296,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRequestFilterSince
-    : public IRequestFilter
+class TRequestFilterSince: public IRequestFilter
 {
 private:
     const IRequestFilterPtr NextFilter;
@@ -308,9 +304,7 @@ private:
     const ui64 TimestampMcs;
 
 public:
-    TRequestFilterSince(
-            IRequestFilterPtr nextFilter,
-            ui64 timestampMcs)
+    TRequestFilterSince(IRequestFilterPtr nextFilter, ui64 timestampMcs)
         : NextFilter(std::move(nextFilter))
         , TimestampMcs(timestampMcs)
     {}
@@ -337,8 +331,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRequestFilterUntil
-    : public IRequestFilter
+class TRequestFilterUntil: public IRequestFilter
 {
 private:
     const IRequestFilterPtr NextFilter;
@@ -346,9 +339,7 @@ private:
     const ui64 TimestampMcs;
 
 public:
-    TRequestFilterUntil(
-            IRequestFilterPtr nextFilter,
-            ui64 timestampMcs)
+    TRequestFilterUntil(IRequestFilterPtr nextFilter, ui64 timestampMcs)
         : NextFilter(std::move(nextFilter))
         , TimestampMcs(timestampMcs)
     {}

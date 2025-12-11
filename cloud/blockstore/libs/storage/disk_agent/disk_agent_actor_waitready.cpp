@@ -15,7 +15,9 @@ void TDiskAgentActor::HandleWaitReady(
     const TActorContext& ctx)
 {
     if (!State) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::DISK_AGENT,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::DISK_AGENT,
             "WaitReady request delayed until DiskAgent is ready");
 
         auto requestInfo = CreateRequestInfo<TEvDiskAgent::TWaitReadyMethod>(
@@ -23,13 +25,17 @@ void TDiskAgentActor::HandleWaitReady(
             ev->Cookie,
             ev->Get()->CallContext);
 
-        PendingRequests.emplace_back(NActors::IEventHandlePtr(ev.Release()), requestInfo);
+        PendingRequests.emplace_back(
+            NActors::IEventHandlePtr(ev.Release()),
+            requestInfo);
         return;
     }
 
     BLOCKSTORE_DISK_AGENT_COUNTER(WaitReady);
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::DISK_AGENT,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::DISK_AGENT,
         "Received WaitReady request");
 
     auto response = std::make_unique<TEvDiskAgent::TEvWaitReadyResponse>();

@@ -48,7 +48,7 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
             initialMountMode,
             mountFlags);
 
-        TVolumeClientState client {info};
+        TVolumeClientState client{info};
 
         auto res = client.AddPipe(
             CreateActor(1, 1),
@@ -103,12 +103,10 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
         auto initialAccessMode = NProto::VOLUME_ACCESS_READ_ONLY;
         const ui64 mountFlags = 0;
 
-        auto info = CreateVolumeClientInfo(
-            initialAccessMode,
-            initialMountMode,
-            0);
+        auto info =
+            CreateVolumeClientInfo(initialAccessMode, initialMountMode, 0);
 
-        TVolumeClientState client {info};
+        TVolumeClientState client{info};
 
         auto res = client.AddPipe(
             CreateActor(1, 1),
@@ -286,12 +284,19 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
             ans = client.CheckLocalRequest(1, false, "", "");
             UNIT_ASSERT_C(!HasError(ans), FormatError(ans));
 
-            // Remote requests should be rejected since local pipe in active state.
+            // Remote requests should be rejected since local pipe in active
+            // state.
             ans = client.CheckPipeRequest(CreateActor(2, 2), true, "", "");
-            UNIT_ASSERT_VALUES_EQUAL_C(E_REJECTED, ans.GetCode(), FormatError(ans));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                ans.GetCode(),
+                FormatError(ans));
 
             ans = client.CheckPipeRequest(CreateActor(2, 2), false, "", "");
-            UNIT_ASSERT_VALUES_EQUAL_C(E_REJECTED, ans.GetCode(), FormatError(ans));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                ans.GetCode(),
+                FormatError(ans));
 
             // Remove local pipe.
             client.RemovePipe(CreateActor(1, 1), TInstant());
@@ -367,12 +372,10 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
         auto initialAccessMode = NProto::VOLUME_ACCESS_READ_WRITE;
         const ui64 mountFlags = 0;
 
-        auto info = CreateVolumeClientInfo(
-            initialAccessMode,
-            initialMountMode,
-            0);
+        auto info =
+            CreateVolumeClientInfo(initialAccessMode, initialMountMode, 0);
 
-        TVolumeClientState client {info};
+        TVolumeClientState client{info};
 
         NProto::TError ans;
 
@@ -404,12 +407,10 @@ Y_UNIT_TEST_SUITE(TVolumeClientStateTest)
         auto initialAccessMode = NProto::VOLUME_ACCESS_READ_WRITE;
         const ui64 mountFlags = 0;
 
-        auto info = CreateVolumeClientInfo(
-            initialAccessMode,
-            initialMountMode,
-            0);
+        auto info =
+            CreateVolumeClientInfo(initialAccessMode, initialMountMode, 0);
 
-        TVolumeClientState client {info};
+        TVolumeClientState client{info};
 
         NProto::TError ans;
 

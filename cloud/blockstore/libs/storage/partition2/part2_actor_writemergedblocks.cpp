@@ -19,8 +19,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename ...T>
-IEventBasePtr CreateWriteBlocksResponse(bool replyLocal, T&& ...args)
+template <typename... T>
+IEventBasePtr CreateWriteBlocksResponse(bool replyLocal, T&&... args)
 {
     if (replyLocal) {
         return std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(
@@ -42,9 +42,7 @@ public:
         const TPartialBlobId BlobId;
         const TBlockRange32 WriteRange;
 
-        TRequest(
-                const TPartialBlobId& blobId,
-                const TBlockRange32& writeRange)
+        TRequest(const TPartialBlobId& blobId, const TBlockRange32& writeRange)
             : BlobId(blobId)
             , WriteRange(writeRange)
         {}
@@ -113,13 +111,13 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TWriteMergedBlocksActor::TWriteMergedBlocksActor(
-        const TActorId& tablet,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
-        ui64 commitId,
-        TRequestInfoPtr requestInfo,
-        TVector<TRequest> requests,
-        bool replyLocal,
-        IWriteBlocksHandlerPtr writeHandler)
+    const TActorId& tablet,
+    IBlockDigestGeneratorPtr blockDigestGenerator,
+    ui64 commitId,
+    TRequestInfoPtr requestInfo,
+    TVector<TRequest> requests,
+    bool replyLocal,
+    IWriteBlocksHandlerPtr writeHandler)
     : Tablet(tablet)
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , CommitId(commitId)
@@ -144,11 +142,11 @@ void TWriteMergedBlocksActor::Bootstrap(const TActorContext& ctx)
     WriteBlobs(ctx);
 }
 
-TGuardedSgList TWriteMergedBlocksActor::BuildBlobContent(const TRequest& request)
+TGuardedSgList TWriteMergedBlocksActor::BuildBlobContent(
+    const TRequest& request)
 {
-    auto guardedSgList = WriteHandler->GetBlocks(
-        ConvertRangeSafe(request.WriteRange)
-    );
+    auto guardedSgList =
+        WriteHandler->GetBlocks(ConvertRangeSafe(request.WriteRange));
 
     if (auto guard = guardedSgList.Acquire()) {
         const auto& sgList = guard.Get();
@@ -157,9 +155,8 @@ TGuardedSgList TWriteMergedBlocksActor::BuildBlobContent(const TRequest& request
             const auto& block = sgList[index];
 
             auto blockIndex = request.WriteRange.Start + index;
-            const auto digest = BlockDigestGenerator->ComputeDigest(
-                blockIndex,
-                block);
+            const auto digest =
+                BlockDigestGenerator->ComputeDigest(blockIndex, block);
 
             if (digest.Defined()) {
                 AffectedBlockInfos.push_back({blockIndex, *digest});
@@ -169,7 +166,8 @@ TGuardedSgList TWriteMergedBlocksActor::BuildBlobContent(const TRequest& request
     return guardedSgList;
 }
 
-TVector<TBlock> TWriteMergedBlocksActor::BuildBlockList(const TRequest& request) const
+TVector<TBlock> TWriteMergedBlocksActor::BuildBlockList(
+    const TRequest& request) const
 {
     TVector<TBlock> result(Reserve(request.WriteRange.Size()));
     for (ui32 blockIndex: xrange(request.WriteRange)) {
@@ -178,7 +176,7 @@ TVector<TBlock> TWriteMergedBlocksActor::BuildBlockList(const TRequest& request)
             blockIndex,
             InvalidCommitId,
             InvalidCommitId,
-            false  // not zeroed
+            false   // not zeroed
         );
     }
     return result;
@@ -190,11 +188,14 @@ void TWriteMergedBlocksActor::WriteBlobs(const TActorContext& ctx)
         const auto& req = Requests[i];
         auto guardedSglist = BuildBlobContent(req);
 
-        auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
-            req.BlobId,
-            std::move(guardedSglist));
+        auto request =
+            std::make_unique<TEvPartitionPrivate::TEvWriteBlobRequest>(
+                req.BlobId,
+                std::move(guardedSglist));
 
-        if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
+        if (!RequestInfo->CallContext->LWOrbit.Fork(
+                request->CallContext->LWOrbit))
+        {
             LWTRACK(
                 ForkFailed,
                 RequestInfo->CallContext->LWOrbit,
@@ -204,10 +205,7 @@ void TWriteMergedBlocksActor::WriteBlobs(const TActorContext& ctx)
 
         ForkedCallContexts.emplace_back(request->CallContext);
 
-        NCloud::Send(
-            ctx,
-            Tablet,
-            std::move(request));
+        NCloud::Send(ctx, Tablet, std::move(request));
     }
 }
 
@@ -228,19 +226,17 @@ void TWriteMergedBlocksActor::AddBlobs(const TActorContext& ctx)
 
     SafeToUseOrbit = false;
 
-    NCloud::Send(
-        ctx,
-        Tablet,
-        std::move(request));
+    NCloud::Send(ctx, Tablet, std::move(request));
 }
 
 void TWriteMergedBlocksActor::NotifyCompleted(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto request = std::make_unique<TEvPartitionPrivate::TEvWriteBlocksCompleted>(
-        error,
-        true);  // collectBarrierAcquired
+    auto request =
+        std::make_unique<TEvPartitionPrivate::TEvWriteBlocksCompleted>(
+            error,
+            true);   // collectBarrierAcquired
 
     request->CommitId = CommitId;
 
@@ -367,7 +363,9 @@ STFUNC(TWriteMergedBlocksActor::StateWork)
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvPartitionPrivate::TEvWriteBlobResponse, HandleWriteBlobResponse);
+        HFunc(
+            TEvPartitionPrivate::TEvWriteBlobResponse,
+            HandleWriteBlobResponse);
         HFunc(TEvPartitionPrivate::TEvAddBlobsResponse, HandleAddBlobsResponse);
 
         default:
@@ -400,12 +398,13 @@ void TPartitionActor::WriteMergedBlocks(
     const auto writeRange = requestInBuffer.Data.Range;
     const auto maxBlocksInBlob = State->GetMaxBlocksInBlob();
 
-    LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
+    LOG_TRACE(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%lu] Writing merged blocks @%lu (range: %s)",
         TabletID(),
         commitId,
-        DescribeRange(writeRange).data()
-    );
+        DescribeRange(writeRange).data());
 
     ui32 blobIndex = 0;
 
@@ -438,8 +437,7 @@ void TPartitionActor::WriteMergedBlocks(
         requestInBuffer.Data.RequestInfo,
         std::move(requests),
         requestInBuffer.Data.ReplyLocal,
-        std::move(requestInBuffer.Data.Handler)
-    );
+        std::move(requestInBuffer.Data.Handler));
 
     Actors.insert(actor);
 }

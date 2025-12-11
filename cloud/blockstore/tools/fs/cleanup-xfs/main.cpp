@@ -44,13 +44,9 @@ struct TOptions
             .DefaultValue(Threads)
             .StoreResult(&Threads);
 
-        opts.AddLongOption("dry-run")
-            .NoArgument()
-            .StoreTrue(&DryRun);
+        opts.AddLongOption("dry-run").NoArgument().StoreTrue(&DryRun);
 
-        opts.AddLongOption('v', "verbose")
-            .NoArgument()
-            .StoreTrue(&Verbose);
+        opts.AddLongOption('v', "verbose").NoArgument().StoreTrue(&Verbose);
 
         TOptsParseResultException res(&opts, argc, argv);
     }
@@ -58,8 +54,7 @@ struct TOptions
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TDummyDev
-    : IDev
+struct TDummyDev: IDev
 {
     void Pwrite(const void* buffer, ui32 byteCount, i64 offset) const override
     {
@@ -76,8 +71,7 @@ struct TDummyDev
     }
 };
 
-struct TDev
-    : IDev
+struct TDev: IDev
 {
     TFile File;
 
@@ -113,12 +107,9 @@ public:
         auto sb = GetSuperBlock();
 
         if (Options.Verbose) {
-            Cout << "Super block: { "
-                << sb.BlockSize << ", "
-                << sb.GroupCount << ", "
-                << sb.BlocksPerGroup << ", "
-                << sb.SectorSize
-                << " }" << Endl;
+            Cout << "Super block: { " << sb.BlockSize << ", " << sb.GroupCount
+                 << ", " << sb.BlocksPerGroup << ", " << sb.SectorSize << " }"
+                 << Endl;
         }
 
         auto freesp = GetFreeSpace();
@@ -139,10 +130,10 @@ public:
     }
 
 private:
-    template<typename ... Args>
-    TString ExecDB(Args && ... args)
+    template <typename... Args>
+    TString ExecDB(Args&&... args)
     {
-        TShellCommand cmd(Options.ToolPath, { args..., Options.FsPath });
+        TShellCommand cmd(Options.ToolPath, {args..., Options.FsPath});
 
         auto output = cmd.Run().Wait().GetOutput();
 
@@ -185,7 +176,7 @@ private:
     }
 };
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -199,7 +190,7 @@ int main(int argc, char** argv)
 
         return app.Run();
 
-    } catch(...) {
+    } catch (...) {
         Cerr << CurrentExceptionMessage() << Endl;
         return 1;
     }

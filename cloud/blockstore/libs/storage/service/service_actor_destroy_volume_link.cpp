@@ -55,10 +55,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDestroyVolumeLinkActor::TDestroyVolumeLinkActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
-        TString leaderDiskId,
-        TString followerDiskId)
+    TRequestInfoPtr requestInfo,
+    TStorageConfigPtr config,
+    TString leaderDiskId,
+    TString followerDiskId)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , LeaderDiskId(std::move(leaderDiskId))

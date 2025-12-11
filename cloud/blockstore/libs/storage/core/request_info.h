@@ -38,14 +38,13 @@ struct TRequestInfo
     TRequestInfo() = default;
 
     TRequestInfo(
-            const NActors::TActorId& sender,
-            ui64 cookie,
-            TCallContextPtr callContext)
+        const NActors::TActorId& sender,
+        ui64 cookie,
+        TCallContextPtr callContext)
         : Sender(sender)
         , Cookie(cookie)
         , CallContext(std::move(callContext))
-    {
-    }
+    {}
 
     void CancelRequest(const NActors::TActorContext& ctx)
     {
@@ -115,10 +114,7 @@ inline TRequestInfoPtr CreateRequestInfo(
     ui64 cookie,
     TCallContextPtr callContext)
 {
-    return MakeIntrusive<TRequestInfo>(
-        sender,
-        cookie,
-        std::move(callContext));
+    return MakeIntrusive<TRequestInfo>(sender, cookie, std::move(callContext));
 }
 
 inline TRequestInfoPtr CreateRequestInfo(
@@ -127,10 +123,8 @@ inline TRequestInfoPtr CreateRequestInfo(
     TCallContextPtr callContext,
     TRequestInfo::TCancelRoutine callback)
 {
-    auto requestInfo = MakeIntrusive<TRequestInfo>(
-        sender,
-        cookie,
-        std::move(callContext));
+    auto requestInfo =
+        MakeIntrusive<TRequestInfo>(sender, cookie, std::move(callContext));
 
     requestInfo->CancelRoutine = callback;
 
@@ -171,4 +165,4 @@ TRequestInfoPtr CreateRequestInfo(
         std::move(callContext));
 }
 
-}    // namespace NCloud::NBlockStore::NStorage
+}   // namespace NCloud::NBlockStore::NStorage

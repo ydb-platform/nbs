@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
+
 #include <cloud/storage/core/libs/common/helpers.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -50,8 +51,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TGetDiskAgentNodeIdActor::TGetDiskAgentNodeIdActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}

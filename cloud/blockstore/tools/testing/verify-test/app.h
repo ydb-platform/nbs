@@ -12,4 +12,3 @@ int AppMain(TOptionsPtr options);
 void AppStop(int exitCode);
 
 }   // namespace NCloud::NBlockStore
-

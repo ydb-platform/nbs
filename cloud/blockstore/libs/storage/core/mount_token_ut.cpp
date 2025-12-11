@@ -12,7 +12,9 @@ Y_UNIT_TEST_SUITE(TMountTokenTest)
     {
         TMountToken token;
         UNIT_ASSERT_VALUES_EQUAL(token.ToString(), "");
-        UNIT_ASSERT_VALUES_EQUAL(token.ParseString(""), TMountToken::EStatus::OK);
+        UNIT_ASSERT_VALUES_EQUAL(
+            token.ParseString(""),
+            TMountToken::EStatus::OK);
         UNIT_ASSERT_VALUES_EQUAL(token.Format, TMountToken::EFormat::EMPTY);
         UNIT_ASSERT_VALUES_EQUAL(token.VerifySecret(""), true);
         UNIT_ASSERT_VALUES_EQUAL(token.VerifySecret("my secret"), false);
@@ -29,9 +31,12 @@ Y_UNIT_TEST_SUITE(TMountTokenTest)
         TString result = token.ToString();
         UNIT_ASSERT_VALUES_EQUAL(
             result,
-            "SHA384_V1:dGhpc2lzbXlzYWx0c2FsdA==:xv6l5+67hlFaHEAW0BY1XWd75LlUB8TvDrmTjOIRMqeOHj/o9+ey2uFizV9h0K0O");
+            "SHA384_V1:dGhpc2lzbXlzYWx0c2FsdA==:xv6l5+"
+            "67hlFaHEAW0BY1XWd75LlUB8TvDrmTjOIRMqeOHj/o9+ey2uFizV9h0K0O");
         TMountToken token2;
-        UNIT_ASSERT_VALUES_EQUAL(token2.ParseString(result), TMountToken::EStatus::OK);
+        UNIT_ASSERT_VALUES_EQUAL(
+            token2.ParseString(result),
+            TMountToken::EStatus::OK);
         UNIT_ASSERT_VALUES_EQUAL(token.Format, token2.Format);
         UNIT_ASSERT_VALUES_EQUAL(token.Salt, token2.Salt);
         UNIT_ASSERT_VALUES_EQUAL(token.Hash, token2.Hash);
@@ -47,7 +52,9 @@ Y_UNIT_TEST_SUITE(TMountTokenTest)
         UNIT_ASSERT_VALUES_EQUAL(token.Salt.size(), 16);
         TString result = token.ToString();
         TMountToken token2;
-        UNIT_ASSERT_VALUES_EQUAL(token2.ParseString(result), TMountToken::EStatus::OK);
+        UNIT_ASSERT_VALUES_EQUAL(
+            token2.ParseString(result),
+            TMountToken::EStatus::OK);
         UNIT_ASSERT_VALUES_EQUAL(token.Format, token2.Format);
         UNIT_ASSERT_VALUES_EQUAL(token.Salt, token2.Salt);
         UNIT_ASSERT_VALUES_EQUAL(token.Hash, token2.Hash);
@@ -59,10 +66,18 @@ Y_UNIT_TEST_SUITE(TMountTokenTest)
     Y_UNIT_TEST(Sha384ParseErrors)
     {
         TMountToken token;
-        UNIT_ASSERT_VALUES_EQUAL(token.ParseString("foo"), TMountToken::EStatus::FORMAT_UNKNOWN);
-        UNIT_ASSERT_VALUES_EQUAL(token.ParseString("SHA384_V1:"), TMountToken::EStatus::TOKEN_CORRUPTED);
-        UNIT_ASSERT_VALUES_EQUAL(token.ParseString("SHA384_V1:+++:+++"), TMountToken::EStatus::TOKEN_CORRUPTED);
-        UNIT_ASSERT_VALUES_EQUAL(token.ParseString("SHA384_V1::"), TMountToken::EStatus::TOKEN_CORRUPTED);
+        UNIT_ASSERT_VALUES_EQUAL(
+            token.ParseString("foo"),
+            TMountToken::EStatus::FORMAT_UNKNOWN);
+        UNIT_ASSERT_VALUES_EQUAL(
+            token.ParseString("SHA384_V1:"),
+            TMountToken::EStatus::TOKEN_CORRUPTED);
+        UNIT_ASSERT_VALUES_EQUAL(
+            token.ParseString("SHA384_V1:+++:+++"),
+            TMountToken::EStatus::TOKEN_CORRUPTED);
+        UNIT_ASSERT_VALUES_EQUAL(
+            token.ParseString("SHA384_V1::"),
+            TMountToken::EStatus::TOKEN_CORRUPTED);
     }
 }
 

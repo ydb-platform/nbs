@@ -8,7 +8,6 @@
 #include <util/generic/guid.h>
 #include <util/generic/string.h>
 
-
 #include <variant>
 
 namespace NCloud {
@@ -48,7 +47,8 @@ Y_UNIT_TEST_SUITE(TConfigDispatcherHelpersTest)
 
             UNIT_ASSERT(
                 std::holds_alternative<TAllowList>(config.ItemsServeRules));
-            UNIT_ASSERT(std::get<TAllowList>(config.ItemsServeRules).Items.empty());
+            UNIT_ASSERT(
+                std::get<TAllowList>(config.ItemsServeRules).Items.empty());
             UNIT_ASSERT_VALUES_EQUAL(1, counter->Val());
         }
 
@@ -62,7 +62,8 @@ Y_UNIT_TEST_SUITE(TConfigDispatcherHelpersTest)
 
             UNIT_ASSERT(
                 std::holds_alternative<TDenyList>(config.ItemsServeRules));
-            UNIT_ASSERT(std::get<TDenyList>(config.ItemsServeRules).Items.empty());
+            UNIT_ASSERT(
+                std::get<TDenyList>(config.ItemsServeRules).Items.empty());
             UNIT_ASSERT_VALUES_EQUAL(1, counter->Val());
         }
     }
@@ -90,7 +91,7 @@ Y_UNIT_TEST_SUITE(TConfigDispatcherHelpersTest)
         constexpr auto minVal = NKikimrConsole::TConfigItem_EKind_EKind_MIN;
         constexpr auto maxVal = NKikimrConsole::TConfigItem_EKind_EKind_MAX;
         ui32 cnt = 0;
-        for (ui32 id = minVal; id < maxVal; ++id)  {
+        for (ui32 id = minVal; id < maxVal; ++id) {
             if (!NKikimrConsole::TConfigItem_EKind_IsValid(id)) {
                 continue;
             }
@@ -101,8 +102,7 @@ Y_UNIT_TEST_SUITE(TConfigDispatcherHelpersTest)
 
         SetupConfigDispatcher(settings, {}, {}, &config);
 
-        UNIT_ASSERT(
-            std::holds_alternative<TAllowList>(config.ItemsServeRules));
+        UNIT_ASSERT(std::holds_alternative<TAllowList>(config.ItemsServeRules));
         UNIT_ASSERT_VALUES_EQUAL(
             cnt,
             std::get<TAllowList>(config.ItemsServeRules).Items.size());

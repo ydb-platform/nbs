@@ -47,7 +47,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TBackupPathDescriptionsActor::TBackupPathDescriptionsActor(
-        TRequestInfoPtr requestInfo)
+    TRequestInfoPtr requestInfo)
     : RequestInfo(std::move(requestInfo))
 {}
 
@@ -117,8 +117,8 @@ TResultOrError<IActorPtr> TServiceActor::CreateBackupPathDescriptionsActor(
 {
     Y_UNUSED(input);
 
-    return {std::make_unique<TBackupPathDescriptionsActor>(
-        std::move(requestInfo))};
+    return {
+        std::make_unique<TBackupPathDescriptionsActor>(std::move(requestInfo))};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

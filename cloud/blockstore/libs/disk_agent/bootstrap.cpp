@@ -134,8 +134,7 @@ bool AgentHasDevices(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TLoggingProxy final
-    : public ILoggingService
+class TLoggingProxy final: public ILoggingService
 {
 private:
     IActorSystemPtr ActorSystem;
@@ -164,8 +163,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TMonitoringProxy final
-    : public IMonitoringService
+class TMonitoringProxy final: public IMonitoringService
 {
 private:
     IActorSystemPtr ActorSystem;
@@ -219,8 +217,8 @@ NRdma::TServerConfigPtr CreateRdmaServerConfig(NRdma::TRdmaConfig& config)
 ////////////////////////////////////////////////////////////////////////////////
 
 TBootstrap::TBootstrap(
-        std::shared_ptr<NKikimr::TModuleFactories> moduleFactories,
-        std::shared_ptr<TServerModuleFactories> serverModuleFactories)
+    std::shared_ptr<NKikimr::TModuleFactories> moduleFactories,
+    std::shared_ptr<TServerModuleFactories> serverModuleFactories)
     : ModuleFactories(std::move(moduleFactories))
     , ServerModuleFactories(std::move(serverModuleFactories))
 {}
@@ -291,21 +289,21 @@ void TBootstrap::Init()
                 Scheduler,
                 Logging,
                 "BLOCKSTORE_TRACE",
-                NLwTraceMonPage::TraceManager(diagnosticsConfig->GetUnsafeLWTrace()),
+                NLwTraceMonPage::TraceManager(
+                    diagnosticsConfig->GetUnsafeLWTrace()),
                 TraceReaders));
 
         STORAGE_INFO("TraceProcessor initialized");
     }
 
-    auto rootGroup = Monitoring->GetCounters()
-        ->GetSubgroup("counters", "blockstore");
+    auto rootGroup =
+        Monitoring->GetCounters()->GetSubgroup("counters", "blockstore");
 
     auto serverGroup = rootGroup->GetSubgroup("component", "server");
-    auto revisionGroup = serverGroup->GetSubgroup("revision", GetFullVersionString());
+    auto revisionGroup =
+        serverGroup->GetSubgroup("revision", GetFullVersionString());
 
-    auto versionCounter = revisionGroup->GetCounter(
-        "version",
-        false);
+    auto versionCounter = revisionGroup->GetCounter("version", false);
     *versionCounter = 1;
 
     InitCriticalEventsCounter(serverGroup);
@@ -313,8 +311,8 @@ void TBootstrap::Init()
     for (auto& event: PostponedCriticalEvents) {
         ReportCriticalEvent(
             event,
-            "",     // message
-            false); // verifyDebug
+            "",       // message
+            false);   // verifyDebug
     }
     PostponedCriticalEvents.clear();
 }
@@ -328,8 +326,7 @@ void TBootstrap::InitProfileLog()
                 Configs->DiagnosticsConfig->GetProfileLogTimeThreshold(),
             },
             Timer,
-            Scheduler
-        );
+            Scheduler);
     } else {
         ProfileLog = CreateProfileLogStub();
     }
@@ -347,7 +344,8 @@ void TBootstrap::InitRdmaServer(NRdma::TRdmaConfig& config)
             STORAGE_INFO("RDMA server initialized");
         }
     } catch (...) {
-        STORAGE_ERROR("Failed to initialize RDMA server: "
+        STORAGE_ERROR(
+            "Failed to initialize RDMA server: "
             << CurrentExceptionMessage().c_str());
 
         RdmaServer = nullptr;
@@ -399,34 +397,40 @@ bool TBootstrap::InitKikimrService()
 
     const auto& cert = Configs->StorageConfig->GetNodeRegistrationCert();
 
-    NCloud::NStorage::TNodeRegistrationSettings settings {
-        .MaxAttempts =
-            Configs->StorageConfig->GetNodeRegistrationMaxAttempts(),
-        .ErrorTimeout = Configs->StorageConfig->GetNodeRegistrationErrorTimeout(),
-        .LegacyRegistrationTimeout = Configs->StorageConfig->GetNodeRegistrationTimeout(),
-        .DynamicNodeRegistrationTimeout = Configs->StorageConfig->GetDynamicNodeRegistrationTimeout(),
-        .LoadConfigsFromCmsRetryMinDelay = Configs->StorageConfig->GetLoadConfigsFromCmsRetryMinDelay(),
-        .LoadConfigsFromCmsRetryMaxDelay = Configs->StorageConfig->GetLoadConfigsFromCmsRetryMaxDelay(),
-        .LoadConfigsFromCmsTotalTimeout = Configs->StorageConfig->GetLoadConfigsFromCmsTotalTimeout(),
-        .PathToGrpcCaFile = Configs->StorageConfig->GetNodeRegistrationRootCertsFile(),
+    NCloud::NStorage::TNodeRegistrationSettings settings{
+        .MaxAttempts = Configs->StorageConfig->GetNodeRegistrationMaxAttempts(),
+        .ErrorTimeout =
+            Configs->StorageConfig->GetNodeRegistrationErrorTimeout(),
+        .LegacyRegistrationTimeout =
+            Configs->StorageConfig->GetNodeRegistrationTimeout(),
+        .DynamicNodeRegistrationTimeout =
+            Configs->StorageConfig->GetDynamicNodeRegistrationTimeout(),
+        .LoadConfigsFromCmsRetryMinDelay =
+            Configs->StorageConfig->GetLoadConfigsFromCmsRetryMinDelay(),
+        .LoadConfigsFromCmsRetryMaxDelay =
+            Configs->StorageConfig->GetLoadConfigsFromCmsRetryMaxDelay(),
+        .LoadConfigsFromCmsTotalTimeout =
+            Configs->StorageConfig->GetLoadConfigsFromCmsTotalTimeout(),
+        .PathToGrpcCaFile =
+            Configs->StorageConfig->GetNodeRegistrationRootCertsFile(),
         .PathToGrpcCertFile = cert.CertFile,
         .PathToGrpcPrivateKeyFile = cert.CertPrivateKeyFile,
-        .NodeRegistrationToken = Configs->StorageConfig->GetNodeRegistrationToken(),
+        .NodeRegistrationToken =
+            Configs->StorageConfig->GetNodeRegistrationToken(),
         .NodeType = Configs->StorageConfig->GetNodeType(),
     };
 
-    NCloud::NStorage::TRegisterDynamicNodeOptions registerOpts {
+    NCloud::NStorage::TRegisterDynamicNodeOptions registerOpts{
         .Domain = Configs->Options->Domain,
         .SchemeShardDir = Configs->StorageConfig->GetSchemeShardDir(),
         .NodeBrokerAddress = Configs->Options->NodeBrokerAddress,
         .NodeBrokerPort = Configs->Options->NodeBrokerPort,
         .NodeBrokerSecurePort = Configs->Options->NodeBrokerSecurePort,
-        .UseNodeBrokerSsl = Configs->Options->UseNodeBrokerSsl
-            || Configs->StorageConfig->GetNodeRegistrationUseSsl(),
+        .UseNodeBrokerSsl = Configs->Options->UseNodeBrokerSsl ||
+                            Configs->StorageConfig->GetNodeRegistrationUseSsl(),
         .InterconnectPort = Configs->Options->InterconnectPort,
         .LoadCmsConfigs = Configs->Options->LoadCmsConfigs,
-        .Settings = std::move(settings)
-    };
+        .Settings = std::move(settings)};
 
     if (Configs->Options->LocationFile) {
         NProto::TLocation location;
@@ -577,23 +581,24 @@ void TBootstrap::InitLWTrace()
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_RDMA_PROVIDER));
 
     if (Configs->DiskAgentConfig->GetEnabled()) {
-        probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_DISK_AGENT_PROVIDER));
+        probes.AddProbesList(
+            LWTRACE_GET_PROBES(BLOCKSTORE_DISK_AGENT_PROVIDER));
     }
 
     auto diagnosticsConfig = Configs->DiagnosticsConfig;
-    auto& lwManager = NLwTraceMonPage::TraceManager(diagnosticsConfig->GetUnsafeLWTrace());
+    auto& lwManager =
+        NLwTraceMonPage::TraceManager(diagnosticsConfig->GetUnsafeLWTrace());
 
     const TVector<std::tuple<TString, TString>> desc = {
-        {"RequestStarted",                  "BLOCKSTORE_SERVER_PROVIDER"},
+        {"RequestStarted", "BLOCKSTORE_SERVER_PROVIDER"},
         {"BackgroundTaskStarted_Partition", "BLOCKSTORE_STORAGE_PROVIDER"},
-        {"RequestReceived_DiskAgent",       "BLOCKSTORE_STORAGE_PROVIDER"},
+        {"RequestReceived_DiskAgent", "BLOCKSTORE_STORAGE_PROVIDER"},
     };
 
     auto traceLog = CreateUnifiedAgentLoggingService(
         Logging,
         diagnosticsConfig->GetTracesUnifiedAgentEndpoint(),
-        diagnosticsConfig->GetTracesSyslogIdentifier()
-    );
+        diagnosticsConfig->GetTracesSyslogIdentifier());
 
     if (auto samplingRate = diagnosticsConfig->GetSamplingRate()) {
         NLWTrace::TQuery query = ProbabilisticQuery(
@@ -623,7 +628,8 @@ void TBootstrap::InitLWTrace()
     }
 
     lwManager.RegisterCustomAction(
-        "ServiceErrorAction", &CreateServiceErrorActionExecutor);
+        "ServiceErrorAction",
+        &CreateServiceErrorActionExecutor);
 
     if (diagnosticsConfig->GetLWTraceDebugInitializationQuery()) {
         NLWTrace::TQuery query;
@@ -643,13 +649,13 @@ void TBootstrap::Start()
         }
         return;
     }
-#define START_COMPONENT(c)                                                     \
-    if (c) {                                                                   \
-        STORAGE_INFO("Starting " << #c << " ...");                             \
-        c->Start();                                                            \
-        STORAGE_INFO("Started " << #c);                                        \
-    }                                                                          \
-// START_COMPONENT
+#define START_COMPONENT(c)                         \
+    if (c) {                                       \
+        STORAGE_INFO("Starting " << #c << " ..."); \
+        c->Start();                                \
+        STORAGE_INFO("Started " << #c);            \
+    }                                              \
+    // START_COMPONENT
 
     START_COMPONENT(BackgroundThreadPool);
     START_COMPONENT(AsyncLogger);
@@ -685,13 +691,13 @@ void TBootstrap::Stop()
         }
         return;
     }
-#define STOP_COMPONENT(c)                                                      \
-    if (c) {                                                                   \
-        STORAGE_INFO("Stopping " << #c << " ...");                             \
-        c->Stop();                                                             \
-        STORAGE_INFO("Stopped " << #c);                                        \
-    }                                                                          \
-// STOP_COMPONENT
+#define STOP_COMPONENT(c)                          \
+    if (c) {                                       \
+        STORAGE_INFO("Stopping " << #c << " ..."); \
+        c->Stop();                                 \
+        STORAGE_INFO("Stopped " << #c);            \
+    }                                              \
+    // STOP_COMPONENT
 
     // stopping scheduler before all other components to avoid races between
     // scheduled tasks and shutting down of component dependencies
@@ -716,9 +722,8 @@ void TBootstrap::Stop()
 
 TProgramShouldContinue& TBootstrap::GetShouldContinue()
 {
-    return ActorSystem
-        ? ActorSystem->GetProgramShouldContinue()
-        : ShouldContinue;
+    return ActorSystem ? ActorSystem->GetProgramShouldContinue()
+                       : ShouldContinue;
 }
 
 }   // namespace NCloud::NBlockStore::NServer

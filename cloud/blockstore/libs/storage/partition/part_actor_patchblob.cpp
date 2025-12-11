@@ -5,7 +5,6 @@
 #include <cloud/blockstore/libs/storage/partition/model/fresh_blob.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
 
@@ -26,8 +25,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TPatchBlobActor final
-    : public TActorBootstrapped<TPatchBlobActor>
+class TPatchBlobActor final: public TActorBootstrapped<TPatchBlobActor>
 {
     using TRequest = TEvPartitionPrivate::TEvPatchBlobRequest;
     using TResponse = TEvPartitionPrivate::TEvPatchBlobResponse;
@@ -92,14 +90,14 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TPatchBlobActor::TPatchBlobActor(
-        const TActorId& tabletActorId,
-        TRequestInfoPtr requestInfo,
-        ui64 tabletId,
-        TString diskId,
-        std::unique_ptr<TRequest> request,
-        ui32 originalGroupId,
-        TChildLogTitle logTitle,
-        ui64 bsGroupOperationId)
+    const TActorId& tabletActorId,
+    TRequestInfoPtr requestInfo,
+    ui64 tabletId,
+    TString diskId,
+    std::unique_ptr<TRequest> request,
+    ui32 originalGroupId,
+    TChildLogTitle logTitle,
+    ui64 bsGroupOperationId)
     : TabletActorId(tabletActorId)
     , RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
@@ -132,7 +130,7 @@ void TPatchBlobActor::SendPatchRequest(const TActorContext& ctx)
         OriginalGroupId,
         MakeBlobId(TabletId, Request->OriginalBlobId),
         MakeBlobId(TabletId, Request->PatchedBlobId),
-        0, // mask for bruteforcing
+        0,   // mask for bruteforcing
         std::move(Request->Diffs),
         Request->DiffCount,
         Request->Deadline);
@@ -141,18 +139,15 @@ void TPatchBlobActor::SendPatchRequest(const TActorContext& ctx)
 
     RequestSent = ctx.Now();
 
-    SendToBSProxy(
-        ctx,
-        Request->Proxy,
-        request.release());
+    SendToBSProxy(ctx, Request->Proxy, request.release());
 }
 
 void TPatchBlobActor::NotifyCompleted(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto request = std::make_unique<TEvPartitionPrivate::TEvPatchBlobCompleted>(
-        error);
+    auto request =
+        std::make_unique<TEvPartitionPrivate::TEvPatchBlobCompleted>(error);
     request->OriginalBlobId = Request->OriginalBlobId;
     request->PatchedBlobId = Request->PatchedBlobId;
     request->StorageStatusFlags = StorageStatusFlags;
@@ -259,10 +254,12 @@ STFUNC(TPatchBlobActor::StateWork)
     }
 }
 
-EChannelPermissions StorageStatusFlags2ChannelPermissions(TStorageStatusFlags ssf)
+EChannelPermissions StorageStatusFlags2ChannelPermissions(
+    TStorageStatusFlags ssf)
 {
     /*
-    YellowStop: Tablets switch to read-only mode. Only system writes are allowed.
+    YellowStop: Tablets switch to read-only mode. Only system writes are
+    allowed.
 
     LightOrange: Alert: "Tablets have not stopped". Compaction writes are not
     allowed if this flag is received.
@@ -277,12 +274,11 @@ EChannelPermissions StorageStatusFlags2ChannelPermissions(TStorageStatusFlags ss
     */
 
     const auto outOfSpaceMask = static_cast<NKikimrBlobStorage::EStatusFlags>(
-        NKikimrBlobStorage::StatusDiskSpaceBlack
-        | NKikimrBlobStorage::StatusDiskSpaceRed
-        | NKikimrBlobStorage::StatusDiskSpaceOrange
-        | NKikimrBlobStorage::StatusDiskSpacePreOrange
-        | NKikimrBlobStorage::StatusDiskSpaceLightOrange
-    );
+        NKikimrBlobStorage::StatusDiskSpaceBlack |
+        NKikimrBlobStorage::StatusDiskSpaceRed |
+        NKikimrBlobStorage::StatusDiskSpaceOrange |
+        NKikimrBlobStorage::StatusDiskSpacePreOrange |
+        NKikimrBlobStorage::StatusDiskSpaceLightOrange);
     if (ssf.Check(outOfSpaceMask)) {
         return {};
     }
@@ -291,7 +287,8 @@ EChannelPermissions StorageStatusFlags2ChannelPermissions(TStorageStatusFlags ss
         return EChannelPermission::SystemWritesAllowed;
     }
 
-    return EChannelPermission::SystemWritesAllowed | EChannelPermission::UserWritesAllowed;
+    return EChannelPermission::SystemWritesAllowed |
+           EChannelPermission::UserWritesAllowed;
 }
 
 }   // namespace
@@ -318,9 +315,8 @@ void TPartitionActor::HandlePatchBlob(
         requestInfo->CallContext->RequestId);
 
     ui32 originalChannel = msg->OriginalBlobId.Channel();
-    ui32 originalGroupId = Info()->GroupFor(
-        originalChannel,
-        msg->OriginalBlobId.Generation());
+    ui32 originalGroupId =
+        Info()->GroupFor(originalChannel, msg->OriginalBlobId.Generation());
 
     ui32 channel = msg->PatchedBlobId.Channel();
     msg->Proxy =
@@ -359,17 +355,16 @@ void TPartitionActor::HandlePatchBlobCompleted(
     Actors.Erase(ev->Sender);
 
     ui32 patchedChannel = msg->PatchedBlobId.Channel();
-    ui32 patchedGroup = Info()->GroupFor(
-        patchedChannel,
-        msg->PatchedBlobId.Generation());
+    ui32 patchedGroup =
+        Info()->GroupFor(patchedChannel, msg->PatchedBlobId.Generation());
 
     const auto isValidFlag = NKikimrBlobStorage::EStatusFlags::StatusIsValid;
     const auto yellowMoveFlag =
         NKikimrBlobStorage::EStatusFlags::StatusDiskSpaceLightYellowMove;
 
     if (msg->StorageStatusFlags.Check(isValidFlag)) {
-        const auto permissions = StorageStatusFlags2ChannelPermissions(
-            msg->StorageStatusFlags);
+        const auto permissions =
+            StorageStatusFlags2ChannelPermissions(msg->StorageStatusFlags);
         UpdateChannelPermissions(ctx, patchedChannel, permissions);
         State->UpdateChannelFreeSpaceShare(
             patchedChannel,
@@ -399,7 +394,9 @@ void TPartitionActor::HandlePatchBlobCompleted(
     }
 
     if (patchedGroup == Max<ui32>()) {
-        Y_DEBUG_ABORT_UNLESS(0, "HandlePatchBlobCompleted: invalid blob id received");
+        Y_DEBUG_ABORT_UNLESS(
+            0,
+            "HandlePatchBlobCompleted: invalid blob id received");
     } else {
         UpdateWriteThroughput(
             ctx.Now(),

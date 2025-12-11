@@ -13,9 +13,11 @@ namespace NCloud::NBlockStore::NLoadTest {
 
 struct IClientFactory
 {
-    virtual ~IClientFactory() {}
+    virtual ~IClientFactory()
+    {}
 
-    virtual IBlockStorePtr CreateClient(TVector<ui32> nonretriableErrorCodes) = 0;
+    virtual IBlockStorePtr CreateClient(
+        TVector<ui32> nonretriableErrorCodes) = 0;
 
     virtual IBlockStorePtr CreateEndpointDataClient(
         NProto::EClientIpcType ipcType,

@@ -25,8 +25,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TPartitionDatabase
-    : public NKikimr::NIceDb::TNiceDb
+class TPartitionDatabase: public NKikimr::NIceDb::TNiceDb
 {
 public:
     enum class EBlobIndexScanProgress
@@ -54,10 +53,8 @@ public:
     // FreshBlocksIndex
     //
 
-    void WriteFreshBlock(
-        ui32 blockIndex,
-        ui64 commitId,
-        TBlockDataRef blockContent);
+    void
+    WriteFreshBlock(ui32 blockIndex, ui64 commitId, TBlockDataRef blockContent);
 
     void DeleteFreshBlock(ui32 blockIndex, ui64 commitId);
 
@@ -126,9 +123,7 @@ public:
         const TPartialBlobId& blobId,
         TMaybe<NProto::TBlobMeta>& blobMeta);
 
-    bool ReadNewBlobs(
-        TVector<TPartialBlobId>& blobIds,
-        ui64 minCommitId = 0);
+    bool ReadNewBlobs(TVector<TPartialBlobId>& blobIds, ui64 minCommitId = 0);
 
     void WriteBlockMask(
         const TPartialBlobId& blobId,
@@ -171,12 +166,14 @@ public:
     //
 
     void WriteUsedBlocks(const TCompressedBitmap::TSerializedChunk& chunk);
-    void WriteLogicalUsedBlocks(const TCompressedBitmap::TSerializedChunk& chunk);
+    void WriteLogicalUsedBlocks(
+        const TCompressedBitmap::TSerializedChunk& chunk);
 
     bool ReadUsedBlocks(TCompressedBitmap& usedBlocks);
     bool ReadLogicalUsedBlocks(TCompressedBitmap& usedBlocks, bool& read);
 
-    bool ReadUsedBlocksRaw(std::function<void(TCompressedBitmap::TSerializedChunk)> onChunk);
+    bool ReadUsedBlocksRaw(
+        std::function<void(TCompressedBitmap::TSerializedChunk)> onChunk);
 
     //
     // Checkpoints

@@ -81,10 +81,8 @@ struct TChannelRegistry
     }
 };
 
-using TChannelsByDataKind = std::array<
-    TChannelRegistry,
-    static_cast<ui32>(EChannelDataKind::Max)
->;
+using TChannelsByDataKind =
+    std::array<TChannelRegistry, static_cast<ui32>(EChannelDataKind::Max)>;
 
 }   // namespace
 
@@ -198,7 +196,7 @@ TChannels::TImpl::MakeChannelMonInfos() const
             meta.PoolKind,
             TStringBuilder() << meta.DataKind,
             meta.Writable,
-            meta.Writable, // TODO: SystemWritable
+            meta.Writable,   // TODO: SystemWritable
             meta.FreeSpaceShare,
         });
     }
@@ -286,7 +284,8 @@ TVector<ui32> TChannels::GetChannelsToMove(ui32 percentageThreshold) const
     return GetImpl().GetChannelsToMove(percentageThreshold);
 }
 
-TVector<NCloud::NStorage::TChannelMonInfo> TChannels::MakeChannelMonInfos() const
+TVector<NCloud::NStorage::TChannelMonInfo>
+TChannels::MakeChannelMonInfos() const
 {
     return GetImpl().MakeChannelMonInfos();
 }

@@ -5,14 +5,14 @@ namespace NCloud::NFileStore {
 ////////////////////////////////////////////////////////////////////////////////
 
 TLocalFileSystem::TLocalFileSystem(
-        TLocalFileStoreConfigPtr config,
-        NProto::TFileStore store,
-        TFsPath root,
-        TFsPath statePath,
-        ITimerPtr timer,
-        ISchedulerPtr scheduler,
-        ILoggingServicePtr logging,
-        IFileIOServicePtr fileIOService)
+    TLocalFileStoreConfigPtr config,
+    NProto::TFileStore store,
+    TFsPath root,
+    TFsPath statePath,
+    ITimerPtr timer,
+    ISchedulerPtr scheduler,
+    ILoggingServicePtr logging,
+    IFileIOServicePtr fileIOService)
     : Config(std::move(config))
     , RootPath(std::move(root))
     , StatePath(std::move(statePath))
@@ -25,9 +25,8 @@ TLocalFileSystem::TLocalFileSystem(
     Log = Logging->CreateLog(Store.GetFileSystemId());
 
     STORAGE_INFO(
-        "LocalFileSystemId=" << Store.GetFileSystemId() <<
-        ", Config=[" << Config->DumpStr() <<
-        "]");
+        "LocalFileSystemId=" << Store.GetFileSystemId() << ", Config=["
+                             << Config->DumpStr() << "]");
 
     ScheduleCleanupSessions();
 }
@@ -105,11 +104,11 @@ void ConvertStats(const NLowLevel::TFileStatEx& stat, NProto::TNodeAttr& node)
         node.SetType(NProto::E_SOCK_NODE);
     } else if (S_ISFIFO(stat.Mode)) {
         node.SetType(NProto::E_FIFO_NODE);
-     } else if (S_ISCHR(stat.Mode)) {
+    } else if (S_ISCHR(stat.Mode)) {
         node.SetType(NProto::E_CHARDEV_NODE);
-     } else if (S_ISBLK(stat.Mode)) {
+    } else if (S_ISBLK(stat.Mode)) {
         node.SetType(NProto::E_BLOCKDEV_NODE);
-     }  else {
+    } else {
         ythrow TServiceError(E_IO) << "invalid stats";
     }
 

@@ -97,8 +97,9 @@ private:
         }
 
         for (const auto& part: args.UnalignedDataParts) {
-            const auto offset = part.OffsetInBlock
-                + static_cast<ui64>(part.BlockIndex) * Tablet.GetBlockSize();
+            const auto offset =
+                part.OffsetInBlock +
+                static_cast<ui64>(part.BlockIndex) * Tablet.GetBlockSize();
             auto error = Tablet.CheckFreshBytes(
                 part.NodeId,
                 args.CommitId,
@@ -120,8 +121,9 @@ private:
                 continue;
             }
 
-            TABLET_VERIFY(block.MinCommitId == InvalidCommitId
-                && block.MaxCommitId == InvalidCommitId);
+            TABLET_VERIFY(
+                block.MinCommitId == InvalidCommitId &&
+                block.MaxCommitId == InvalidCommitId);
             block.MinCommitId = args.CommitId;
 
             Tablet.MarkFreshBlocksDeleted(
@@ -152,8 +154,9 @@ private:
         }
 
         for (const auto& part: args.UnalignedDataParts) {
-            const auto offset = part.OffsetInBlock
-                + static_cast<ui64>(part.BlockIndex) * Tablet.GetBlockSize();
+            const auto offset =
+                part.OffsetInBlock +
+                static_cast<ui64>(part.BlockIndex) * Tablet.GetBlockSize();
             Tablet.WriteFreshBytes(
                 db,
                 part.NodeId,
@@ -192,18 +195,20 @@ private:
             auto& blob = args.MixedBlobs[i];
 
             for (auto& block: blob.Blocks) {
-                TABLET_VERIFY(block.MinCommitId == InvalidCommitId
-                    && block.MaxCommitId == InvalidCommitId);
+                TABLET_VERIFY(
+                    block.MinCommitId == InvalidCommitId &&
+                    block.MaxCommitId == InvalidCommitId);
                 block.MinCommitId = args.CommitId;
             }
 
             GroupBy(
                 MakeArrayRef(blob.Blocks),
-                [] (const auto& l, const auto& r) {
-                    return r.NodeId == l.NodeId
-                        && r.BlockIndex == l.BlockIndex + 1;
+                [](const auto& l, const auto& r) {
+                    return r.NodeId == l.NodeId &&
+                           r.BlockIndex == l.BlockIndex + 1;
                 },
-                [&] (TArrayRef<const TBlock> group) {
+                [&](TArrayRef<const TBlock> group)
+                {
                     Tablet.MarkFreshBlocksDeleted(
                         db,
                         group[0].NodeId,
@@ -219,7 +224,8 @@ private:
                         group.size());
                 });
 
-            auto writeBlocksResult = Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks);
+            auto writeBlocksResult =
+                Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks);
             if (writeBlocksResult.NewBlob) {
                 ui32 rangeId = Tablet.GetMixedRangeIndex(blob.Blocks);
                 AccessCompactionRangeInfo(rangeId).BlobsCount += 1;
@@ -293,8 +299,7 @@ private:
                 block.NodeId,
                 block.MaxCommitId,
                 block.BlockIndex,
-                1
-            );
+                1);
         }
 
         for (auto& blob: args.MixedBlobs) {
@@ -304,7 +309,8 @@ private:
                 Tablet.WriteMixedBlocks(db, blob.BlobId, blob.Blocks);
             if (writeBlocksResult.NewBlob) {
                 stats.BlobsCount += 1;
-                stats.GarbageBlocksCount += writeBlocksResult.GarbageBlocksCount;
+                stats.GarbageBlocksCount +=
+                    writeBlocksResult.GarbageBlocksCount;
             }
         }
     }
@@ -325,8 +331,7 @@ private:
             // The counter is not guaranteed to be perfectly in sync with the
             // actual blob count in range so a check for moving below zero is
             // needed.
-            rangeInfo.BlobsCount =
-                Max(1U, rangeInfo.BlobsCount) - 1;
+            rangeInfo.BlobsCount = Max(1U, rangeInfo.BlobsCount) - 1;
             if (rangeInfo.BlobsCount == 0) {
                 // this range will be fully compacted after this Compaction
                 // iteration
@@ -444,10 +449,8 @@ void TIndexTabletActor::HandleAddBlob(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     FILESTORE_TRACK(

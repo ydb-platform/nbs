@@ -10,8 +10,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TErrorHandlerStub
-    : IErrorHandler
+struct TErrorHandlerStub: IErrorHandler
 {
     void ProcessException(std::exception_ptr) override
     {}
@@ -19,8 +18,7 @@ struct TErrorHandlerStub
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TErrorHandlerMap
-    : IErrorHandlerMap
+struct TErrorHandlerMap: IErrorHandlerMap
 {
     THashMap<TString, IErrorHandlerPtr> Handlers;
 
@@ -46,8 +44,7 @@ struct TErrorHandlerMap
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TErrorHandlerMapStub
-    : IErrorHandlerMap
+struct TErrorHandlerMapStub: IErrorHandlerMap
 {
     bool Emplace(const TString&, IErrorHandlerPtr&&) override
     {

@@ -28,10 +28,13 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         bool startVolumeActorStopped = false;
 
         auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
-                        auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
+                        auto* msg = event->Get<
+                            TEvServicePrivate::TEvVolumeTabletStatus>();
                         volumeActorId = msg->VolumeActor;
                         break;
                     }
@@ -50,12 +53,15 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         UNIT_ASSERT(!startVolumeActorStopped);
 
         // Kill the volume actor
-        service.SendRequest(volumeActorId, std::make_unique<TEvents::TEvPoisonPill>());
+        service.SendRequest(
+            volumeActorId,
+            std::make_unique<TEvents::TEvPoisonPill>());
 
         // Wait until tablet goes down
         {
             TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvServicePrivate::EvVolumeTabletStatus);
+            options.FinalEvents.emplace_back(
+                TEvServicePrivate::EvVolumeTabletStatus);
             runtime.DispatchEvents(options);
             UNIT_ASSERT(!volumeActorId);
         }
@@ -63,7 +69,8 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         // Wait until is up again
         {
             TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvServicePrivate::EvVolumeTabletStatus);
+            options.FinalEvents.emplace_back(
+                TEvServicePrivate::EvVolumeTabletStatus);
             runtime.DispatchEvents(options);
             UNIT_ASSERT(volumeActorId);
         }
@@ -86,10 +93,13 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         bool startVolumeActorStopped = false;
 
         auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
-                        auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
+                        auto* msg = event->Get<
+                            TEvServicePrivate::TEvVolumeTabletStatus>();
                         volumeActorId = msg->VolumeActor;
                         volumeTabletId = msg->TabletId;
                         startVolumeActorId = event->Sender;
@@ -121,7 +131,8 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         // Wait until start volume actor is stopped
         {
             TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvServicePrivate::EvStartVolumeActorStopped);
+            options.FinalEvents.emplace_back(
+                TEvServicePrivate::EvStartVolumeActorStopped);
             runtime.DispatchEvents(options);
             UNIT_ASSERT(startVolumeActorStopped);
         }
@@ -136,10 +147,13 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         bool startVolumeActorStopped = false;
 
         auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
-                        auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
+                        auto* msg = event->Get<
+                            TEvServicePrivate::TEvVolumeTabletStatus>();
                         volumeTabletId = msg->TabletId;
                         break;
                     }
@@ -160,15 +174,23 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         // Lock tablet to a different owner in hive
         {
             TActorId edge = runtime.AllocateEdgeActor();
-            runtime.SendToPipe(env.GetHive(), edge, new TEvHive::TEvLockTabletExecution(volumeTabletId));
-            auto reply = runtime.GrabEdgeEvent<TEvHive::TEvLockTabletExecutionResult>(edge);
-            UNIT_ASSERT_VALUES_EQUAL(reply->Get()->Record.GetStatus(), NKikimrProto::OK);
+            runtime.SendToPipe(
+                env.GetHive(),
+                edge,
+                new TEvHive::TEvLockTabletExecution(volumeTabletId));
+            auto reply =
+                runtime.GrabEdgeEvent<TEvHive::TEvLockTabletExecutionResult>(
+                    edge);
+            UNIT_ASSERT_VALUES_EQUAL(
+                reply->Get()->Record.GetStatus(),
+                NKikimrProto::OK);
         }
 
         // Wait until volume is unmounted
         if (!startVolumeActorStopped) {
             TDispatchOptions options;
-            options.FinalEvents.emplace_back(TEvServicePrivate::EvStartVolumeActorStopped);
+            options.FinalEvents.emplace_back(
+                TEvServicePrivate::EvStartVolumeActorStopped);
             runtime.DispatchEvents(options);
             UNIT_ASSERT(startVolumeActorStopped);
         }
@@ -183,7 +205,9 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         bool volumeActorStopped = false;
 
         auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus:
                         mountActorId = event->Sender;
@@ -223,7 +247,9 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         bool volumeActorStopped = false;
 
         auto& runtime = env.GetRuntime();
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus:
                         mountActorId = event->Sender;
@@ -292,10 +318,13 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         bool volumeStarted = false;
         bool volumeStopped = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
-                        auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
+                        auto* msg = event->Get<
+                            TEvServicePrivate::TEvVolumeTabletStatus>();
                         if (msg->VolumeActor) {
                             volumeStarted = true;
                         }
@@ -331,10 +360,13 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         bool volumeStarted = false;
         bool volumeStopped = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
-                        auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
+                        auto* msg = event->Get<
+                            TEvServicePrivate::TEvVolumeTabletStatus>();
                         if (msg->VolumeActor) {
                             volumeStarted = true;
                         }
@@ -345,14 +377,14 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
                         break;
                     case TEvHiveProxy::EvLockTabletRequest: {
                         attemptedToLockVolumeTablet = true;
-                        auto response = std::make_unique<TEvHiveProxy::TEvLockTabletResponse>(
-                            error);
+                        auto response = std::make_unique<
+                            TEvHiveProxy::TEvLockTabletResponse>(error);
                         runtime.Send(
                             new IEventHandle(
                                 event->Sender,
                                 event->Recipient,
                                 response.release(),
-                                0, // flags
+                                0,   // flags
                                 event->Cookie),
                             nodeIdx);
                         return TTestActorRuntime::EEventAction::DROP;
@@ -384,10 +416,13 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         bool volumeStarted = false;
         bool volumeStopped = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
-                        auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
+                        auto* msg = event->Get<
+                            TEvServicePrivate::TEvVolumeTabletStatus>();
                         if (msg->VolumeActor) {
                             volumeStarted = true;
                         }
@@ -399,14 +434,15 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
                     case TEvHiveProxy::EvBootExternalRequest: {
                         if (!onceFailedExternalBoot) {
                             onceFailedExternalBoot = true;
-                            auto response = std::make_unique<TEvHiveProxy::TEvBootExternalResponse>(
+                            auto response = std::make_unique<
+                                TEvHiveProxy::TEvBootExternalResponse>(
                                 MakeError(E_ARGUMENT, "Boot external failed"));
                             runtime.Send(
                                 new IEventHandle(
                                     event->Sender,
                                     event->Recipient,
                                     response.release(),
-                                    0, // flags
+                                    0,   // flags
                                     event->Cookie),
                                 nodeIdx);
                             return TTestActorRuntime::EEventAction::DROP;
@@ -452,10 +488,13 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
 
         TActorId startVolumeActorId;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
-                        auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
+                        auto* msg = event->Get<
+                            TEvServicePrivate::TEvVolumeTabletStatus>();
                         if (msg->VolumeActor) {
                             volumeStarted = true;
                         }
@@ -468,7 +507,8 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
                     }
                     case TEvHiveProxy::EvLockTabletRequest: {
                         startVolumeActorId = event->Sender;
-                        auto poisonPill = std::make_unique<TEvents::TEvPoisonPill>();
+                        auto poisonPill =
+                            std::make_unique<TEvents::TEvPoisonPill>();
                         runtime.Send(
                             new IEventHandle(
                                 startVolumeActorId,
@@ -477,24 +517,33 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
                             nodeIdx);
                         capturedEvents.emplace_back(EEvent::LOCK_REQUEST);
                         // Let poison pill reach the actor
-                        runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(100));
+                        runtime.DispatchEvents(
+                            TDispatchOptions(),
+                            TDuration::MilliSeconds(100));
                         break;
                     }
                     case TEvHiveProxy::EvLockTabletResponse: {
-                        if (startVolumeActorId && event->Recipient == startVolumeActorId) {
+                        if (startVolumeActorId &&
+                            event->Recipient == startVolumeActorId)
+                        {
                             capturedEvents.emplace_back(EEvent::LOCK_RESPONSE);
                         }
                         break;
                     }
                     case TEvHiveProxy::EvUnlockTabletRequest: {
-                        if (startVolumeActorId && event->Sender == startVolumeActorId) {
+                        if (startVolumeActorId &&
+                            event->Sender == startVolumeActorId)
+                        {
                             capturedEvents.emplace_back(EEvent::UNLOCK_REQUEST);
                         }
                         break;
                     }
                     case TEvHiveProxy::EvUnlockTabletResponse: {
-                        if (startVolumeActorId && event->Recipient == startVolumeActorId) {
-                            capturedEvents.emplace_back(EEvent::UNLOCK_RESPONSE);
+                        if (startVolumeActorId &&
+                            event->Recipient == startVolumeActorId)
+                        {
+                            capturedEvents.emplace_back(
+                                EEvent::UNLOCK_RESPONSE);
                         }
                         break;
                     }
@@ -553,10 +602,13 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         ui64 volumeTabletId = 0;
         bool bootExternalReceived = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
-                        auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
+                        auto* msg = event->Get<
+                            TEvServicePrivate::TEvVolumeTabletStatus>();
                         if (msg->VolumeActor) {
                             volumeStarted = true;
                         }
@@ -568,7 +620,8 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
                         break;
                     }
                     case TEvHiveProxy::EvLockTabletRequest: {
-                        const auto* msg = event->Get<TEvHiveProxy::TEvLockTabletRequest>();
+                        const auto* msg =
+                            event->Get<TEvHiveProxy::TEvLockTabletRequest>();
                         volumeTabletId = msg->TabletId;
                         startVolumeActorId = event->Sender;
                         capturedEvents.emplace_back(EEvent::LOCK_REQUEST);
@@ -582,7 +635,8 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
                     }
                     case TEvHiveProxy::EvBootExternalRequest: {
                         if (startVolumeActorId == event->Sender) {
-                            capturedEvents.emplace_back(EEvent::BOOT_EXTERNAL_REQUEST);
+                            capturedEvents.emplace_back(
+                                EEvent::BOOT_EXTERNAL_REQUEST);
                         }
                         break;
                     }
@@ -590,21 +644,24 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
                         if (startVolumeActorId == event->Recipient ||
                             startVolumeActorId == event->GetRecipientRewrite())
                         {
-                            capturedEvents.emplace_back(EEvent::BOOT_EXTERNAL_RESPONSE);
+                            capturedEvents.emplace_back(
+                                EEvent::BOOT_EXTERNAL_RESPONSE);
                             bootExternalReceived = true;
                         }
                         break;
                     }
                     case NNodeWhiteboard::TEvWhiteboard::EvTabletStateUpdate: {
-                        const auto* msg = event->Get<NNodeWhiteboard::TEvWhiteboard::TEvTabletStateUpdate>();
-                        if (bootExternalReceived &&
-                            volumeTabletId &&
+                        const auto* msg =
+                            event->Get<NNodeWhiteboard::TEvWhiteboard::
+                                           TEvTabletStateUpdate>();
+                        if (bootExternalReceived && volumeTabletId &&
                             msg->Record.GetTabletId() == volumeTabletId &&
                             !volumeActorId)
                         {
                             volumeActorId = event->Sender;
                             capturedEvents.emplace_back(EEvent::START_REQUEST);
-                            auto poisonPill = std::make_unique<TEvents::TEvPoisonPill>();
+                            auto poisonPill =
+                                std::make_unique<TEvents::TEvPoisonPill>();
                             runtime.Send(
                                 new IEventHandle(
                                     startVolumeActorId,
@@ -612,7 +669,9 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
                                     poisonPill.release()),
                                 nodeIdx);
                             // Let poison pill reach the actor
-                            runtime.DispatchEvents(TDispatchOptions(), TDuration::MilliSeconds(100));
+                            runtime.DispatchEvents(
+                                TDispatchOptions(),
+                                TDuration::MilliSeconds(100));
                         }
                         break;
                     }
@@ -648,7 +707,8 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
                         if (startVolumeActorId == event->Recipient ||
                             startVolumeActorId == event->GetRecipientRewrite())
                         {
-                            capturedEvents.emplace_back(EEvent::UNLOCK_RESPONSE);
+                            capturedEvents.emplace_back(
+                                EEvent::UNLOCK_RESPONSE);
                         }
                         break;
                     }
@@ -690,7 +750,9 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateVolume();
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvHiveProxy::EvLockTabletRequest: {
                         startVolumeActorId = event->Sender;
@@ -700,27 +762,29 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
                         auto* msg = event->Get<TEvStateStorage::TEvInfo>();
 
                         {
-                            auto request = std::make_unique<TEvHiveProxy::TEvTabletLockLost>(0);
+                            auto request = std::make_unique<
+                                TEvHiveProxy::TEvTabletLockLost>(0);
                             runtime.Send(
                                 new IEventHandle(
                                     startVolumeActorId,
                                     event->Sender,
                                     request.release(),
-                                    0, // flags
+                                    0,   // flags
                                     event->Cookie),
                                 nodeIdx);
                         }
 
                         // trigger TabletDead message
                         {
-                            auto request = std::make_unique<TEvStateStorage::TEvReplicaLeaderDemoted>();
+                            auto request = std::make_unique<
+                                TEvStateStorage::TEvReplicaLeaderDemoted>();
                             request->Record.SetTabletID(msg->TabletID);
                             runtime.Send(
                                 new IEventHandle(
                                     event->Recipient,
                                     event->Sender,
                                     request.release(),
-                                    0, // flags
+                                    0,   // flags
                                     event->Cookie),
                                 nodeIdx);
                         }
@@ -748,10 +812,13 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         TActorId volumeActorId;
         bool volumeStopped = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvServicePrivate::EvVolumeTabletStatus: {
-                        auto* msg = event->Get<TEvServicePrivate::TEvVolumeTabletStatus>();
+                        auto* msg = event->Get<
+                            TEvServicePrivate::TEvVolumeTabletStatus>();
                         volumeActorId = msg->VolumeActor;
                         break;
                     }
@@ -759,7 +826,8 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
                         volumeStopped = true;
                         break;
                     case TEvHiveProxy::EvBootExternalResponse: {
-                        auto* msg = event->Get<TEvHiveProxy::TEvBootExternalResponse>();
+                        auto* msg =
+                            event->Get<TEvHiveProxy::TEvBootExternalResponse>();
                         auto* suggestedGeneration =
                             const_cast<ui32*>(&msg->SuggestedGeneration);
                         *suggestedGeneration = 1;
@@ -773,7 +841,9 @@ Y_UNIT_TEST_SUITE(TServiceStartStopVolumeTest)
         UNIT_ASSERT(volumeActorId);
         UNIT_ASSERT(!volumeStopped);
 
-        service.SendRequest(volumeActorId, std::make_unique<TEvents::TEvPoisonPill>());
+        service.SendRequest(
+            volumeActorId,
+            std::make_unique<TEvents::TEvPoisonPill>());
         {
             TDispatchOptions options;
             options.FinalEvents.push_back(TEvVolume::EvWaitReadyResponse);

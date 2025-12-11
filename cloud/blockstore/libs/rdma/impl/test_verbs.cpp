@@ -16,16 +16,15 @@ namespace NCloud::NBlockStore::NRdma::NVerbs {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TConnectionEvent
-    : rdma_cm_event
+struct TConnectionEvent: rdma_cm_event
 {
     bool HaveConnParam = false;
 
     TConnectionEvent(
-            rdma_cm_event_type eventType,
-            rdma_cm_id* cmId,
-            rdma_cm_id* listenId,
-            rdma_conn_param* connParam)
+        rdma_cm_event_type eventType,
+        rdma_cm_id* cmId,
+        rdma_cm_id* listenId,
+        rdma_conn_param* connParam)
         : rdma_cm_event{}
     {
         id = cmId;
@@ -35,10 +34,7 @@ struct TConnectionEvent
         if (connParam) {
             param.conn = *connParam;
             void* data = malloc(param.conn.private_data_len);
-            memcpy(
-                data,
-                connParam->private_data,
-                connParam->private_data_len);
+            memcpy(data, connParam->private_data, connParam->private_data_len);
             param.conn.private_data = data;
             HaveConnParam = true;
         }
@@ -78,15 +74,13 @@ void EnqueueConnectionEvent(
 // TODO: implement queue pairs (qp) - right now the code in this file completely
 // ignores the queue pair entity.
 
-struct TTestVerbs
-    : IVerbs
+struct TTestVerbs: IVerbs
 {
     TTestContextPtr TestContext;
 
     TTestVerbs(TTestContextPtr testContext)
         : TestContext(std::move(testContext))
-    {
-    }
+    {}
 
     TDeviceListPtr GetDeviceList() override
     {
@@ -107,8 +101,7 @@ struct TTestVerbs
         return NullPtr;
     }
 
-    struct TMemoryRegion
-        : ibv_mr
+    struct TMemoryRegion: ibv_mr
     {
         TMemoryRegion(ibv_pd* ibvPd, void* bAddr, size_t bLen)
         {
@@ -144,8 +137,7 @@ struct TTestVerbs
         };
     }
 
-    struct TCompletionChannel
-        : ibv_comp_channel
+    struct TCompletionChannel: ibv_comp_channel
     {
         TCompletionChannel(TTestContextPtr testContext, ibv_context* ibvContext)
         {
@@ -164,9 +156,8 @@ struct TTestVerbs
     TCompletionChannelPtr CreateCompletionChannel(ibv_context* context) override
     {
         return {
-            static_cast<ibv_comp_channel*>(new TCompletionChannel(
-                TestContext,
-                context)),
+            static_cast<ibv_comp_channel*>(
+                new TCompletionChannel(TestContext, context)),
             TCompletionChannel::Destroy,
         };
     }
@@ -174,8 +165,8 @@ struct TTestVerbs
     TCompletionQueuePtr CreateCompletionQueue(
         ibv_context* context,
         int cqe,
-        void *cq_context,
-        ibv_comp_channel *channel,
+        void* cq_context,
+        ibv_comp_channel* channel,
         int comp_vector) override
     {
         Y_UNUSED(context);
@@ -207,9 +198,7 @@ struct TTestVerbs
         TestContext->CompletionHandle.Clear();
     }
 
-    bool PollCompletionQueue(
-        ibv_cq* cq,
-        ICompletionHandler* handler) override
+    bool PollCompletionQueue(ibv_cq* cq, ICompletionHandler* handler) override
     {
         Y_UNUSED(cq);
 
@@ -219,18 +208,17 @@ struct TTestVerbs
         with_lock (TestContext->CompletionLock) {
             sends = {
                 TestContext->SendEvents.begin(),
-                TestContext->SendEvents.end()
-            };
+                TestContext->SendEvents.end()};
             TestContext->SendEvents.clear();
 
             recvs = {
                 TestContext->ProcessedRecvEvents.begin(),
-                TestContext->ProcessedRecvEvents.end()
-            };
+                TestContext->ProcessedRecvEvents.end()};
             TestContext->ProcessedRecvEvents.clear();
         }
 
-        auto handleEvent = [&] (ui64 wrId, ibv_wc_opcode opcode) {
+        auto handleEvent = [&](ui64 wrId, ibv_wc_opcode opcode)
+        {
             ibv_wc wc = {
                 .wr_id = wrId,
                 .status = IBV_WC_SUCCESS,
@@ -283,8 +271,7 @@ struct TTestVerbs
 
     // connection manager
 
-    struct TAddressInfo
-        : rdma_addrinfo
+    struct TAddressInfo: rdma_addrinfo
     {
         TSockAddrInet6 SrcAddr;
         TSockAddrInet6 DstAddr;
@@ -293,10 +280,7 @@ struct TTestVerbs
             : SrcAddr("::1", 1111)
             , DstAddr(host.data(), port)
         {
-            memset(
-                static_cast<rdma_addrinfo*>(this),
-                0,
-                sizeof(rdma_addrinfo));
+            memset(static_cast<rdma_addrinfo*>(this), 0, sizeof(rdma_addrinfo));
             ai_src_addr = SrcAddr.SockAddr();
             ai_dst_addr = DstAddr.SockAddr();
         }
@@ -321,8 +305,7 @@ struct TTestVerbs
         };
     }
 
-    struct TEventChannel
-        : rdma_event_channel
+    struct TEventChannel: rdma_event_channel
     {
         TTestContextPtr Context;
 
@@ -360,8 +343,7 @@ struct TTestVerbs
         return NullPtr;
     }
 
-    struct TConnection
-        : rdma_cm_id
+    struct TConnection: rdma_cm_id
     {
         TString Peer;
 
@@ -377,7 +359,7 @@ struct TTestVerbs
             Y_UNUSED(ps);
         }
 
-        static int Destroy(rdma_cm_id *id)
+        static int Destroy(rdma_cm_id* id)
         {
             delete static_cast<TConnection*>(id);
             return 0;
@@ -428,7 +410,7 @@ struct TTestVerbs
         EnqueueConnectionEvent(TestContext, RDMA_CM_EVENT_ROUTE_RESOLVED, id);
     }
 
-    TString GetPeer(rdma_cm_id *id) override
+    TString GetPeer(rdma_cm_id* id) override
     {
         auto* addr = &id->route.addr.dst_addr;
 
@@ -445,13 +427,10 @@ struct TTestVerbs
         }
     }
 
-    void Reject(
-        rdma_cm_id* id,
-        rdma_conn_param* param,
-        int status)
+    void Reject(rdma_cm_id* id, rdma_conn_param* param, int status)
     {
-        const auto* connect = static_cast<const TConnectMessage*>(
-            param->private_data);
+        const auto* connect =
+            static_cast<const TConnectMessage*>(param->private_data);
 
         // emulate internal server error
         TRejectMessage reject = {
@@ -469,7 +448,7 @@ struct TTestVerbs
             TestContext,
             RDMA_CM_EVENT_REJECTED,
             id,
-            nullptr,    // listenId
+            nullptr,   // listenId
             param);
     }
 
@@ -483,7 +462,7 @@ struct TTestVerbs
             TestContext,
             RDMA_CM_EVENT_ESTABLISHED,
             id,
-            nullptr,    // listenId
+            nullptr,   // listenId
             param);
     }
 
@@ -557,7 +536,7 @@ void CreateConnection(TTestContextPtr context)
         context,
         RDMA_CM_EVENT_CONNECT_REQUEST,
         id.get(),
-        context->Connection,    // listenId
+        context->Connection,   // listenId
         &param);
 
     context->ClientConnections.push_back(std::move(id));
@@ -571,7 +550,8 @@ void Disconnect(TTestContextPtr context)
         static_cast<rdma_cm_id*>(context->Connection));
 
     with_lock (context->CompletionLock) {
-        context->HandleCompletionEvent = [] (ibv_wc* wc) {
+        context->HandleCompletionEvent = [](ibv_wc* wc)
+        {
             wc->status = IBV_WC_WR_FLUSH_ERR;
             wc->opcode = static_cast<ibv_wc_opcode>(0);
         };

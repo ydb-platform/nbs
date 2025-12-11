@@ -23,10 +23,8 @@ void TPartitionActor::HandleAddGarbage(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -38,10 +36,7 @@ void TPartitionActor::HandleAddGarbage(
 
     AddTransaction<TEvPartitionPrivate::TAddGarbageMethod>(*requestInfo);
 
-    ExecuteTx<TAddGarbage>(
-        ctx,
-        requestInfo,
-        std::move(msg->BlobIds));
+    ExecuteTx<TAddGarbage>(ctx, requestInfo, std::move(msg->BlobIds));
 }
 
 bool TPartitionActor::PrepareAddGarbage(
@@ -54,8 +49,8 @@ bool TPartitionActor::PrepareAddGarbage(
     TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
 
-    return db.ReadKnownBlobIds(args.KnownBlobIds)
-        && db.ReadGarbageBlobs(args.KnownBlobIds);
+    return db.ReadKnownBlobIds(args.KnownBlobIds) &&
+           db.ReadGarbageBlobs(args.KnownBlobIds);
 }
 
 void TPartitionActor::ExecuteAddGarbage(
@@ -73,14 +68,18 @@ void TPartitionActor::ExecuteAddGarbage(
 
     TVector<TPartialBlobId> diff;
     std::set_difference(
-        args.BlobIds.begin(), args.BlobIds.end(),
-        args.KnownBlobIds.begin(), args.KnownBlobIds.end(),
+        args.BlobIds.begin(),
+        args.BlobIds.end(),
+        args.KnownBlobIds.begin(),
+        args.KnownBlobIds.end(),
         std::inserter(diff, diff.begin()));
 
     auto& garbageQueue = State->GetGarbageQueue();
     for (const auto& blobId: diff) {
         if (!IsDeletionMarker(blobId)) {
-            LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
+            LOG_INFO(
+                ctx,
+                TBlockStoreComponents::PARTITION,
                 "[%lu] Add garbage blob: %s",
                 TabletID(),
                 ToString(MakeBlobId(TabletID(), blobId)).data());
@@ -99,7 +98,8 @@ void TPartitionActor::CompleteAddGarbage(
 {
     TRequestScope timer(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvPartitionPrivate::TEvAddGarbageResponse>();
+    auto response =
+        std::make_unique<TEvPartitionPrivate::TEvAddGarbageResponse>();
 
     LWTRACK(
         ResponseSent_Partition,

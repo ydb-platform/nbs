@@ -1,6 +1,7 @@
 #pragma once
 
 #include "public.h"
+
 #include "volume_state.h"
 
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
@@ -18,17 +19,17 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_VOLUME_REQUESTS_PRIVATE(xxx, ...)                           \
-    xxx(ResetMountSeqNumber,                __VA_ARGS__)                       \
-    xxx(ReadHistory,                        __VA_ARGS__)                       \
-    xxx(UpdateDevices,                      __VA_ARGS__)                       \
-    xxx(UpdateCheckpointRequest,            __VA_ARGS__)                       \
-    xxx(UpdateShadowDiskState,              __VA_ARGS__)                       \
-    xxx(ReadMetaHistory,                    __VA_ARGS__)                       \
-    xxx(DeviceTimedOut,                     __VA_ARGS__)                       \
-    xxx(UpdateFollowerState,                __VA_ARGS__)                       \
-    xxx(TakeVolumeRequestId,                __VA_ARGS__)                       \
-// BLOCKSTORE_VOLUME_REQUESTS_PRIVATE
+#define BLOCKSTORE_VOLUME_REQUESTS_PRIVATE(xxx, ...) \
+    xxx(ResetMountSeqNumber, __VA_ARGS__)            \
+    xxx(ReadHistory, __VA_ARGS__)                    \
+    xxx(UpdateDevices, __VA_ARGS__)                  \
+    xxx(UpdateCheckpointRequest, __VA_ARGS__)        \
+    xxx(UpdateShadowDiskState, __VA_ARGS__)          \
+    xxx(ReadMetaHistory, __VA_ARGS__)                \
+    xxx(DeviceTimedOut, __VA_ARGS__)                 \
+    xxx(UpdateFollowerState, __VA_ARGS__)            \
+    xxx(TakeVolumeRequestId, __VA_ARGS__)            \
+    // BLOCKSTORE_VOLUME_REQUESTS_PRIVATE
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -100,17 +101,15 @@ struct TEvVolumePrivate
         std::optional<TInstant> EndTs;
         size_t RecordCount;
 
-        TReadHistoryRequest(
-                TInstant timestamp,
-                size_t recordCount)
+        TReadHistoryRequest(TInstant timestamp, size_t recordCount)
             : StartTs(timestamp)
             , RecordCount(recordCount)
         {}
 
         TReadHistoryRequest(
-                TInstant startTs,
-                TInstant endTs,
-                size_t recordCount)
+            TInstant startTs,
+            TInstant endTs,
+            size_t recordCount)
             : StartTs(startTs)
             , EndTs(endTs)
             , RecordCount(recordCount)
@@ -176,9 +175,9 @@ struct TEvVolumePrivate
         ui64 DirtyBlockCount;
 
         TUpdateLaggingAgentMigrationState(
-                TString agentId,
-                ui64 cleanBlockCount,
-                ui64 dirtyBlockCount)
+            TString agentId,
+            ui64 cleanBlockCount,
+            ui64 dirtyBlockCount)
             : AgentId(std::move(agentId))
             , CleanBlockCount(cleanBlockCount)
             , DirtyBlockCount(dirtyBlockCount)
@@ -215,15 +214,15 @@ struct TEvVolumePrivate
         bool MuteIOErrors;
 
         TUpdateDevicesRequest(
-                TDevices devices,
-                TMigrations migrations,
-                TVector<TDevices> replicas,
-                TVector<TString> freshDeviceIds,
-                TVector<TString> removedLaggingDevices,
-                TVector<TString> unavailableDeviceIds,
-                NProto::EVolumeIOMode ioMode,
-                TInstant ioModeTs,
-                bool muteIOErrors)
+            TDevices devices,
+            TMigrations migrations,
+            TVector<TDevices> replicas,
+            TVector<TString> freshDeviceIds,
+            TVector<TString> removedLaggingDevices,
+            TVector<TString> unavailableDeviceIds,
+            NProto::EVolumeIOMode ioMode,
+            TInstant ioModeTs,
+            bool muteIOErrors)
             : Devices(std::move(devices))
             , Migrations(std::move(migrations))
             , Replicas(std::move(replicas))
@@ -253,7 +252,8 @@ struct TEvVolumePrivate
     //
 
     struct TPartStatsSaved
-    {};
+    {
+    };
 
     //
     // UpdateCheckpointRequest
@@ -268,18 +268,17 @@ struct TEvVolumePrivate
         TString ShadowDiskId;
 
         TUpdateCheckpointRequestRequest(
-                TRequestInfoPtr requestInfo,
-                ui64 requestId,
-                bool completed,
-                std::optional<TString> error,
-                TString shadowDiskId)
+            TRequestInfoPtr requestInfo,
+            ui64 requestId,
+            bool completed,
+            std::optional<TString> error,
+            TString shadowDiskId)
             : RequestInfo(std::move(requestInfo))
             , RequestId(requestId)
             , Completed(completed)
             , Error(std::move(error))
             , ShadowDiskId(std::move(shadowDiskId))
-        {
-        }
+        {}
     };
 
     struct TUpdateCheckpointRequestResponse
@@ -295,9 +294,7 @@ struct TEvVolumePrivate
         const ui64 VolumeRequestId;
         const ui32 ResultCode;
 
-        TWriteOrZeroCompleted(
-                ui64 volumeRequestId,
-                ui32 resultCode)
+        TWriteOrZeroCompleted(ui64 volumeRequestId, ui32 resultCode)
             : VolumeRequestId(volumeRequestId)
             , ResultCode(resultCode)
         {}
@@ -368,9 +365,9 @@ struct TEvVolumePrivate
         ui64 ProcessedBlockCount = 0;
 
         TUpdateShadowDiskStateRequest(
-                TString checkpointId,
-                EReason reason,
-                ui64 processedBlockCount)
+            TString checkpointId,
+            EReason reason,
+            ui64 processedBlockCount)
             : CheckpointId(std::move(checkpointId))
             , Reason(reason)
             , ProcessedBlockCount(processedBlockCount)
@@ -385,8 +382,8 @@ struct TEvVolumePrivate
         TUpdateShadowDiskStateResponse() = default;
 
         TUpdateShadowDiskStateResponse(
-                EShadowDiskState newState,
-                ui64 processedBlockCount)
+            EShadowDiskState newState,
+            ui64 processedBlockCount)
             : NewState(newState)
             , ProcessedBlockCount(processedBlockCount)
         {}
@@ -551,79 +548,57 @@ struct TEvVolumePrivate
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TBlockStorePrivateEvents::VOLUME_END,
+    static_assert(
+        EvEnd < (int)TBlockStorePrivateEvents::VOLUME_END,
         "EvEnd expected to be < TBlockStorePrivateEvents::VOLUME_END");
 
     BLOCKSTORE_VOLUME_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENTS)
 
     using TEvUpdateCounters = TRequestEvent<TEmpty, EvUpdateCounters>;
 
-    using TEvUpdateThrottlerState = TRequestEvent<TEmpty, EvUpdateThrottlerState>;
+    using TEvUpdateThrottlerState =
+        TRequestEvent<TEmpty, EvUpdateThrottlerState>;
 
-    using TEvProcessUpdateVolumeConfig = TRequestEvent<
-        TProcessUpdateVolumeConfig,
-        EvProcessUpdateVolumeConfig
-    >;
+    using TEvProcessUpdateVolumeConfig =
+        TRequestEvent<TProcessUpdateVolumeConfig, EvProcessUpdateVolumeConfig>;
 
-    using TEvAllocateDiskIfNeeded = TRequestEvent<
-        TAllocateDiskIfNeeded,
-        EvAllocateDiskIfNeeded
-    >;
+    using TEvAllocateDiskIfNeeded =
+        TRequestEvent<TAllocateDiskIfNeeded, EvAllocateDiskIfNeeded>;
 
-    using TEvRetryStartPartition = TRequestEvent<
-        TRetryStartPartition,
-        EvRetryStartPartition
-    >;
+    using TEvRetryStartPartition =
+        TRequestEvent<TRetryStartPartition, EvRetryStartPartition>;
 
-    using TEvAcquireDiskIfNeeded = TRequestEvent<
-        TAcquireDiskIfNeeded,
-        EvAcquireDiskIfNeeded
-    >;
+    using TEvAcquireDiskIfNeeded =
+        TRequestEvent<TAcquireDiskIfNeeded, EvAcquireDiskIfNeeded>;
 
-    using TEvPartStatsSaved = TRequestEvent<
-        TPartStatsSaved,
-        EvPartStatsSaved
-    >;
+    using TEvPartStatsSaved = TRequestEvent<TPartStatsSaved, EvPartStatsSaved>;
 
-    using TEvWriteOrZeroCompleted = TRequestEvent<
-        TWriteOrZeroCompleted,
-        EvWriteOrZeroCompleted
-    >;
+    using TEvWriteOrZeroCompleted =
+        TRequestEvent<TWriteOrZeroCompleted, EvWriteOrZeroCompleted>;
 
-    using TEvUpdateReadWriteClientInfo = TRequestEvent<
-        TUpdateReadWriteClientInfo,
-        EvUpdateReadWriteClientInfo
-    >;
+    using TEvUpdateReadWriteClientInfo =
+        TRequestEvent<TUpdateReadWriteClientInfo, EvUpdateReadWriteClientInfo>;
 
     using TEvUpdateLaggingAgentMigrationState = TRequestEvent<
         TUpdateLaggingAgentMigrationState,
-        EvUpdateLaggingAgentMigrationState
-    >;
+        EvUpdateLaggingAgentMigrationState>;
 
     using TEvLaggingAgentMigrationFinished = TRequestEvent<
         TLaggingAgentMigrationFinished,
-        EvLaggingAgentMigrationFinished
-    >;
+        EvLaggingAgentMigrationFinished>;
 
     using TEvReportOutdatedLaggingDevicesToDR = TRequestEvent<
         TReportOutdatedLaggingDevicesToDR,
-        EvReportOutdatedLaggingDevicesToDR
-    >;
+        EvReportOutdatedLaggingDevicesToDR>;
 
-    using TEvRemoveExpiredVolumeParams = TRequestEvent<
-        TRemoveExpiredVolumeParams,
-        EvRemoveExpiredVolumeParams
-    >;
+    using TEvRemoveExpiredVolumeParams =
+        TRequestEvent<TRemoveExpiredVolumeParams, EvRemoveExpiredVolumeParams>;
 
-    using TEvShadowDiskAcquired = TRequestEvent<
-        TShadowDiskAcquired,
-        EvShadowDiskAcquired
-    >;
+    using TEvShadowDiskAcquired =
+        TRequestEvent<TShadowDiskAcquired, EvShadowDiskAcquired>;
 
-    using TEvExternalDrainDone = TRequestEvent<
-        TExternalDrainDone,
-        EvExternalDrainDone
-    >;
+    using TEvExternalDrainDone =
+        TRequestEvent<TExternalDrainDone, EvExternalDrainDone>;
 
     using TEvDevicesAcquireFinished =
         TResponseEvent<TDevicesAcquireFinished, EvDevicesAcquireFinished>;

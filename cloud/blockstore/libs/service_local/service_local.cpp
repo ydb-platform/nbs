@@ -40,8 +40,7 @@ TFuture<TResponse> SafeAsyncExecute(T&& block)
     try {
         return block();
     } catch (const TServiceError& e) {
-        return MakeFuture<TResponse>(
-            TErrorResponse(e.GetCode(), e.what()));
+        return MakeFuture<TResponse>(TErrorResponse(e.GetCode(), e.what()));
     } catch (const TIoSystemError& e) {
         return MakeFuture<TResponse>(
             TErrorResponse(MAKE_SYSTEM_ERROR(e.Status()), e.what()));
@@ -71,11 +70,11 @@ struct TMountSession
     std::unique_ptr<TStorageAdapter> StorageAdapter;
 
     TMountSession(
-            TString clientId,
-            NProto::EVolumeAccessMode accessMode,
-            IStoragePtr storage,
-            ui32 blockSize,
-            TDuration storageShutdownTimeout)
+        TString clientId,
+        NProto::EVolumeAccessMode accessMode,
+        IStoragePtr storage,
+        ui32 blockSize,
+        TDuration storageShutdownTimeout)
         : SessionId(CreateGuidAsString())
         , ClientId(std::move(clientId))
         , AccessMode(accessMode)
@@ -214,9 +213,9 @@ private:
 
 public:
     TVolumeManager(
-            const TString& dataDir,
-            TDuration storageShutdownTimeout,
-            IStorageProviderPtr storageProvider)
+        const TString& dataDir,
+        TDuration storageShutdownTimeout,
+        IStorageProviderPtr storageProvider)
         : DataDir(dataDir ? dataDir : NFs::CurrentWorkingDirectory())
         , StorageShutdownTimeout(storageShutdownTimeout)
         , StorageProvider(std::move(storageProvider))
@@ -276,10 +275,7 @@ public:
             return;
         }
 
-        mountedVolume->Resize(
-            blocksCount,
-            dataPath,
-            StorageProvider);
+        mountedVolume->Resize(blocksCount, dataPath, StorageProvider);
     }
 
     void DestroyVolume(const TString& diskId)
@@ -361,13 +357,11 @@ public:
     {
         auto volume = FindMountedVolume(diskId);
         if (!volume) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume not mounted";
+            ythrow TServiceError(E_ARGUMENT) << "Volume not mounted";
         }
 
         if (!volume->RemoveSession(sessionId)) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume not mounted";
+            ythrow TServiceError(E_ARGUMENT) << "Volume not mounted";
         }
     }
 
@@ -433,8 +427,7 @@ struct TLocalServiceBase: public TBlockStoreImpl<TLocalServiceBase, IBlockStore>
 
 constexpr auto DefaultStorageShutdownTimeout = TDuration::Minutes(1);
 
-class TLocalService final
-    : public TLocalServiceBase
+class TLocalService final: public TLocalServiceBase
 {
 private:
     IDiscoveryServicePtr DiscoveryService;
@@ -442,9 +435,9 @@ private:
 
 public:
     TLocalService(
-            const NProto::TLocalServiceConfig& config,
-            IDiscoveryServicePtr discoveryService,
-            IStorageProviderPtr storageProvider)
+        const NProto::TLocalServiceConfig& config,
+        IDiscoveryServicePtr discoveryService,
+        IStorageProviderPtr storageProvider)
         : DiscoveryService(std::move(discoveryService))
         , VolumeManager(
               config.GetDataDir(),
@@ -454,8 +447,10 @@ public:
               std::move(storageProvider))
     {}
 
-    void Start() override {}
-    void Stop() override {}
+    void Start() override
+    {}
+    void Stop() override
+    {}
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
     {
@@ -531,16 +526,16 @@ public:
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TDestroyVolumeLinkRequest> request) override;
 
-#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr ctx,                                                   \
-        std::shared_ptr<NProto::T##name##Request> request) override            \
-    {                                                                          \
-        Y_UNUSED(ctx);                                                         \
-        Y_UNUSED(request);                                                     \
-        return MakeFuture(NProto::T##name##Response());                        \
-    }                                                                          \
-// BLOCKSTORE_IMPLEMENT_METHOD
+#define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                      \
+    TFuture<NProto::T##name##Response> name(                        \
+        TCallContextPtr ctx,                                        \
+        std::shared_ptr<NProto::T##name##Request> request) override \
+    {                                                               \
+        Y_UNUSED(ctx);                                              \
+        Y_UNUSED(request);                                          \
+        return MakeFuture(NProto::T##name##Response());             \
+    }                                                               \
+    // BLOCKSTORE_IMPLEMENT_METHOD
 
     BLOCKSTORE_IMPLEMENT_METHOD(CreateCheckpoint)
     BLOCKSTORE_IMPLEMENT_METHOD(DeleteCheckpoint)
@@ -554,8 +549,8 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 TFuture<NProto::TPingResponse> TLocalService::Ping(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TPingRequest> request)
+    TCallContextPtr ctx,
+    std::shared_ptr<NProto::TPingRequest> request)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(request);
@@ -567,33 +562,35 @@ TFuture<NProto::TCreateVolumeResponse> TLocalService::CreateVolume(
     std::shared_ptr<NProto::TCreateVolumeRequest> request)
 {
     Y_UNUSED(ctx);
-    return SafeAsyncExecute<NProto::TCreateVolumeResponse>([=, this] {
-        const auto& diskId = request->GetDiskId();
-        if (!diskId) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume ID should be specified";
-        }
+    return SafeAsyncExecute<NProto::TCreateVolumeResponse>(
+        [=, this]
+        {
+            const auto& diskId = request->GetDiskId();
+            if (!diskId) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Volume ID should be specified";
+            }
 
-        ui32 blockSize = request->GetBlockSize();
-        if (!blockSize) {
-            blockSize = DefaultBlockSize;
-        }
+            ui32 blockSize = request->GetBlockSize();
+            if (!blockSize) {
+                blockSize = DefaultBlockSize;
+            }
 
-        if (!IsPowerOf2(blockSize)) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume block size is not a power of 2";
-        }
+            if (!IsPowerOf2(blockSize)) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Volume block size is not a power of 2";
+            }
 
-        ui64 blocksCount = request->GetBlocksCount();
-        if (!blocksCount) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume blocks count should not be zero";
-        }
+            ui64 blocksCount = request->GetBlocksCount();
+            if (!blocksCount) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Volume blocks count should not be zero";
+            }
 
-        VolumeManager.CreateVolume(diskId, blockSize, blocksCount);
+            VolumeManager.CreateVolume(diskId, blockSize, blocksCount);
 
-        return MakeFuture<NProto::TCreateVolumeResponse>();
-    });
+            return MakeFuture<NProto::TCreateVolumeResponse>();
+        });
 }
 
 TFuture<NProto::TResizeVolumeResponse> TLocalService::ResizeVolume(
@@ -601,23 +598,25 @@ TFuture<NProto::TResizeVolumeResponse> TLocalService::ResizeVolume(
     std::shared_ptr<NProto::TResizeVolumeRequest> request)
 {
     Y_UNUSED(ctx);
-    return SafeAsyncExecute<NProto::TResizeVolumeResponse>([=, this] {
-        const auto& diskId = request->GetDiskId();
-        if (!diskId) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume ID should be specified";
-        }
+    return SafeAsyncExecute<NProto::TResizeVolumeResponse>(
+        [=, this]
+        {
+            const auto& diskId = request->GetDiskId();
+            if (!diskId) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Volume ID should be specified";
+            }
 
-        ui64 blocksCount = request->GetBlocksCount();
-        if (!blocksCount) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume blocks count should not be zero";
-        }
+            ui64 blocksCount = request->GetBlocksCount();
+            if (!blocksCount) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Volume blocks count should not be zero";
+            }
 
-        VolumeManager.ResizeVolume(diskId, blocksCount);
+            VolumeManager.ResizeVolume(diskId, blocksCount);
 
-        return MakeFuture<NProto::TResizeVolumeResponse>();
-    });
+            return MakeFuture<NProto::TResizeVolumeResponse>();
+        });
 }
 
 TFuture<NProto::TDestroyVolumeResponse> TLocalService::DestroyVolume(
@@ -625,47 +624,53 @@ TFuture<NProto::TDestroyVolumeResponse> TLocalService::DestroyVolume(
     std::shared_ptr<NProto::TDestroyVolumeRequest> request)
 {
     Y_UNUSED(ctx);
-    return SafeAsyncExecute<NProto::TDestroyVolumeResponse>([=, this] {
-        const auto& diskId = request->GetDiskId();
-        if (!diskId) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume ID should be specified";
-        }
+    return SafeAsyncExecute<NProto::TDestroyVolumeResponse>(
+        [=, this]
+        {
+            const auto& diskId = request->GetDiskId();
+            if (!diskId) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Volume ID should be specified";
+            }
 
-        VolumeManager.DestroyVolume(diskId);
+            VolumeManager.DestroyVolume(diskId);
 
-        return MakeFuture<NProto::TDestroyVolumeResponse>();
-    });
+            return MakeFuture<NProto::TDestroyVolumeResponse>();
+        });
 }
 
 TFuture<NProto::TListVolumesResponse> TLocalService::ListVolumes(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TListVolumesRequest> request)
+    TCallContextPtr ctx,
+    std::shared_ptr<NProto::TListVolumesRequest> request)
 {
     Y_UNUSED(ctx);
     Y_UNUSED(request);
-    return SafeAsyncExecute<NProto::TListVolumesResponse>([=, this] {
-        auto response = VolumeManager.ListVolumes();
-        return MakeFuture(std::move(response));
-    });
+    return SafeAsyncExecute<NProto::TListVolumesResponse>(
+        [=, this]
+        {
+            auto response = VolumeManager.ListVolumes();
+            return MakeFuture(std::move(response));
+        });
 }
 
 TFuture<NProto::TDescribeVolumeResponse> TLocalService::DescribeVolume(
-        TCallContextPtr ctx,
-        std::shared_ptr<NProto::TDescribeVolumeRequest> request)
+    TCallContextPtr ctx,
+    std::shared_ptr<NProto::TDescribeVolumeRequest> request)
 {
     Y_UNUSED(ctx);
-    return SafeAsyncExecute<NProto::TDescribeVolumeResponse>([=, this] {
-        const auto& diskId = request->GetDiskId();
-        if (!diskId) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume ID should be specified";
-        }
+    return SafeAsyncExecute<NProto::TDescribeVolumeResponse>(
+        [=, this]
+        {
+            const auto& diskId = request->GetDiskId();
+            if (!diskId) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Volume ID should be specified";
+            }
 
-        NProto::TDescribeVolumeResponse response;
-        *response.MutableVolume() = VolumeManager.DescribeVolume(diskId);
-        return MakeFuture(response);
-    });
+            NProto::TDescribeVolumeResponse response;
+            *response.MutableVolume() = VolumeManager.DescribeVolume(diskId);
+            return MakeFuture(response);
+        });
 }
 
 TFuture<NProto::TMountVolumeResponse> TLocalService::MountVolume(
@@ -673,25 +678,27 @@ TFuture<NProto::TMountVolumeResponse> TLocalService::MountVolume(
     std::shared_ptr<NProto::TMountVolumeRequest> request)
 {
     Y_UNUSED(ctx);
-    return SafeAsyncExecute<NProto::TMountVolumeResponse>([=, this] {
-        const auto& diskId = request->GetDiskId();
-        if (!diskId) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume ID should be specified";
-        }
+    return SafeAsyncExecute<NProto::TMountVolumeResponse>(
+        [=, this]
+        {
+            const auto& diskId = request->GetDiskId();
+            if (!diskId) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Volume ID should be specified";
+            }
 
-        const auto& clientId = GetClientId(*request);
-        if (!clientId) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Client ID should be specified";
-        }
+            const auto& clientId = GetClientId(*request);
+            if (!clientId) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Client ID should be specified";
+            }
 
-        return VolumeManager.MountVolume(
-            diskId,
-            clientId,
-            request->GetVolumeAccessMode(),
-            request->GetVolumeMountMode());
-    });
+            return VolumeManager.MountVolume(
+                diskId,
+                clientId,
+                request->GetVolumeAccessMode(),
+                request->GetVolumeMountMode());
+        });
 }
 
 TFuture<NProto::TUnmountVolumeResponse> TLocalService::UnmountVolume(
@@ -699,269 +706,272 @@ TFuture<NProto::TUnmountVolumeResponse> TLocalService::UnmountVolume(
     std::shared_ptr<NProto::TUnmountVolumeRequest> request)
 {
     Y_UNUSED(ctx);
-    return SafeAsyncExecute<NProto::TUnmountVolumeResponse>([=] {
-        const auto& diskId = request->GetDiskId();
-        if (!diskId) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume ID should be specified";
-        }
+    return SafeAsyncExecute<NProto::TUnmountVolumeResponse>(
+        [=]
+        {
+            const auto& diskId = request->GetDiskId();
+            if (!diskId) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Volume ID should be specified";
+            }
 
-        const auto& sessionId = request->GetSessionId();
-        if (!sessionId) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Session ID should be specified";
-        }
+            const auto& sessionId = request->GetSessionId();
+            if (!sessionId) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Session ID should be specified";
+            }
 
-        VolumeManager.UnmountVolume(diskId, sessionId);
+            VolumeManager.UnmountVolume(diskId, sessionId);
 
-        return MakeFuture<NProto::TUnmountVolumeResponse>();
-    });
+            return MakeFuture<NProto::TUnmountVolumeResponse>();
+        });
 }
 
 TFuture<NProto::TReadBlocksResponse> TLocalService::ReadBlocks(
     TCallContextPtr ctx,
     std::shared_ptr<NProto::TReadBlocksRequest> request)
 {
-    return SafeAsyncExecute<NProto::TReadBlocksResponse>([=, this] () mutable {
-        const auto& diskId = request->GetDiskId();
-        if (!diskId) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume ID should be specified";
-        }
+    return SafeAsyncExecute<NProto::TReadBlocksResponse>(
+        [=, this]() mutable
+        {
+            const auto& diskId = request->GetDiskId();
+            if (!diskId) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Volume ID should be specified";
+            }
 
-        const auto& sessionId = request->GetSessionId();
-        if (!sessionId) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Session ID should be specified";
-        }
+            const auto& sessionId = request->GetSessionId();
+            if (!sessionId) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Session ID should be specified";
+            }
 
-        auto volume = VolumeManager.FindMountedVolume(diskId);
-        if (!volume) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume not mounted";
-        }
+            auto volume = VolumeManager.FindMountedVolume(diskId);
+            if (!volume) {
+                ythrow TServiceError(E_ARGUMENT) << "Volume not mounted";
+            }
 
-        auto session = volume->FindSession(sessionId);
-        if (!session) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume not mounted";
-        }
+            auto session = volume->FindSession(sessionId);
+            if (!session) {
+                ythrow TServiceError(E_ARGUMENT) << "Volume not mounted";
+            }
 
-        ui64 startIndex = request->GetStartIndex();
-        if (startIndex >= volume->Volume.GetBlocksCount()) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Out of bounds read request";
-        }
+            ui64 startIndex = request->GetStartIndex();
+            if (startIndex >= volume->Volume.GetBlocksCount()) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Out of bounds read request";
+            }
 
-        ui32 blocksCount = request->GetBlocksCount();
-        if (startIndex + blocksCount > volume->Volume.GetBlocksCount()) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Out of bounds read request";
-        }
+            ui32 blocksCount = request->GetBlocksCount();
+            if (startIndex + blocksCount > volume->Volume.GetBlocksCount()) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Out of bounds read request";
+            }
 
-        return session->StorageAdapter->ReadBlocks(
-            Now(),
-            std::move(ctx),
-            std::move(request),
-            volume->Volume.GetBlockSize(),
-            {} // no data buffer
-        );
-    });
+            return session->StorageAdapter->ReadBlocks(
+                Now(),
+                std::move(ctx),
+                std::move(request),
+                volume->Volume.GetBlockSize(),
+                {}   // no data buffer
+            );
+        });
 }
 
 TFuture<NProto::TWriteBlocksResponse> TLocalService::WriteBlocks(
     TCallContextPtr ctx,
     std::shared_ptr<NProto::TWriteBlocksRequest> request)
 {
-    return SafeAsyncExecute<NProto::TWriteBlocksResponse>([=, this] () mutable {
-        const auto& diskId = request->GetDiskId();
-        if (!diskId) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume ID should be specified";
-        }
+    return SafeAsyncExecute<NProto::TWriteBlocksResponse>(
+        [=, this]() mutable
+        {
+            const auto& diskId = request->GetDiskId();
+            if (!diskId) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Volume ID should be specified";
+            }
 
-        const auto& sessionId = request->GetSessionId();
-        if (!sessionId) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Session ID should be specified";
-        }
+            const auto& sessionId = request->GetSessionId();
+            if (!sessionId) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Session ID should be specified";
+            }
 
-        auto volume = VolumeManager.FindMountedVolume(diskId);
-        if (!volume) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume not mounted";
-        }
+            auto volume = VolumeManager.FindMountedVolume(diskId);
+            if (!volume) {
+                ythrow TServiceError(E_ARGUMENT) << "Volume not mounted";
+            }
 
-        auto session = volume->FindSession(sessionId);
-        if (!session) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume not mounted";
-        }
+            auto session = volume->FindSession(sessionId);
+            if (!session) {
+                ythrow TServiceError(E_ARGUMENT) << "Volume not mounted";
+            }
 
-        const auto requestRange = TBlockRange64::WithLength(
-            request->GetStartIndex(),
-            CalculateWriteRequestBlockCount(
-                *request,
-                volume->Volume.GetBlocksCount()));
-        bool rangeOk =
-            TBlockRange64::WithLength(0, volume->Volume.GetBlocksCount())
-                .Contains(requestRange);
+            const auto requestRange = TBlockRange64::WithLength(
+                request->GetStartIndex(),
+                CalculateWriteRequestBlockCount(
+                    *request,
+                    volume->Volume.GetBlocksCount()));
+            bool rangeOk =
+                TBlockRange64::WithLength(0, volume->Volume.GetBlocksCount())
+                    .Contains(requestRange);
 
-        if (!rangeOk) {
-            ythrow TServiceError(E_ARGUMENT) << "Out of bounds write request";
-        }
+            if (!rangeOk) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Out of bounds write request";
+            }
 
-        return session->StorageAdapter->WriteBlocks(
-            Now(),
-            std::move(ctx),
-            std::move(request),
-            volume->Volume.GetBlockSize(),
-            {} // no data buffer
-        );
-    });
+            return session->StorageAdapter->WriteBlocks(
+                Now(),
+                std::move(ctx),
+                std::move(request),
+                volume->Volume.GetBlockSize(),
+                {}   // no data buffer
+            );
+        });
 }
 
 TFuture<NProto::TZeroBlocksResponse> TLocalService::ZeroBlocks(
     TCallContextPtr ctx,
     std::shared_ptr<NProto::TZeroBlocksRequest> request)
 {
-    return SafeAsyncExecute<NProto::TZeroBlocksResponse>([=, this] () mutable {
-        const auto& diskId = request->GetDiskId();
-        if (!diskId) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume ID should be specified";
-        }
+    return SafeAsyncExecute<NProto::TZeroBlocksResponse>(
+        [=, this]() mutable
+        {
+            const auto& diskId = request->GetDiskId();
+            if (!diskId) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Volume ID should be specified";
+            }
 
-        const auto& sessionId = request->GetSessionId();
-        if (!sessionId) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Session ID should be specified";
-        }
+            const auto& sessionId = request->GetSessionId();
+            if (!sessionId) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Session ID should be specified";
+            }
 
-        auto volume = VolumeManager.FindMountedVolume(diskId);
-        if (!volume) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume not mounted";
-        }
+            auto volume = VolumeManager.FindMountedVolume(diskId);
+            if (!volume) {
+                ythrow TServiceError(E_ARGUMENT) << "Volume not mounted";
+            }
 
-        auto session = volume->FindSession(sessionId);
-        if (!session) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume not mounted";
-        }
+            auto session = volume->FindSession(sessionId);
+            if (!session) {
+                ythrow TServiceError(E_ARGUMENT) << "Volume not mounted";
+            }
 
-        ui64 startIndex = request->GetStartIndex();
-        if (startIndex >= volume->Volume.GetBlocksCount()) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Out of bounds write request";
-        }
+            ui64 startIndex = request->GetStartIndex();
+            if (startIndex >= volume->Volume.GetBlocksCount()) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Out of bounds write request";
+            }
 
-        ui32 blocksCount = request->GetBlocksCount();
-        if (startIndex + blocksCount > volume->Volume.GetBlocksCount()) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Out of bounds write request";
-        }
+            ui32 blocksCount = request->GetBlocksCount();
+            if (startIndex + blocksCount > volume->Volume.GetBlocksCount()) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Out of bounds write request";
+            }
 
-        return session->StorageAdapter->ZeroBlocks(
-            Now(),
-            std::move(ctx),
-            std::move(request),
-            volume->Volume.GetBlockSize());
-    });
+            return session->StorageAdapter->ZeroBlocks(
+                Now(),
+                std::move(ctx),
+                std::move(request),
+                volume->Volume.GetBlockSize());
+        });
 }
 
 TFuture<NProto::TReadBlocksLocalResponse> TLocalService::ReadBlocksLocal(
     TCallContextPtr ctx,
     std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
 {
-    return SafeAsyncExecute<NProto::TReadBlocksLocalResponse>([=, this] () mutable {
-        const auto& diskId = request->GetDiskId();
-        if (!diskId) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume ID should be specified";
-        }
+    return SafeAsyncExecute<NProto::TReadBlocksLocalResponse>(
+        [=, this]() mutable
+        {
+            const auto& diskId = request->GetDiskId();
+            if (!diskId) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Volume ID should be specified";
+            }
 
-        const auto& sessionId = request->GetSessionId();
-        if (!sessionId) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Session ID should be specified";
-        }
+            const auto& sessionId = request->GetSessionId();
+            if (!sessionId) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Session ID should be specified";
+            }
 
-        auto volume = VolumeManager.FindMountedVolume(diskId);
-        if (!volume) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume not mounted";
-        }
+            auto volume = VolumeManager.FindMountedVolume(diskId);
+            if (!volume) {
+                ythrow TServiceError(E_ARGUMENT) << "Volume not mounted";
+            }
 
-        auto session = volume->FindSession(sessionId);
-        if (!session) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume not mounted";
-        }
+            auto session = volume->FindSession(sessionId);
+            if (!session) {
+                ythrow TServiceError(E_ARGUMENT) << "Volume not mounted";
+            }
 
-        ui64 startIndex = request->GetStartIndex();
-        if (startIndex >= volume->Volume.GetBlocksCount()) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Out of bounds read request";
-        }
+            ui64 startIndex = request->GetStartIndex();
+            if (startIndex >= volume->Volume.GetBlocksCount()) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Out of bounds read request";
+            }
 
-        ui32 blocksCount = request->GetBlocksCount();
-        if (startIndex + blocksCount > volume->Volume.GetBlocksCount()) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Out of bounds read request";
-        }
+            ui32 blocksCount = request->GetBlocksCount();
+            if (startIndex + blocksCount > volume->Volume.GetBlocksCount()) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Out of bounds read request";
+            }
 
-        return session->Storage->ReadBlocksLocal(
-            std::move(ctx),
-            std::move(request));
-    });
+            return session->Storage->ReadBlocksLocal(
+                std::move(ctx),
+                std::move(request));
+        });
 }
 
 TFuture<NProto::TWriteBlocksLocalResponse> TLocalService::WriteBlocksLocal(
     TCallContextPtr ctx,
     std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
 {
-    return SafeAsyncExecute<NProto::TWriteBlocksLocalResponse>([=, this] () mutable {
-        const auto& diskId = request->GetDiskId();
-        if (!diskId) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume ID should be specified";
-        }
+    return SafeAsyncExecute<NProto::TWriteBlocksLocalResponse>(
+        [=, this]() mutable
+        {
+            const auto& diskId = request->GetDiskId();
+            if (!diskId) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Volume ID should be specified";
+            }
 
-        const auto& sessionId = request->GetSessionId();
-        if (!sessionId) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Session ID should be specified";
-        }
+            const auto& sessionId = request->GetSessionId();
+            if (!sessionId) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Session ID should be specified";
+            }
 
-        auto volume = VolumeManager.FindMountedVolume(diskId);
-        if (!volume) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume not mounted";
-        }
+            auto volume = VolumeManager.FindMountedVolume(diskId);
+            if (!volume) {
+                ythrow TServiceError(E_ARGUMENT) << "Volume not mounted";
+            }
 
-        auto session = volume->FindSession(sessionId);
-        if (!session) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume not mounted";
-        }
+            auto session = volume->FindSession(sessionId);
+            if (!session) {
+                ythrow TServiceError(E_ARGUMENT) << "Volume not mounted";
+            }
 
-        ui64 startIndex = request->GetStartIndex();
-        if (startIndex >= volume->Volume.GetBlocksCount()) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Out of bounds write request";
-        }
+            ui64 startIndex = request->GetStartIndex();
+            if (startIndex >= volume->Volume.GetBlocksCount()) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Out of bounds write request";
+            }
 
-        ui32 blocksCount = request->BlocksCount;
-        if (startIndex + blocksCount > volume->Volume.GetBlocksCount()) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Out of bounds write request";
-        }
+            ui32 blocksCount = request->BlocksCount;
+            if (startIndex + blocksCount > volume->Volume.GetBlocksCount()) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Out of bounds write request";
+            }
 
-        return session->Storage->WriteBlocksLocal(
-            std::move(ctx),
-            std::move(request));
-    });
+            return session->Storage->WriteBlocksLocal(
+                std::move(ctx),
+                std::move(request));
+        });
 }
 
 TFuture<NProto::TDiscoverInstancesResponse> TLocalService::DiscoverInstances(
@@ -981,17 +991,19 @@ TFuture<NProto::TAssignVolumeResponse> TLocalService::AssignVolume(
     std::shared_ptr<NProto::TAssignVolumeRequest> request)
 {
     Y_UNUSED(ctx);
-    return SafeAsyncExecute<NProto::TAssignVolumeResponse>([=, this] {
-        const auto& diskId = request->GetDiskId();
-        if (!diskId) {
-            ythrow TServiceError(E_ARGUMENT)
-                << "Volume ID should be specified";
-        }
+    return SafeAsyncExecute<NProto::TAssignVolumeResponse>(
+        [=, this]
+        {
+            const auto& diskId = request->GetDiskId();
+            if (!diskId) {
+                ythrow TServiceError(E_ARGUMENT)
+                    << "Volume ID should be specified";
+            }
 
-        NProto::TAssignVolumeResponse response;
-        *response.MutableVolume() = VolumeManager.DescribeVolume(diskId);
-        return MakeFuture(response);
-    });
+            NProto::TAssignVolumeResponse response;
+            *response.MutableVolume() = VolumeManager.DescribeVolume(diskId);
+            return MakeFuture(response);
+        });
 }
 
 TFuture<NProto::TCreateVolumeLinkResponse> TLocalService::CreateVolumeLink(

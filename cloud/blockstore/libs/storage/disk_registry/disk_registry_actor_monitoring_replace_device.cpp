@@ -14,8 +14,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TReplaceActor final
-    : public TActorBootstrapped<TReplaceActor>
+class TReplaceActor final: public TActorBootstrapped<TReplaceActor>
 {
 private:
     const TActorId Owner;
@@ -57,11 +56,11 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TReplaceActor::TReplaceActor(
-        const TActorId& owner,
-        ui64 tabletID,
-        TRequestInfoPtr requestInfo,
-        TString diskId,
-        TString deviceId)
+    const TActorId& owner,
+    ui64 tabletID,
+    TRequestInfoPtr requestInfo,
+    TString diskId,
+    TString deviceId)
     : Owner(owner)
     , TabletID(tabletID)
     , RequestInfo(std::move(requestInfo))
@@ -76,10 +75,7 @@ void TReplaceActor::Bootstrap(const TActorContext& ctx)
     request->Record.SetDiskId(DiskId);
     request->Record.SetDeviceUUID(DeviceId);
 
-    NCloud::Send(
-        ctx,
-        Owner,
-        std::move(request));
+    NCloud::Send(ctx, Owner, std::move(request));
 
     Become(&TThis::StateWork);
 }
@@ -95,10 +91,11 @@ void TReplaceActor::Notify(
         out,
         std::move(message),
         TStringBuilder() << "./app?action=disk&TabletID=" << TabletID
-            << "&DiskID=" << DiskId,
+                         << "&DiskID=" << DiskId,
         alertLevel);
 
-    auto response = std::make_unique<NMon::TEvRemoteHttpInfoRes>(std::move(out.Str()));
+    auto response =
+        std::make_unique<NMon::TEvRemoteHttpInfoRes>(std::move(out.Str()));
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
 }
 
@@ -109,12 +106,9 @@ void TReplaceActor::ReplyAndDie(const TActorContext& ctx, NProto::TError error)
     } else {
         Notify(
             ctx,
-            TStringBuilder()
-                << "failed to replace device "
-                << DeviceId.Quote()
-                << " for volume "
-                << DiskId.Quote()
-                << ": " << FormatError(error),
+            TStringBuilder() << "failed to replace device " << DeviceId.Quote()
+                             << " for volume " << DiskId.Quote() << ": "
+                             << FormatError(error),
             EAlertLevel::DANGER);
     }
 
@@ -178,27 +172,18 @@ void TDiskRegistryActor::HandleHttpInfo_ReplaceDevice(
     const auto& deviceId = params.Get("DeviceUUID");
 
     if (!diskId) {
-        RejectHttpRequest(
-            ctx,
-            *requestInfo,
-            "No disk id is given");
+        RejectHttpRequest(ctx, *requestInfo, "No disk id is given");
         return;
     }
 
     if (!deviceId) {
-        RejectHttpRequest(
-            ctx,
-            *requestInfo,
-            "No device id is given");
+        RejectHttpRequest(ctx, *requestInfo, "No device id is given");
         return;
     }
 
     TDiskInfo info;
     if (auto error = State->GetDiskInfo(diskId, info); HasError(error)) {
-        RejectHttpRequest(
-            ctx,
-            *requestInfo,
-            FormatError(error));
+        RejectHttpRequest(ctx, *requestInfo, FormatError(error));
         return;
     }
 
@@ -207,14 +192,13 @@ void TDiskRegistryActor::HandleHttpInfo_ReplaceDevice(
             info.FolderId,
             diskId))
     {
-        RejectHttpRequest(
-            ctx,
-            *requestInfo,
-            "Replace device is not allowed");
+        RejectHttpRequest(ctx, *requestInfo, "Replace device is not allowed");
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::DISK_REGISTRY,
         "Replace device from monitoring page: volume %s, device %s",
         diskId.Quote().data(),
         deviceId.Quote().data());

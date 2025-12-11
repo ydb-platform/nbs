@@ -88,7 +88,8 @@ struct TByteRange
 
     ui64 LastBlock() const
     {
-        const auto alignedOffset = AlignDown<ui64>(Max<ui64>(End(), 1) - 1, BlockSize);
+        const auto alignedOffset =
+            AlignDown<ui64>(Max<ui64>(End(), 1) - 1, BlockSize);
         return alignedOffset / BlockSize;
     }
 
@@ -118,8 +119,7 @@ struct TByteRange
         return {
             AlignDown<ui64>(Offset, BlockSize),
             BlockCount() * BlockSize,
-            BlockSize
-        };
+            BlockSize};
     }
 
     TByteRange AlignedSubRange() const
@@ -127,8 +127,7 @@ struct TByteRange
         return {
             FirstAlignedBlock() * BlockSize,
             AlignedBlockCount() * BlockSize,
-            BlockSize
-        };
+            BlockSize};
     }
 
     TByteRange Intersect(TByteRange other) const

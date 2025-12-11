@@ -27,12 +27,13 @@ constexpr ui32 WAIT_TIMEOUT = 10;   // us
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TAsyncIOContext : io_uring
+struct TAsyncIOContext: io_uring
 {
     TAsyncIOContext(size_t nr)
     {
         int ret = io_uring_queue_init(nr, this, 0);
-        Y_ABORT_UNLESS(ret == 0,
+        Y_ABORT_UNLESS(
+            ret == 0,
             "unable to initialize context: %s",
             LastSystemErrorText(-ret));
     }
@@ -58,11 +59,11 @@ struct TAsyncIORequest
     TPromise<NProto::TError> Result;
 
     TAsyncIORequest(
-            TCallContextPtr callContext,
-            TGuardedSgList guardedSgList,
-            ui64 offset,
-            ui64 length,
-            TPromise<NProto::TError> result)
+        TCallContextPtr callContext,
+        TGuardedSgList guardedSgList,
+        ui64 offset,
+        ui64 length,
+        TPromise<NProto::TError> result)
         : CallContext(std::move(callContext))
         , GuardedSgList(std::move(guardedSgList))
         , Guard(GuardedSgList.Acquire())
@@ -78,9 +79,10 @@ struct TAsyncIORequest
 
     void HandleError(int error)
     {
-        Result.SetValue(MakeError(MAKE_SYSTEM_ERROR(error), TStringBuilder()
-            << "(" << LastSystemErrorText(error) << ") "
-            << "async IO operation failed"));
+        Result.SetValue(MakeError(
+            MAKE_SYSTEM_ERROR(error),
+            TStringBuilder() << "(" << LastSystemErrorText(error) << ") "
+                             << "async IO operation failed"));
     }
 };
 
@@ -88,8 +90,7 @@ using TAsyncIORequestPtr = std::unique_ptr<TAsyncIORequest>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TLocalStorage final
-    : public IStorage
+class TLocalStorage final: public IStorage
 {
 private:
     TFileHandle FileHandle;
@@ -202,7 +203,7 @@ private:
             ythrow TSystemError(-ret) << "unable to submit async IO operation";
         }
 
-        request.release();  // ownership transferred
+        request.release();   // ownership transferred
     }
 
     static void* ThreadProc(void* arg)
@@ -227,7 +228,8 @@ private:
                 ret = 0;
             }
 
-            Y_ABORT_UNLESS(ret >= 0,
+            Y_ABORT_UNLESS(
+                ret >= 0,
                 "unable to get async IO completion: %s",
                 LastSystemErrorText(-ret));
 
@@ -263,10 +265,8 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IStoragePtr CreateLocalURingStorage(
-    const TString& path,
-    ui32 blockSize,
-    ui32 blocksCount)
+IStoragePtr
+CreateLocalURingStorage(const TString& path, ui32 blockSize, ui32 blocksCount)
 {
     return std::make_shared<TLocalStorage>(path, blockSize, blocksCount);
 }

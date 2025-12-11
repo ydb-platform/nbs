@@ -55,8 +55,7 @@ struct TAppContext
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TConnection final
-    : public IServerContext
+class TConnection final: public IServerContext
 {
 private:
     TAppContext& AppCtx;
@@ -74,11 +73,11 @@ private:
 
 public:
     TConnection(
-            TAppContext& appCtx,
-            TContExecutor* e,
-            ILimiterPtr limiter,
-            IServerHandlerPtr handler,
-            TSocketHolder socket)
+        TAppContext& appCtx,
+        TContExecutor* e,
+        ILimiterPtr limiter,
+        IServerHandlerPtr handler,
+        TSocketHolder socket)
         : AppCtx(appCtx)
         , Log(appCtx.Log)
         , Executor(e)
@@ -179,7 +178,8 @@ private:
             DoReceive(c);
         } catch (...) {
             if (!IsShuttingDown() && !c->Cancelled()) {
-                STORAGE_INFO("lost connection with client, failed to receive: "
+                STORAGE_INFO(
+                    "lost connection with client, failed to receive: "
                     << CurrentExceptionMessage());
                 Handler->ProcessException(std::current_exception());
             }
@@ -213,7 +213,8 @@ private:
             try {
                 DoSendResponse(c, *response);
             } catch (...) {
-                STORAGE_INFO("lost connection with client, failed to send: "
+                STORAGE_INFO(
+                    "lost connection with client, failed to send: "
                     << CurrentExceptionMessage());
                 Handler->ProcessException(std::current_exception());
             }
@@ -260,7 +261,8 @@ private:
         }
     }
 
-    bool IsShuttingDown() const {
+    bool IsShuttingDown() const
+    {
         return ShuttingDown.test(std::memory_order_acquire);
     }
 };
@@ -269,8 +271,7 @@ using TConnectionPtr = TIntrusivePtr<TConnection>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TEndpoint final
-    : public TContListener::ICallBack
+class TEndpoint final: public TContListener::ICallBack
 {
 private:
     TAppContext& AppCtx;
@@ -287,12 +288,12 @@ private:
 
 public:
     TEndpoint(
-            TAppContext& appCtx,
-            TContExecutor* executor,
-            ILimiterPtr limiter,
-            IServerHandlerFactoryPtr handlerFactory,
-            const TNetworkAddress& listenAddress,
-            const ui32 socketAccessMode)
+        TAppContext& appCtx,
+        TContExecutor* executor,
+        ILimiterPtr limiter,
+        IServerHandlerFactoryPtr handlerFactory,
+        const TNetworkAddress& listenAddress,
+        const ui32 socketAccessMode)
         : AppCtx(appCtx)
         , Log(appCtx.Log)
         , Executor(executor)
@@ -312,41 +313,43 @@ public:
         auto localHost = PrintHostAndPort(ListenAddress);
         STORAGE_DEBUG("listen on " << localHost);
 
-        return SafeExecute<NProto::TError>([&] {
-            ValidateSocketPath(ListenAddress);
-            DeleteSocketIfExists(ListenAddress);
+        return SafeExecute<NProto::TError>(
+            [&]
+            {
+                ValidateSocketPath(ListenAddress);
+                DeleteSocketIfExists(ListenAddress);
 
-            Listener = std::make_unique<TContListener>(this, Executor);
-            Listener->Bind(ListenAddress);
-            Listener->Listen();
+                Listener = std::make_unique<TContListener>(this, Executor);
+                Listener->Bind(ListenAddress);
+                Listener->Listen();
 
-            if (IsUnixAddress(ListenAddress)) {
-                ChmodSocket(
-                    ListenAddress,
-                    SocketAccessMode);
-            }
+                if (IsUnixAddress(ListenAddress)) {
+                    ChmodSocket(ListenAddress, SocketAccessMode);
+                }
 
-            return NProto::TError();
-        });
+                return NProto::TError();
+            });
     }
 
     NProto::TError Stop(bool deleteSocket)
     {
-        return SafeExecute<NProto::TError>([&] {
-            if (Connection) {
-                Connection->Stop();
-            };
+        return SafeExecute<NProto::TError>(
+            [&]
+            {
+                if (Connection) {
+                    Connection->Stop();
+                };
 
-            if (Listener) {
-                Listener->Stop();
-            }
+                if (Listener) {
+                    Listener->Stop();
+                }
 
-            if (deleteSocket) {
-                DeleteSocketIfExists(ListenAddress);
-            }
+                if (deleteSocket) {
+                    DeleteSocketIfExists(ListenAddress);
+                }
 
-            return NProto::TError();
-        });
+                return NProto::TError();
+            });
     }
 
     size_t CollectRequests(const TIncompleteRequestsCollector& collector)
@@ -386,8 +389,8 @@ private:
 
     void OnError() override
     {
-        STORAGE_ERROR("unhandled error in Accept: "
-            << CurrentExceptionMessage());
+        STORAGE_ERROR(
+            "unhandled error in Accept: " << CurrentExceptionMessage());
     }
 
     static char* GetSocketPath(const TNetworkAddress& addr)
@@ -455,11 +458,11 @@ private:
 
 public:
     TExecutorThread(
-            TAppContext& appCtx,
-            TExecutorPtr executor,
-            bool limiterEnabled,
-            size_t maxInFlightBytesPerThread,
-            ui32 socketAccessMode)
+        TAppContext& appCtx,
+        TExecutorPtr executor,
+        bool limiterEnabled,
+        size_t maxInFlightBytesPerThread,
+        ui32 socketAccessMode)
         : AppCtx(appCtx)
         , Log(appCtx.Log)
         , Executor(std::move(executor))
@@ -479,9 +482,7 @@ public:
                 MaxInFlightBytesPerThread);
         }
 
-        Executor->Execute([&] {
-            CurrentThread().Executor = Executor.get();
-        });
+        Executor->Execute([&] { CurrentThread().Executor = Executor.get(); });
     }
 
     void Stop()
@@ -504,24 +505,21 @@ public:
 
     TFuture<NProto::TError> StartEndpoint(TEndpointPtr endpoint)
     {
-        return Executor->Execute([endpoint = std::move(endpoint)] {
-            return endpoint->Start();
-        });
+        return Executor->Execute([endpoint = std::move(endpoint)]
+                                 { return endpoint->Start(); });
     }
 
     TFuture<NProto::TError> StopEndpoint(TEndpointPtr endpoint)
     {
-        return Executor->Execute([endpoint = std::move(endpoint)] {
-            return endpoint->Stop(true);
-        });
+        return Executor->Execute([endpoint = std::move(endpoint)]
+                                 { return endpoint->Stop(true); });
     }
 
     void AddEndpoint(TString address, TEndpointPtr endpoint)
     {
         with_lock (Lock) {
-            auto [it, inserted] = Endpoints.emplace(
-                std::move(address),
-                std::move(endpoint));
+            auto [it, inserted] =
+                Endpoints.emplace(std::move(address), std::move(endpoint));
             Y_ABORT_UNLESS(inserted);
         }
     }
@@ -549,15 +547,17 @@ public:
     TFuture<size_t> CollectRequests(
         const TIncompleteRequestsCollector& collector)
     {
-        return Executor->Execute([&] {
-            size_t count = 0;
-            with_lock (Lock) {
-                for (auto& it: Endpoints) {
-                    count += it.second->CollectRequests(collector);
+        return Executor->Execute(
+            [&]
+            {
+                size_t count = 0;
+                with_lock (Lock) {
+                    for (auto& it: Endpoints) {
+                        count += it.second->CollectRequests(collector);
+                    }
                 }
-            }
-            return count;
-        });
+                return count;
+            });
     }
 };
 
@@ -577,9 +577,7 @@ private:
     TMap<TString, TExecutorThread*> EndpointMap;
 
 public:
-    TServer(
-        ILoggingServicePtr logging,
-        const TServerConfig& config)
+    TServer(ILoggingServicePtr logging, const TServerConfig& config)
     {
         Log = logging->CreateLog("BLOCKSTORE_NBD");
 
@@ -636,9 +634,9 @@ public:
             if (it != EndpointMap.end()) {
                 NProto::TError error;
                 error.SetCode(S_ALREADY);
-                error.SetMessage(TStringBuilder()
-                    << "endpoint " << address.Quote()
-                    << " has already been started");
+                error.SetMessage(
+                    TStringBuilder() << "endpoint " << address.Quote()
+                                     << " has already been started");
                 return MakeFuture(error);
             }
         }
@@ -654,27 +652,26 @@ public:
 
         auto weak_ptr = weak_from_this();
 
-        return future.Apply([=, weak_ptr = std::move(weak_ptr)] (const auto& f) mutable {
-            const auto& error = f.GetValue();
-            if (HasError(error)) {
-                return error;
-            }
+        return future.Apply(
+            [=, weak_ptr = std::move(weak_ptr)](const auto& f) mutable
+            {
+                const auto& error = f.GetValue();
+                if (HasError(error)) {
+                    return error;
+                }
 
-            auto ptr = weak_ptr.lock();
-            if (!ptr) {
-                NProto::TError error;
-                error.SetCode(E_REJECTED);
-                error.SetMessage("NBD server is destroyed");
-                return error;
-            }
+                auto ptr = weak_ptr.lock();
+                if (!ptr) {
+                    NProto::TError error;
+                    error.SetCode(E_REJECTED);
+                    error.SetMessage("NBD server is destroyed");
+                    return error;
+                }
 
-            ptr->AddEndpoint(
-                executorThread,
-                address,
-                std::move(endpoint));
+                ptr->AddEndpoint(executorThread, address, std::move(endpoint));
 
-            return NProto::TError();
-        });
+                return NProto::TError();
+            });
     }
 
     TFuture<NProto::TError> StopEndpoint(TNetworkAddress listenAddress) override
@@ -694,9 +691,9 @@ public:
             if (it == EndpointMap.end()) {
                 NProto::TError error;
                 error.SetCode(S_ALREADY);
-                error.SetMessage(TStringBuilder()
-                    << "endpoint " << address.Quote()
-                    << " has already been stopped");
+                error.SetMessage(
+                    TStringBuilder() << "endpoint " << address.Quote()
+                                     << " has already been stopped");
                 return MakeFuture(error);
             }
 
@@ -766,15 +763,11 @@ private:
         TEndpointPtr endpoint)
     {
         with_lock (Lock) {
-            auto [it, inserted] = EndpointMap.emplace(
-                address,
-                executorThread);
+            auto [it, inserted] = EndpointMap.emplace(address, executorThread);
             Y_ABORT_UNLESS(inserted);
         }
 
-        executorThread->AddEndpoint(
-            std::move(address),
-            std::move(endpoint));
+        executorThread->AddEndpoint(std::move(address), std::move(endpoint));
     }
 };
 
@@ -782,13 +775,9 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IServerPtr CreateServer(
-    ILoggingServicePtr logging,
-    const TServerConfig& config)
+IServerPtr CreateServer(ILoggingServicePtr logging, const TServerConfig& config)
 {
-    return std::make_shared<TServer>(
-        std::move(logging),
-        config);
+    return std::make_shared<TServer>(std::move(logging), config);
 }
 
 }   // namespace NCloud::NBlockStore::NBD

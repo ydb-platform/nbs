@@ -61,21 +61,19 @@ private:
         const TEvents::TEvPoisonPill::TPtr& ev,
         const TActorContext& ctx);
 
-    void ReplyAndDie(
-        const TActorContext& ctx,
-        const NProto::TError& error);
+    void ReplyAndDie(const TActorContext& ctx, const NProto::TError& error);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TAggregateStatsActor::TAggregateStatsActor(
-        TString logTag,
-        TActorId tablet,
-        TRequestInfoPtr requestInfo,
-        NProtoPrivate::TGetStorageStatsRequest request,
-        TString mainFileSystemId,
-        google::protobuf::RepeatedPtrField<TString> shardIds,
-        std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> response)
+    TString logTag,
+    TActorId tablet,
+    TRequestInfoPtr requestInfo,
+    NProtoPrivate::TGetStorageStatsRequest request,
+    TString mainFileSystemId,
+    google::protobuf::RepeatedPtrField<TString> shardIds,
+    std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> response)
     : LogTag(std::move(logTag))
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
@@ -125,7 +123,7 @@ void TAggregateStatsActor::SendRequestToFileSystem(
     ctx.Send(
         MakeIndexTabletProxyServiceId(),
         request.release(),
-        {}, // flags
+        {},   // flags
         cookie);
 }
 
@@ -164,9 +162,9 @@ void TAggregateStatsActor::HandleGetStorageStatsResponse(
     const auto& src = msg->Record.GetStats();
     auto& dst = *Response->Record.MutableStats();
 
-#define FILESTORE_TABLET_MERGE_COUNTER(name, ...)                              \
-    dst.Set##name(dst.Get##name() + src.Get##name());                          \
-// FILESTORE_TABLET_MERGE_COUNTER
+#define FILESTORE_TABLET_MERGE_COUNTER(name, ...)     \
+    dst.Set##name(dst.Get##name() + src.Get##name()); \
+    // FILESTORE_TABLET_MERGE_COUNTER
 
     FILESTORE_TABLET_STATS(FILESTORE_TABLET_MERGE_COUNTER)
 
@@ -264,11 +262,8 @@ void RegisterSensor(
     EAggregationType aggrType,
     EMetricType metrType)
 {
-    registry->Register(
-        {CreateSensor(std::move(name))},
-        source,
-        aggrType,
-        metrType);
+    registry
+        ->Register({CreateSensor(std::move(name))}, source, aggrType, metrType);
 }
 
 }   // namespace
@@ -277,11 +272,12 @@ void RegisterSensor(
 
 TIndexTabletActor::TMetrics::TMetrics(IMetricsRegistryPtr metricsRegistry)
     : StorageRegistry(CreateScopedMetricsRegistry(
-        {CreateLabel("component", "storage")},
-        metricsRegistry))
+          {CreateLabel("component", "storage")},
+          metricsRegistry))
     , StorageFsRegistry(CreateScopedMetricsRegistry(
-        {CreateLabel("component", "storage_fs"), CreateLabel("host", "cluster")},
-        metricsRegistry))
+          {CreateLabel("component", "storage_fs"),
+           CreateLabel("host", "cluster")},
+          metricsRegistry))
     , FsRegistry(CreateMetricsRegistryStub())
     , AggregatableFsRegistry(CreateMetricsRegistryStub())
 {}
@@ -311,25 +307,16 @@ void TIndexTabletActor::TMetrics::Register(
         {},
         {std::move(totalKindRegistry), FsRegistry});
 
-#define REGISTER(registry, name, aggrType, metrType)                           \
-    RegisterSensor(registry, #name, name, aggrType, metrType)                  \
-// REGISTER
+#define REGISTER(registry, name, aggrType, metrType) \
+    RegisterSensor(registry, #name, name, aggrType, metrType)   // REGISTER
 
 #define REGISTER_AGGREGATABLE_SUM(name, metrType)                              \
-    REGISTER(                                                                  \
-        AggregatableFsRegistry,                                                \
-        name,                                                                  \
-        EAggregationType::AT_SUM,                                              \
-        metrType)                                                              \
-// REGISTER_AGGREGATABLE_SUM
+    REGISTER(AggregatableFsRegistry, name, EAggregationType::AT_SUM, metrType) \
+    // REGISTER_AGGREGATABLE_SUM
 
-#define REGISTER_LOCAL(name, metrType)                                         \
-    REGISTER(                                                                  \
-        FsRegistry,                                                            \
-        name,                                                                  \
-        EAggregationType::AT_SUM,                                              \
-        metrType)                                                              \
-// REGISTER_LOCAL
+#define REGISTER_LOCAL(name, metrType)                             \
+    REGISTER(FsRegistry, name, EAggregationType::AT_SUM, metrType) \
+    // REGISTER_LOCAL
 
     REGISTER_AGGREGATABLE_SUM(TotalBytesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedBytesCount, EMetricType::MT_ABSOLUTE);
@@ -353,7 +340,9 @@ void TIndexTabletActor::TMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(ActiveSessionsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(OrphanSessionsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(SessionTimeouts, EMetricType::MT_DERIVATIVE);
-    REGISTER_AGGREGATABLE_SUM(SessionCleanupAttempts, EMetricType::MT_DERIVATIVE);
+    REGISTER_AGGREGATABLE_SUM(
+        SessionCleanupAttempts,
+        EMetricType::MT_DERIVATIVE);
 
     REGISTER_LOCAL(
         StrictFileSystemSizeEnforcementEnabled,
@@ -415,9 +404,7 @@ void TIndexTabletActor::TMetrics::Register(
         InMemoryIndexStateIsExhaustive,
         EMetricType::MT_ABSOLUTE);
 
-    REGISTER_AGGREGATABLE_SUM(
-        MixedIndexLoadedRanges,
-        EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(MixedIndexLoadedRanges, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(
         MixedIndexOffloadedRanges,
         EMetricType::MT_ABSOLUTE);
@@ -453,8 +440,12 @@ void TIndexTabletActor::TMetrics::Register(
 
     REGISTER_LOCAL(TabletStartTimestamp, EMetricType::MT_ABSOLUTE);
 
-    REGISTER_AGGREGATABLE_SUM(AllocatedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
-    REGISTER_AGGREGATABLE_SUM(UsedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(
+        AllocatedCompactionRangesCount,
+        EMetricType::MT_ABSOLUTE);
+    REGISTER_AGGREGATABLE_SUM(
+        UsedCompactionRangesCount,
+        EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(
         NodesOpenForWritingBySingleSession,
@@ -485,10 +476,12 @@ void TIndexTabletActor::TMetrics::Register(
         EAggregationType::AT_MAX);
     ReadDataPostponed.Register(
         FsRegistry,
-        {CreateLabel("request", "ReadData"), CreateLabel("histogram", "ThrottlerDelay")});
+        {CreateLabel("request", "ReadData"),
+         CreateLabel("histogram", "ThrottlerDelay")});
     WriteDataPostponed.Register(
         FsRegistry,
-        {CreateLabel("request", "WriteData"), CreateLabel("histogram", "ThrottlerDelay")});
+        {CreateLabel("request", "WriteData"),
+         CreateLabel("histogram", "ThrottlerDelay")});
 
     REGISTER_AGGREGATABLE_SUM(
         UncompressedBytesWritten,
@@ -497,23 +490,17 @@ void TIndexTabletActor::TMetrics::Register(
         CompressedBytesWritten,
         EMetricType::MT_DERIVATIVE);
 
-#define REGISTER_REQUEST(name)                                                 \
-    REGISTER_AGGREGATABLE_SUM(                                                 \
-        name.Count,                                                            \
-        EMetricType::MT_DERIVATIVE);                                           \
-                                                                               \
-    REGISTER_AGGREGATABLE_SUM(                                                 \
-        name.RequestBytes,                                                     \
-        EMetricType::MT_DERIVATIVE);                                           \
-                                                                               \
-    REGISTER_AGGREGATABLE_SUM(                                                 \
-        name.TimeSumUs,                                                        \
-        EMetricType::MT_DERIVATIVE);                                           \
-                                                                               \
-    name.Time.Register(                                                        \
-        AggregatableFsRegistry,                                                \
-        {CreateLabel("request", #name), CreateLabel("histogram", "Time")});    \
-// REGISTER_REQUEST
+#define REGISTER_REQUEST(name)                                                \
+    REGISTER_AGGREGATABLE_SUM(name.Count, EMetricType::MT_DERIVATIVE);        \
+                                                                              \
+    REGISTER_AGGREGATABLE_SUM(name.RequestBytes, EMetricType::MT_DERIVATIVE); \
+                                                                              \
+    REGISTER_AGGREGATABLE_SUM(name.TimeSumUs, EMetricType::MT_DERIVATIVE);    \
+                                                                              \
+    name.Time.Register(AggregatableFsRegistry, {                              \
+        CreateLabel("request", #name), CreateLabel("histogram", "Time")       \
+    });                                                                       \
+    // REGISTER_REQUEST
 
     REGISTER_REQUEST(ReadBlob);
     REGISTER_REQUEST(WriteBlob);
@@ -629,7 +616,9 @@ void TIndexTabletActor::TMetrics::Update(
     Store(FlushBytesBackpressureValue, backpressureValues.FlushBytes);
     Store(FlushBytesBackpressureThreshold, backpressureThresholds.FlushBytes);
     Store(CompactionBackpressureValue, backpressureValues.CompactionScore);
-    Store(CompactionBackpressureThreshold, backpressureThresholds.CompactionScore);
+    Store(
+        CompactionBackpressureThreshold,
+        backpressureThresholds.CompactionScore);
     Store(CleanupBackpressureValue, backpressureValues.CleanupScore);
     Store(CleanupBackpressureThreshold, backpressureThresholds.CleanupScore);
 
@@ -677,14 +666,30 @@ void TIndexTabletActor::TMetrics::Update(
     Store(NodeIndexCacheNodeCount, nodeIndexCacheStats.NodeCount);
 
     Store(InMemoryIndexStateNodesCount, inMemoryIndexStateStats.NodesCount);
-    Store(InMemoryIndexStateNodesCapacity, inMemoryIndexStateStats.NodesCapacity);
-    Store(InMemoryIndexStateNodeRefsCount, inMemoryIndexStateStats.NodeRefsCount);
-    Store(InMemoryIndexStateNodeRefsCapacity, inMemoryIndexStateStats.NodeRefsCapacity);
-    Store(InMemoryIndexStateNodeAttrsCount, inMemoryIndexStateStats.NodeAttrsCount);
-    Store(InMemoryIndexStateNodeAttrsCapacity, inMemoryIndexStateStats.NodeAttrsCapacity);
-    Store(InMemoryIndexStateNodeRefsExhaustivenessCount, inMemoryIndexStateStats.NodeRefsExhaustivenessCount);
-    Store(InMemoryIndexStateNodeRefsExhaustivenessCapacity, inMemoryIndexStateStats.NodeRefsExhaustivenessCapacity);
-    Store(InMemoryIndexStateIsExhaustive, inMemoryIndexStateStats.IsNodeRefsExhaustive);
+    Store(
+        InMemoryIndexStateNodesCapacity,
+        inMemoryIndexStateStats.NodesCapacity);
+    Store(
+        InMemoryIndexStateNodeRefsCount,
+        inMemoryIndexStateStats.NodeRefsCount);
+    Store(
+        InMemoryIndexStateNodeRefsCapacity,
+        inMemoryIndexStateStats.NodeRefsCapacity);
+    Store(
+        InMemoryIndexStateNodeAttrsCount,
+        inMemoryIndexStateStats.NodeAttrsCount);
+    Store(
+        InMemoryIndexStateNodeAttrsCapacity,
+        inMemoryIndexStateStats.NodeAttrsCapacity);
+    Store(
+        InMemoryIndexStateNodeRefsExhaustivenessCount,
+        inMemoryIndexStateStats.NodeRefsExhaustivenessCount);
+    Store(
+        InMemoryIndexStateNodeRefsExhaustivenessCapacity,
+        inMemoryIndexStateStats.NodeRefsExhaustivenessCapacity);
+    Store(
+        InMemoryIndexStateIsExhaustive,
+        inMemoryIndexStateStats.IsNodeRefsExhaustive);
 
     Store(MixedIndexLoadedRanges, blobMetaMapStats.LoadedRanges);
     Store(MixedIndexOffloadedRanges, blobMetaMapStats.OffloadedRanges);
@@ -741,9 +746,8 @@ void TIndexTabletActor::TMetrics::UpdatePerformanceMetrics(
     const ui32 expectedParallelism = 32;
     double load = 0;
     bool suffer = false;
-    auto calcSufferAndLoad = [&] (
-        const TRequestPerformanceProfile& rpp,
-        const TRequestMetrics& rm)
+    auto calcSufferAndLoad =
+        [&](const TRequestPerformanceProfile& rpp, const TRequestMetrics& rm)
     {
         if (!rpp.RPS) {
             return;
@@ -758,14 +762,14 @@ void TIndexTabletActor::TMetrics::UpdatePerformanceMetrics(
         }
 
         const auto averageLatency = rm.AverageLatency();
-        suffer |= TDuration::MicroSeconds(expectedLatencyUs)
-            < averageLatency / expectedParallelism;
+        suffer |= TDuration::MicroSeconds(expectedLatencyUs) <
+                  averageLatency / expectedParallelism;
     };
 
     const auto& pp =
         fileSystem.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
-        ? diagConfig.GetSSDFileSystemPerformanceProfile()
-        : diagConfig.GetHDDFileSystemPerformanceProfile();
+            ? diagConfig.GetSSDFileSystemPerformanceProfile()
+            : diagConfig.GetHDDFileSystemPerformanceProfile();
 
     calcSufferAndLoad(pp.Read, ReadData);
     calcSufferAndLoad(pp.Read, DescribeData);
@@ -839,8 +843,8 @@ void TIndexTabletActor::RegisterStatCounters(TInstant now)
         GetBackpressureValues(),
         GetHandlesStats());
 
-    // TabletStartTimestamp is intialised once per tablet lifetime and thus it is
-    // acceptable to set it in RegisterStatCounters if it is not set yet.
+    // TabletStartTimestamp is intialised once per tablet lifetime and thus it
+    // is acceptable to set it in RegisterStatCounters if it is not set yet.
     i64 expected = 0;
     Metrics.TabletStartTimestamp.compare_exchange_strong(
         expected,
@@ -852,13 +856,15 @@ void TIndexTabletActor::RegisterStatCounters(TInstant now)
 void TIndexTabletActor::ScheduleUpdateCounters(const TActorContext& ctx)
 {
     if (!UpdateCountersScheduled) {
-        ctx.Schedule(UpdateCountersInterval,
+        ctx.Schedule(
+            UpdateCountersInterval,
             new TEvIndexTabletPrivate::TEvUpdateCounters());
         UpdateCountersScheduled = true;
     }
 
     if (!UpdateLeakyBucketCountersScheduled) {
-        ctx.Schedule(UpdateLeakyBucketCountersInterval,
+        ctx.Schedule(
+            UpdateLeakyBucketCountersInterval,
             new TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters());
         UpdateLeakyBucketCountersScheduled = true;
     }
@@ -954,11 +960,12 @@ void TIndexTabletActor::UpdateCounters()
 {
 #define FILESTORE_TABLET_UPDATE_COUNTER(name, ...)                             \
     {                                                                          \
-        auto& counter = Counters->Simple()[                                    \
-            TIndexTabletCounters::SIMPLE_COUNTER_Stats_##name];                \
+        auto& counter =                                                        \
+            Counters                                                           \
+                ->Simple()[TIndexTabletCounters::SIMPLE_COUNTER_Stats_##name]; \
         counter.Set(Get##name());                                              \
     }                                                                          \
-// FILESTORE_TABLET_UPDATE_COUNTER
+    // FILESTORE_TABLET_UPDATE_COUNTER
 
     FILESTORE_TABLET_STATS(FILESTORE_TABLET_UPDATE_COUNTER)
 
@@ -970,9 +977,9 @@ void TIndexTabletActor::UpdateCounters()
 void TIndexTabletActor::FillSelfStorageStats(
     NProtoPrivate::TStorageStats* stats)
 {
-#define FILESTORE_TABLET_UPDATE_COUNTER(name, ...)                             \
-    stats->Set##name(Get##name());                                             \
-// FILESTORE_TABLET_UPDATE_COUNTER
+#define FILESTORE_TABLET_UPDATE_COUNTER(name, ...) \
+    stats->Set##name(Get##name());                 \
+    // FILESTORE_TABLET_UPDATE_COUNTER
 
     FILESTORE_TABLET_STATS(FILESTORE_TABLET_UPDATE_COUNTER)
 
@@ -981,10 +988,12 @@ void TIndexTabletActor::FillSelfStorageStats(
     stats->SetTabletChannelCount(GetTabletChannelCount());
     stats->SetConfigChannelCount(GetConfigChannelCount());
 
-    const auto txDeleteGarbageRwCompleted = Counters->TxCumulative(
-        TIndexTabletCounters::ETransactionType::TX_DeleteGarbage,
-        NKikimr::COUNTER_TT_RW_COMPLETED
-    ).Get();
+    const auto txDeleteGarbageRwCompleted =
+        Counters
+            ->TxCumulative(
+                TIndexTabletCounters::ETransactionType::TX_DeleteGarbage,
+                NKikimr::COUNTER_TT_RW_COMPLETED)
+            .Get();
     stats->SetTxDeleteGarbageRwCompleted(txDeleteGarbageRwCompleted);
 
     auto cmStats = GetCompactionMapStats(0);
@@ -992,10 +1001,10 @@ void TIndexTabletActor::FillSelfStorageStats(
     stats->SetAllocatedCompactionRanges(cmStats.AllocatedRangesCount);
 
     stats->SetFlushState(static_cast<ui32>(FlushState.GetOperationState()));
-    stats->SetBlobIndexOpState(static_cast<ui32>(
-        BlobIndexOpState.GetOperationState()));
-    stats->SetCollectGarbageState(static_cast<ui32>(
-        CollectGarbageState.GetOperationState()));
+    stats->SetBlobIndexOpState(
+        static_cast<ui32>(BlobIndexOpState.GetOperationState()));
+    stats->SetCollectGarbageState(
+        static_cast<ui32>(CollectGarbageState.GetOperationState()));
 
     stats->SetCurrentLoad(Metrics.CurrentLoad.load(std::memory_order_relaxed));
     stats->SetSuffer(Metrics.Suffer.load(std::memory_order_relaxed));
@@ -1022,9 +1031,9 @@ void TIndexTabletActor::HandleGetStorageStats(
         req.GetMode() == NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS ||
         (req.GetMode() != NProtoPrivate::STATS_REQUEST_MODE_GET_ONLY_SELF &&
          IsMainTablet());
-    const auto& shardIds = pollShards
-        ? GetFileSystem().GetShardFileSystemIds()
-        : Default<google::protobuf::RepeatedPtrField<TString>>();
+    const auto& shardIds =
+        pollShards ? GetFileSystem().GetShardFileSystemIds()
+                   : Default<google::protobuf::RepeatedPtrField<TString>>();
 
     if (req.GetAllowCache()) {
         *stats = CachedAggregateStats;
@@ -1076,20 +1085,18 @@ void TIndexTabletActor::HandleGetStorageStats(
         return;
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        ev->Get()->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     if (!IsMainTablet()) {
-        // If the current tablet is a shard, it will collect self stats via
-        // TAggregateStatsActor
-        #define FILESTORE_TABLET_CLEAR_COUNTER(name, ...)                      \
-            stats->Clear##name();                                              \
+// If the current tablet is a shard, it will collect self stats via
+// TAggregateStatsActor
+#define FILESTORE_TABLET_CLEAR_COUNTER(name, ...) \
+    stats->Clear##name();                         \
         // FILESTORE_TABLET_MERGE_COUNTER
         FILESTORE_TABLET_STATS(FILESTORE_TABLET_CLEAR_COUNTER)
-        #undef FILESTORE_TABLET_CLEAR_COUNTER
+#undef FILESTORE_TABLET_CLEAR_COUNTER
     }
 
     auto actor = std::make_unique<TAggregateStatsActor>(

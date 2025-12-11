@@ -3,11 +3,12 @@
 #include "backend.h"
 #include "request_aio.h"
 
-#include <cloud/contrib/vhost/include/vhost/server.h>
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+
+#include <cloud/contrib/vhost/include/vhost/server.h>
 
 #include <util/stream/file.h>
 #include <util/system/sanitizers.h>
@@ -163,9 +164,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TAioBackend::TAioBackend(
-        IEncryptorPtr encryptor,
-        ILoggingServicePtr logging)
+TAioBackend::TAioBackend(IEncryptorPtr encryptor, ILoggingServicePtr logging)
     : Logging{std::move(logging)}
     , Encryptor(std::move(encryptor))
     , CompletionStats(CreateCompletionStats())
@@ -436,7 +435,10 @@ void TAioBackend::CompletionThreadFunc()
     thread_local sig_atomic_t shouldStop;
 
     struct sigaction stopAction = {};
-    stopAction.sa_handler = [](int) { shouldStop = 1; };
+    stopAction.sa_handler = [](int)
+    {
+        shouldStop = 1;
+    };
     sigaction(SIGUSR2, &stopAction, nullptr);
 
     TVector<io_event> events(BatchSize);

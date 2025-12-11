@@ -19,12 +19,12 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TThreadPool final
-    : public ITaskQueue
+class TThreadPool final: public ITaskQueue
 {
     struct TWorker
     {
-        enum {
+        enum
+        {
             RUNNING,
             SPINNING,
             SLEEPING,
@@ -37,7 +37,7 @@ class TThreadPool final
         std::unique_ptr<ISimpleThread> Thread;
     };
 
-    struct TWorkerThread : ISimpleThread
+    struct TWorkerThread: ISimpleThread
     {
         TThreadPool& ThreadPool;
         TWorker& Worker;
@@ -74,9 +74,9 @@ private:
 
 public:
     TThreadPool(
-            const TString& threadName,
-            size_t numWorkers,
-            TString memoryTagScope)
+        const TString& threadName,
+        size_t numWorkers,
+        TString memoryTagScope)
         : NumWorkers(numWorkers)
         , MaxSpinning(Max<ui32>(1, numWorkers / 4))
         , SpinCycles(DurationToCyclesSafe(SPIN_TIMEOUT))
@@ -163,9 +163,10 @@ private:
         AtomicSet(worker.State, TWorker::SPINNING);
 
         if (AtomicIncrementWithLimit(&SpinningWorkers, MaxSpinning)) {
-            Y_DEFER {
+            Y_DEFER
+            {
                 AtomicDecrement(SpinningWorkers);
-            };
+            }
 
             ui64 deadLine = NDateTimeHelpers::SumWithSaturation(
                 GetCycleCount(),
@@ -280,23 +281,22 @@ private:
     {
         ui32 state = AtomicSwap(&worker.State, TWorker::RUNNING);
         switch (state) {
-        case TWorker::RUNNING:
-            return false;
-        case TWorker::SPINNING:
-            return true;
-        case TWorker::SLEEPING:
-            worker.ThreadPark.Signal();
-            return true;
-        default:
-            Y_ABORT("unknown worker state: %u", state);
+            case TWorker::RUNNING:
+                return false;
+            case TWorker::SPINNING:
+                return true;
+            case TWorker::SLEEPING:
+                worker.ThreadPark.Signal();
+                return true;
+            default:
+                Y_ABORT("unknown worker state: %u", state);
         }
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TLongRunningTaskExecutor final
-    : public ITaskQueue
+class TLongRunningTaskExecutor final: public ITaskQueue
 {
     struct TThreadArgs
     {
@@ -329,7 +329,9 @@ public:
 
     void Enqueue(ITaskPtr task) override
     {
-        TThread thread(ThreadProc, new TThreadArgs(ThreadName, std::move(task)));
+        TThread thread(
+            ThreadProc,
+            new TThreadArgs(ThreadName, std::move(task)));
         thread.Start();
         thread.Detach();
     }
@@ -362,9 +364,7 @@ ITaskQueuePtr CreateThreadPool(
         std::move(memoryTagScope));
 }
 
-ITaskQueuePtr CreateThreadPool(
-    const TString& threadName,
-    size_t numThreads)
+ITaskQueuePtr CreateThreadPool(const TString& threadName, size_t numThreads)
 {
     return std::make_shared<TThreadPool>(
         threadName,

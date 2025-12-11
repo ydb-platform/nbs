@@ -16,7 +16,8 @@ NJson::TJsonValue TCheckpointStorage::AsJson() const
         try {
             // May throw.
             NProtobufJson::Proto2Json(checkpoint.second, json);
-        } catch (...) {}
+        } catch (...) {
+        }
         result.AppendValue(json);
     }
     return result;
@@ -27,9 +28,7 @@ bool TCheckpointStorage::Add(const NProto::TCheckpointMeta& meta)
     TCheckpointMap::iterator it;
     bool inserted;
 
-    std::tie(it, inserted) = Checkpoints.emplace(
-        meta.GetCheckpointId(),
-        meta);
+    std::tie(it, inserted) = Checkpoints.emplace(meta.GetCheckpointId(), meta);
 
     if (inserted) {
         InsertCommitId(meta.GetCommitId());
@@ -148,7 +147,9 @@ TVector<TPartialBlobId> TCheckpointsToDelete::DeleteNextCheckpoint()
         auto cid = CommitIds.front();
         auto& info = CommitId2Info.at(cid);
 
-        Y_ABORT_UNLESS(info.Idx == info.BlobIds.size(), "%u != %lu",
+        Y_ABORT_UNLESS(
+            info.Idx == info.BlobIds.size(),
+            "%u != %lu",
             info.Idx,
             info.BlobIds.size());
 

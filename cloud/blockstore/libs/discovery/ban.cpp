@@ -53,8 +53,7 @@ struct TBanListCounters
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TBanList final
-    : public IBanList
+class TBanList final: public IBanList
 {
 private:
     TDiscoveryConfigPtr Config;
@@ -69,14 +68,13 @@ private:
 
 public:
     TBanList(
-            TDiscoveryConfigPtr config,
-            ILoggingServicePtr logging,
-            IMonitoringServicePtr monitoring)
+        TDiscoveryConfigPtr config,
+        ILoggingServicePtr logging,
+        IMonitoringServicePtr monitoring)
         : Config(std::move(config))
         , Logging(std::move(logging))
         , Monitoring(std::move(monitoring))
-    {
-    }
+    {}
 
 public:
     void Start() override
@@ -85,14 +83,15 @@ public:
         auto counters = Monitoring->GetCounters();
         auto rootGroup = counters->GetSubgroup("counters", "blockstore");
 
-        auto discoveryCounters = rootGroup->GetSubgroup("component", "discovery");
-        auto banListCounters = rootGroup->GetSubgroup("subcomponent", "banlist");
+        auto discoveryCounters =
+            rootGroup->GetSubgroup("component", "discovery");
+        auto banListCounters =
+            rootGroup->GetSubgroup("subcomponent", "banlist");
         Counters.Register(*banListCounters);
     }
 
     void Stop() override
-    {
-    }
+    {}
 
     void Update() override
     {
@@ -109,7 +108,8 @@ public:
                 instances.insert(std::make_pair(TString{host}, port));
             } else {
                 Counters.OnUpdateError();
-                STORAGE_ERROR(TStringBuilder()
+                STORAGE_ERROR(
+                    TStringBuilder()
                     << "broken banlist entry: " << line.Quote());
             }
         }
@@ -130,8 +130,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TBanListStub final
-    : public IBanList
+class TBanListStub final: public IBanList
 {
 private:
     TDeque<std::pair<TString, ui16>> Instances;
@@ -139,31 +138,26 @@ private:
 public:
     TBanListStub(TDeque<std::pair<TString, ui16>> instances)
         : Instances(std::move(instances))
-    {
-    }
+    {}
 
 public:
     void Start() override
-    {
-    }
+    {}
 
     void Stop() override
-    {
-    }
+    {}
 
     void Update() override
-    {
-    }
+    {}
 
     bool IsBanned(const TString& host, ui16 port) const override
     {
         return FindIf(
-            Instances.begin(),
-            Instances.end(),
-            [&] (const auto& i) {
-                return host == i.first && port == i.second;
-            }
-        ) != Instances.end();
+                   Instances.begin(),
+                   Instances.end(),
+                   [&](const auto& i) {
+                       return host == i.first && port == i.second;
+                   }) != Instances.end();
     }
 };
 
@@ -179,12 +173,10 @@ IBanListPtr CreateBanList(
     return std::make_shared<TBanList>(
         std::move(config),
         std::move(logging),
-        std::move(monitoring)
-    );
+        std::move(monitoring));
 }
 
-IBanListPtr CreateBanListStub(
-    TDeque<std::pair<TString, ui16>> instances)
+IBanListPtr CreateBanListStub(TDeque<std::pair<TString, ui16>> instances)
 {
     return std::make_shared<TBanListStub>(std::move(instances));
 }

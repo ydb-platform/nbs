@@ -28,13 +28,12 @@ struct TBlock
         , IsStoredInDb(isStoredInDb)
     {}
 
-    bool operator ==(const TBlock& other) const
+    bool operator==(const TBlock& other) const
     {
-        return BlockIndex == other.BlockIndex
-            && CommitId == other.CommitId;
+        return BlockIndex == other.BlockIndex && CommitId == other.CommitId;
     }
 
-    bool operator <(const TBlock& other) const
+    bool operator<(const TBlock& other) const
     {
         // order by BlockIndex ASC
         return BlockIndex < other.BlockIndex;
@@ -51,8 +50,7 @@ struct TFreshBlock
     TFreshBlock(TBlock meta, TStringBuf content)
         : Meta(meta)
         , Content(content)
-    {
-    }
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -65,8 +63,7 @@ struct TOwningFreshBlock
     TOwningFreshBlock(TBlock meta, TString content)
         : Meta(meta)
         , Content(std::move(content))
-    {
-    }
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////

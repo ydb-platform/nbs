@@ -35,8 +35,8 @@ NProto::TDeviceStats CalcDelta(
     for (const auto& curBucket: cur.GetHistogramBuckets()) {
         auto& deltaBucket = *buckets.Add();
         deltaBucket = curBucket;
-        if (it != prev.GetHistogramBuckets().end()
-                && it->GetValue() == curBucket.GetValue())
+        if (it != prev.GetHistogramBuckets().end() &&
+            it->GetValue() == curBucket.GetValue())
         {
             deltaBucket.SetCount(curBucket.GetCount() - it->GetCount());
             ++it;
@@ -73,8 +73,7 @@ NProto::TAgentStats CalcDelta(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TStatsActor
-    : public TActorBootstrapped<TStatsActor>
+class TStatsActor: public TActorBootstrapped<TStatsActor>
 {
 private:
     const TActorId Owner;
@@ -130,13 +129,19 @@ void TStatsActor::Bootstrap(const TActorContext& ctx)
 
 void TStatsActor::ScheduleUpdateStats(const TActorContext& ctx)
 {
-    LOG_DEBUG(ctx, TBlockStoreComponents::DISK_AGENT_WORKER, "Schedule update stats");
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::DISK_AGENT_WORKER,
+        "Schedule update stats");
 
     auto request = std::make_unique<TEvents::TEvWakeup>();
 
     ctx.Schedule(
         UpdateCountersInterval,
-        std::make_unique<IEventHandle>(ctx.SelfID, ctx.SelfID, request.release()));
+        std::make_unique<IEventHandle>(
+            ctx.SelfID,
+            ctx.SelfID,
+            request.release()));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -168,7 +173,9 @@ void TStatsActor::HandleCollectStatsResponse(
     auto* msg = ev->Get();
 
     if (HasError(msg->GetError())) {
-        LOG_WARN_S(ctx, TBlockStoreComponents::DISK_AGENT_WORKER,
+        LOG_WARN_S(
+            ctx,
+            TBlockStoreComponents::DISK_AGENT_WORKER,
             "Collect stats failed: " << FormatError(msg->GetError()));
 
         ScheduleUpdateStats(ctx);
@@ -178,7 +185,8 @@ void TStatsActor::HandleCollectStatsResponse(
 
     CurStats = std::move(msg->Stats);
 
-    auto request = std::make_unique<TEvDiskRegistry::TEvUpdateAgentStatsRequest>();
+    auto request =
+        std::make_unique<TEvDiskRegistry::TEvUpdateAgentStatsRequest>();
 
     auto& stats = *request->Record.MutableAgentStats();
 
@@ -196,7 +204,9 @@ void TStatsActor::HandleUpdateAgentStatsResponse(
     auto* msg = ev->Get();
 
     if (HasError(msg->GetError())) {
-        LOG_WARN_S(ctx, TBlockStoreComponents::DISK_AGENT_WORKER,
+        LOG_WARN_S(
+            ctx,
+            TBlockStoreComponents::DISK_AGENT_WORKER,
             "Update stats failed: " << FormatError(msg->GetError()));
     } else {
         PrevStats = CurStats;
@@ -211,10 +221,12 @@ STFUNC(TStatsActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvents::TEvWakeup, HandleWakeup);
 
-        HFunc(TEvDiskAgentPrivate::TEvCollectStatsResponse,
+        HFunc(
+            TEvDiskAgentPrivate::TEvCollectStatsResponse,
             HandleCollectStatsResponse);
 
-        HFunc(TEvDiskRegistry::TEvUpdateAgentStatsResponse,
+        HFunc(
+            TEvDiskRegistry::TEvUpdateAgentStatsResponse,
             HandleUpdateAgentStatsResponse);
 
         default:
@@ -243,38 +255,39 @@ void TDiskAgentActor::HandleCollectStats(
 {
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     auto* actorSystem = ctx.ActorSystem();
     auto replyFrom = ctx.SelfID;
 
-    auto reply = [=] (auto r) mutable {
-        auto response = std::make_unique<TEvDiskAgentPrivate::TEvCollectStatsResponse>(
-            std::move(r));
+    auto reply = [=](auto r) mutable
+    {
+        auto response =
+            std::make_unique<TEvDiskAgentPrivate::TEvCollectStatsResponse>(
+                std::move(r));
 
-        actorSystem->Send(
-            new IEventHandle(
-                requestInfo->Sender,
-                replyFrom,
-                response.release(),
-                0,          // flags
-                requestInfo->Cookie));
+        actorSystem->Send(new IEventHandle(
+            requestInfo->Sender,
+            replyFrom,
+            response.release(),
+            0,   // flags
+            requestInfo->Cookie));
     };
 
     State->CheckIOTimeouts(ctx.Now());
 
     auto result = State->CollectStats();
 
-    result.Subscribe([=] (auto future) mutable {
-        try {
-            reply(future.ExtractValue());
-        } catch (...) {
-            reply(MakeError(E_FAIL, CurrentExceptionMessage()));
-        }
-    });
+    result.Subscribe(
+        [=](auto future) mutable
+        {
+            try {
+                reply(future.ExtractValue());
+            } catch (...) {
+                reply(MakeError(E_FAIL, CurrentExceptionMessage()));
+            }
+        });
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -6,9 +6,9 @@
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 
-#include <util/string/join.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+
+#include <util/string/join.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -104,12 +104,12 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TListNodesActor::TListNodesActor(
-        TRequestInfoPtr requestInfo,
-        NProto::TListNodesRequest listNodesRequest,
-        bool multiTabletForwardingEnabled,
-        bool getNodeAttrBatchEnabled,
-        IRequestStatsPtr requestStats,
-        IProfileLogPtr profileLog)
+    TRequestInfoPtr requestInfo,
+    NProto::TListNodesRequest listNodesRequest,
+    bool multiTabletForwardingEnabled,
+    bool getNodeAttrBatchEnabled,
+    IRequestStatsPtr requestStats,
+    IProfileLogPtr profileLog)
     : RequestInfo(std::move(requestInfo))
     , ListNodesRequest(std::move(listNodesRequest))
     , LogTag(ListNodesRequest.GetFileSystemId())
@@ -117,8 +117,7 @@ TListNodesActor::TListNodesActor(
     , GetNodeAttrBatchEnabled(getNodeAttrBatchEnabled)
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
-{
-}
+{}
 
 void TListNodesActor::Bootstrap(const TActorContext& ctx)
 {
@@ -165,7 +164,8 @@ void TListNodesActor::GetNodeAttrsBatch(const TActorContext& ctx)
         if (node.GetShardFileSystemId()) {
             auto& batch = batches[node.GetShardFileSystemId()];
             if (batch.Record.GetHeaders().GetSessionId().empty()) {
-                batch.Record.MutableHeaders()->CopyFrom(ListNodesRequest.GetHeaders());
+                batch.Record.MutableHeaders()->CopyFrom(
+                    ListNodesRequest.GetHeaders());
                 batch.Record.SetFileSystemId(node.GetShardFileSystemId());
                 batch.Record.SetNodeId(RootNodeId);
             }
@@ -200,7 +200,7 @@ void TListNodesActor::GetNodeAttrsBatch(const TActorContext& ctx)
         ctx.Send(
             MakeIndexTabletProxyServiceId(),
             request.release(),
-            0, // flags
+            0,   // flags
             cookie);
 
         ++cookie;
@@ -237,7 +237,7 @@ void TListNodesActor::GetNodeAttrs(const TActorContext& ctx)
             ctx.Send(
                 MakeIndexTabletProxyServiceId(),
                 request.release(),
-                0, // flags
+                0,   // flags
                 cookie);
         } else {
             ++GetNodeAttrResponses;
@@ -331,9 +331,10 @@ void TListNodesActor::HandleGetNodeAttrBatchResponse(
     auto responseIter = responses.begin();
     for (const auto i: nodeIndices) {
         if (i >= Response.NodesSize()) {
-            const auto message = TStringBuilder() << "NodeIndex " << i
-                << " >= " << Response.NodesSize() << ", ShardId: "
-                << shardId;
+            const auto message = TStringBuilder()
+                                 << "NodeIndex " << i
+                                 << " >= " << Response.NodesSize()
+                                 << ", ShardId: " << shardId;
             ReportIndexOutOfBounds(message);
             LOG_ERROR(ctx, TFileStoreComponents::SERVICE, message);
             continue;
@@ -341,7 +342,8 @@ void TListNodesActor::HandleGetNodeAttrBatchResponse(
 
         if (responseIter == responses.end()) {
             const auto message = TStringBuilder() << "NodeIndex " << i
-                << " >= " << responses.size() << ", ShardId: " << shardId;
+                                                  << " >= " << responses.size()
+                                                  << ", ShardId: " << shardId;
             ReportNotEnoughResultsInGetNodeAttrBatchResponses(message);
             LOG_ERROR(ctx, TFileStoreComponents::SERVICE, message);
             continue;
@@ -350,11 +352,14 @@ void TListNodesActor::HandleGetNodeAttrBatchResponse(
         if (responseIter->GetError().GetCode() == NoEnt) {
             MissingNodeIndices.push_back(i);
 
-            LOG_WARN(ctx, TFileStoreComponents::SERVICE, TStringBuilder()
-                << "Node not found in shard: "
-                << Response.GetNames(i).Quote() << ", ShardId: "
-                << shardId << ", Error: "
-                << FormatError(responseIter->GetError()).Quote());
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                TStringBuilder()
+                    << "Node not found in shard: "
+                    << Response.GetNames(i).Quote() << ", ShardId: " << shardId
+                    << ", Error: "
+                    << FormatError(responseIter->GetError()).Quote());
             ++responseIter;
             continue;
         }
@@ -442,8 +447,7 @@ void TListNodesActor::CheckNodeAttrs(const TActorContext& ctx)
             ListNodesRequest.GetNodeId(),
             name.Quote().c_str());
 
-        auto request =
-            std::make_unique<TEvService::TEvGetNodeAttrRequest>();
+        auto request = std::make_unique<TEvService::TEvGetNodeAttrRequest>();
         request->Record.MutableHeaders()->CopyFrom(
             ListNodesRequest.GetHeaders());
         request->Record.SetFileSystemId(ListNodesRequest.GetFileSystemId());
@@ -454,7 +458,7 @@ void TListNodesActor::CheckNodeAttrs(const TActorContext& ctx)
         ctx.Send(
             MakeIndexTabletProxyServiceId(),
             request.release(),
-            0, // flags
+            0,   // flags
             cookie);
     }
 
@@ -527,13 +531,17 @@ void TListNodesActor::HandleGetNodeAttrResponseCheck(
         if (MissingNodeIndices.size() == Response.NodesSize()) {
             NProto::TError error;
             if (MissingNodeIndices.size() == LostNodeCount) {
-                error = MakeError(E_IO, TStringBuilder()
-                    << "lost some nodes in shards for request: "
-                    << ListNodesRequest.ShortDebugString().Quote());
+                error = MakeError(
+                    E_IO,
+                    TStringBuilder()
+                        << "lost some nodes in shards for request: "
+                        << ListNodesRequest.ShortDebugString().Quote());
             } else {
-                error = MakeError(E_REJECTED, TStringBuilder()
-                    << "concurrent directory modifications for request: "
-                    << ListNodesRequest.ShortDebugString().Quote());
+                error = MakeError(
+                    E_REJECTED,
+                    TStringBuilder()
+                        << "concurrent directory modifications for request: "
+                        << ListNodesRequest.ShortDebugString().Quote());
             }
 
             HandleError(ctx, std::move(error));
@@ -594,8 +602,8 @@ void TListNodesActor::HandleError(
     const TActorContext& ctx,
     NProto::TError error)
 {
-    auto response = std::make_unique<TEvService::TEvListNodesResponse>(
-        std::move(error));
+    auto response =
+        std::make_unique<TEvService::TEvListNodesResponse>(std::move(error));
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
 }
@@ -607,12 +615,8 @@ STFUNC(TListNodesActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(
-            TEvService::TEvListNodesResponse,
-            HandleListNodesResponse);
-        HFunc(
-            TEvService::TEvGetNodeAttrResponse,
-            HandleGetNodeAttrResponse);
+        HFunc(TEvService::TEvListNodesResponse, HandleListNodesResponse);
+        HFunc(TEvService::TEvGetNodeAttrResponse, HandleGetNodeAttrResponse);
         HFunc(
             TEvIndexTablet::TEvGetNodeAttrBatchResponse,
             HandleGetNodeAttrBatchResponse);
@@ -682,9 +686,8 @@ void TStorageServiceActor::HandleListNodes(
             filestore,
             shardNo);
         if (HasError(error)) {
-            auto response =
-                std::make_unique<TEvService::TEvListNodesResponse>(
-                    std::move(error));
+            auto response = std::make_unique<TEvService::TEvListNodesResponse>(
+                std::move(error));
             return NCloud::Reply(ctx, *ev, std::move(response));
         }
         msg->Record.SetFileSystemId(shardId);
@@ -701,8 +704,8 @@ void TStorageServiceActor::HandleListNodes(
     auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
     const bool multiTabletForwardingEnabled =
-        StorageConfig->GetMultiTabletForwardingEnabled()
-        && !msg->Record.GetHeaders().GetDisableMultiTabletForwarding();
+        StorageConfig->GetMultiTabletForwardingEnabled() &&
+        !msg->Record.GetHeaders().GetDisableMultiTabletForwarding();
     auto actor = std::make_unique<TListNodesActor>(
         std::move(requestInfo),
         std::move(msg->Record),

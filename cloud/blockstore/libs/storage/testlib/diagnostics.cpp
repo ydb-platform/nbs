@@ -11,4 +11,4 @@ TDiagnosticsConfigPtr CreateDiagnosticsConfig()
     return std::make_shared<TDiagnosticsConfig>(diagnosticsConfig);
 }
 
-} // namespace NCloud::NBlockStore
+}   // namespace NCloud::NBlockStore

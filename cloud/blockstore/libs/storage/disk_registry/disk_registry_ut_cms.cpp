@@ -1,8 +1,8 @@
 #include "disk_registry.h"
+
 #include "disk_registry_actor.h"
 
 #include <cloud/blockstore/config/disk.pb.h>
-
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
@@ -33,8 +33,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFixture
-    : public NUnitTest::TBaseFixture
+struct TFixture: public NUnitTest::TBaseFixture
 {
     std::unique_ptr<NActors::TTestActorRuntime> Runtime;
     std::optional<TDiskRegistryClient> DiskRegistry;
@@ -49,7 +48,7 @@ struct TFixture
 
     auto CmsAction(NProto::TAction action)
     {
-        auto response = DiskRegistry->CmsAction(TVector {action});
+        auto response = DiskRegistry->CmsAction(TVector{action});
 
         UNIT_ASSERT_VALUES_EQUAL(1, response->Record.ActionResultsSize());
         const auto& r = response->Record.GetActionResults(0);
@@ -106,17 +105,15 @@ struct TFixture
 
     void ShouldRestoreCMSTimeoutAfterReboot(auto removeAction)
     {
-        const auto agent = CreateAgentConfig("agent-1", {
-            Device("dev-1", "uuid-1", "rack-1", 10_GB)
-        });
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB)});
 
-        SetUpRuntime(TTestRuntimeBuilder()
-            .WithAgents({agent})
-            .Build());
+        SetUpRuntime(TTestRuntimeBuilder().WithAgents({agent}).Build());
 
         DiskRegistry->SetWritableState(true);
 
-        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, { agent }));
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, {agent}));
 
         RegisterAgents(*Runtime, 1);
         WaitForAgents(*Runtime, 1);
@@ -185,14 +182,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 {
     Y_UNIT_TEST_F(ShouldRemoveAgentsUponCmsRequest, TFixture)
     {
-        const auto agent = CreateAgentConfig("agent-1", {
-            Device("dev-1", "uuid-1", "rack-1", 10_GB),
-            Device("dev-2", "uuid-2", "rack-1", 10_GB)
-        });
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB),
+             Device("dev-2", "uuid-2", "rack-1", 10_GB)});
 
-        SetUpRuntime(TTestRuntimeBuilder()
-            .WithAgents({agent})
-            .Build());
+        SetUpRuntime(TTestRuntimeBuilder().WithAgents({agent}).Build());
 
         DiskRegistry->SetWritableState(true);
 
@@ -208,9 +203,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(1, msg.DevicesSize());
             diskDevice = msg.GetDevices(0).GetDeviceUUID();
 
-            freeDevice = diskDevice == "uuid-1"
-                ? "uuid-2"
-                : "uuid-1";
+            freeDevice = diskDevice == "uuid-1" ? "uuid-2" : "uuid-1";
         }
 
         ui32 cmsTimeout = 0;
@@ -224,12 +217,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
 
         // request will be ignored
-        DiskRegistry->ChangeAgentState("agent-1", NProto::EAgentState::AGENT_STATE_ONLINE);
+        DiskRegistry->ChangeAgentState(
+            "agent-1",
+            NProto::EAgentState::AGENT_STATE_ONLINE);
 
         {
             DiskRegistry->SendAllocateDiskRequest("vol2", 10_GB);
             auto response = DiskRegistry->RecvAllocateDiskResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_BS_DISK_ALLOCATION_FAILED, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_BS_DISK_ALLOCATION_FAILED,
+                response->GetStatus());
         }
 
         Runtime->AdvanceCurrentTime(TDuration::Days(1) / 2);
@@ -252,7 +249,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(timeout, cmsTimeout);
         }
 
-        DiskRegistry->ChangeDeviceState(freeDevice, NProto::EDeviceState::DEVICE_STATE_ERROR);
+        DiskRegistry->ChangeDeviceState(
+            freeDevice,
+            NProto::EDeviceState::DEVICE_STATE_ERROR);
 
         {
             auto [error, timeout] = RemoveHost("agent-1");
@@ -261,7 +260,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_UNEQUAL(0, timeout);
         }
 
-        DiskRegistry->ChangeDeviceState(diskDevice, NProto::EDeviceState::DEVICE_STATE_ERROR);
+        DiskRegistry->ChangeDeviceState(
+            diskDevice,
+            NProto::EDeviceState::DEVICE_STATE_ERROR);
 
         {
             auto [error, timeout] = RemoveHost("agent-1");
@@ -270,25 +271,31 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(0, timeout);
         }
 
-        DiskRegistry->ChangeAgentState("agent-1", NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
-        DiskRegistry->ChangeAgentState("agent-1", NProto::EAgentState::AGENT_STATE_ONLINE);
+        DiskRegistry->ChangeAgentState(
+            "agent-1",
+            NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
+        DiskRegistry->ChangeAgentState(
+            "agent-1",
+            NProto::EAgentState::AGENT_STATE_ONLINE);
 
-        DiskRegistry->ChangeDeviceState("uuid-1", NProto::EDeviceState::DEVICE_STATE_ONLINE);
-        DiskRegistry->ChangeDeviceState("uuid-2", NProto::EDeviceState::DEVICE_STATE_ONLINE);
+        DiskRegistry->ChangeDeviceState(
+            "uuid-1",
+            NProto::EDeviceState::DEVICE_STATE_ONLINE);
+        DiskRegistry->ChangeDeviceState(
+            "uuid-2",
+            NProto::EDeviceState::DEVICE_STATE_ONLINE);
 
         DiskRegistry->AllocateDisk("vol2", 10_GB);
     }
 
     Y_UNIT_TEST_F(ShouldFailCmsRequestIfActionIsUnknown, TFixture)
     {
-        const auto agent = CreateAgentConfig("agent-1", {
-            Device("dev-1", "uuid-1", "rack-1", 10_GB),
-            Device("dev-2", "uuid-2", "rack-1", 10_GB)
-        });
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB),
+             Device("dev-2", "uuid-2", "rack-1", 10_GB)});
 
-        SetUpRuntime(TTestRuntimeBuilder()
-            .WithAgents({agent})
-            .Build());
+        SetUpRuntime(TTestRuntimeBuilder().WithAgents({agent}).Build());
 
         DiskRegistry->SetWritableState(true);
 
@@ -301,7 +308,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         NProto::TAction action;
         action.SetHost("agent-1");
         action.SetType(NProto::TAction::UNKNOWN);
-        TVector<NProto::TAction> actions { action };
+        TVector<NProto::TAction> actions{action};
 
         auto response = DiskRegistry->CmsAction(std::move(actions));
         UNIT_ASSERT_VALUES_EQUAL(
@@ -311,8 +318,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
     Y_UNIT_TEST_F(ShouldFailCmsRequestIfAgentIsNotFound, TFixture)
     {
-        SetUpRuntime(TTestRuntimeBuilder()
-            .Build());
+        SetUpRuntime(TTestRuntimeBuilder().Build());
 
         DiskRegistry->SetWritableState(true);
 
@@ -324,14 +330,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
     Y_UNIT_TEST_F(ShouldFailCmsRequestIfDeviceNotFound, TFixture)
     {
-        const auto agent = CreateAgentConfig("agent-1", {
-            Device("dev-1", "uuid-1", "rack-1", 10_GB),
-            Device("dev-2", "uuid-2", "rack-1", 10_GB)
-        });
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB),
+             Device("dev-2", "uuid-2", "rack-1", 10_GB)});
 
-        SetUpRuntime(TTestRuntimeBuilder()
-            .WithAgents({agent})
-            .Build());
+        SetUpRuntime(TTestRuntimeBuilder().WithAgents({agent}).Build());
 
         DiskRegistry->SetWritableState(true);
 
@@ -358,13 +362,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
     Y_UNIT_TEST_F(ShouldRemoveDeviceUponCmsRequest, TFixture)
     {
-        const auto agent = CreateAgentConfig("agent-1", {
-            Device("dev-1", "uuid-1", "rack-1", 10_GB),
-        });
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+            });
 
-        SetUpRuntime(TTestRuntimeBuilder()
-            .WithAgents({agent})
-            .Build());
+        SetUpRuntime(TTestRuntimeBuilder().WithAgents({agent}).Build());
 
         DiskRegistry->SetWritableState(true);
 
@@ -387,7 +391,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
 
         // request will be ignored
-        DiskRegistry->ChangeDeviceState("uuid-1", NProto::EDeviceState::DEVICE_STATE_ONLINE);
+        DiskRegistry->ChangeDeviceState(
+            "uuid-1",
+            NProto::EDeviceState::DEVICE_STATE_ONLINE);
 
         {
             auto response = DiskRegistry->AllocateDisk("vol1", 10_GB);
@@ -422,7 +428,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             cmsTimeout = timeout;
         }
 
-        DiskRegistry->ChangeDeviceState("uuid-1", NProto::EDeviceState::DEVICE_STATE_ERROR);
+        DiskRegistry->ChangeDeviceState(
+            "uuid-1",
+            NProto::EDeviceState::DEVICE_STATE_ERROR);
 
         {
             auto [error, timeout] = RemoveDevice("agent-1", "dev-1");
@@ -430,7 +438,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(0, timeout);
         }
 
-        DiskRegistry->ChangeDeviceState("uuid-1", NProto::EDeviceState::DEVICE_STATE_ONLINE);
+        DiskRegistry->ChangeDeviceState(
+            "uuid-1",
+            NProto::EDeviceState::DEVICE_STATE_ONLINE);
 
         {
             auto response = DiskRegistry->AllocateDisk("vol1", 10_GB);
@@ -445,14 +455,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
     Y_UNIT_TEST_F(ShouldRemoveMultipleDevicesUponCmsRequest, TFixture)
     {
-        const auto agent = CreateAgentConfig("agent-1", {
-            Device("some/path", "uuid-1", "rack-1", 10_GB),
-            Device("some/path", "uuid-2", "rack-1", 10_GB),
-        });
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {
+                Device("some/path", "uuid-1", "rack-1", 10_GB),
+                Device("some/path", "uuid-2", "rack-1", 10_GB),
+            });
 
-        SetUpRuntime(TTestRuntimeBuilder()
-            .WithAgents({agent})
-            .Build());
+        SetUpRuntime(TTestRuntimeBuilder().WithAgents({agent}).Build());
 
         DiskRegistry->SetWritableState(true);
 
@@ -466,8 +476,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         ui32 cmsTimeout = 0;
         {
-            auto [error, timeout] =
-                RemoveDevice("agent-1", "some/path");
+            auto [error, timeout] = RemoveDevice("agent-1", "some/path");
 
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
             UNIT_ASSERT_VALUES_UNEQUAL(0, timeout);
@@ -481,8 +490,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         DiskRegistry->DeallocateDisk("vol1");
 
         {
-            auto [error, timeout] =
-                RemoveDevice("agent-1", "some/path");
+            auto [error, timeout] = RemoveDevice("agent-1", "some/path");
 
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
@@ -502,13 +510,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
     Y_UNIT_TEST_F(ShouldReturnOkIfRemovedDeviceHasNoDisks, TFixture)
     {
-        const auto agent = CreateAgentConfig("agent-1", {
-            Device("dev-1", "uuid-1", "rack-1", 10_GB),
-        });
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+            });
 
-        SetUpRuntime(TTestRuntimeBuilder()
-            .WithAgents({agent})
-            .Build());
+        SetUpRuntime(TTestRuntimeBuilder().WithAgents({agent}).Build());
 
         DiskRegistry->SetWritableState(true);
 
@@ -553,14 +561,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
     Y_UNIT_TEST_F(ShouldFailCmsRequestIfDiskRegistryRestarts, TFixture)
     {
-        const auto agent = CreateAgentConfig("agent-1", {
-            Device("dev-1", "uuid-1", "rack-1", 10_GB),
-            Device("dev-2", "uuid-2", "rack-1", 10_GB)
-        });
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB),
+             Device("dev-2", "uuid-2", "rack-1", 10_GB)});
 
-        SetUpRuntime(TTestRuntimeBuilder()
-            .WithAgents({agent})
-            .Build());
+        SetUpRuntime(TTestRuntimeBuilder().WithAgents({agent}).Build());
 
         DiskRegistry->SetWritableState(true);
 
@@ -606,28 +612,26 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
     Y_UNIT_TEST_F(ShouldRestoreAgentCMSTimeoutAfterReboot, TFixture)
     {
-        ShouldRestoreCMSTimeoutAfterReboot([this] {
-            return RemoveHost("agent-1");
-        });
+        ShouldRestoreCMSTimeoutAfterReboot([this]
+                                           { return RemoveHost("agent-1"); });
     }
 
     Y_UNIT_TEST_F(ShouldRestoreDeviceCMSTimeoutAfterReboot, TFixture)
     {
-        ShouldRestoreCMSTimeoutAfterReboot([this] {
-            return RemoveDevice("agent-1", "dev-1");
-        });
+        ShouldRestoreCMSTimeoutAfterReboot(
+            [this] { return RemoveDevice("agent-1", "dev-1"); });
     }
 
-    Y_UNIT_TEST_F(ShouldReturnOkForCmsRequestIfAgentDoesnotHaveUserDisks, TFixture)
+    Y_UNIT_TEST_F(
+        ShouldReturnOkForCmsRequestIfAgentDoesnotHaveUserDisks,
+        TFixture)
     {
-        const auto agent = CreateAgentConfig("agent-1", {
-            Device("dev-1", "uuid-1", "rack-1", 10_GB),
-            Device("dev-2", "uuid-2", "rack-1", 10_GB)
-        });
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB),
+             Device("dev-2", "uuid-2", "rack-1", 10_GB)});
 
-        SetUpRuntime(TTestRuntimeBuilder()
-            .WithAgents({agent})
-            .Build());
+        SetUpRuntime(TTestRuntimeBuilder().WithAgents({agent}).Build());
 
         DiskRegistry->SetWritableState(true);
 
@@ -647,7 +651,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         {
             DiskRegistry->SendAllocateDiskRequest("vol1", 10_GB);
             auto response = DiskRegistry->RecvAllocateDiskResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_BS_DISK_ALLOCATION_FAILED, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_BS_DISK_ALLOCATION_FAILED,
+                response->GetStatus());
         }
 
         Runtime->AdvanceCurrentTime(TDuration::Days(1) / 2);
@@ -658,22 +664,24 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(0, timeout);
         }
 
-        DiskRegistry->ChangeAgentState("agent-1", NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
-        DiskRegistry->ChangeAgentState("agent-1", NProto::EAgentState::AGENT_STATE_ONLINE);
+        DiskRegistry->ChangeAgentState(
+            "agent-1",
+            NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
+        DiskRegistry->ChangeAgentState(
+            "agent-1",
+            NProto::EAgentState::AGENT_STATE_ONLINE);
 
         DiskRegistry->AllocateDisk("vol1", 10_GB);
     }
 
     Y_UNIT_TEST_F(ShouldReturnOkForCmsRequestIfDisksWereDeallocated, TFixture)
     {
-        const auto agent = CreateAgentConfig("agent-1", {
-            Device("dev-1", "uuid-1", "rack-1", 10_GB),
-            Device("dev-2", "uuid-2", "rack-1", 10_GB)
-        });
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB),
+             Device("dev-2", "uuid-2", "rack-1", 10_GB)});
 
-        SetUpRuntime(TTestRuntimeBuilder()
-            .WithAgents({agent})
-            .Build());
+        SetUpRuntime(TTestRuntimeBuilder().WithAgents({agent}).Build());
 
         DiskRegistry->SetWritableState(true);
 
@@ -705,24 +713,25 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(0, timeout);
         }
 
-        DiskRegistry->ChangeAgentState("agent-1", NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
-        DiskRegistry->ChangeAgentState("agent-1", NProto::EAgentState::AGENT_STATE_ONLINE);
+        DiskRegistry->ChangeAgentState(
+            "agent-1",
+            NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
+        DiskRegistry->ChangeAgentState(
+            "agent-1",
+            NProto::EAgentState::AGENT_STATE_ONLINE);
     }
 
     Y_UNIT_TEST_F(ShouldAllowToTakeAwayAlreadyUnavailableAgents, TFixture)
     {
-        const TVector agents {
-            CreateAgentConfig("agent-1", {
-                Device("dev-1", "uuid-1", "rack-1", 10_GB)
-            }),
-            CreateAgentConfig("agent-2", {
-                Device("dev-1", "uuid-2", "rack-2", 10_GB)
-            })
-        };
+        const TVector agents{
+            CreateAgentConfig(
+                "agent-1",
+                {Device("dev-1", "uuid-1", "rack-1", 10_GB)}),
+            CreateAgentConfig(
+                "agent-2",
+                {Device("dev-1", "uuid-2", "rack-2", 10_GB)})};
 
-        SetUpRuntime(TTestRuntimeBuilder()
-            .WithAgents(agents)
-            .Build());
+        SetUpRuntime(TTestRuntimeBuilder().WithAgents(agents).Build());
 
         DiskRegistry->SetWritableState(true);
 
@@ -731,7 +740,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         RegisterAndWaitForAgents(*Runtime, agents);
 
         DiskRegistry->AllocateDisk("vol1", 20_GB);
-        DiskRegistry->ChangeAgentState("agent-1", NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
+        DiskRegistry->ChangeAgentState(
+            "agent-1",
+            NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
 
         ui32 cmsTimeout = 0;
         {
@@ -763,7 +774,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         // Take away empty agent without timeout
 
-        DiskRegistry->ChangeAgentState("agent-2", NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
+        DiskRegistry->ChangeAgentState(
+            "agent-2",
+            NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
 
         {
             auto [error, timeout] = RemoveHost("agent-2");
@@ -785,14 +798,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
     Y_UNIT_TEST_F(ShouldAllowToTakeAwayAlreadyUnavailableDevice, TFixture)
     {
-        const auto agent = CreateAgentConfig("agent-1", {
-            Device("dev-1", "uuid-1", "rack-1", 10_GB),
-            Device("dev-2", "uuid-2", "rack-1", 10_GB)
-        });
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB),
+             Device("dev-2", "uuid-2", "rack-1", 10_GB)});
 
-        SetUpRuntime(TTestRuntimeBuilder()
-            .WithAgents({agent})
-            .Build());
+        SetUpRuntime(TTestRuntimeBuilder().WithAgents({agent}).Build());
 
         DiskRegistry->SetWritableState(true);
 
@@ -803,32 +814,37 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         WaitForSecureErase(*Runtime, {agent});
 
         DiskRegistry->AllocateDisk("vol1", 20_GB);
-        DiskRegistry->ChangeDeviceState("uuid-1", NProto::EDeviceState::DEVICE_STATE_ERROR);
+        DiskRegistry->ChangeDeviceState(
+            "uuid-1",
+            NProto::EDeviceState::DEVICE_STATE_ERROR);
 
         auto [error, timeout] = RemoveDevice("agent-1", "dev-1");
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(0, timeout);
 
-        DiskRegistry->ChangeDeviceState("uuid-1", NProto::EDeviceState::DEVICE_STATE_ONLINE);
+        DiskRegistry->ChangeDeviceState(
+            "uuid-1",
+            NProto::EDeviceState::DEVICE_STATE_ONLINE);
     }
 
     Y_UNIT_TEST_F(ShouldGetDependentDisks, TFixture)
     {
-        const TVector agents {
-            CreateAgentConfig("agent-1", {
-                Device("dev-1", "uuid-1", "rack-1", 10_GB),
-                Device("dev-2", "uuid-2", "rack-1", 10_GB),
-            }),
-            CreateAgentConfig("agent-2", {
-                Device("dev-1", "uuid-3", "rack-2", 10_GB),
-                Device("dev-2", "uuid-4", "rack-2", 10_GB),
-            })
-        };
+        const TVector agents{
+            CreateAgentConfig(
+                "agent-1",
+                {
+                    Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                    Device("dev-2", "uuid-2", "rack-1", 10_GB),
+                }),
+            CreateAgentConfig(
+                "agent-2",
+                {
+                    Device("dev-1", "uuid-3", "rack-2", 10_GB),
+                    Device("dev-2", "uuid-4", "rack-2", 10_GB),
+                })};
 
-        SetUpRuntime(TTestRuntimeBuilder()
-            .WithAgents(agents)
-            .Build());
+        SetUpRuntime(TTestRuntimeBuilder().WithAgents(agents).Build());
 
         DiskRegistry->SetWritableState(true);
 
@@ -843,7 +859,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         TVector<TString> agent1Disks;
         TVector<TString> agent2Disks;
 
-        auto allocateDisk = [&] (const TString& diskId, TString& devName) {
+        auto allocateDisk = [&](const TString& diskId, TString& devName)
+        {
             auto response = DiskRegistry->AllocateDisk(diskId, 10_GB);
             const auto& msg = response->Record;
             UNIT_ASSERT_VALUES_EQUAL(1, msg.DevicesSize());
@@ -908,20 +925,21 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
     Y_UNIT_TEST_F(ShouldGetDependentDisksAndIgnoreReplicated, TFixture)
     {
-        const TVector agents {
-            CreateAgentConfig("agent-1", {
-                Device("dev-1", "uuid-1", "rack-1", 10_GB),
-                Device("dev-2", "uuid-2", "rack-1", 10_GB),
-            }),
-            CreateAgentConfig("agent-2", {
-                Device("dev-1", "uuid-3", "rack-2", 10_GB),
-                Device("dev-2", "uuid-4", "rack-2", 10_GB),
-            })
-        };
+        const TVector agents{
+            CreateAgentConfig(
+                "agent-1",
+                {
+                    Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                    Device("dev-2", "uuid-2", "rack-1", 10_GB),
+                }),
+            CreateAgentConfig(
+                "agent-2",
+                {
+                    Device("dev-1", "uuid-3", "rack-2", 10_GB),
+                    Device("dev-2", "uuid-4", "rack-2", 10_GB),
+                })};
 
-        SetUpRuntime(TTestRuntimeBuilder()
-            .WithAgents(agents)
-            .Build());
+        SetUpRuntime(TTestRuntimeBuilder().WithAgents(agents).Build());
 
         DiskRegistry->SetWritableState(true);
 
@@ -932,8 +950,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         {
             const uint32_t replicaCount = 1;
             auto response = DiskRegistry->AllocateDisk(
-                "replicated-vol", 10_GB, 4_KB, "", 0, "", "",
-                replicaCount, NProto::STORAGE_MEDIA_SSD_MIRROR2);
+                "replicated-vol",
+                10_GB,
+                4_KB,
+                "",
+                0,
+                "",
+                "",
+                replicaCount,
+                NProto::STORAGE_MEDIA_SSD_MIRROR2);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
             UNIT_ASSERT_VALUES_EQUAL(1, response->Record.DevicesSize());
             UNIT_ASSERT_VALUES_EQUAL(1, response->Record.ReplicasSize());
@@ -963,15 +988,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
     Y_UNIT_TEST_F(ShouldAddHostAndDevicesAfterRemoval, TFixture)
     {
-        const TVector agents {
-            CreateAgentConfig("agent-1", {
-                Device("dev-1", "uuid-1", "rack-1", 10_GB),
-                Device("dev-2", "uuid-2", "rack-1", 10_GB)
-            })};
+        const TVector agents{CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB),
+             Device("dev-2", "uuid-2", "rack-1", 10_GB)})};
 
-        SetUpRuntime(TTestRuntimeBuilder()
-            .WithAgents(agents)
-            .Build());
+        SetUpRuntime(TTestRuntimeBuilder().WithAgents(agents).Build());
 
         DiskRegistry->SetWritableState(true);
         DiskRegistry->UpdateConfig(CreateRegistryConfig(0, agents));
@@ -1111,14 +1133,20 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         {
             auto [error, timeout] = RemoveDevice("agent-1", "dev-2");
 
-            UNIT_ASSERT_VALUES_EQUAL_C(E_TRY_AGAIN, error.GetCode(), error.GetMessage());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_TRY_AGAIN,
+                error.GetCode(),
+                error.GetMessage());
             UNIT_ASSERT_VALUES_UNEQUAL(0, timeout);
         }
 
         {
             auto [error, timeout] = AddDevice("agent-1", "dev-2");
 
-            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                error.GetMessage());
             UNIT_ASSERT_VALUES_EQUAL(0, timeout);
         }
     }
@@ -1160,8 +1188,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(
-                TDuration::MilliSeconds(
-                    config.GetIdleAgentDeployByCmsDelay()),
+                TDuration::MilliSeconds(config.GetIdleAgentDeployByCmsDelay()),
                 TDuration::Seconds(timeout));
         }
 
@@ -1173,13 +1200,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
             UNIT_ASSERT_LE(
                 TDuration::Seconds(timeout),
-                TDuration::MilliSeconds(
-                    config.GetIdleAgentDeployByCmsDelay()) -
+                TDuration::MilliSeconds(config.GetIdleAgentDeployByCmsDelay()) -
                     2min);
             UNIT_ASSERT_GT(
                 TDuration::Seconds(timeout),
-                TDuration::MilliSeconds(
-                    config.GetIdleAgentDeployByCmsDelay()) -
+                TDuration::MilliSeconds(config.GetIdleAgentDeployByCmsDelay()) -
                     3min);
         }
 
@@ -1200,8 +1225,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
             UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
             UNIT_ASSERT_VALUES_EQUAL(
-                TDuration::MilliSeconds(
-                    config.GetIdleAgentDeployByCmsDelay()),
+                TDuration::MilliSeconds(config.GetIdleAgentDeployByCmsDelay()),
                 TDuration::Seconds(timeout));
         }
 
@@ -1223,22 +1247,25 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
     Y_UNIT_TEST_F(ShouldCleanupLocalDevicesBeforeRemoveHost, TFixture)
     {
-        const TVector agents {CreateAgentConfig("agent-1", {
-            Device("dev-1", "uuid-1", "rack-1", 93_GB),
-            Device("dev-2", "uuid-2", "rack-1", 93_GB)
-                | WithPool("local", NProto::DEVICE_POOL_KIND_LOCAL)
-        })};
+        const TVector agents{CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 93_GB),
+             Device("dev-2", "uuid-2", "rack-1", 93_GB) |
+                 WithPool("local", NProto::DEVICE_POOL_KIND_LOCAL)})};
 
         SetUpRuntime(TTestRuntimeBuilder()
-            .With([]{
-                auto config = CreateDefaultStorageConfig();
-                config.SetNonReplicatedDontSuspendDevices(false);
-                config.SetAllocationUnitNonReplicatedSSD(93);
+                         .With(
+                             []
+                             {
+                                 auto config = CreateDefaultStorageConfig();
+                                 config.SetNonReplicatedDontSuspendDevices(
+                                     false);
+                                 config.SetAllocationUnitNonReplicatedSSD(93);
 
-                return config;
-            }())
-            .WithAgents(agents)
-            .Build());
+                                 return config;
+                             }())
+                         .WithAgents(agents)
+                         .Build());
 
         DiskRegistry->SetWritableState(true);
 
@@ -1271,13 +1298,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         {
             auto response = DiskRegistry->AllocateDisk(
                 "local",
-                93_GB,     // diskSize
-                512,       // blockSize
-                TString{}, // placementGroupId
-                0,         // placementPartitionIndex
+                93_GB,       // diskSize
+                512,         // blockSize
+                TString{},   // placementGroupId
+                0,           // placementPartitionIndex
                 "nbs",
                 "nbs.tests",
-                0,         // replicaCount
+                0,   // replicaCount
                 NProto::STORAGE_MEDIA_SSD_LOCAL);
 
             UNIT_ASSERT_VALUES_EQUAL(1, response->Record.DevicesSize());
@@ -1296,41 +1323,45 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         }
 
         TAutoPtr<IEventHandle> secureErase;
-        Runtime->SetObserverFunc([&](TAutoPtr<IEventHandle>& event) {
-            switch (event->GetTypeRewrite()) {
-                case TEvDiskRegistryPrivate::EvSecureEraseRequest: {
-                    auto& msg = *event->Get<
-                        TEvDiskRegistryPrivate::TEvSecureEraseRequest>();
+        Runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskRegistryPrivate::EvSecureEraseRequest: {
+                        auto& msg = *event->Get<
+                            TEvDiskRegistryPrivate::TEvSecureEraseRequest>();
 
-                    UNIT_ASSERT_VALUES_EQUAL(1, msg.DirtyDevices.size());
-                    UNIT_ASSERT_VALUES_EQUAL(
-                        "uuid-1",
-                        msg.DirtyDevices[0].GetDeviceUUID());
+                        UNIT_ASSERT_VALUES_EQUAL(1, msg.DirtyDevices.size());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            "uuid-1",
+                            msg.DirtyDevices[0].GetDeviceUUID());
 
-                    UNIT_ASSERT(!secureErase);
-                    secureErase.Swap(event);
-                    return TTestActorRuntime::EEventAction::DROP;
+                        UNIT_ASSERT(!secureErase);
+                        secureErase.Swap(event);
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
                 }
-            }
-            return TTestActorRuntime::DefaultObserverFunc(event);
-        });
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
 
         // deallocate 'nrd' so we trigger the secure erase operation
         DiskRegistry->MarkDiskForCleanup("nrd");
         DiskRegistry->DeallocateDisk("nrd");
 
-        Runtime->DispatchEvents({
-            .CustomFinalCondition = [&] {
-                return !!secureErase;
-            }
-        }, 15s);
+        Runtime->DispatchEvents(
+            {.CustomFinalCondition =
+                 [&]
+             {
+                 return !!secureErase;
+             }},
+            15s);
         UNIT_ASSERT(secureErase);
         Runtime->SetObserverFunc(&TTestActorRuntime::DefaultObserverFunc);
 
         DiskRegistry->MarkDiskForCleanup("local");
         DiskRegistry->SendDeallocateDiskRequest(
             "local",
-            true // sync
+            true   // sync
         );
 
         // try to remove host
@@ -1347,20 +1378,22 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT(!secureErase);
 
         // Wait for the next secure erase to clear the local device (uuid-2)
-        Runtime->SetObserverFunc([&](TAutoPtr<IEventHandle>& event) {
-            switch (event->GetTypeRewrite()) {
-                case TEvDiskRegistryPrivate::EvSecureEraseRequest: {
-                    auto& msg = *event->Get<
-                        TEvDiskRegistryPrivate::TEvSecureEraseRequest>();
+        Runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskRegistryPrivate::EvSecureEraseRequest: {
+                        auto& msg = *event->Get<
+                            TEvDiskRegistryPrivate::TEvSecureEraseRequest>();
 
-                    UNIT_ASSERT_VALUES_EQUAL(1, msg.DirtyDevices.size());
-                    UNIT_ASSERT_VALUES_EQUAL(
-                        "uuid-2",
-                        msg.DirtyDevices[0].GetDeviceUUID());
+                        UNIT_ASSERT_VALUES_EQUAL(1, msg.DirtyDevices.size());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            "uuid-2",
+                            msg.DirtyDevices[0].GetDeviceUUID());
+                    }
                 }
-            }
-            return TTestActorRuntime::DefaultObserverFunc(event);
-        });
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
 
         Runtime->DispatchEvents(
             {.FinalEvents = {TDispatchOptions::TFinalEventCondition(
@@ -1389,17 +1422,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
     Y_UNIT_TEST_F(ShouldUpdateAllLogicalDevices, TFixture)
     {
         // two logical devices on the same path
-        const auto agent = CreateAgentConfig("agent-1", {
-            Device("path", "uuid-1", "rack-1", 10_GB),
-            Device("path", "uuid-2", "rack-1", 10_GB)
-        });
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {Device("path", "uuid-1", "rack-1", 10_GB),
+             Device("path", "uuid-2", "rack-1", 10_GB)});
 
         auto config = CreateDefaultStorageConfig();
 
-        SetUpRuntime(TTestRuntimeBuilder()
-            .WithAgents({agent})
-            .With(config)
-            .Build());
+        SetUpRuntime(
+            TTestRuntimeBuilder().WithAgents({agent}).With(config).Build());
 
         DiskRegistry->SetWritableState(true);
         DiskRegistry->UpdateConfig(CreateRegistryConfig(0, {agent}));

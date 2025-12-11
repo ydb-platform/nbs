@@ -36,7 +36,7 @@
 #include <memory>
 
 #if defined(__linux__)
-#   include <malloc.h>
+#include <malloc.h>
 #endif
 
 namespace NCloud::NBlockStore::NServer {
@@ -49,8 +49,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 // This wrapper will Release (and not Close) TFileHandle on scope exit
 
-class TFileHandleRef
-    : TNonCopyable
+class TFileHandleRef: TNonCopyable
 {
 private:
     TFileHandle Handle;
@@ -65,7 +64,7 @@ public:
         Handle.Release();
     }
 
-    operator TFileHandle& () noexcept
+    operator TFileHandle&() noexcept
     {
         return Handle;
     }
@@ -85,7 +84,12 @@ TAlignedBuffer AllocateAligned(size_t byteCount, bool zeroInit)
         memset(p, 0, byteCount);
     }
 
-    return { static_cast<char*>(p), [] (auto* p) { free(p); }};
+    return {
+        static_cast<char*>(p),
+        [](auto* p)
+        {
+            free(p);
+        }};
 }
 
 TAlignedBuffer AllocateZero(size_t byteCount)
@@ -116,8 +120,7 @@ TArrayRef<char> GetNextArrayRef(
         if (offset < buf.Size()) {
             return {
                 const_cast<char*>(buf.Data() + offset),
-                Min<ui64>(byteCount, buf.Size() - offset)
-            };
+                Min<ui64>(byteCount, buf.Size() - offset)};
         }
 
         byteCount -= buf.Size();
@@ -184,15 +187,15 @@ struct TStorageContext
     const NProto::EDataIntegrityValidationPolicy DataIntegrityValidationPolicy;
 
     TStorageContext(
-            ITaskQueuePtr submitQueue,
-            IFileIOServicePtr fileIO,
-            INvmeManagerPtr nvmeManager,
-            ui32 blockSize,
-            ui64 startIndex,
-            ui64 blockCount,
-            TFile file,
-            bool directIO,
-            NProto::EDataIntegrityValidationPolicy dataIntegrityValidationPolicy)
+        ITaskQueuePtr submitQueue,
+        IFileIOServicePtr fileIO,
+        INvmeManagerPtr nvmeManager,
+        ui32 blockSize,
+        ui64 startIndex,
+        ui64 blockCount,
+        TFile file,
+        bool directIO,
+        NProto::EDataIntegrityValidationPolicy dataIntegrityValidationPolicy)
         : SubmitQueue(std::move(submitQueue))
         , FileIOService(std::move(fileIO))
         , NvmeManager(std::move(nvmeManager))
@@ -220,11 +223,7 @@ struct TAsyncMethod
             TArrayRef<char> buffer,
             TFileIOCompletion* completion)
         {
-            fileIO.AsyncRead(
-                handle,
-                offset,
-                buffer,
-                completion);
+            fileIO.AsyncRead(handle, offset, buffer, completion);
         }
     };
 
@@ -239,11 +238,7 @@ struct TAsyncMethod
             TArrayRef<const char> buffer,
             TFileIOCompletion* completion)
         {
-            fileIO.AsyncWrite(
-                handle,
-                offset,
-                buffer,
-                completion);
+            fileIO.AsyncWrite(handle, offset, buffer, completion);
         }
     };
 };
@@ -251,12 +246,10 @@ struct TAsyncMethod
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TRequest>
-static void Complete(
-    TFileIOCompletion* completion,
-    const NProto::TError& error,
-    ui32 bytes)
+static void
+Complete(TFileIOCompletion* completion, const NProto::TError& error, ui32 bytes)
 {
-    std::unique_ptr<TRequest> request {static_cast<TRequest*>(completion)};
+    std::unique_ptr<TRequest> request{static_cast<TRequest*>(completion)};
 
     ProcessResponse(std::move(request), error, bytes);
 }
@@ -264,7 +257,7 @@ static void Complete(
 template <typename TRequest>
 void ProcessRequest(std::unique_ptr<TRequest> request)
 {
-    Y_UNUSED(request->CallContext);  // TODO
+    Y_UNUSED(request->CallContext);   // TODO
 
     if (auto context = request->Context.lock()) {
         auto& service = *context->FileIOService;
@@ -281,7 +274,7 @@ void ProcessRequest(std::unique_ptr<TRequest> request)
             buffer,
             request.get());
 
-        Y_UNUSED(request.release());    // ownership transferred
+        Y_UNUSED(request.release());   // ownership transferred
     }
 }
 
@@ -323,8 +316,7 @@ void CompleteRequest(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TGenericRequest
-    : TFileIOCompletion
+struct TGenericRequest: TFileIOCompletion
 {
     std::weak_ptr<TStorageContext> Context;
 
@@ -338,8 +330,7 @@ struct TGenericRequest
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename T>
-struct TReadOrWriteRequest
-    : public TGenericRequest
+struct TReadOrWriteRequest: public TGenericRequest
 {
     using TMethod = T;
     using TResponse = typename T::TResponse;
@@ -350,19 +341,13 @@ struct TReadOrWriteRequest
     TPromise<TResponse> Response;
 
     TReadOrWriteRequest(
-            std::weak_ptr<TStorageContext> context,
-            TCallContextPtr callContext,
-            TGuardedSgList sglist,
-            ui64 fileOffset,
-            ui64 byteCount,
-            TPromise<TResponse> response)
-        : TGenericRequest {
-            {.Func = &Complete<TReadOrWriteRequest>},
-            std::move(context),
-            std::move(callContext),
-            fileOffset,
-            byteCount
-        }
+        std::weak_ptr<TStorageContext> context,
+        TCallContextPtr callContext,
+        TGuardedSgList sglist,
+        ui64 fileOffset,
+        ui64 byteCount,
+        TPromise<TResponse> response)
+        : TGenericRequest{{.Func = &Complete<TReadOrWriteRequest>}, std::move(context), std::move(callContext), fileOffset, byteCount}
         , SgList(std::move(sglist))
         , Guard(SgList.Acquire())
         , Response(std::move(response))
@@ -385,8 +370,7 @@ struct TReadOrWriteRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TWriteZeroes
-    : TGenericRequest
+struct TWriteZeroes: TGenericRequest
 {
     using TMethod = TAsyncMethod::TWrite;
     using TResponse = NProto::TZeroBlocksResponse;
@@ -395,18 +379,12 @@ struct TWriteZeroes
     TPromise<TResponse> Response;
 
     TWriteZeroes(
-            std::weak_ptr<TStorageContext> context,
-            TCallContextPtr callContext,
-            ui64 fileOffset,
-            ui64 byteCount,
-            TPromise<TResponse> response)
-        : TGenericRequest {
-            {.Func = &Complete<TWriteZeroes>},
-            std::move(context),
-            std::move(callContext),
-            fileOffset,
-            byteCount
-        }
+        std::weak_ptr<TStorageContext> context,
+        TCallContextPtr callContext,
+        ui64 fileOffset,
+        ui64 byteCount,
+        TPromise<TResponse> response)
+        : TGenericRequest{{.Func = &Complete<TWriteZeroes>}, std::move(context), std::move(callContext), fileOffset, byteCount}
         , Response(std::move(response))
     {}
 
@@ -418,11 +396,11 @@ struct TWriteZeroes
 
         Buffer = PrepareZeroBuffer(static_cast<ui32>(byteCount));
 
-        return { Buffer.get(), byteCount };
+        return {Buffer.get(), byteCount};
     }
 };
 
-using TAsyncReadRequest  = TReadOrWriteRequest<TAsyncMethod::TRead>;
+using TAsyncReadRequest = TReadOrWriteRequest<TAsyncMethod::TRead>;
 using TAsyncWriteRequest = TReadOrWriteRequest<TAsyncMethod::TWrite>;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -448,9 +426,8 @@ auto SendAsyncRequest(
 
     if (!request->Guard) {
         TResponse proto;
-        *proto.MutableError() = MakeError(
-            E_CANCELLED,
-            "failed to acquire sglist in Local Storage");
+        *proto.MutableError() =
+            MakeError(E_CANCELLED, "failed to acquire sglist in Local Storage");
         response.SetValue(std::move(proto));
     } else {
         ProcessRequest(std::move(request));
@@ -466,8 +443,8 @@ TFuture<NProto::TZeroBlocksResponse> WriteZeroes(
     ui64 blockCount,
     ui32 blockSize)
 {
-    const ui64 fileOffset { startIndex * blockSize };
-    const ui64 byteCount  { blockCount * blockSize };
+    const ui64 fileOffset{startIndex * blockSize};
+    const ui64 byteCount{blockCount * blockSize};
 
     auto response = NewPromise<NProto::TZeroBlocksResponse>();
 
@@ -490,10 +467,11 @@ class TLocalStorage final
 private:
     static constexpr ui32 MaxRequestSize = 32_MB;
 
-    // Request ordering is not defined by blockstore service, so individual request order is not enforced.
-    // However, ordering is controlled by clients and clients need to rely on request _submission_ atomicity.
-    // This lock makes sure that async write submissions are done atomically in relation to
-    // other write request submissions and read request submissions.
+    // Request ordering is not defined by blockstore service, so individual
+    // request order is not enforced. However, ordering is controlled by clients
+    // and clients need to rely on request _submission_ atomicity. This lock
+    // makes sure that async write submissions are done atomically in relation
+    // to other write request submissions and read request submissions.
     TRWMutex WriteSubmissionLock;
 
 public:
@@ -515,7 +493,8 @@ public:
 
     void ReportIOError() override;
 
-    TFuture<NProto::TError> EraseDevice(NProto::EDeviceEraseMethod method) override;
+    TFuture<NProto::TError> EraseDevice(
+        NProto::EDeviceEraseMethod method) override;
 
 private:
     TFuture<NProto::TZeroBlocksResponse> DoZeroBlocks(
@@ -529,7 +508,6 @@ private:
     TFuture<NProto::TWriteBlocksLocalResponse> DoWriteBlocksLocal(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteBlocksLocalRequest> request);
-
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -541,21 +519,20 @@ NProto::TError MakeIOBeyondBoundaryError(
     ui64 storageBlockCount)
 {
     return MakeError(
-        E_ARGUMENT, TStringBuilder() << op <<
-            " beyond storage boundary. StartIndex=" << startIndex <<
-            " BlockCount=" << blockCount <<
-            " StorageBlockCount=" << storageBlockCount);
+        E_ARGUMENT,
+        TStringBuilder() << op << " beyond storage boundary. StartIndex="
+                         << startIndex << " BlockCount=" << blockCount
+                         << " StorageBlockCount=" << storageBlockCount);
 }
 
-NProto::TError MakeTooBigRequestError(
-    const char* op,
-    ui64 blockCount,
-    ui32 maxBlockCount)
+NProto::TError
+MakeTooBigRequestError(const char* op, ui64 blockCount, ui32 maxBlockCount)
 {
     return MakeError(
-        E_ARGUMENT, TStringBuilder() << op <<
-            " request is too big. BlockCount=" << blockCount <<
-            " StorageBlockCount=" << maxBlockCount);
+        E_ARGUMENT,
+        TStringBuilder() << op
+                         << " request is too big. BlockCount=" << blockCount
+                         << " StorageBlockCount=" << maxBlockCount);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -566,7 +543,9 @@ TFuture<NProto::TReadBlocksLocalResponse> TLocalStorage::DoReadBlocksLocal(
 {
     Y_UNUSED(callContext);
 
-    if (request->GetStartIndex() + request->GetBlocksCount() > StorageBlockCount) {
+    if (request->GetStartIndex() + request->GetBlocksCount() >
+        StorageBlockCount)
+    {
         NProto::TReadBlocksLocalResponse response;
         *response.MutableError() = MakeIOBeyondBoundaryError(
             "read",
@@ -585,8 +564,8 @@ TFuture<NProto::TReadBlocksLocalResponse> TLocalStorage::DoReadBlocksLocal(
         return MakeFuture(response);
     }
 
-    const ui64 fileOffset = StorageStartIndex * BlockSize
-        + request->GetStartIndex() * BlockSize;
+    const ui64 fileOffset =
+        StorageStartIndex * BlockSize + request->GetStartIndex() * BlockSize;
     const ui32 byteCount = request->GetBlocksCount() * BlockSize;
 
     TReadGuard readGuard(WriteSubmissionLock);
@@ -690,8 +669,8 @@ TFuture<NProto::TWriteBlocksLocalResponse> TLocalStorage::DoWriteBlocksLocal(
         }
     }
 
-    const ui64 fileOffset = StorageStartIndex * BlockSize
-        + request->GetStartIndex() * BlockSize;
+    const ui64 fileOffset =
+        StorageStartIndex * BlockSize + request->GetStartIndex() * BlockSize;
     const ui32 byteCount = request->BlocksCount * BlockSize;
 
     TWriteGuard writeGuard(WriteSubmissionLock);
@@ -710,7 +689,9 @@ TFuture<NProto::TZeroBlocksResponse> TLocalStorage::DoZeroBlocks(
 {
     Y_UNUSED(callContext);
 
-    if (request->GetStartIndex() + request->GetBlocksCount() > StorageBlockCount) {
+    if (request->GetStartIndex() + request->GetBlocksCount() >
+        StorageBlockCount)
+    {
         NProto::TZeroBlocksResponse response;
         *response.MutableError() = MakeIOBeyondBoundaryError(
             "zero",
@@ -735,9 +716,8 @@ TFuture<NProto::TZeroBlocksResponse> TLocalStorage::ZeroBlocks(
     std::shared_ptr<NProto::TZeroBlocksRequest> request)
 {
     return SubmitQueue->Execute(
-        [this, ctx = std::move(callContext), req = std::move(request)] () mutable {
-            return DoZeroBlocks(std::move(ctx), std::move(req));
-        });
+        [this, ctx = std::move(callContext), req = std::move(request)]() mutable
+        { return DoZeroBlocks(std::move(ctx), std::move(req)); });
 }
 
 TFuture<NProto::TReadBlocksLocalResponse> TLocalStorage::ReadBlocksLocal(
@@ -745,9 +725,8 @@ TFuture<NProto::TReadBlocksLocalResponse> TLocalStorage::ReadBlocksLocal(
     std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
 {
     return SubmitQueue->Execute(
-        [this, ctx = std::move(callContext), req = std::move(request)] () mutable {
-            return DoReadBlocksLocal(std::move(ctx), std::move(req));
-        });
+        [this, ctx = std::move(callContext), req = std::move(request)]() mutable
+        { return DoReadBlocksLocal(std::move(ctx), std::move(req)); });
 }
 
 TFuture<NProto::TWriteBlocksLocalResponse> TLocalStorage::WriteBlocksLocal(
@@ -755,9 +734,8 @@ TFuture<NProto::TWriteBlocksLocalResponse> TLocalStorage::WriteBlocksLocal(
     std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
 {
     return SubmitQueue->Execute(
-        [this, ctx = std::move(callContext), req = std::move(request)] () mutable {
-            return DoWriteBlocksLocal(std::move(ctx), std::move(req));
-        });
+        [this, ctx = std::move(callContext), req = std::move(request)]() mutable
+        { return DoWriteBlocksLocal(std::move(ctx), std::move(req)); });
 }
 
 TFuture<NProto::TError> TLocalStorage::EraseDevice(
@@ -776,49 +754,48 @@ TFuture<NProto::TError> TLocalStorage::EraseDevice(
     }
 
     switch (method) {
-    case NProto::DEVICE_ERASE_METHOD_ZERO_FILL: {
-        TWriteGuard writeGuard(WriteSubmissionLock);
+        case NProto::DEVICE_ERASE_METHOD_ZERO_FILL: {
+            TWriteGuard writeGuard(WriteSubmissionLock);
 
-        auto future = WriteZeroes(
-            this->weak_from_this(),
-            MakeIntrusive<TCallContext>(),  // TODO
-            StorageStartIndex,
-            StorageBlockCount,
-            BlockSize);
+            auto future = WriteZeroes(
+                this->weak_from_this(),
+                MakeIntrusive<TCallContext>(),   // TODO
+                StorageStartIndex,
+                StorageBlockCount,
+                BlockSize);
 
-        return future.Apply([=] (auto& future) {
-            return future.GetValue().GetError();
-        });
-    }
+            return future.Apply([=](auto& future)
+                                { return future.GetValue().GetError(); });
+        }
 
-    case NProto::DEVICE_ERASE_METHOD_USER_DATA_ERASE:
-        return NvmeManager->Format(
-            File.GetName(),
-            NVME_FMT_NVM_SES_USER_DATA_ERASE);
+        case NProto::DEVICE_ERASE_METHOD_USER_DATA_ERASE:
+            return NvmeManager->Format(
+                File.GetName(),
+                NVME_FMT_NVM_SES_USER_DATA_ERASE);
 
-    case NProto::DEVICE_ERASE_METHOD_CRYPTO_ERASE:
-        return NvmeManager->Format(
-            File.GetName(),
-            NVME_FMT_NVM_SES_CRYPTO_ERASE);
+        case NProto::DEVICE_ERASE_METHOD_CRYPTO_ERASE:
+            return NvmeManager->Format(
+                File.GetName(),
+                NVME_FMT_NVM_SES_CRYPTO_ERASE);
 
-    case NProto::DEVICE_ERASE_METHOD_DEALLOCATE: {
-        const EOpenMode flags =
-            EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly |
-            (DirectIO ? EOpenModeFlag::DirectAligned | EOpenModeFlag::Sync
-                      : EOpenModeFlag());
+        case NProto::DEVICE_ERASE_METHOD_DEALLOCATE: {
+            const EOpenMode flags =
+                EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly |
+                (DirectIO ? EOpenModeFlag::DirectAligned | EOpenModeFlag::Sync
+                          : EOpenModeFlag());
 
-        return SafeDeallocateDevice(
-            File.GetName(),
-            TFileHandle{File.GetName(), flags},
-            FileIOService,
-            StorageStartIndex,
-            StorageBlockCount,
-            BlockSize,
-            NvmeManager);
-    }
+            return SafeDeallocateDevice(
+                File.GetName(),
+                TFileHandle{File.GetName(), flags},
+                FileIOService,
+                StorageStartIndex,
+                StorageBlockCount,
+                BlockSize,
+                NvmeManager);
+        }
 
-    case NProto::DEVICE_ERASE_METHOD_NONE:
-        return {};
+        case NProto::DEVICE_ERASE_METHOD_NONE:
+            return {};
     }
 }
 
@@ -832,8 +809,7 @@ void TLocalStorage::ReportIOError()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TLocalStorageProvider final
-    : public IStorageProvider
+class TLocalStorageProvider final: public IStorageProvider
 {
 private:
     ITaskQueuePtr SubmitQueue;
@@ -844,11 +820,11 @@ private:
 
 public:
     explicit TLocalStorageProvider(
-            ITaskQueuePtr submitQueue,
-            IFileIOServiceProviderPtr fileIOProvider,
-            INvmeManagerPtr nvmeManager,
-            bool directIO,
-            NProto::EDataIntegrityValidationPolicy dataIntegrityValidationPolicy)
+        ITaskQueuePtr submitQueue,
+        IFileIOServiceProviderPtr fileIOProvider,
+        INvmeManagerPtr nvmeManager,
+        bool directIO,
+        NProto::EDataIntegrityValidationPolicy dataIntegrityValidationPolicy)
         : SubmitQueue(std::move(submitQueue))
         , FileIOServiceProvider(std::move(fileIOProvider))
         , NvmeManager(std::move(nvmeManager))
@@ -871,13 +847,11 @@ public:
             blockSize = DefaultBlockSize;
         }
 
-        const EOpenMode flags = EOpenModeFlag::OpenExisting
-                | (write
-                    ? EOpenModeFlag::RdWr
-                    : EOpenModeFlag::RdOnly)
-                | (DirectIO
-                    ? EOpenModeFlag::DirectAligned | EOpenModeFlag::Sync
-                    : EOpenModeFlag());
+        const EOpenMode flags =
+            EOpenModeFlag::OpenExisting |
+            (write ? EOpenModeFlag::RdWr : EOpenModeFlag::RdOnly) |
+            (DirectIO ? EOpenModeFlag::DirectAligned | EOpenModeFlag::Sync
+                      : EOpenModeFlag());
 
         auto storage = std::make_shared<TLocalStorage>(
             SubmitQueue,
@@ -891,7 +865,7 @@ public:
             DataIntegrityValidationPolicy);
 
         return MakeFuture<IStoragePtr>(storage);
-    };
+    }
 };
 
 }   // namespace

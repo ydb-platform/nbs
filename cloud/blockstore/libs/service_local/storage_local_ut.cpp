@@ -3,10 +3,10 @@
 #include "file_io_service_provider.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/nvme/nvme_stub.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
-#include <cloud/blockstore/libs/nvme/nvme_stub.h>
 
 #include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/common/error.h>
@@ -54,9 +54,7 @@ TFuture<NProto::TReadBlocksLocalResponse> ReadBlocksLocal(
     request->BlockSize = blockSize;
     request->Sglist = std::move(sglist);
 
-    return storage.ReadBlocksLocal(
-        std::move(context),
-        std::move(request));
+    return storage.ReadBlocksLocal(std::move(context), std::move(request));
 }
 
 TFuture<NProto::TWriteBlocksLocalResponse> WriteBlocksLocal(
@@ -74,15 +72,11 @@ TFuture<NProto::TWriteBlocksLocalResponse> WriteBlocksLocal(
     request->BlockSize = blockSize;
     request->Sglist = std::move(sglist);
 
-    return storage.WriteBlocksLocal(
-        std::move(context),
-        std::move(request));
+    return storage.WriteBlocksLocal(std::move(context), std::move(request));
 }
 
-TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
-    IStorage& storage,
-    ui64 startIndex,
-    ui32 blockCount)
+TFuture<NProto::TZeroBlocksResponse>
+ZeroBlocks(IStorage& storage, ui64 startIndex, ui32 blockCount)
 {
     auto context = MakeIntrusive<TCallContext>();
 
@@ -90,18 +84,13 @@ TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
     request->SetStartIndex(startIndex);
     request->SetBlocksCount(blockCount);
 
-    return storage.ZeroBlocks(
-        std::move(context),
-        std::move(request));
-
+    return storage.ZeroBlocks(std::move(context), std::move(request));
 }
 
 TFsPath TryGetRamDrivePath()
 {
     auto p = GetRamDrivePath();
-    return !p
-        ? GetSystemTempDir()
-        : p;
+    return !p ? GetSystemTempDir() : p;
 }
 
 auto CreateAndStartAIOServiceProvider()
@@ -130,7 +119,10 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         fileData.Resize(blockSize * (blockCount + startIndex));
 
         auto fileIOServiceProvider = CreateAndStartAIOServiceProvider();
-        Y_DEFER { fileIOServiceProvider->Stop(); };
+        Y_DEFER
+        {
+            fileIOServiceProvider->Stop();
+        }
 
         auto provider = CreateLocalStorageProvider(
             fileIOServiceProvider,
@@ -154,13 +146,8 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         auto writeSgList = TGuardedSgList({{writeBuffer.get(), blockSize}});
 
         {
-            auto writeResponse = WriteBlocksLocal(
-                *storage,
-                0,
-                1,
-                blockSize,
-                writeSgList
-            );
+            auto writeResponse =
+                WriteBlocksLocal(*storage, 0, 1, blockSize, writeSgList);
             UNIT_ASSERT_NO_EXCEPTION(writeResponse.Wait(WaitTimeout));
             UNIT_ASSERT_SUCCEEDED(writeResponse.GetValue().GetError());
         }
@@ -171,8 +158,7 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
                 blockCount,
                 1,
                 blockSize,
-                writeSgList
-            );
+                writeSgList);
             UNIT_ASSERT_NO_EXCEPTION(writeResponse.Wait(WaitTimeout));
             UNIT_ASSERT_VALUES_EQUAL(
                 E_ARGUMENT,
@@ -183,27 +169,18 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         auto readSgList = TGuardedSgList({{readBuffer.get(), blockSize}});
 
         {
-            auto readResponse = ReadBlocksLocal(
-                *storage,
-                0,
-                1,
-                blockSize,
-                readSgList
-            );
+            auto readResponse =
+                ReadBlocksLocal(*storage, 0, 1, blockSize, readSgList);
             UNIT_ASSERT_NO_EXCEPTION(readResponse.Wait(WaitTimeout));
             UNIT_ASSERT_SUCCEEDED(readResponse.GetValue().GetError());
         }
 
-        UNIT_ASSERT(memcmp(writeBuffer.get(), readBuffer.get(), blockSize) == 0);
+        UNIT_ASSERT(
+            memcmp(writeBuffer.get(), readBuffer.get(), blockSize) == 0);
 
         {
-            auto readResponse = ReadBlocksLocal(
-                *storage,
-                blockCount,
-                1,
-                blockSize,
-                readSgList
-            );
+            auto readResponse =
+                ReadBlocksLocal(*storage, blockCount, 1, blockSize, readSgList);
             UNIT_ASSERT_NO_EXCEPTION(readResponse.Wait(WaitTimeout));
             UNIT_ASSERT_VALUES_EQUAL(
                 E_ARGUMENT,
@@ -211,10 +188,8 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         }
 
         TString buffer(blockSize, 0);
-        size_t bytes = fileData.Pread(
-            buffer.begin(),
-            blockSize,
-            blockSize * startIndex);
+        size_t bytes =
+            fileData.Pread(buffer.begin(), blockSize, blockSize * startIndex);
         UNIT_ASSERT_VALUES_EQUAL(blockSize, bytes);
         UNIT_ASSERT_VALUES_EQUAL(TString(blockSize, 'a'), buffer);
 
@@ -244,7 +219,10 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         }
 
         auto fileIOServiceProvider = CreateAndStartAIOServiceProvider();
-        Y_DEFER { fileIOServiceProvider->Stop(); };
+        Y_DEFER
+        {
+            fileIOServiceProvider->Stop();
+        }
 
         auto provider = CreateLocalStorageProvider(
             fileIOServiceProvider,
@@ -265,15 +243,11 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         auto readBuffer = storage->AllocateBuffer(blockSize);
         auto readSgList = TGuardedSgList({{readBuffer.get(), blockSize}});
 
-        auto verifyData = [&] (char c) {
+        auto verifyData = [&](char c)
+        {
             for (ui64 i = 0; i < blockCount; ++i) {
-                auto response = ReadBlocksLocal(
-                    *storage,
-                    i,
-                    1,
-                    blockSize,
-                    readSgList
-                );
+                auto response =
+                    ReadBlocksLocal(*storage, i, 1, blockSize, readSgList);
                 UNIT_ASSERT_NO_EXCEPTION_C(response.Wait(WaitTimeout), c);
                 UNIT_ASSERT_SUCCEEDED(response.GetValue().GetError());
 
@@ -294,7 +268,6 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
 
         verifyData('\0');
     }
-
 
     Y_UNIT_TEST(ShouldHandleLocalReadWriteRequests_512)
     {
@@ -346,7 +319,10 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         fileData.Resize(blockSize * blockCount);
 
         auto fileIOServiceProvider = CreateAndStartAIOServiceProvider();
-        Y_DEFER { fileIOServiceProvider->Stop(); };
+        Y_DEFER
+        {
+            fileIOServiceProvider->Stop();
+        }
 
         auto provider = CreateLocalStorageProvider(
             fileIOServiceProvider,
@@ -376,8 +352,7 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
                 startIndex,
                 1,
                 blockSize,
-                writeSgList
-            );
+                writeSgList);
             UNIT_ASSERT_NO_EXCEPTION(writeResponse.Wait(WaitTimeout));
             UNIT_ASSERT_SUCCEEDED(writeResponse.GetValue().GetError());
         }
@@ -388,20 +363,14 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         // verify data
 
         {
-            auto response = ReadBlocksLocal(
-                *storage,
-                startIndex,
-                1,
-                blockSize,
-                readSgList
-            );
+            auto response =
+                ReadBlocksLocal(*storage, startIndex, 1, blockSize, readSgList);
             UNIT_ASSERT_NO_EXCEPTION(response.Wait(WaitTimeout));
             UNIT_ASSERT_SUCCEEDED(response.GetValue().GetError());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
-                memcmp(writeBuffer.get(), readBuffer.get(), blockSize)
-            );
+                memcmp(writeBuffer.get(), readBuffer.get(), blockSize));
         }
 
         // erase 10241 blocks (40MB + 4KB)
@@ -414,56 +383,44 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         // verify
 
         {
-            auto response = ReadBlocksLocal(
-                *storage,
-                startIndex,
-                1,
-                blockSize,
-                readSgList
-            );
+            auto response =
+                ReadBlocksLocal(*storage, startIndex, 1, blockSize, readSgList);
             UNIT_ASSERT_NO_EXCEPTION(response.Wait(WaitTimeout));
             UNIT_ASSERT_SUCCEEDED(response.GetValue().GetError());
         }
 
         UNIT_ASSERT_VALUES_EQUAL(
             blockSize,
-            std::count(
-                readBuffer.get(),
-                readBuffer.get() + blockSize,
-                '\0'));
+            std::count(readBuffer.get(), readBuffer.get() + blockSize, '\0'));
 
         // should reject too big requests
 
         {
             const ui32 len = 64_MB;
             auto tooBigBuffer = storage->AllocateBuffer(len);
-            auto sgList = TGuardedSgList({{ tooBigBuffer.get(), len }});
+            auto sgList = TGuardedSgList({{tooBigBuffer.get(), len}});
 
             auto readResponse = ReadBlocksLocal(
                 *storage,
                 startIndex,
                 len / blockSize,
                 blockSize,
-                sgList
-            );
+                sgList);
             UNIT_ASSERT_NO_EXCEPTION(readResponse.Wait(WaitTimeout));
             UNIT_ASSERT_EQUAL(
                 E_ARGUMENT,
-                readResponse.GetValue().GetError().GetCode()
-            );
+                readResponse.GetValue().GetError().GetCode());
 
             auto writeResponse = WriteBlocksLocal(
                 *storage,
                 startIndex,
                 len / blockSize,
                 blockSize,
-                sgList
-            );
+                sgList);
             UNIT_ASSERT_NO_EXCEPTION(writeResponse.Wait(WaitTimeout));
             UNIT_ASSERT_EQUAL(
                 E_ARGUMENT,
-                writeResponse.GetValue().GetError().GetCode()
-            );
+                writeResponse.GetValue().GetError().GetCode());
         }
     }
 
@@ -477,7 +434,10 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         fileData.Resize(blockSize * blockCount);
 
         auto fileIOServiceProvider = CreateAndStartAIOServiceProvider();
-        Y_DEFER { fileIOServiceProvider->Stop(); };
+        Y_DEFER
+        {
+            fileIOServiceProvider->Stop();
+        }
 
         auto provider = CreateLocalStorageProvider(
             fileIOServiceProvider,
@@ -495,7 +455,8 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
             NProto::VOLUME_ACCESS_READ_WRITE);
         auto storage = future.GetValue();
 
-        auto fillWithPattern = [&] (char p) {
+        auto fillWithPattern = [&](char p)
+        {
             fileData.Seek(0, sSet);
             TVector<char> buffer(blockSize, p);
             for (ui32 i = 0; i != blockCount; ++i) {
@@ -504,7 +465,6 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
 
             fileData.Flush();
         };
-
 
         // disk filled with 0x0 validates ok
         fillWithPattern(0x0);
@@ -515,18 +475,15 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
 
         // disk filled with 0xff validates ok
         fillWithPattern(0xff);
-        response =
-            storage->EraseDevice(NProto::DEVICE_ERASE_METHOD_DEALLOCATE);
+        response = storage->EraseDevice(NProto::DEVICE_ERASE_METHOD_DEALLOCATE);
         UNIT_ASSERT_NO_EXCEPTION(response.Wait(WaitTimeout));
         UNIT_ASSERT_SUCCEEDED(response.GetValue());
 
         // disk filled with other pattern fails validation
         fillWithPattern(0x12);
-        response =
-            storage->EraseDevice(NProto::DEVICE_ERASE_METHOD_DEALLOCATE);
+        response = storage->EraseDevice(NProto::DEVICE_ERASE_METHOD_DEALLOCATE);
         UNIT_ASSERT_NO_EXCEPTION(response.Wait(WaitTimeout));
         UNIT_ASSERT_EQUAL(E_IO, response.GetValue().GetCode());
-
     }
 
     Y_UNIT_TEST(ShouldZeroFillIfDeviceNonSsdInEraseDeviceUsingDeallocate)
@@ -539,7 +496,10 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         fileData.Resize(blockSize * blockCount);
 
         auto fileIOServiceProvider = CreateAndStartAIOServiceProvider();
-        Y_DEFER { fileIOServiceProvider->Stop(); };
+        Y_DEFER
+        {
+            fileIOServiceProvider->Stop();
+        }
 
         auto provider = CreateLocalStorageProvider(
             fileIOServiceProvider,
@@ -557,7 +517,8 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
             NProto::VOLUME_ACCESS_READ_WRITE);
         auto storage = future.GetValue();
 
-        auto fillWithPattern = [&] (char p) {
+        auto fillWithPattern = [&](char p)
+        {
             fileData.Seek(0, sSet);
             TVector<char> buffer(blockSize, p);
             for (ui32 i = 0; i != blockCount; ++i) {
@@ -567,7 +528,8 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
             fileData.Flush();
         };
 
-        auto validatePattern = [&] (char p) {
+        auto validatePattern = [&](char p)
+        {
             fileData.Seek(0, sSet);
             TVector<char> patternBuffer(blockSize, p);
             TVector<char> readBuffer(blockSize, 0);
@@ -575,10 +537,10 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
                 fileData.Read(readBuffer.data(), blockSize);
             }
 
-            UNIT_ASSERT_EQUAL(0,
+            UNIT_ASSERT_EQUAL(
+                0,
                 memcmp(patternBuffer.data(), readBuffer.data(), blockSize));
         };
-
 
         fillWithPattern(0x12);
         auto response =
@@ -599,7 +561,10 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         fileData.Resize(blockSize * blockCount);
 
         auto fileIOServiceProvider = CreateAndStartAIOServiceProvider();
-        Y_DEFER { fileIOServiceProvider->Stop(); };
+        Y_DEFER
+        {
+            fileIOServiceProvider->Stop();
+        }
 
         auto provider = CreateLocalStorageProvider(
             fileIOServiceProvider,
@@ -617,7 +582,8 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
             NProto::VOLUME_ACCESS_READ_WRITE);
         auto storage = future.GetValue();
 
-        auto fillWithPattern = [&] (char p) {
+        auto fillWithPattern = [&](char p)
+        {
             fileData.Seek(0, sSet);
             TVector<char> buffer(blockSize, p);
             for (ui32 i = 0; i != blockCount; ++i) {
@@ -627,7 +593,8 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
             fileData.Flush();
         };
 
-        auto validatePattern = [&] (char p) {
+        auto validatePattern = [&](char p)
+        {
             fileData.Seek(0, sSet);
             TVector<char> patternBuffer(blockSize, p);
             TVector<char> readBuffer(blockSize, 0);
@@ -635,10 +602,10 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
                 fileData.Read(readBuffer.data(), blockSize);
             }
 
-            UNIT_ASSERT_EQUAL(0,
+            UNIT_ASSERT_EQUAL(
+                0,
                 memcmp(patternBuffer.data(), readBuffer.data(), blockSize));
         };
-
 
         fillWithPattern(0x12);
         auto response =
@@ -659,7 +626,10 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         fileData.Resize(blockSize * blockCount);
 
         auto fileIOServiceProvider = CreateAndStartAIOServiceProvider();
-        Y_DEFER { fileIOServiceProvider->Stop(); };
+        Y_DEFER
+        {
+            fileIOServiceProvider->Stop();
+        }
 
         auto deallocateHistory = std::make_shared<TNvmeDeallocateHistory>();
 
@@ -679,7 +649,8 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
             NProto::VOLUME_ACCESS_READ_WRITE);
         auto storage = future.GetValue();
 
-        auto fillWithPattern = [&] (char p) {
+        auto fillWithPattern = [&](char p)
+        {
             fileData.Seek(0, sSet);
             TVector<char> buffer(blockSize, p);
             for (ui32 i = 0; i != blockCount; ++i) {
@@ -688,7 +659,6 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
 
             fileData.Flush();
         };
-
 
         // disk filled with 0x0 validates ok
         fillWithPattern(0x0);
@@ -699,12 +669,8 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
 
         UNIT_ASSERT_EQUAL(4, deallocateHistory->size());
         UNIT_ASSERT_EQUAL(TDeallocateReq(0, 1_GB), deallocateHistory->at(0));
-        UNIT_ASSERT_EQUAL(
-            TDeallocateReq(1_GB, 1_GB),
-            deallocateHistory->at(1));
-        UNIT_ASSERT_EQUAL(
-            TDeallocateReq(2_GB, 1_GB),
-            deallocateHistory->at(2));
+        UNIT_ASSERT_EQUAL(TDeallocateReq(1_GB, 1_GB), deallocateHistory->at(1));
+        UNIT_ASSERT_EQUAL(TDeallocateReq(2_GB, 1_GB), deallocateHistory->at(2));
         UNIT_ASSERT_EQUAL(
             TDeallocateReq(3_GB, 10 * 4_KB),
             deallocateHistory->at(3));

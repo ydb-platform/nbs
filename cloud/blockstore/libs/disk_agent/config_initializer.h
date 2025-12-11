@@ -12,6 +12,7 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/public.h>
+
 #include <cloud/storage/core/libs/coroutine/public.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 
@@ -65,7 +66,8 @@ struct TConfigInitializer
 private:
     TString GetFullSchemeShardDir() const;
 
-    void SetupMonitoringConfig(NKikimrConfig::TMonitoringConfig& monConfig) const;
+    void SetupMonitoringConfig(
+        NKikimrConfig::TMonitoringConfig& monConfig) const;
     void SetupLogConfig(NKikimrConfig::TLogConfig& logConfig) const;
     void SetupDiskAgentConfig(NProto::TDiskAgentConfig& config) const;
 

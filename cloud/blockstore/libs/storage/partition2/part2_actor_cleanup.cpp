@@ -29,10 +29,7 @@ void TPartitionActor::EnqueueCleanup(
         MakeIntrusive<TCallContext>(CreateRequestId()),
         mode);
 
-    NCloud::Send(
-        ctx,
-        SelfId(),
-        std::move(request));
+    NCloud::Send(ctx, SelfId(), std::move(request));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -43,10 +40,8 @@ void TPartitionActor::HandleCleanup(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -54,19 +49,20 @@ void TPartitionActor::HandleCleanup(
         BackgroundTaskStarted_Partition,
         requestInfo->CallContext->LWOrbit,
         msg->Mode == TEvPartitionPrivate::ECleanupMode::DirtyBlobCleanup
-            ? "DirtyBlobCleanup" : "CheckpointBlobCleanup",
+            ? "DirtyBlobCleanup"
+            : "CheckpointBlobCleanup",
         static_cast<ui32>(PartitionConfig.GetStorageMediaKind()),
         requestInfo->CallContext->RequestId,
         PartitionConfig.GetDiskId());
 
-    auto replyError = [=] (
-        const TActorContext& ctx,
-        TRequestInfo& requestInfo,
-        ui32 errorCode,
-        TString errorReason)
+    auto replyError = [=](const TActorContext& ctx,
+                          TRequestInfo& requestInfo,
+                          ui32 errorCode,
+                          TString errorReason)
     {
-        auto response = std::make_unique<TEvPartitionPrivate::TEvCleanupResponse>(
-            MakeError(errorCode, std::move(errorReason)));
+        auto response =
+            std::make_unique<TEvPartitionPrivate::TEvCleanupResponse>(
+                MakeError(errorCode, std::move(errorReason)));
 
         LWTRACK(
             ResponseSent_Partition,
@@ -84,14 +80,17 @@ void TPartitionActor::HandleCleanup(
         return;
     }
 
-    auto createTxAndEnqueueIntoCCCQueue = [&] (ui64 commitId, auto onStartProcessing) {
+    auto createTxAndEnqueueIntoCCCQueue =
+        [&](ui64 commitId, auto onStartProcessing)
+    {
         State->SetCleanupStatus(EOperationStatus::Delayed);
 
         AddTransaction<TEvPartitionPrivate::TCleanupMethod>(*requestInfo);
         auto tx = CreateTx<TCleanup>(requestInfo, commitId, msg->Mode);
 
         auto& queue = State->GetCCCRequestQueue();
-        queue.push_back({ commitId, std::move(tx), std::move(onStartProcessing) });
+        queue.push_back(
+            {commitId, std::move(tx), std::move(onStartProcessing)});
 
         ProcessCCCRequestQueue(ctx);
     };
@@ -99,39 +98,53 @@ void TPartitionActor::HandleCleanup(
     const auto limit = static_cast<size_t>(Config->GetMaxBlobsToCleanup());
 
     if (msg->Mode == EMode::CheckpointBlobCleanup) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
             "[%lu] Extracting checkpoint blobs for cleanup @%lu",
             TabletID());
 
         State->ExtractCheckpointBlobsToCleanup(limit);
 
         // don't wait for inflight fresh to complete
-        createTxAndEnqueueIntoCCCQueue(0, [this] (const TActorContext& ctx) {
-            LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] Starting checkpoint blob cleanup @%lu",
-                TabletID(),
-                State->GetCleanupCheckpointCommitId());
+        createTxAndEnqueueIntoCCCQueue(
+            0,
+            [this](const TActorContext& ctx)
+            {
+                LOG_DEBUG(
+                    ctx,
+                    TBlockStoreComponents::PARTITION,
+                    "[%lu] Starting checkpoint blob cleanup @%lu",
+                    TabletID(),
+                    State->GetCleanupCheckpointCommitId());
 
-            State->SetCleanupStatus(EOperationStatus::Started);
-        });
+                State->SetCleanupStatus(EOperationStatus::Started);
+            });
         return;
     }
 
     if (State->HasPendingChunkToCleanup()) {
-        LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
             "[%lu] Extracting dirty blobs from pending chunk to cleanup",
             TabletID());
 
         State->ExtractBlobsFromChunkToCleanup(limit);
 
         // don't wait for inflight fresh to complete
-        createTxAndEnqueueIntoCCCQueue(0, [this] (const TActorContext& ctx) {
-            LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
-                "[%lu] Resuming dirty blob cleanup for pending chunk",
-                TabletID());
+        createTxAndEnqueueIntoCCCQueue(
+            0,
+            [this](const TActorContext& ctx)
+            {
+                LOG_DEBUG(
+                    ctx,
+                    TBlockStoreComponents::PARTITION,
+                    "[%lu] Resuming dirty blob cleanup for pending chunk",
+                    TabletID());
 
-            State->SetCleanupStatus(EOperationStatus::Started);
-        });
+                State->SetCleanupStatus(EOperationStatus::Started);
+            });
         return;
     }
 
@@ -148,7 +161,9 @@ void TPartitionActor::HandleCleanup(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%lu] Separating chunk for dirty blob cleanup @%lu",
         TabletID(),
         commitId);
@@ -156,8 +171,12 @@ void TPartitionActor::HandleCleanup(
     State->SeparateChunkForCleanup(commitId);
 
     createTxAndEnqueueIntoCCCQueue(
-        commitId, [this, commitId, limit] (const TActorContext& ctx) {
-            LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+        commitId,
+        [this, commitId, limit](const TActorContext& ctx)
+        {
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::PARTITION,
                 "[%lu] Starting dirty blob cleanup @%lu",
                 TabletID(),
                 commitId);
@@ -165,8 +184,7 @@ void TPartitionActor::HandleCleanup(
             State->SetCleanupStatus(EOperationStatus::Started);
             State->ExtractChunkToCleanup();
             State->ExtractBlobsFromChunkToCleanup(limit);
-        }
-    );
+        });
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -185,8 +203,8 @@ bool TPartitionActor::PrepareCleanup(
 
     const auto& index = State->GetBlobs();
     const auto& blobs = args.Mode == EMode::DirtyBlobCleanup
-        ? State->GetPendingBlobsToCleanup()
-        : State->GetPendingCheckpointBlobsToCleanup();
+                            ? State->GetPendingBlobsToCleanup()
+                            : State->GetPendingCheckpointBlobsToCleanup();
 
     // some blobs could be already deleted
     for (const auto& blobId: blobs) {
@@ -250,11 +268,12 @@ void TPartitionActor::ExecuteCleanup(
         bool updated = State->UpdateBlob(
             db,
             blobId,
-            args.Mode == EMode::DirtyBlobCleanup,  // fast path allowed
-            blocks
-        );
+            args.Mode == EMode::DirtyBlobCleanup,   // fast path allowed
+            blocks);
 
-        Y_ABORT_UNLESS(updated, "Missing blob detected: %s",
+        Y_ABORT_UNLESS(
+            updated,
+            "Missing blob detected: %s",
             DumpBlobIds(TabletID(), blobId).data());
     }
 
@@ -276,7 +295,9 @@ void TPartitionActor::CompleteCleanup(
 
     State->StopProcessingCCCRequest();
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::PARTITION,
         "[%lu] %s cleanup completed @%lu",
         TabletID(),
         args.Mode == EMode::DirtyBlobCleanup ? "dirty blob" : "checkpoint blob",

@@ -11,8 +11,8 @@ namespace NCloud::NFileStore::NStorage {
 template <
     ui32 channel = 1,
     NKikimr::NTable::NPage::ECache cache = NKikimr::NTable::NPage::ECache::None,
-    NKikimr::NTable::NPage::ECodec codec = NKikimr::NTable::NPage::ECodec::Plain
->
+    NKikimr::NTable::NPage::ECodec codec =
+        NKikimr::NTable::NPage::ECodec::Plain>
 struct TStoragePolicy
 {
     static constexpr ui32 Room = 0;
@@ -46,15 +46,15 @@ void InitCompactionPolicy(
 ////////////////////////////////////////////////////////////////////////////////
 
 template <NKikimr::NIceDb::TTableId TableId>
-struct TTableSchema
-    : public NKikimr::NIceDb::Schema::Table<TableId>
+struct TTableSchema: public NKikimr::NIceDb::Schema::Table<TableId>
 {
     using StoragePolicy = TStoragePolicy<>;
     using CompactionPolicy = TCompactionPolicy<>;
 
     template <NKikimr::NIceDb::TColumnId ColumnId, typename MessageType>
-    struct ProtoColumn : NKikimr::NIceDb::Schema::Table<TableId>::template
-        Column<ColumnId, NKikimr::NScheme::NTypeIds::String>
+    struct ProtoColumn
+        : NKikimr::NIceDb::Schema::Table<TableId>::
+              template Column<ColumnId, NKikimr::NScheme::NTypeIds::String>
     {
         using Type = MessageType;
     };
@@ -68,8 +68,9 @@ struct TSchemaInitializer;
 template <typename Type>
 struct TSchemaInitializer<NKikimr::NIceDb::Schema::SchemaTables<Type>>
 {
-    static void
-    InitStorage(bool useNoneCompactionPolicy, NKikimr::NTable::TAlter& alter)
+    static void InitStorage(
+        bool useNoneCompactionPolicy,
+        NKikimr::NTable::TAlter& alter)
     {
         alter.SetRoom(
             Type::TableId,
@@ -92,16 +93,17 @@ struct TSchemaInitializer<NKikimr::NIceDb::Schema::SchemaTables<Type>>
         InitCompactionPolicy(
             alter,
             Type::TableId,
-            useNoneCompactionPolicy
-                ? ECompactionPolicy::None
-                : Type::CompactionPolicy::CompactionPolicy);
+            useNoneCompactionPolicy ? ECompactionPolicy::None
+                                    : Type::CompactionPolicy::CompactionPolicy);
     }
 };
 
 template <typename Type, typename... Types>
 struct TSchemaInitializer<NKikimr::NIceDb::Schema::SchemaTables<Type, Types...>>
 {
-    static void InitStorage(bool useNoneCompactionPolicy, NKikimr::NTable::TAlter& alter)
+    static void InitStorage(
+        bool useNoneCompactionPolicy,
+        NKikimr::NTable::TAlter& alter)
     {
         TSchemaInitializer<NKikimr::NIceDb::Schema::SchemaTables<Type>>::
             InitStorage(useNoneCompactionPolicy, alter);

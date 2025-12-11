@@ -31,10 +31,8 @@ TCollectBarriers BuildGCBarriers(
             tabletInfo.TabletID);
 
         for (const auto& entry: channelInfo->History) {
-            auto& request = requests.Get(
-                tabletInfo,
-                channel,
-                entry.FromGeneration);
+            auto& request =
+                requests.Get(tabletInfo, channel, entry.FromGeneration);
 
             request.CollectCommitId = collectCommitId;
         }
@@ -65,7 +63,7 @@ TCollectRequests BuildGCRequests(
     TCollectRequests requests(tabletInfo.TabletID, channels);
     TVector<TLogoBlobID> allBlobIds;
 
-    auto lastGC  = ParseCommitId(lastGCCommitId);
+    auto lastGC = ParseCommitId(lastGCCommitId);
     auto collect = ParseCommitId(collectCommitId);
 
     for (const auto& partialBlobId: newBlobs) {
@@ -105,12 +103,15 @@ TCollectRequests BuildGCRequests(
                 TWellKnownEntityTypes::TABLET,
                 tabletInfo.TabletID,
                 Sprintf(
-                    "[%lu] Duplicated blob %s detected in CollectGarbage request: "
+                    "[%lu] Duplicated blob %s detected in CollectGarbage "
+                    "request: "
                     "record=[%u:%u], collect=[%u:%u], keep={%s}, delete={%s}",
                     tabletInfo.TabletID,
                     ToString(blobId).data(),
-                    collect.first, collectCounter,
-                    collect.first, collect.second,
+                    collect.first,
+                    collectCounter,
+                    collect.first,
+                    collect.second,
                     DumpBlobIds(tabletInfo.TabletID, newBlobs).data(),
                     DumpBlobIds(tabletInfo.TabletID, garbageBlobs).data()));
 
@@ -122,7 +123,7 @@ TCollectRequests BuildGCRequests(
         for (ui32 channel: channels) {
             const auto* channelInfo = tabletInfo.ChannelInfo(channel);
 
-            auto begin =  channelInfo->History.begin();
+            auto begin = channelInfo->History.begin();
             auto end = channelInfo->History.end();
             auto it = begin;
 
@@ -131,7 +132,8 @@ TCollectRequests BuildGCRequests(
                     begin,
                     end,
                     lastGC.first,
-                    [] (ui32 value, const auto& item) { return value < item.FromGeneration; });
+                    [](ui32 value, const auto& item)
+                    { return value < item.FromGeneration; });
                 if (it != begin) {
                     --it;
                 }
@@ -153,8 +155,10 @@ void RemoveDuplicates(
 {
     auto genstep = ParseCommitId(commitId);
 
-    auto nit = newBlobs.begin(); auto nend = newBlobs.end();
-    auto git = garbageBlobs.begin(); auto gend = garbageBlobs.end();
+    auto nit = newBlobs.begin();
+    auto nend = newBlobs.end();
+    auto git = garbageBlobs.begin();
+    auto gend = garbageBlobs.end();
 
     while (nit != nend && git != gend) {
         if (*nit < *git) {
@@ -190,7 +194,8 @@ void FindGarbageVersions(
     const TVector<ui64>& commitIds,
     TVector<ui64>& garbage)
 {
-    Y_ASSERT(IsSorted(checkpoints.begin(), checkpoints.end(), TGreater<ui64>()));
+    Y_ASSERT(
+        IsSorted(checkpoints.begin(), checkpoints.end(), TGreater<ui64>()));
     Y_ASSERT(IsSorted(commitIds.begin(), commitIds.end(), TGreater<ui64>()));
 
     if (!checkpoints) {

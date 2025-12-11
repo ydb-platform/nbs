@@ -1,8 +1,8 @@
 #include "tablet_actor.h"
 
-#include <cloud/filestore/libs/service/public.h>
-
 #include "helpers.h"
+
+#include <cloud/filestore/libs/service/public.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -40,7 +40,8 @@ void TIndexTabletActor::HandleAcquireLock(
     const TEvService::TEvAcquireLockRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto validator = [&] (const NProto::TAcquireLockRequest& request) {
+    auto validator = [&](const NProto::TAcquireLockRequest& request)
+    {
         return ValidateRequest(
             request,
             GetBlockSize(),
@@ -52,25 +53,20 @@ void TIndexTabletActor::HandleAcquireLock(
     }
 
     auto* msg = ev->Get();
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     AddTransaction<TEvService::TAcquireLockMethod>(*requestInfo);
 
-    ExecuteTx<TAcquireLock>(
-        ctx,
-        std::move(requestInfo),
-        msg->Record);
+    ExecuteTx<TAcquireLock>(ctx, std::move(requestInfo), msg->Record);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 bool TIndexTabletActor::PrepareTx_AcquireLock(
-    const TActorContext&  /*ctx*/,
-    TTransactionContext&  /*tx*/,
+    const TActorContext& /*ctx*/,
+    TTransactionContext& /*tx*/,
     TTxIndexTablet::TAcquireLock& args)
 {
     FILESTORE_VALIDATE_TX_SESSION(AcquireLock, args);
@@ -79,16 +75,14 @@ bool TIndexTabletActor::PrepareTx_AcquireLock(
 }
 
 void TIndexTabletActor::ExecuteTx_AcquireLock(
-    const TActorContext&  /*ctx*/,
+    const TActorContext& /*ctx*/,
     TTransactionContext& tx,
     TTxIndexTablet::TAcquireLock& args)
 {
     FILESTORE_VALIDATE_TX_ERROR(AcquireLock, args);
 
-    auto* session = FindSession(
-        args.ClientId,
-        args.SessionId,
-        args.SessionSeqNo);
+    auto* session =
+        FindSession(args.ClientId, args.SessionId, args.SessionSeqNo);
     TABLET_VERIFY(session);
 
     auto* handle = FindHandle(args.Request.GetHandle());
@@ -113,7 +107,8 @@ void TIndexTabletActor::CompleteTx_AcquireLock(
 {
     RemoveTransaction(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvService::TEvAcquireLockResponse>(args.Error);
+    auto response =
+        std::make_unique<TEvService::TEvAcquireLockResponse>(args.Error);
     CompleteResponse<TEvService::TAcquireLockMethod>(
         response->Record,
         args.RequestInfo->CallContext,

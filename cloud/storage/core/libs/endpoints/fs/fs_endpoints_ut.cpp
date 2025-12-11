@@ -3,9 +3,9 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/path.h>
+#include <util/folder/tempdir.h>
 #include <util/generic/guid.h>
 #include <util/generic/scope.h>
-#include <util/folder/tempdir.h>
 
 #include <google/protobuf/util/message_differencer.h>
 

@@ -25,15 +25,17 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TRequest>
-concept HasClientId = requires (TRequest r)
-{
-    { r.MutableHeaders().SetClientId(TString())};
+concept HasClientId = requires(TRequest r) {
+    {
+        r.MutableHeaders().SetClientId(TString())
+    };
 };
 
 template <typename TRequest>
-concept HasInstanceId = requires (TRequest r)
-{
-    { r.SetInstanceId(TString()) };
+concept HasInstanceId = requires(TRequest r) {
+    {
+        r.SetInstanceId(TString())
+    };
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -69,28 +71,21 @@ struct TMultiClientEndpoint
     {
         with_lock (Lock) {
             auto key = std::make_pair(clientId, instanceId);
-            if (auto it = ClientCache.find(key);
-                it != ClientCache.end())
-            {
+            if (auto it = ClientCache.find(key); it != ClientCache.end()) {
                 return it->second;
             }
-            auto client = CreateClient(
-                Client,
-                weak_from_this(),
-                clientId,
-                instanceId);
+            auto client =
+                CreateClient(Client, weak_from_this(), clientId, instanceId);
             ClientCache.emplace(key, client);
             return client;
         }
     }
 
     void Start() override
-    {
-    }
+    {}
 
     void Stop() override
-    {
-    }
+    {}
 
     void ReleaseClient(const TString& clientId, const TString& instanceId)
     {
@@ -126,10 +121,10 @@ struct TClientEndpoint: public TBlockStoreImpl<TClientEndpoint, IBlockStore>
     const TString InstanceId;
 
     TClientEndpoint(
-            IBlockStorePtr client,
-            std::weak_ptr<TMultiClientEndpoint> owner,
-            TString clientId,
-            TString instanceId)
+        IBlockStorePtr client,
+        std::weak_ptr<TMultiClientEndpoint> owner,
+        TString clientId,
+        TString instanceId)
         : Client(std::move(client))
         , Owner(std::move(owner))
         , ClientId(std::move(clientId))
@@ -199,7 +194,7 @@ IBlockStorePtr CreateClient(
         std::move(instanceId));
 }
 
-}  // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 

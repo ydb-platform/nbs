@@ -28,9 +28,7 @@ private:
     const TString Input;
 
 public:
-    TWriteCompactionMapActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
+    TWriteCompactionMapActionActor(TRequestInfoPtr requestInfo, TString input);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -38,6 +36,7 @@ private:
     void ReplyAndDie(
         const TActorContext& ctx,
         const NProtoPrivate::TWriteCompactionMapResponse& response);
+
 private:
     STFUNC(StateWork);
 
@@ -49,8 +48,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TWriteCompactionMapActionActor::TWriteCompactionMapActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input)
+    TRequestInfoPtr requestInfo,
+    TString input)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
 {}
@@ -59,9 +58,7 @@ void TWriteCompactionMapActionActor::Bootstrap(const TActorContext& ctx)
 {
     NProtoPrivate::TWriteCompactionMapRequest request;
     if (!google::protobuf::util::JsonStringToMessage(Input, &request).ok()) {
-        ReplyAndDie(
-            ctx,
-            TErrorResponse(E_ARGUMENT, "Failed to parse input"));
+        ReplyAndDie(ctx, TErrorResponse(E_ARGUMENT, "Failed to parse input"));
         return;
     }
 

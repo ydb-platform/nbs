@@ -7,14 +7,15 @@
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats_test.h>
 #include <cloud/blockstore/libs/service/context.h>
-#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/request.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service_test.h>
 #include <cloud/blockstore/libs/throttling/throttler.h>
 #include <cloud/blockstore/libs/throttling/throttler_logger.h>
 #include <cloud/blockstore/libs/throttling/throttler_metrics.h>
 #include <cloud/blockstore/libs/throttling/throttler_policy.h>
 #include <cloud/blockstore/libs/throttling/throttler_tracker.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -26,9 +27,9 @@
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <google/protobuf/util/message_differencer.h>
-
 #include <util/generic/size_literals.h>
+
+#include <google/protobuf/util/message_differencer.h>
 
 namespace NCloud::NBlockStore::NClient {
 
@@ -99,8 +100,8 @@ struct TRequestCountingPolicy
 
 struct TSingleVolumeProcessingPolicy
 {
-    std::shared_ptr<TTestVolumeInfo<TRequestCountingPolicy>> VolumeInfo
-        = std::make_shared<TTestVolumeInfo<TRequestCountingPolicy>>();
+    std::shared_ptr<TTestVolumeInfo<TRequestCountingPolicy>> VolumeInfo =
+        std::make_shared<TTestVolumeInfo<TRequestCountingPolicy>>();
 
     bool MountVolume(
         const NProto::TVolume& volume,
@@ -114,9 +115,7 @@ struct TSingleVolumeProcessingPolicy
         return true;
     }
 
-    void UnmountVolume(
-        const TString& diskId,
-        const TString& clientId)
+    void UnmountVolume(const TString& diskId, const TString& clientId)
     {
         Y_UNUSED(diskId);
         Y_UNUSED(clientId);
@@ -144,11 +143,11 @@ struct TSingleVolumeProcessingPolicy
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRequestStats final
-    : public IRequestStats
+struct TRequestStats final: public IRequestStats
 {
     ui32 PostponedCount[static_cast<size_t>(EBlockStoreRequest::MAX)] = {};
-    ui32 PostponedServerCount[static_cast<size_t>(EBlockStoreRequest::MAX)] = {};
+    ui32 PostponedServerCount[static_cast<size_t>(EBlockStoreRequest::MAX)] =
+        {};
     ui32 AdvancedCount[static_cast<size_t>(EBlockStoreRequest::MAX)] = {};
     ui32 AdvancedServerCount[static_cast<size_t>(EBlockStoreRequest::MAX)] = {};
 
@@ -327,10 +326,7 @@ std::shared_ptr<NProto::TReadBlocksLocalRequest> CreateReadBlocksLocalRequest(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ui32 GetApproximateValue(
-    ui32 byteCount,
-    ui32 iops,
-    ui32 bandwidth)
+ui32 GetApproximateValue(ui32 byteCount, ui32 iops, ui32 bandwidth)
 {
     const auto maxIops = CalculateThrottlerC1(iops, bandwidth);
     const auto maxBandwidth = CalculateThrottlerC2(iops, bandwidth);
@@ -358,16 +354,14 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
             THostPerformanceProfile{},
             clientConfig,
             clientProfile,
-            performanceProfile
-        ));
+            performanceProfile));
 
         clientProfile.SetHostType(NProto::HOST_TYPE_DEFAULT);
         UNIT_ASSERT(PreparePerformanceProfile(
             THostPerformanceProfile{},
             clientConfig,
             clientProfile,
-            performanceProfile
-        ));
+            performanceProfile));
     }
 
     Y_UNIT_TEST(TestPostponePolicy)
@@ -389,21 +383,18 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
             THostPerformanceProfile{},
             clientConfig,
             clientProfile,
-            performanceProfile
-        ));
+            performanceProfile));
         auto policy = CreateClientThrottlerPolicy(performanceProfile);
 
-#define DO_TEST(expectedDelayMcs, timeMcs, mediaKind, requestType, bs)         \
-        UNIT_ASSERT_VALUES_EQUAL(                                              \
-            TDuration::MicroSeconds(expectedDelayMcs),                         \
-            policy->SuggestDelay(                                              \
-                TInstant::MicroSeconds(timeMcs),                               \
-                mediaKind,                                                     \
-                requestType,                                                   \
-                bs                                                             \
-            )                                                                  \
-        );                                                                     \
-// DO_TEST
+#define DO_TEST(expectedDelayMcs, timeMcs, mediaKind, requestType, bs) \
+    UNIT_ASSERT_VALUES_EQUAL(                                          \
+        TDuration::MicroSeconds(expectedDelayMcs),                     \
+        policy->SuggestDelay(                                          \
+            TInstant::MicroSeconds(timeMcs),                           \
+            mediaKind,                                                 \
+            requestType,                                               \
+            bs));                                                      \
+    // DO_TEST
 
         DO_TEST(
             0,
@@ -413,8 +404,7 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
             GetApproximateValue(
                 207460_KB,
                 performanceProfile.GetSSDProfile().GetMaxReadIops(),
-                performanceProfile.GetSSDProfile().GetMaxReadBandwidth())
-        );
+                performanceProfile.GetSSDProfile().GetMaxReadBandwidth()));
         DO_TEST(
             1'000'000,
             1'000'000,
@@ -423,8 +413,7 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
             GetApproximateValue(
                 2_GB,
                 performanceProfile.GetSSDProfile().GetMaxWriteIops(),
-                performanceProfile.GetSSDProfile().GetMaxWriteBandwidth())
-        );
+                performanceProfile.GetSSDProfile().GetMaxWriteBandwidth()));
         DO_TEST(
             0,
             2'000'000,
@@ -433,8 +422,7 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
             GetApproximateValue(
                 2_GB,
                 performanceProfile.GetSSDProfile().GetMaxWriteIops(),
-                performanceProfile.GetSSDProfile().GetMaxWriteBandwidth())
-        );
+                performanceProfile.GetSSDProfile().GetMaxWriteBandwidth()));
         DO_TEST(
             500'000,
             2'000'000,
@@ -443,8 +431,7 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
             GetApproximateValue(
                 1023_MB,
                 performanceProfile.GetSSDProfile().GetMaxReadIops(),
-                performanceProfile.GetSSDProfile().GetMaxReadBandwidth())
-        );
+                performanceProfile.GetSSDProfile().GetMaxReadBandwidth()));
         for (int i = 0; i < 20; ++i) {
             DO_TEST(
                 0,
@@ -458,14 +445,14 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
         }
         for (int i = 0; i < 20; ++i) {
             DO_TEST(
-                0, 2'500'000,
+                0,
+                2'500'000,
                 NCloud::NProto::STORAGE_MEDIA_SSD,
                 EBlockStoreRequest::WriteBlocksLocal,
                 GetApproximateValue(
                     10_MB,
                     performanceProfile.GetSSDProfile().GetMaxWriteIops(),
-                    performanceProfile.GetSSDProfile().GetMaxWriteBandwidth())
-            );
+                    performanceProfile.GetSSDProfile().GetMaxWriteBandwidth()));
         }
         DO_TEST(
             2'649,
@@ -475,8 +462,7 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
             GetApproximateValue(
                 10_MB,
                 performanceProfile.GetSSDProfile().GetMaxReadIops(),
-                performanceProfile.GetSSDProfile().GetMaxReadBandwidth())
-        );
+                performanceProfile.GetSSDProfile().GetMaxReadBandwidth()));
         DO_TEST(
             2'038,
             2'500'000,
@@ -485,8 +471,7 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
             GetApproximateValue(
                 10_MB,
                 performanceProfile.GetNonreplProfile().GetMaxReadIops(),
-                performanceProfile.GetNonreplProfile().GetMaxReadBandwidth())
-        );
+                performanceProfile.GetNonreplProfile().GetMaxReadBandwidth()));
         // TODO: STORAGE_MEDIA_HDD_NONREPLICATED
 
 #undef DO_TEST
@@ -519,8 +504,10 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
             const auto correctedCpuUnitCount = Max(100u, cpuUnitCount);
             const auto expectedIops = iops * correctedCpuUnitCount;
             const auto expectedBandwidth = bw * correctedCpuUnitCount * 1_MB;
-            const auto expectedReadIopsNonreplicated = Min(100'000UL, 2 * expectedIops);
-            const auto expectedWriteIopsNonreplicated = Min(200'000UL, 2 * expectedIops);
+            const auto expectedReadIopsNonreplicated =
+                Min(100'000UL, 2 * expectedIops);
+            const auto expectedWriteIopsNonreplicated =
+                Min(200'000UL, 2 * expectedIops);
             const auto expectedReadBandwidthNonreplicated =
                 Min(1'000_MB, 2 * expectedBandwidth);
             const auto expectedWriteBandwidthNonreplicated =
@@ -531,8 +518,7 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
                 THostPerformanceProfile{},
                 clientConfig,
                 clientProfile,
-                performanceProfile
-            ));
+                performanceProfile));
 
             auto profiles = {
                 &performanceProfile.GetHDDProfile(),
@@ -542,44 +528,36 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
             for (const auto* profile: profiles) {
                 UNIT_ASSERT_VALUES_EQUAL(
                     expectedIops,
-                    profile->GetMaxReadIops()
-                );
+                    profile->GetMaxReadIops());
 
                 UNIT_ASSERT_VALUES_EQUAL(
                     expectedIops,
-                    profile->GetMaxWriteIops()
-                );
+                    profile->GetMaxWriteIops());
 
                 UNIT_ASSERT_VALUES_EQUAL(
                     expectedBandwidth,
-                    profile->GetMaxReadBandwidth()
-                );
+                    profile->GetMaxReadBandwidth());
 
                 UNIT_ASSERT_VALUES_EQUAL(
                     expectedBandwidth,
-                    profile->GetMaxWriteBandwidth()
-                );
+                    profile->GetMaxWriteBandwidth());
             }
 
             UNIT_ASSERT_VALUES_EQUAL(
                 expectedReadIopsNonreplicated,
-                performanceProfile.GetNonreplProfile().GetMaxReadIops()
-            );
+                performanceProfile.GetNonreplProfile().GetMaxReadIops());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 expectedWriteIopsNonreplicated,
-                performanceProfile.GetNonreplProfile().GetMaxWriteIops()
-            );
+                performanceProfile.GetNonreplProfile().GetMaxWriteIops());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 expectedReadBandwidthNonreplicated,
-                performanceProfile.GetNonreplProfile().GetMaxReadBandwidth()
-            );
+                performanceProfile.GetNonreplProfile().GetMaxReadBandwidth());
 
             UNIT_ASSERT_VALUES_EQUAL(
                 expectedWriteBandwidthNonreplicated,
-                performanceProfile.GetNonreplProfile().GetMaxWriteBandwidth()
-            );
+                performanceProfile.GetNonreplProfile().GetMaxWriteBandwidth());
         }
     }
 
@@ -599,41 +577,36 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
             THostPerformanceProfile{},
             clientConfig,
             clientProfile,
-            performanceProfile
-        ));
+            performanceProfile));
 
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            performanceProfile.GetNonreplProfile().GetMaxReadIops()
-        );
+            performanceProfile.GetNonreplProfile().GetMaxReadIops());
 
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            performanceProfile.GetNonreplProfile().GetMaxWriteIops()
-        );
+            performanceProfile.GetNonreplProfile().GetMaxWriteIops());
 
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            performanceProfile.GetNonreplProfile().GetMaxReadBandwidth()
-        );
+            performanceProfile.GetNonreplProfile().GetMaxReadBandwidth());
 
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            performanceProfile.GetNonreplProfile().GetMaxWriteBandwidth()
-        );
+            performanceProfile.GetNonreplProfile().GetMaxWriteBandwidth());
     }
 
     Y_UNIT_TEST(ShouldReturnCorrectStatusCodeFromClient)
     {
         auto client = std::make_shared<TTestService>();
 
-        client->PingHandler =
-            [&] (std::shared_ptr<NProto::TPingRequest> request) {
-                Y_UNUSED(request);
-                return MakeFuture<NProto::TPingResponse>(TErrorResponse(
-                    E_NOT_IMPLEMENTED,
-                    TStringBuilder() << "Unsupported request"));
-            };
+        client->PingHandler = [&](std::shared_ptr<NProto::TPingRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture<NProto::TPingResponse>(TErrorResponse(
+                E_NOT_IMPLEMENTED,
+                TStringBuilder() << "Unsupported request"));
+        };
 
         auto throttler = CreateThrottler(
             CreateThrottlerLoggerStub(),
@@ -644,9 +617,8 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
             CreateSchedulerStub(),
             CreateVolumeStatsStub());
 
-        auto throttling = CreateThrottlingClient(
-            std::move(client),
-            std::move(throttler));
+        auto throttling =
+            CreateThrottlingClient(std::move(client), std::move(throttler));
 
         auto futurePing = throttling->Ping(
             MakeIntrusive<TCallContext>(),
@@ -661,13 +633,14 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
     {
         auto client = std::make_shared<TTestService>();
 
-#define SET_HANDLER(name)                                                      \
-        client->name##Handler =                                                \
-            [&] (std::shared_ptr<NProto::T##name##Request> request) {          \
-                Y_UNUSED(request);                                             \
-                return MakeFuture(NProto::T##name##Response());                \
-            };                                                                 \
-// SET_HANDLER
+#define SET_HANDLER(name)                                      \
+    client->name##Handler =                                    \
+        [&](std::shared_ptr<NProto::T##name##Request> request) \
+    {                                                          \
+        Y_UNUSED(request);                                     \
+        return MakeFuture(NProto::T##name##Response());        \
+    };                                                         \
+    // SET_HANDLER
 
         SET_HANDLER(ZeroBlocks);
         SET_HANDLER(WriteBlocks);
@@ -678,23 +651,24 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
 
 #undef SET_HANDLER
 
-        auto volumeStats = std::make_shared<
-            TTestVolumeStats<TSingleVolumeProcessingPolicy>>();
+        auto volumeStats =
+            std::make_shared<TTestVolumeStats<TSingleVolumeProcessingPolicy>>();
 
         const auto clientId = "test_client";
 
         client->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                NProto::TVolume volume;
-                volume.SetDiskId(request->GetDiskId());
-                volume.SetBlockSize(100);
-                volumeStats->MountVolume(std::move(volume), clientId, "");
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            NProto::TVolume volume;
+            volume.SetDiskId(request->GetDiskId());
+            volume.SetBlockSize(100);
+            volumeStats->MountVolume(std::move(volume), clientId, "");
 
-                NProto::TMountVolumeResponse r;
-                r.MutableVolume()->SetDiskId(request->GetDiskId());
+            NProto::TMountVolumeResponse r;
+            r.MutableVolume()->SetDiskId(request->GetDiskId());
 
-                return MakeFuture(std::move(r));
-            };
+            return MakeFuture(std::move(r));
+        };
 
         auto timer = CreateWallClockTimer();
         auto scheduler = std::make_shared<TTestScheduler>();
@@ -717,9 +691,7 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
             scheduler,
             volumeStats);
 
-        auto throttling = CreateThrottlingClient(
-            client,
-            std::move(throttler));
+        auto throttling = CreateThrottlingClient(client, std::move(throttler));
 
         auto fm = throttling->MountVolume(
             MakeIntrusive<TCallContext>(),
@@ -753,16 +725,36 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
 
         const auto& pc = volumeStats->VolumeInfo->PostponedCount;
         const auto& ac = volumeStats->VolumeInfo->AdvancedCount;
-        UNIT_ASSERT_VALUES_EQUAL(0, pc[static_cast<int>(EBlockStoreRequest::ZeroBlocks)]);
-        UNIT_ASSERT_VALUES_EQUAL(0, pc[static_cast<int>(EBlockStoreRequest::WriteBlocks)]);
-        UNIT_ASSERT_VALUES_EQUAL(0, pc[static_cast<int>(EBlockStoreRequest::ReadBlocks)]);
-        UNIT_ASSERT_VALUES_EQUAL(0, pc[static_cast<int>(EBlockStoreRequest::WriteBlocksLocal)]);
-        UNIT_ASSERT_VALUES_EQUAL(0, pc[static_cast<int>(EBlockStoreRequest::ReadBlocksLocal)]);
-        UNIT_ASSERT_VALUES_EQUAL(0, ac[static_cast<int>(EBlockStoreRequest::ZeroBlocks)]);
-        UNIT_ASSERT_VALUES_EQUAL(0, ac[static_cast<int>(EBlockStoreRequest::WriteBlocks)]);
-        UNIT_ASSERT_VALUES_EQUAL(0, ac[static_cast<int>(EBlockStoreRequest::ReadBlocks)]);
-        UNIT_ASSERT_VALUES_EQUAL(0, ac[static_cast<int>(EBlockStoreRequest::WriteBlocksLocal)]);
-        UNIT_ASSERT_VALUES_EQUAL(0, ac[static_cast<int>(EBlockStoreRequest::ReadBlocksLocal)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            pc[static_cast<int>(EBlockStoreRequest::ZeroBlocks)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            pc[static_cast<int>(EBlockStoreRequest::WriteBlocks)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            pc[static_cast<int>(EBlockStoreRequest::ReadBlocks)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            pc[static_cast<int>(EBlockStoreRequest::WriteBlocksLocal)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            pc[static_cast<int>(EBlockStoreRequest::ReadBlocksLocal)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            ac[static_cast<int>(EBlockStoreRequest::ZeroBlocks)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            ac[static_cast<int>(EBlockStoreRequest::WriteBlocks)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            ac[static_cast<int>(EBlockStoreRequest::ReadBlocks)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            ac[static_cast<int>(EBlockStoreRequest::WriteBlocksLocal)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            ac[static_cast<int>(EBlockStoreRequest::ReadBlocksLocal)]);
 
         policy->PostponeTimeout = TDuration::Seconds(1);
 
@@ -795,7 +787,8 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
         auto anotherDiskRequest = CreateReadBlocksRequest(1);
         anotherDiskRequest->SetDiskId("yyy");
         auto anotherDiskResponse = throttling->ReadBlocks(
-            MakeIntrusive<TCallContext>(), anotherDiskRequest);
+            MakeIntrusive<TCallContext>(),
+            anotherDiskRequest);
         UNIT_ASSERT(!anotherDiskResponse.HasValue());
 
         policy->PostponeTimeout = TDuration::Zero();
@@ -819,16 +812,36 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
         UNIT_ASSERT(!fr2.HasValue());
         UNIT_ASSERT(!fwl2.HasValue());
         UNIT_ASSERT(!frl2.HasValue());
-        UNIT_ASSERT_VALUES_EQUAL(2, pc[static_cast<int>(EBlockStoreRequest::ZeroBlocks)]);
-        UNIT_ASSERT_VALUES_EQUAL(2, pc[static_cast<int>(EBlockStoreRequest::WriteBlocks)]);
-        UNIT_ASSERT_VALUES_EQUAL(2, pc[static_cast<int>(EBlockStoreRequest::ReadBlocks)]);
-        UNIT_ASSERT_VALUES_EQUAL(2, pc[static_cast<int>(EBlockStoreRequest::WriteBlocksLocal)]);
-        UNIT_ASSERT_VALUES_EQUAL(2, pc[static_cast<int>(EBlockStoreRequest::ReadBlocksLocal)]);
-        UNIT_ASSERT_VALUES_EQUAL(0, ac[static_cast<int>(EBlockStoreRequest::ZeroBlocks)]);
-        UNIT_ASSERT_VALUES_EQUAL(0, ac[static_cast<int>(EBlockStoreRequest::WriteBlocks)]);
-        UNIT_ASSERT_VALUES_EQUAL(0, ac[static_cast<int>(EBlockStoreRequest::ReadBlocks)]);
-        UNIT_ASSERT_VALUES_EQUAL(0, ac[static_cast<int>(EBlockStoreRequest::WriteBlocksLocal)]);
-        UNIT_ASSERT_VALUES_EQUAL(0, ac[static_cast<int>(EBlockStoreRequest::ReadBlocksLocal)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            pc[static_cast<int>(EBlockStoreRequest::ZeroBlocks)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            pc[static_cast<int>(EBlockStoreRequest::WriteBlocks)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            pc[static_cast<int>(EBlockStoreRequest::ReadBlocks)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            pc[static_cast<int>(EBlockStoreRequest::WriteBlocksLocal)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            pc[static_cast<int>(EBlockStoreRequest::ReadBlocksLocal)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            ac[static_cast<int>(EBlockStoreRequest::ZeroBlocks)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            ac[static_cast<int>(EBlockStoreRequest::WriteBlocks)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            ac[static_cast<int>(EBlockStoreRequest::ReadBlocks)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            ac[static_cast<int>(EBlockStoreRequest::WriteBlocksLocal)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            ac[static_cast<int>(EBlockStoreRequest::ReadBlocksLocal)]);
 
         scheduler->RunAllScheduledTasks();
         UNIT_ASSERT(fz.HasValue());
@@ -842,33 +855,58 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
         UNIT_ASSERT(fr2.HasValue());
         UNIT_ASSERT(fwl2.HasValue());
         UNIT_ASSERT(frl2.HasValue());
-        UNIT_ASSERT_VALUES_EQUAL(2, pc[static_cast<int>(EBlockStoreRequest::ZeroBlocks)]);
-        UNIT_ASSERT_VALUES_EQUAL(2, pc[static_cast<int>(EBlockStoreRequest::WriteBlocks)]);
-        UNIT_ASSERT_VALUES_EQUAL(2, pc[static_cast<int>(EBlockStoreRequest::ReadBlocks)]);
-        UNIT_ASSERT_VALUES_EQUAL(2, pc[static_cast<int>(EBlockStoreRequest::WriteBlocksLocal)]);
-        UNIT_ASSERT_VALUES_EQUAL(2, pc[static_cast<int>(EBlockStoreRequest::ReadBlocksLocal)]);
-        UNIT_ASSERT_VALUES_EQUAL(2, ac[static_cast<int>(EBlockStoreRequest::ZeroBlocks)]);
-        UNIT_ASSERT_VALUES_EQUAL(2, ac[static_cast<int>(EBlockStoreRequest::WriteBlocks)]);
-        UNIT_ASSERT_VALUES_EQUAL(2, ac[static_cast<int>(EBlockStoreRequest::ReadBlocks)]);
-        UNIT_ASSERT_VALUES_EQUAL(2, ac[static_cast<int>(EBlockStoreRequest::WriteBlocksLocal)]);
-        UNIT_ASSERT_VALUES_EQUAL(2, ac[static_cast<int>(EBlockStoreRequest::ReadBlocksLocal)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            pc[static_cast<int>(EBlockStoreRequest::ZeroBlocks)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            pc[static_cast<int>(EBlockStoreRequest::WriteBlocks)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            pc[static_cast<int>(EBlockStoreRequest::ReadBlocks)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            pc[static_cast<int>(EBlockStoreRequest::WriteBlocksLocal)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            pc[static_cast<int>(EBlockStoreRequest::ReadBlocksLocal)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            ac[static_cast<int>(EBlockStoreRequest::ZeroBlocks)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            ac[static_cast<int>(EBlockStoreRequest::WriteBlocks)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            ac[static_cast<int>(EBlockStoreRequest::ReadBlocks)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            ac[static_cast<int>(EBlockStoreRequest::WriteBlocksLocal)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            ac[static_cast<int>(EBlockStoreRequest::ReadBlocksLocal)]);
 
         policy->PostponeTimeout = TDuration::Seconds(1);
         anotherDiskRequest = CreateReadBlocksRequest(1);
         anotherDiskRequest->SetDiskId("yyy");
         anotherDiskResponse = throttling->ReadBlocks(
-            MakeIntrusive<TCallContext>(), anotherDiskRequest);
+            MakeIntrusive<TCallContext>(),
+            anotherDiskRequest);
         UNIT_ASSERT(anotherDiskResponse.HasValue());
         fz = throttling->ZeroBlocks(
             MakeIntrusive<TCallContext>(),
             CreateZeroBlocksRequest(1));
         UNIT_ASSERT(!fz.HasValue());
-        UNIT_ASSERT_VALUES_EQUAL(3, pc[static_cast<int>(EBlockStoreRequest::ZeroBlocks)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            pc[static_cast<int>(EBlockStoreRequest::ZeroBlocks)]);
 
         policy->PostponeTimeout = TDuration::Zero();
         scheduler->RunAllScheduledTasks();
         UNIT_ASSERT(fz.HasValue());
-        UNIT_ASSERT_VALUES_EQUAL(3, ac[static_cast<int>(EBlockStoreRequest::ZeroBlocks)]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            ac[static_cast<int>(EBlockStoreRequest::ZeroBlocks)]);
     }
 
     Y_UNIT_TEST(ShouldProvideSameThrottlerForSameClientId)
@@ -1064,8 +1102,8 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
     Y_UNIT_TEST(ShouldRegisterCountersOnlyAfterFirstNonZeroQuotaValue)
     {
         const TString instanceId = "test_instance";
-        auto volumeStats = std::make_shared<
-            TTestVolumeStats<TSingleVolumeProcessingPolicy>>();
+        auto volumeStats =
+            std::make_shared<TTestVolumeStats<TSingleVolumeProcessingPolicy>>();
 
         auto timer = CreateWallClockTimer();
         auto scheduler = std::make_shared<TTestScheduler>();
@@ -1077,10 +1115,7 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
         auto monitoring = CreateMonitoringServiceStub();
         auto totalCounters = monitoring->GetCounters();
 
-        auto metrics = CreateThrottlerMetrics(
-            timer,
-            totalCounters,
-            "server");
+        auto metrics = CreateThrottlerMetrics(timer, totalCounters, "server");
 
         auto throttler = CreateThrottler(
             CreateThrottlerLoggerStub(),
@@ -1093,63 +1128,62 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
 
         auto client = std::make_shared<TTestService>();
 
-#define SET_HANDLER(name)                                                      \
-        client->name##Handler =                                                \
-            [&] (std::shared_ptr<NProto::T##name##Request> request) {          \
-                Y_UNUSED(request);                                             \
-                return MakeFuture(NProto::T##name##Response());                \
-            };                                                                 \
-// SET_HANDLER
+#define SET_HANDLER(name)                                      \
+    client->name##Handler =                                    \
+        [&](std::shared_ptr<NProto::T##name##Request> request) \
+    {                                                          \
+        Y_UNUSED(request);                                     \
+        return MakeFuture(NProto::T##name##Response());        \
+    };                                                         \
+    // SET_HANDLER
 
         SET_HANDLER(UnmountVolume);
 
 #undef SET_HANDLER
 
         client->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                NProto::TVolume volume;
-                volume.SetDiskId(request->GetDiskId());
-                volume.SetBlockSize(100);
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            NProto::TVolume volume;
+            volume.SetDiskId(request->GetDiskId());
+            volume.SetBlockSize(100);
 
-                NProto::TMountVolumeResponse r;
-                r.MutableVolume()->SetDiskId(request->GetDiskId());
+            NProto::TMountVolumeResponse r;
+            r.MutableVolume()->SetDiskId(request->GetDiskId());
 
-                return MakeFuture(std::move(r));
-            };
+            return MakeFuture(std::move(r));
+        };
 
         const TString usedQuota = "UsedQuota";
         const TString maxUsedQuota = "MaxUsedQuota";
-        auto getDiskGroupFunction = [&] (const TString& diskId)
+        auto getDiskGroupFunction = [&](const TString& diskId)
         {
-            return totalCounters
-                ->GetSubgroup("component", "server_volume")
+            return totalCounters->GetSubgroup("component", "server_volume")
                 ->GetSubgroup("host", "cluster")
                 ->FindSubgroup("volume", diskId);
         };
 
-        auto getInstanceGroupFunction = [&] (
-            const TString& diskId,
-            const TString& instanceId)
+        auto getInstanceGroupFunction =
+            [&](const TString& diskId, const TString& instanceId)
         {
             auto diskGroup = getDiskGroupFunction(diskId);
             UNIT_ASSERT_C(
                 diskGroup,
                 TStringBuilder() << "Subgroup volume:" << diskId
-                    << " should be initialized");
+                                 << " should be initialized");
             return diskGroup->FindSubgroup("instance", instanceId);
         };
 
-        auto getCounterFunction = [&] (
-            const TString& diskId,
-            const TString& instanceId,
-            const TString& sensor)
+        auto getCounterFunction = [&](const TString& diskId,
+                                      const TString& instanceId,
+                                      const TString& sensor)
         {
             auto instanceGroup = getInstanceGroupFunction(diskId, instanceId);
             UNIT_ASSERT_C(
                 instanceGroup,
-                TStringBuilder() << "Subgroup volume:" << diskId
-                    << ", instance:" << instanceId
-                    << " should be initialized");
+                TStringBuilder()
+                    << "Subgroup volume:" << diskId
+                    << ", instance:" << instanceId << " should be initialized");
             return instanceGroup->FindCounter(sensor);
         };
 
@@ -1174,20 +1208,16 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
         metrics->UpdateMaxUsedQuota();
 
         {
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
-            auto usedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                instanceId,
-                usedQuota);
-            auto maxUsedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                instanceId,
-                maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
+            auto usedQuotaVolumeCounter =
+                getCounterFunction(volumeId, instanceId, usedQuota);
+            auto maxUsedQuotaVolumeCounter =
+                getCounterFunction(volumeId, instanceId, maxUsedQuota);
 
             UNIT_ASSERT_C(
                 usedQuotaCounter,
@@ -1222,20 +1252,16 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
             totalCounters->GetSubgroup("component", "server")->ReadSnapshot();
             getInstanceGroupFunction(volumeId, instanceId)->ReadSnapshot();
 
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
-            auto usedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                instanceId,
-                usedQuota);
-            auto maxUsedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                instanceId,
-                maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
+            auto usedQuotaVolumeCounter =
+                getCounterFunction(volumeId, instanceId, usedQuota);
+            auto maxUsedQuotaVolumeCounter =
+                getCounterFunction(volumeId, instanceId, maxUsedQuota);
 
             UNIT_ASSERT_C(
                 !usedQuotaCounter,
@@ -1255,8 +1281,8 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
     Y_UNIT_TEST(ShouldTrimCountersAfterTimeout)
     {
         const TString instanceId = "test_instance";
-        auto volumeStats = std::make_shared<
-            TTestVolumeStats<TSingleVolumeProcessingPolicy>>();
+        auto volumeStats =
+            std::make_shared<TTestVolumeStats<TSingleVolumeProcessingPolicy>>();
 
         auto timer = std::make_shared<TTestTimer>();
         auto scheduler = std::make_shared<TTestScheduler>();
@@ -1268,10 +1294,7 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
         auto monitoring = CreateMonitoringServiceStub();
         auto totalCounters = monitoring->GetCounters();
 
-        auto metrics = CreateThrottlerMetrics(
-            timer,
-            totalCounters,
-            "server");
+        auto metrics = CreateThrottlerMetrics(timer, totalCounters, "server");
 
         auto throttler = CreateThrottler(
             CreateThrottlerLoggerStub(),
@@ -1284,50 +1307,48 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
 
         auto client = std::make_shared<TTestService>();
         client->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                NProto::TVolume volume;
-                volume.SetDiskId(request->GetDiskId());
-                volume.SetBlockSize(100);
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            NProto::TVolume volume;
+            volume.SetDiskId(request->GetDiskId());
+            volume.SetBlockSize(100);
 
-                NProto::TMountVolumeResponse r;
-                r.MutableVolume()->SetDiskId(request->GetDiskId());
+            NProto::TMountVolumeResponse r;
+            r.MutableVolume()->SetDiskId(request->GetDiskId());
 
-                return MakeFuture(std::move(r));
-            };
+            return MakeFuture(std::move(r));
+        };
 
         const TString usedQuota = "UsedQuota";
         const TString maxUsedQuota = "MaxUsedQuota";
-        auto getDiskGroupFunction = [&] (const TString& diskId)
+        auto getDiskGroupFunction = [&](const TString& diskId)
         {
-            return totalCounters
-                ->GetSubgroup("component", "server_volume")
+            return totalCounters->GetSubgroup("component", "server_volume")
                 ->GetSubgroup("host", "cluster")
                 ->FindSubgroup("volume", diskId);
         };
 
-        auto getInstanceGroupFunction = [&] (
-            const TString& diskId,
-            const TString& instanceId)
+        auto getInstanceGroupFunction =
+            [&](const TString& diskId, const TString& instanceId)
         {
             auto diskGroup = getDiskGroupFunction(diskId);
             UNIT_ASSERT_C(
                 diskGroup,
                 TStringBuilder() << "Subgroup volume:" << diskId
-                    << " should be initialized");
+                                 << " should be initialized");
             return diskGroup->FindSubgroup("instance", instanceId);
         };
 
-        auto getCounterFunction = [&] (
-            const TString& diskId,
-            const TString& instanceId,
-            const TString& sensor)
+        auto getCounterFunction = [&](const TString& diskId,
+                                      const TString& instanceId,
+                                      const TString& sensor)
         {
             auto instanceGroup = getInstanceGroupFunction(diskId, instanceId);
             UNIT_ASSERT_C(
                 instanceGroup,
-                TStringBuilder() << "Subgroup volume:" << diskId
-                    << ", instance:" << instanceId
-                    << " should be initialized");
+                TStringBuilder()
+                    << "Subgroup volume:" << diskId
+                    << ", instance:" << instanceId << " should be initialized");
             return instanceGroup->FindCounter(sensor);
         };
 
@@ -1348,20 +1369,16 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
         metrics->Trim(timer->Now());
 
         {
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
-            auto usedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                instanceId,
-                usedQuota);
-            auto maxUsedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                instanceId,
-                maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
+            auto usedQuotaVolumeCounter =
+                getCounterFunction(volumeId, instanceId, usedQuota);
+            auto maxUsedQuotaVolumeCounter =
+                getCounterFunction(volumeId, instanceId, maxUsedQuota);
 
             UNIT_ASSERT_C(
                 usedQuotaCounter,
@@ -1391,20 +1408,16 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
         metrics->Trim(timer->Now());
 
         {
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
-            auto usedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                instanceId,
-                usedQuota);
-            auto maxUsedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                instanceId,
-                maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
+            auto usedQuotaVolumeCounter =
+                getCounterFunction(volumeId, instanceId, usedQuota);
+            auto maxUsedQuotaVolumeCounter =
+                getCounterFunction(volumeId, instanceId, maxUsedQuota);
 
             UNIT_ASSERT_C(
                 usedQuotaCounter,
@@ -1433,20 +1446,16 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
             totalCounters->GetSubgroup("component", "server")->ReadSnapshot();
             getInstanceGroupFunction(volumeId, instanceId)->ReadSnapshot();
 
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
-            auto usedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                instanceId,
-                usedQuota);
-            auto maxUsedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                instanceId,
-                maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
+            auto usedQuotaVolumeCounter =
+                getCounterFunction(volumeId, instanceId, usedQuota);
+            auto maxUsedQuotaVolumeCounter =
+                getCounterFunction(volumeId, instanceId, maxUsedQuota);
 
             UNIT_ASSERT_C(
                 !usedQuotaCounter,
@@ -1466,8 +1475,8 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
     Y_UNIT_TEST(ShouldTrimCountersAfterTimeoutWithZeroQuota)
     {
         const TString instanceId = "test_instance";
-        auto volumeStats = std::make_shared<
-            TTestVolumeStats<TSingleVolumeProcessingPolicy>>();
+        auto volumeStats =
+            std::make_shared<TTestVolumeStats<TSingleVolumeProcessingPolicy>>();
 
         auto timer = std::make_shared<TTestTimer>();
         auto scheduler = std::make_shared<TTestScheduler>();
@@ -1479,10 +1488,7 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
         auto monitoring = CreateMonitoringServiceStub();
         auto totalCounters = monitoring->GetCounters();
 
-        auto metrics = CreateThrottlerMetrics(
-            timer,
-            totalCounters,
-            "server");
+        auto metrics = CreateThrottlerMetrics(timer, totalCounters, "server");
 
         auto throttler = CreateThrottler(
             CreateThrottlerLoggerStub(),
@@ -1495,50 +1501,48 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
 
         auto client = std::make_shared<TTestService>();
         client->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                NProto::TVolume volume;
-                volume.SetDiskId(request->GetDiskId());
-                volume.SetBlockSize(100);
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            NProto::TVolume volume;
+            volume.SetDiskId(request->GetDiskId());
+            volume.SetBlockSize(100);
 
-                NProto::TMountVolumeResponse r;
-                r.MutableVolume()->SetDiskId(request->GetDiskId());
+            NProto::TMountVolumeResponse r;
+            r.MutableVolume()->SetDiskId(request->GetDiskId());
 
-                return MakeFuture(std::move(r));
-            };
+            return MakeFuture(std::move(r));
+        };
 
         const TString usedQuota = "UsedQuota";
         const TString maxUsedQuota = "MaxUsedQuota";
-        auto getDiskGroupFunction = [&] (const TString& diskId)
+        auto getDiskGroupFunction = [&](const TString& diskId)
         {
-            return totalCounters
-                ->GetSubgroup("component", "server_volume")
+            return totalCounters->GetSubgroup("component", "server_volume")
                 ->GetSubgroup("host", "cluster")
                 ->FindSubgroup("volume", diskId);
         };
 
-        auto getInstanceGroupFunction = [&] (
-            const TString& diskId,
-            const TString& instanceId)
+        auto getInstanceGroupFunction =
+            [&](const TString& diskId, const TString& instanceId)
         {
             auto diskGroup = getDiskGroupFunction(diskId);
             UNIT_ASSERT_C(
                 diskGroup,
                 TStringBuilder() << "Subgroup volume:" << diskId
-                    << " should be initialized");
+                                 << " should be initialized");
             return diskGroup->FindSubgroup("instance", instanceId);
         };
 
-        auto getCounterFunction = [&] (
-            const TString& diskId,
-            const TString& instanceId,
-            const TString& sensor)
+        auto getCounterFunction = [&](const TString& diskId,
+                                      const TString& instanceId,
+                                      const TString& sensor)
         {
             auto instanceGroup = getInstanceGroupFunction(diskId, instanceId);
             UNIT_ASSERT_C(
                 instanceGroup,
-                TStringBuilder() << "Subgroup volume:" << diskId
-                    << ", instance:" << instanceId
-                    << " should be initialized");
+                TStringBuilder()
+                    << "Subgroup volume:" << diskId
+                    << ", instance:" << instanceId << " should be initialized");
             return instanceGroup->FindCounter(sensor);
         };
 
@@ -1558,20 +1562,16 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
         metrics->UpdateMaxUsedQuota();
 
         {
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
-            auto usedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                instanceId,
-                usedQuota);
-            auto maxUsedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                instanceId,
-                maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
+            auto usedQuotaVolumeCounter =
+                getCounterFunction(volumeId, instanceId, usedQuota);
+            auto maxUsedQuotaVolumeCounter =
+                getCounterFunction(volumeId, instanceId, maxUsedQuota);
 
             UNIT_ASSERT_C(
                 usedQuotaCounter,
@@ -1604,20 +1604,16 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
         metrics->Trim(timer->Now());
 
         {
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
-            auto usedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                instanceId,
-                usedQuota);
-            auto maxUsedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                instanceId,
-                maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
+            auto usedQuotaVolumeCounter =
+                getCounterFunction(volumeId, instanceId, usedQuota);
+            auto maxUsedQuotaVolumeCounter =
+                getCounterFunction(volumeId, instanceId, maxUsedQuota);
 
             UNIT_ASSERT_C(
                 usedQuotaCounter,
@@ -1646,20 +1642,16 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
             totalCounters->GetSubgroup("component", "server")->ReadSnapshot();
             getInstanceGroupFunction(volumeId, instanceId)->ReadSnapshot();
 
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
-            auto usedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                instanceId,
-                usedQuota);
-            auto maxUsedQuotaVolumeCounter = getCounterFunction(
-                volumeId,
-                instanceId,
-                maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
+            auto usedQuotaVolumeCounter =
+                getCounterFunction(volumeId, instanceId, usedQuota);
+            auto maxUsedQuotaVolumeCounter =
+                getCounterFunction(volumeId, instanceId, maxUsedQuota);
 
             UNIT_ASSERT_C(
                 !usedQuotaCounter,
@@ -1679,8 +1671,8 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
     Y_UNIT_TEST(ShouldCorrectlyMultipleMountMultipleUnmount)
     {
         const TString instanceId = "test_instance";
-        auto volumeStats = std::make_shared<
-            TTestVolumeStats<TSingleVolumeProcessingPolicy>>();
+        auto volumeStats =
+            std::make_shared<TTestVolumeStats<TSingleVolumeProcessingPolicy>>();
 
         auto timer = std::make_shared<TTestTimer>();
         auto scheduler = std::make_shared<TTestScheduler>();
@@ -1692,10 +1684,7 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
         auto monitoring = CreateMonitoringServiceStub();
         auto totalCounters = monitoring->GetCounters();
 
-        auto metrics = CreateThrottlerMetrics(
-            timer,
-            totalCounters,
-            "server");
+        auto metrics = CreateThrottlerMetrics(timer, totalCounters, "server");
 
         auto throttler = CreateThrottler(
             CreateThrottlerLoggerStub(),
@@ -1708,40 +1697,40 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
 
         auto client = std::make_shared<TTestService>();
 
-#define SET_HANDLER(name)                                                      \
-        client->name##Handler =                                                \
-            [&] (std::shared_ptr<NProto::T##name##Request> request) {          \
-                Y_UNUSED(request);                                             \
-                return MakeFuture(NProto::T##name##Response());                \
-            };                                                                 \
-// SET_HANDLER
+#define SET_HANDLER(name)                                      \
+    client->name##Handler =                                    \
+        [&](std::shared_ptr<NProto::T##name##Request> request) \
+    {                                                          \
+        Y_UNUSED(request);                                     \
+        return MakeFuture(NProto::T##name##Response());        \
+    };                                                         \
+    // SET_HANDLER
 
         SET_HANDLER(UnmountVolume);
 
 #undef SET_HANDLER
 
         client->MountVolumeHandler =
-            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
-                NProto::TVolume volume;
-                volume.SetDiskId(request->GetDiskId());
-                volume.SetBlockSize(100);
+            [&](std::shared_ptr<NProto::TMountVolumeRequest> request)
+        {
+            NProto::TVolume volume;
+            volume.SetDiskId(request->GetDiskId());
+            volume.SetBlockSize(100);
 
-                NProto::TMountVolumeResponse r;
-                r.MutableVolume()->SetDiskId(request->GetDiskId());
+            NProto::TMountVolumeResponse r;
+            r.MutableVolume()->SetDiskId(request->GetDiskId());
 
-                return MakeFuture(std::move(r));
-            };
+            return MakeFuture(std::move(r));
+        };
 
         const TVector<TString> diskIds = {
             "first_test_disk_id",
-            "second_test_disk_id"
-        };
+            "second_test_disk_id"};
 
         const TString usedQuota = "UsedQuota";
         const TString maxUsedQuota = "MaxUsedQuota";
-        auto mountVolumeFunction = [&] (
-            const TString& diskId,
-            const TString& instanceId)
+        auto mountVolumeFunction =
+            [&](const TString& diskId, const TString& instanceId)
         {
             auto mountRequest = std::make_shared<NProto::TMountVolumeRequest>();
             mountRequest->SetInstanceId(instanceId);
@@ -1759,43 +1748,39 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
             metrics->UpdateMaxUsedQuota();
         };
 
-        auto getDiskGroupFunction = [&] (const TString& diskId)
+        auto getDiskGroupFunction = [&](const TString& diskId)
         {
-            return totalCounters
-                ->GetSubgroup("component", "server_volume")
+            return totalCounters->GetSubgroup("component", "server_volume")
                 ->GetSubgroup("host", "cluster")
                 ->FindSubgroup("volume", diskId);
         };
 
-        auto getInstanceGroupFunction = [&] (
-            const TString& diskId,
-            const TString& instanceId)
+        auto getInstanceGroupFunction =
+            [&](const TString& diskId, const TString& instanceId)
         {
             auto diskGroup = getDiskGroupFunction(diskId);
             UNIT_ASSERT_C(
                 diskGroup,
                 TStringBuilder() << "Subgroup volume:" << diskId
-                    << " should be initialized");
+                                 << " should be initialized");
             return diskGroup->FindSubgroup("instance", instanceId);
         };
 
-        auto getCounterFunction = [&] (
-            const TString& diskId,
-            const TString& instanceId,
-            const TString& sensor)
+        auto getCounterFunction = [&](const TString& diskId,
+                                      const TString& instanceId,
+                                      const TString& sensor)
         {
             auto instanceGroup = getInstanceGroupFunction(diskId, instanceId);
             UNIT_ASSERT_C(
                 instanceGroup,
-                TStringBuilder() << "Subgroup volume:" << diskId
-                    << ", instance:" << instanceId
-                    << " should be initialized");
+                TStringBuilder()
+                    << "Subgroup volume:" << diskId
+                    << ", instance:" << instanceId << " should be initialized");
             return instanceGroup->FindCounter(sensor);
         };
 
-        auto unmountVolumeFunction = [&] (
-            const TString& diskId,
-            const TString& instanceId)
+        auto unmountVolumeFunction =
+            [&](const TString& diskId, const TString& instanceId)
         {
             auto unmountRequest =
                 std::make_shared<NProto::TUnmountVolumeRequest>();
@@ -1824,23 +1809,19 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
         UNIT_ASSERT_C(
             !getDiskGroupFunction(diskIds[1]),
             TStringBuilder() << "Subgroup volume:" << diskIds[1]
-                << " should not be initialized");
+                             << " should not be initialized");
 
         {
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
-            auto usedQuotaVolumeCounter0 = getCounterFunction(
-                diskIds[0],
-                instanceId,
-                usedQuota);
-            auto maxUsedQuotaVolumeCounter0 = getCounterFunction(
-                diskIds[0],
-                instanceId,
-                maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
+            auto usedQuotaVolumeCounter0 =
+                getCounterFunction(diskIds[0], instanceId, usedQuota);
+            auto maxUsedQuotaVolumeCounter0 =
+                getCounterFunction(diskIds[0], instanceId, maxUsedQuota);
 
             UNIT_ASSERT_VALUES_EQUAL(50, usedQuotaCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaCounter->Val());
@@ -1852,28 +1833,20 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
         mountVolumeFunction(diskIds[1], instanceId);
 
         {
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
-            auto usedQuotaVolumeCounter0 = getCounterFunction(
-                diskIds[0],
-                instanceId,
-                usedQuota);
-            auto maxUsedQuotaVolumeCounter0 = getCounterFunction(
-                diskIds[0],
-                instanceId,
-                maxUsedQuota);
-            auto usedQuotaVolumeCounter1 = getCounterFunction(
-                diskIds[1],
-                instanceId,
-                usedQuota);
-            auto maxUsedQuotaVolumeCounter1 = getCounterFunction(
-                diskIds[1],
-                instanceId,
-                maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
+            auto usedQuotaVolumeCounter0 =
+                getCounterFunction(diskIds[0], instanceId, usedQuota);
+            auto maxUsedQuotaVolumeCounter0 =
+                getCounterFunction(diskIds[0], instanceId, maxUsedQuota);
+            auto usedQuotaVolumeCounter1 =
+                getCounterFunction(diskIds[1], instanceId, usedQuota);
+            auto maxUsedQuotaVolumeCounter1 =
+                getCounterFunction(diskIds[1], instanceId, maxUsedQuota);
 
             UNIT_ASSERT_VALUES_EQUAL(40, usedQuotaCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaCounter->Val());
@@ -1887,20 +1860,16 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
         unmountVolumeFunction(diskIds[1], instanceId);
 
         {
-            auto usedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(usedQuota);
-            auto maxUsedQuotaCounter = totalCounters
-                ->GetSubgroup("component", "server")
-                ->FindCounter(maxUsedQuota);
-            auto usedQuotaVolumeCounter0 = getCounterFunction(
-                diskIds[0],
-                instanceId,
-                usedQuota);
-            auto maxUsedQuotaVolumeCounter0 = getCounterFunction(
-                diskIds[0],
-                instanceId,
-                maxUsedQuota);
+            auto usedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(usedQuota);
+            auto maxUsedQuotaCounter =
+                totalCounters->GetSubgroup("component", "server")
+                    ->FindCounter(maxUsedQuota);
+            auto usedQuotaVolumeCounter0 =
+                getCounterFunction(diskIds[0], instanceId, usedQuota);
+            auto maxUsedQuotaVolumeCounter0 =
+                getCounterFunction(diskIds[0], instanceId, maxUsedQuota);
 
             UNIT_ASSERT_VALUES_EQUAL(30, usedQuotaCounter->Val());
             UNIT_ASSERT_VALUES_EQUAL(50, maxUsedQuotaCounter->Val());
@@ -1913,14 +1882,12 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
 
         {
             UNIT_ASSERT_C(
-                !totalCounters
-                    ->GetSubgroup("component", "server")
-                    ->FindCounter(usedQuota),
+                !totalCounters->GetSubgroup("component", "server")
+                     ->FindCounter(usedQuota),
                 "UsedQuota should not be initialized");
             UNIT_ASSERT_C(
-                !totalCounters
-                    ->GetSubgroup("component", "server")
-                    ->FindCounter(maxUsedQuota),
+                !totalCounters->GetSubgroup("component", "server")
+                     ->FindCounter(maxUsedQuota),
                 "MaxUsedQuota should not be initialized");
         }
     }
@@ -1952,8 +1919,7 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
             hostProfile,
             clientConfig,
             clientProfile,
-            performanceProfile
-        ));
+            performanceProfile));
 
         auto& hddProfile = performanceProfile.GetHDDProfile();
         UNIT_ASSERT_VALUES_EQUAL(4200, hddProfile.GetMaxReadIops());
@@ -2001,12 +1967,12 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
         policy->PostponeTimeout = TDuration::Max();
         constexpr auto requestCount = 7;
 
-#define DO_REQUEST(name)                                                       \
-    throttler->name(                                                           \
-        client,                                                                \
-        MakeIntrusive<TCallContext>(),                                         \
-        Create##name##Request(1));                                             \
-// DO_REQUEST
+#define DO_REQUEST(name)               \
+    throttler->name(                   \
+        client,                        \
+        MakeIntrusive<TCallContext>(), \
+        Create##name##Request(1));     \
+    // DO_REQUEST
 
         for (ui32 i = 0; i < requestCount; ++i) {
             DO_REQUEST(WriteBlocks);
@@ -2018,44 +1984,40 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
 
 #undef DO_REQUEST
 
-#define DO_TEST(name, ...)                                                     \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        ShouldBeThrottled<NProto::T##name##Request>()                          \
-            ? __VA_ARGS__                                                      \
-            : 0,                                                               \
-        volumeStats->VolumeInfo->PostponedCount[                               \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        0,                                                                     \
-        volumeStats->VolumeInfo->PostponedServerCount[                         \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        0,                                                                     \
-        volumeStats->VolumeInfo->AdvancedCount[                                \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        0,                                                                     \
-        volumeStats->VolumeInfo->AdvancedServerCount[                          \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        ShouldBeThrottled<NProto::T##name##Request>()                          \
-            ? __VA_ARGS__                                                      \
-            : 0,                                                               \
-        requestStats->PostponedCount[                                          \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        0,                                                                     \
-        requestStats->PostponedServerCount[                                    \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        0,                                                                     \
-        requestStats->AdvancedCount[                                           \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        0,                                                                     \
-        requestStats->AdvancedServerCount[                                     \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-// DO_TEST
+#define DO_TEST(name, ...)                                                    \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        ShouldBeThrottled<NProto::T##name##Request>() ? __VA_ARGS__ : 0,      \
+        volumeStats->VolumeInfo                                               \
+            ->PostponedCount[static_cast<size_t>(EBlockStoreRequest::name)]); \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        0,                                                                    \
+        volumeStats->VolumeInfo->PostponedServerCount[static_cast<size_t>(    \
+            EBlockStoreRequest::name)]);                                      \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        0,                                                                    \
+        volumeStats->VolumeInfo                                               \
+            ->AdvancedCount[static_cast<size_t>(EBlockStoreRequest::name)]);  \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        0,                                                                    \
+        volumeStats->VolumeInfo->AdvancedServerCount[static_cast<size_t>(     \
+            EBlockStoreRequest::name)]);                                      \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        ShouldBeThrottled<NProto::T##name##Request>() ? __VA_ARGS__ : 0,      \
+        requestStats                                                          \
+            ->PostponedCount[static_cast<size_t>(EBlockStoreRequest::name)]); \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        0,                                                                    \
+        requestStats->PostponedServerCount[static_cast<size_t>(               \
+            EBlockStoreRequest::name)]);                                      \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        0,                                                                    \
+        requestStats                                                          \
+            ->AdvancedCount[static_cast<size_t>(EBlockStoreRequest::name)]);  \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        0,                                                                    \
+        requestStats->AdvancedServerCount[static_cast<size_t>(                \
+            EBlockStoreRequest::name)]);                                      \
+    // DO_TEST
 
         BLOCKSTORE_SERVICE(DO_TEST, requestCount);
 
@@ -2068,48 +2030,40 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
         policy->PostponeTimeout = TDuration::Zero();
         scheduler->RunAllScheduledTasks();
 
-#define DO_TEST(name, ...)                                                     \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        ShouldBeThrottled<NProto::T##name##Request>()                          \
-            ? __VA_ARGS__                                                      \
-            : 0,                                                               \
-        volumeStats->VolumeInfo->PostponedCount[                               \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        0,                                                                     \
-        volumeStats->VolumeInfo->PostponedServerCount[                         \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        ShouldBeThrottled<NProto::T##name##Request>()                          \
-            ? __VA_ARGS__                                                      \
-            : 0,                                                               \
-        volumeStats->VolumeInfo->AdvancedCount[                                \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        0,                                                                     \
-        volumeStats->VolumeInfo->AdvancedServerCount[                          \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        ShouldBeThrottled<NProto::T##name##Request>()                          \
-            ? __VA_ARGS__                                                      \
-            : 0,                                                               \
-        requestStats->PostponedCount[                                          \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        0,                                                                     \
-        requestStats->PostponedServerCount[                                    \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        ShouldBeThrottled<NProto::T##name##Request>()                          \
-            ? __VA_ARGS__                                                      \
-            : 0,                                                               \
-        requestStats->AdvancedCount[                                           \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-    UNIT_ASSERT_VALUES_EQUAL(                                                  \
-        0,                                                                     \
-        requestStats->AdvancedServerCount[                                     \
-            static_cast<size_t>(EBlockStoreRequest::name)]);                   \
-// DO_TEST
+#define DO_TEST(name, ...)                                                    \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        ShouldBeThrottled<NProto::T##name##Request>() ? __VA_ARGS__ : 0,      \
+        volumeStats->VolumeInfo                                               \
+            ->PostponedCount[static_cast<size_t>(EBlockStoreRequest::name)]); \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        0,                                                                    \
+        volumeStats->VolumeInfo->PostponedServerCount[static_cast<size_t>(    \
+            EBlockStoreRequest::name)]);                                      \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        ShouldBeThrottled<NProto::T##name##Request>() ? __VA_ARGS__ : 0,      \
+        volumeStats->VolumeInfo                                               \
+            ->AdvancedCount[static_cast<size_t>(EBlockStoreRequest::name)]);  \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        0,                                                                    \
+        volumeStats->VolumeInfo->AdvancedServerCount[static_cast<size_t>(     \
+            EBlockStoreRequest::name)]);                                      \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        ShouldBeThrottled<NProto::T##name##Request>() ? __VA_ARGS__ : 0,      \
+        requestStats                                                          \
+            ->PostponedCount[static_cast<size_t>(EBlockStoreRequest::name)]); \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        0,                                                                    \
+        requestStats->PostponedServerCount[static_cast<size_t>(               \
+            EBlockStoreRequest::name)]);                                      \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        ShouldBeThrottled<NProto::T##name##Request>() ? __VA_ARGS__ : 0,      \
+        requestStats                                                          \
+            ->AdvancedCount[static_cast<size_t>(EBlockStoreRequest::name)]);  \
+    UNIT_ASSERT_VALUES_EQUAL(                                                 \
+        0,                                                                    \
+        requestStats->AdvancedServerCount[static_cast<size_t>(                \
+            EBlockStoreRequest::name)]);                                      \
+    // DO_TEST
 
         BLOCKSTORE_SERVICE(DO_TEST, requestCount);
 

@@ -22,8 +22,7 @@ std::unique_ptr<NTabletPipe::IClientCache> CreateTabletPipeClientCache(
     clientConfig.RetryPolicy = {
         .RetryLimitCount = config.GetPipeClientRetryCount(),
         .MinRetryTime = config.GetPipeClientMinRetryTime(),
-        .MaxRetryTime = config.GetPipeClientMaxRetryTime()
-    };
+        .MaxRetryTime = config.GetPipeClientMaxRetryTime()};
 
     return std::unique_ptr<NTabletPipe::IClientCache>(
         NTabletPipe::CreateUnboundedClientCache(clientConfig));
@@ -60,7 +59,9 @@ TIndexTabletProxyActor::TConnection& TIndexTabletProxyActor::CreateConnection(
 
     ui64 connectionId = ++ConnectionId;
 
-    auto ins = Connections.emplace(fileSystemId, TConnection(connectionId, fileSystemId));
+    auto ins = Connections.emplace(
+        fileSystemId,
+        TConnection(connectionId, fileSystemId));
     Y_ABORT_UNLESS(ins.second);
 
     ConnectionById[connectionId] = &ins.first->second;
@@ -73,7 +74,9 @@ void TIndexTabletProxyActor::StartConnection(
     ui64 tabletId,
     const TString& path)
 {
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET_PROXY,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET_PROXY,
         "File store %s (path: %s) resolved: %lu",
         conn.FileSystemId.c_str(),
         path.Quote().c_str(),
@@ -109,7 +112,9 @@ void TIndexTabletProxyActor::OnConnectionError(
     TConnection& conn,
     const NProto::TError& error)
 {
-    LOG_WARN(ctx, TFileStoreComponents::TABLET_PROXY,
+    LOG_WARN(
+        ctx,
+        TFileStoreComponents::TABLET_PROXY,
         "Connection to file store %s (path: %s) failed: %s",
         conn.FileSystemId.c_str(),
         conn.Path.Quote().c_str(),
@@ -136,7 +141,7 @@ void TIndexTabletProxyActor::ProcessPendingRequests(
 
 void TIndexTabletProxyActor::CancelActiveRequests(TConnection& conn)
 {
-    for (auto it = ActiveRequests.begin(); it != ActiveRequests.end(); ) {
+    for (auto it = ActiveRequests.begin(); it != ActiveRequests.end();) {
         if (it->second.ConnectionId == conn.Id) {
             TAutoPtr<IEventHandle> handle(it->second.Request.release());
             Receive(handle);
@@ -167,7 +172,9 @@ void TIndexTabletProxyActor::ForwardRequest(
     auto clientId = ClientCache->Prepare(ctx, conn.TabletId);
     ui64 requestId = ++RequestId;
 
-    LOG_TRACE(ctx, TFileStoreComponents::TABLET_PROXY,
+    LOG_TRACE(
+        ctx,
+        TFileStoreComponents::TABLET_PROXY,
         "Forward request %lu as %lu to file store: %lu (remote: %s)",
         ev->Get()->CallContext->RequestId,
         requestId,
@@ -181,8 +188,8 @@ void TIndexTabletProxyActor::ForwardRequest(
         ev->Recipient,
         SelfId(),
         ev->ReleaseBase().Release(),
-        0,          // flags
-        requestId,  // cookie
+        0,           // flags
+        requestId,   // cookie
         // forwardOnNondelivery
         nullptr);
     NCloud::PipeSend(ctx, clientId, std::move(event));
@@ -196,14 +203,17 @@ void TIndexTabletProxyActor::DescribeFileStore(
     const TActorContext& ctx,
     TConnection& conn)
 {
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET_PROXY,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET_PROXY,
         "Describe file store %s",
         conn.FileSystemId.c_str());
 
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
-        std::make_unique<TEvSSProxy::TEvDescribeFileStoreRequest>(conn.FileSystemId),
+        std::make_unique<TEvSSProxy::TEvDescribeFileStoreRequest>(
+            conn.FileSystemId),
         conn.Id);
 }
 
@@ -225,7 +235,9 @@ void TIndexTabletProxyActor::HandleClientConnected(
 
     if (!ClientCache->OnConnect(ev)) {
         auto error = MakeKikimrError(msg->Status, "Could not connect");
-        LOG_ERROR(ctx, TFileStoreComponents::TABLET_PROXY,
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::TABLET_PROXY,
             "Cannot connect to tablet %lu: %s",
             msg->TabletId,
             FormatError(error).c_str());
@@ -278,7 +290,9 @@ void TIndexTabletProxyActor::HandleDescribeFileStoreResponse(
 
     const auto& error = msg->GetError();
     if (FAILED(error.GetCode())) {
-        LOG_ERROR(ctx, TFileStoreComponents::TABLET_PROXY,
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::TABLET_PROXY,
             "Could not resolve file store path %s: %s",
             msg->Path.Quote().c_str(),
             FormatError(error).c_str());
@@ -289,11 +303,7 @@ void TIndexTabletProxyActor::HandleDescribeFileStoreResponse(
 
     const auto& pathDescr = msg->PathDescription;
     const auto& fsDescr = pathDescr.GetFileStoreDescription();
-    StartConnection(
-        ctx,
-        *conn,
-        fsDescr.GetIndexTabletId(),
-        msg->Path);
+    StartConnection(ctx, *conn, fsDescr.GetIndexTabletId(), msg->Path);
 }
 
 template <typename TMethod>
@@ -319,7 +329,8 @@ void TIndexTabletProxyActor::HandleRequest(
     const auto* msg = ev->Get();
 
     TString fileSystemId = GetFileSystemId(*msg);
-    // Some filestore names can point to another filestore, set by storage config
+    // Some filestore names can point to another filestore, set by storage
+    // config
     if (const auto* realId = Config->FindFileSystemIdByAlias(fileSystemId)) {
         fileSystemId = *realId;
     }
@@ -342,8 +353,8 @@ void TIndexTabletProxyActor::HandleRequest(
             break;
 
         case STOPPED: {
-            auto response = std::make_unique<typename TMethod::TResponse>(
-                conn.Error);
+            auto response =
+                std::make_unique<typename TMethod::TResponse>(conn.Error);
 
             NCloud::Reply(ctx, *ev, std::move(response));
             break;
@@ -405,7 +416,9 @@ void TIndexTabletProxyActor::HandlePoisonPill(
         ClientCache->Shutdown(ctx, conn.second.TabletId);
     }
 
-    LOG_ERROR(ctx, TFileStoreComponents::TABLET_PROXY,
+    LOG_ERROR(
+        ctx,
+        TFileStoreComponents::TABLET_PROXY,
         "Someone tried to kill me: %s",
         ev->Sender.ToString().c_str());
 }
@@ -413,17 +426,17 @@ void TIndexTabletProxyActor::HandlePoisonPill(
 bool TIndexTabletProxyActor::HandleRequests(STFUNC_SIG)
 {
     auto ctx(ActorContext());
-#define FILESTORE_HANDLE_METHOD(name, ns)                                      \
-    case ns::TEv##name##Request::EventType: {                                  \
-        auto* x = reinterpret_cast<ns::TEv##name##Request::TPtr*>(&ev);        \
-        HandleRequest<ns::T##name##Method>(ctx, *x);                           \
-        break;                                                                 \
-    }                                                                          \
-    case ns::TEv##name##Response::EventType: {                                 \
-        HandleResponse(ctx, ev);                                               \
-        break;                                                                 \
-    }                                                                          \
-// FILESTORE_HANDLE_METHOD
+#define FILESTORE_HANDLE_METHOD(name, ns)                               \
+    case ns::TEv##name##Request::EventType: {                           \
+        auto* x = reinterpret_cast<ns::TEv##name##Request::TPtr*>(&ev); \
+        HandleRequest<ns::T##name##Method>(ctx, *x);                    \
+        break;                                                          \
+    }                                                                   \
+    case ns::TEv##name##Response::EventType: {                          \
+        HandleResponse(ctx, ev);                                        \
+        break;                                                          \
+    }                                                                   \
+        // FILESTORE_HANDLE_METHOD
 
     switch (ev->GetTypeRewrite()) {
         FILESTORE_SERVICE_REQUESTS(FILESTORE_HANDLE_METHOD, TEvService)
@@ -441,22 +454,26 @@ bool TIndexTabletProxyActor::HandleRequests(STFUNC_SIG)
 bool TIndexTabletProxyActor::LogLateMessage(STFUNC_SIG)
 {
     auto ctx(ActorContext());
-#define FILESTORE_HANDLE_METHOD(name, ns)                                      \
-    case ns::TEv##name##Request::EventType: {                                  \
-        LOG_ERROR(ctx, TFileStoreComponents::TABLET_PROXY,                     \
-            "Late request : (0x%08X) %s request",                              \
-            ev->GetTypeRewrite(),                                              \
-            #name);                                                            \
-        break;                                                                 \
-    }                                                                          \
-    case ns::TEv##name##Response::EventType: {                                 \
-        LOG_ERROR(ctx, TFileStoreComponents::TABLET_PROXY,                     \
-            "Late response : (0x%08X) %s response",                            \
-            ev->GetTypeRewrite(),                                              \
-            #name);                                                            \
-        break;                                                                 \
-    }                                                                          \
-// FILESTORE_HANDLE_METHOD
+#define FILESTORE_HANDLE_METHOD(name, ns)           \
+    case ns::TEv##name##Request::EventType: {       \
+        LOG_ERROR(                                  \
+            ctx,                                    \
+            TFileStoreComponents::TABLET_PROXY,     \
+            "Late request : (0x%08X) %s request",   \
+            ev->GetTypeRewrite(),                   \
+            #name);                                 \
+        break;                                      \
+    }                                               \
+    case ns::TEv##name##Response::EventType: {      \
+        LOG_ERROR(                                  \
+            ctx,                                    \
+            TFileStoreComponents::TABLET_PROXY,     \
+            "Late response : (0x%08X) %s response", \
+            ev->GetTypeRewrite(),                   \
+            #name);                                 \
+        break;                                      \
+    }                                               \
+        // FILESTORE_HANDLE_METHOD
 
     switch (ev->GetTypeRewrite()) {
         FILESTORE_SERVICE_REQUESTS(FILESTORE_HANDLE_METHOD, TEvService)
@@ -479,7 +496,9 @@ STFUNC(TIndexTabletProxyActor::StateWork)
         HFunc(TEvTabletPipe::TEvClientConnected, HandleClientConnected);
         HFunc(TEvTabletPipe::TEvClientDestroyed, HandleClientDestroyed);
 
-        HFunc(TEvSSProxy::TEvDescribeFileStoreResponse, HandleDescribeFileStoreResponse);
+        HFunc(
+            TEvSSProxy::TEvDescribeFileStoreResponse,
+            HandleDescribeFileStoreResponse);
 
         default:
             if (!HandleRequests(ev)) {

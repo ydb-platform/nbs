@@ -86,7 +86,8 @@ struct TOptions
 
         opts.AddLongOption(
                 "request-axis-step-pixels",
-                "distance between request count level marks on the request axis")
+                "distance between request count level marks on the request "
+                "axis")
             .RequiredArgument("PIXELS")
             .DefaultValue(200)
             .StoreResult(&RequestAxisStepPixels);
@@ -98,7 +99,9 @@ struct TOptions
             .DefaultValue(10)
             .StoreResult(&RequestsPerPixel);
 
-        opts.AddLongOption("max-images", "stop at the specified number of images")
+        opts.AddLongOption(
+                "max-images",
+                "stop at the specified number of images")
             .RequiredArgument("IMAGE_COUNT")
             .DefaultValue(100)
             .StoreResult(&MaxImages);
@@ -108,7 +111,9 @@ struct TOptions
             .DefaultValue(false)
             .SetFlag(&LogScale);
 
-        opts.AddLongOption("request-types", "request type filter (empty - rw filter)")
+        opts.AddLongOption(
+                "request-types",
+                "request type filter (empty - rw filter)")
             .AppendTo(&RequestTypes);
 
         TOptsParseResultException(&opts, argc, argv);
@@ -141,7 +146,8 @@ struct TIntervalStat
 
     explicit operator bool() const
     {
-        return ReadRequests || WriteRequests || ZeroRequests || CompactionRequests;
+        return ReadRequests || WriteRequests || ZeroRequests ||
+               CompactionRequests;
     }
 };
 
@@ -175,8 +181,7 @@ private:
         TElement(TString name, ui32 depth = 0)
             : Name(std::move(name))
             , Depth(depth)
-        {
-        }
+        {}
 
         ~TElement()
         {
@@ -251,25 +256,20 @@ public:
     void Output(const TState& state) const
     {
         Body->AddChild("h3").SetContent(
-            TStringBuilder() << "Time interval: "
-                << state.FirstTs << " - "
-                << (state.FirstTs + Options.TimeInterval)
-        );
+            TStringBuilder() << "Time interval: " << state.FirstTs << " - "
+                             << (state.FirstTs + Options.TimeInterval));
 
         if (state.TotalStat) {
             ui32 maxHeight = 0;
             ui32 maxRequests = 0;
 
             for (const auto& b: state.Hist) {
-                const auto height = Height(b.ReadRequests)
-                    + Height(b.WriteRequests)
-                    + Height(b.ZeroRequests)
-                    + Height(b.CompactionRequests);
+                const auto height =
+                    Height(b.ReadRequests) + Height(b.WriteRequests) +
+                    Height(b.ZeroRequests) + Height(b.CompactionRequests);
 
-                const auto requests = b.ReadRequests
-                    + b.WriteRequests
-                    + b.ZeroRequests
-                    + b.CompactionRequests;
+                const auto requests = b.ReadRequests + b.WriteRequests +
+                                      b.ZeroRequests + b.CompactionRequests;
 
                 maxHeight = Max(height, maxHeight);
                 maxRequests = Max(requests, maxRequests);
@@ -287,10 +287,14 @@ public:
             const auto lineWidthAttr =
                 ToString(Options.PicWidthPixels + rightLineOverflow);
 
-            auto& svg = Body->AddChild("svg")
-                .AddAttr("width", ToString(Options.PicWidthPixels + rightLabelsWidth))
-                .AddAttr("height", ToString(maxHeight + lineMargin + bottomBarHeight))
-                ;
+            auto& svg =
+                Body->AddChild("svg")
+                    .AddAttr(
+                        "width",
+                        ToString(Options.PicWidthPixels + rightLabelsWidth))
+                    .AddAttr(
+                        "height",
+                        ToString(maxHeight + lineMargin + bottomBarHeight));
 
             // request count histogram
 
@@ -311,8 +315,7 @@ public:
                     .AddAttr("y", ToString(y))
                     .AddAttr("width", ToString(Options.ColWidthPixels))
                     .AddAttr("fill", "rgb(146, 219, 0)")
-                    .AddAttr("height", ToString(ui32(rheight)))
-                    ;
+                    .AddAttr("height", ToString(ui32(rheight)));
 
                 y -= wheight;
                 svg.AddChild("rect")
@@ -320,8 +323,7 @@ public:
                     .AddAttr("y", ToString(y))
                     .AddAttr("width", ToString(Options.ColWidthPixels))
                     .AddAttr("fill", "rgb(0, 146, 219)")
-                    .AddAttr("height", ToString(ui32(wheight)))
-                    ;
+                    .AddAttr("height", ToString(ui32(wheight)));
 
                 y -= zheight;
                 svg.AddChild("rect")
@@ -329,8 +331,7 @@ public:
                     .AddAttr("y", ToString(y))
                     .AddAttr("width", ToString(Options.ColWidthPixels))
                     .AddAttr("fill", "rgb(219, 183, 0)")
-                    .AddAttr("height", ToString(ui32(zheight)))
-                    ;
+                    .AddAttr("height", ToString(ui32(zheight)));
 
                 y -= cheight;
                 svg.AddChild("rect")
@@ -338,8 +339,7 @@ public:
                     .AddAttr("y", ToString(y))
                     .AddAttr("width", ToString(Options.ColWidthPixels))
                     .AddAttr("fill", "rgb(255, 0, 0)")
-                    .AddAttr("height", ToString(ui32(cheight)))
-                    ;
+                    .AddAttr("height", ToString(ui32(cheight)));
 
                 currentX += Options.ColWidthPixels;
             }
@@ -356,8 +356,7 @@ public:
                         .AddAttr("x2", lineWidthAttr)
                         .AddAttr("y2", ToString(currentY + h))
                         .AddAttr("stroke", "rgb(100, 100, 100)")
-                        .AddAttr("stroke-dasharray", "2 1")
-                        ;
+                        .AddAttr("stroke-dasharray", "2 1");
 
                     const ui32 requestCount =
                         maxRequests * (1 - double(h) / maxHeight);
@@ -366,8 +365,8 @@ public:
                         .AddAttr("x", lineWidthAttr)
                         .AddAttr("y", ToString(currentY + textHeight + h))
                         .AddAttr("fill", "black")
-                        .SetContent(TStringBuilder() << requestCount << " requests")
-                        ;
+                        .SetContent(
+                            TStringBuilder() << requestCount << " requests");
 
                     h += Options.RequestAxisStepPixels;
                 }
@@ -383,22 +382,24 @@ public:
                 .AddAttr("y1", ToString(currentY))
                 .AddAttr("x2", lineWidthAttr)
                 .AddAttr("y2", ToString(currentY))
-                .AddAttr("stroke", "rgb(100, 100, 100)")
-                ;
+                .AddAttr("stroke", "rgb(100, 100, 100)");
 
             currentX = 0;
 
             while (true) {
                 bool isLastMark = false;
 
-                if (currentX + Options.BlockAxisStepPixels > Options.PicWidthPixels) {
+                if (currentX + Options.BlockAxisStepPixels >
+                    Options.PicWidthPixels)
+                {
                     currentX = Options.PicWidthPixels;
                     isLastMark = true;
                 }
 
-                const ui64 blockIndex = (double(currentX) / Options.PicWidthPixels)
-                    * (Options.LastBlockIndex - Options.FirstBlockIndex)
-                    + Options.FirstBlockIndex;
+                const ui64 blockIndex =
+                    (double(currentX) / Options.PicWidthPixels) *
+                        (Options.LastBlockIndex - Options.FirstBlockIndex) +
+                    Options.FirstBlockIndex;
 
                 TStringBuilder text;
                 text << blockIndex;
@@ -411,15 +412,13 @@ public:
                     .AddAttr("y1", ToString(currentY - 3))
                     .AddAttr("x2", ToString(currentX))
                     .AddAttr("y2", ToString(currentY + 3))
-                    .AddAttr("stroke", "rgb(100, 100, 100)")
-                    ;
+                    .AddAttr("stroke", "rgb(100, 100, 100)");
 
                 svg.AddChild("text")
                     .AddAttr("x", ToString(currentX))
                     .AddAttr("y", ToString(currentY + textHeight))
                     .AddAttr("fill", "black")
-                    .SetContent(std::move(text))
-                    ;
+                    .SetContent(std::move(text));
 
                 if (isLastMark) {
                     break;
@@ -445,8 +444,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TEventProcessor final
-    : public TProtobufEventProcessor
+class TEventProcessor final: public TProtobufEventProcessor
 {
 private:
     const TOptions& Options;
@@ -497,13 +495,13 @@ protected:
             TVector<TReq> reqs;
             reqs.reserve(message->RequestsSize());
             for (const auto& r: message->GetRequests()) {
-                const auto type = static_cast<EBlockStoreRequest>(r.GetRequestType());
+                const auto type =
+                    static_cast<EBlockStoreRequest>(r.GetRequestType());
                 if (Options.RequestTypes) {
                     auto it = Find(
                         Options.RequestTypes.begin(),
                         Options.RequestTypes.end(),
-                        r.GetRequestType()
-                    );
+                        r.GetRequestType());
                     if (it == Options.RequestTypes.end()) {
                         continue;
                     }
@@ -525,12 +523,11 @@ protected:
                 end = Min(end, Options.LastBlockIndex);
 
                 if (start <= end) {
-                    reqs.push_back({
-                        r.GetRequestType(),
-                        TInstant::MicroSeconds(r.GetTimestampMcs()),
-                        start - Options.FirstBlockIndex,
-                        end - Options.FirstBlockIndex
-                    });
+                    reqs.push_back(
+                        {r.GetRequestType(),
+                         TInstant::MicroSeconds(r.GetTimestampMcs()),
+                         start - Options.FirstBlockIndex,
+                         end - Options.FirstBlockIndex});
                 }
             }
 
@@ -539,8 +536,9 @@ protected:
             for (const auto& req: reqs) {
                 if (Y_UNLIKELY(!State.FirstTs.GetValue())) {
                     State.FirstTs = req.Ts;
-                } else if (State.FirstTs + Options.TimeInterval < req.Ts
-                    || req.Ts < State.FirstTs) // ts overflow case
+                } else if (
+                    State.FirstTs + Options.TimeInterval < req.Ts ||
+                    req.Ts < State.FirstTs)   // ts overflow case
                 {
                     if (!Flush()) {
                         break;
@@ -552,16 +550,14 @@ protected:
                 auto bucket = UpperBound(
                     State.Hist.begin(),
                     State.Hist.end(),
-                    req.RelativeFirstBlockIndex
-                );
+                    req.RelativeFirstBlockIndex);
                 Y_ABORT_UNLESS(bucket != State.Hist.begin());
                 --bucket;
 
                 auto endBucket = UpperBound(
                     State.Hist.begin(),
                     State.Hist.end(),
-                    req.RelativeLastBlockIndex
-                );
+                    req.RelativeLastBlockIndex);
 
                 Y_ABORT_UNLESS(endBucket != State.Hist.begin());
 
@@ -593,7 +589,7 @@ protected:
 
                         default: {
                             Cerr << "unsupported request type: "
-                                << static_cast<int>(req.Type) << Endl;
+                                 << static_cast<int>(req.Type) << Endl;
                         }
                     }
 
@@ -638,8 +634,7 @@ int main(int argc, const char** argv)
         NEvClass::Factory(),
         &processor,
         options.EvlogDumperArgv.size(),
-        options.EvlogDumperArgv.begin()
-    );
+        options.EvlogDumperArgv.begin());
 
     formatter.Finish();
 

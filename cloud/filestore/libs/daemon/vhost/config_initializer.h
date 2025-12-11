@@ -11,8 +11,7 @@ namespace NCloud::NFileStore::NDaemon {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TConfigInitializerVhost final
-    : public TConfigInitializerCommon
+class TConfigInitializerVhost final: public TConfigInitializerCommon
 {
 public:
     const TOptionsVhostPtr Options;

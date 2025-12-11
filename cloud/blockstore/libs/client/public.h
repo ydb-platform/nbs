@@ -5,10 +5,10 @@
 namespace NCloud::NBlockStore {
 
 namespace NProto {
-    class TClientConfig;
-    class TClientPerformanceProfile;
-    class TClientProfile;
-}
+class TClientConfig;
+class TClientPerformanceProfile;
+class TClientProfile;
+}   // namespace NProto
 
 namespace NClient {
 

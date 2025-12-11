@@ -19,117 +19,117 @@ namespace NCloud::NBlockStore::NLoadTest {
 ////////////////////////////////////////////////////////////////////////////////
 
 TControlPlaneActionRunner::TControlPlaneActionRunner(
-        TLog& log,
-        TAppContext& appContext,
-        const TAliasedVolumes& aliasedVolumes,
-        TVolumeInfos& volumeInfos,
-        IBlockStorePtr client,
-        TTestContext& testContext)
+    TLog& log,
+    TAppContext& appContext,
+    const TAliasedVolumes& aliasedVolumes,
+    TVolumeInfos& volumeInfos,
+    IBlockStorePtr client,
+    TTestContext& testContext)
     : Log(log)
     , AppContext(appContext)
     , AliasedVolumes(aliasedVolumes)
     , VolumeInfos(volumeInfos)
     , Client(std::move(client))
     , TestContext(testContext)
-{
-}
+{}
 
 int TControlPlaneActionRunner::Run(
     const NProto::TActionGraph::TControlPlaneAction& action)
 {
     try {
         switch (action.GetRequestCase()) {
-            case NProto::TActionGraph::TControlPlaneAction::kCreateVolumeRequest:
-            {
+            case NProto::TActionGraph::TControlPlaneAction::
+                kCreateVolumeRequest: {
                 RunCreateVolumeAction(action);
                 break;
             }
 
-            case NProto::TActionGraph::TControlPlaneAction::kDestroyVolumeRequest:
-            {
+            case NProto::TActionGraph::TControlPlaneAction::
+                kDestroyVolumeRequest: {
                 RunDestroyVolumeAction(action);
                 break;
             }
 
-            case NProto::TActionGraph::TControlPlaneAction::kCreateCheckpointRequest:
-            {
+            case NProto::TActionGraph::TControlPlaneAction::
+                kCreateCheckpointRequest: {
                 RunCreateCheckpointAction(action);
                 break;
             }
 
-            case NProto::TActionGraph::TControlPlaneAction::kDeleteCheckpointRequest:
-            {
+            case NProto::TActionGraph::TControlPlaneAction::
+                kDeleteCheckpointRequest: {
                 RunDeleteCheckpointAction(action);
                 break;
             }
 
-            case NProto::TActionGraph::TControlPlaneAction::kStatVolumeRequest:
-            {
+            case NProto::TActionGraph::TControlPlaneAction::
+                kStatVolumeRequest: {
                 RunStatVolumeAction(action);
                 break;
             }
 
-            case NProto::TActionGraph::TControlPlaneAction::kDiscoverInstancesRequest:
-            {
+            case NProto::TActionGraph::TControlPlaneAction::
+                kDiscoverInstancesRequest: {
                 RunDiscoverInstancesAction(action);
                 break;
             }
 
-            case NProto::TActionGraph::TControlPlaneAction::kResizeVolumeRequest:
-            {
+            case NProto::TActionGraph::TControlPlaneAction::
+                kResizeVolumeRequest: {
                 RunResizeVolumeAction(action);
                 break;
             }
 
-            case NProto::TActionGraph::TControlPlaneAction::kCreatePlacementGroupRequest:
-            {
+            case NProto::TActionGraph::TControlPlaneAction::
+                kCreatePlacementGroupRequest: {
                 RunCreatePlacementGroupAction(action);
                 break;
             }
 
-            case NProto::TActionGraph::TControlPlaneAction::kDestroyPlacementGroupRequest:
-            {
+            case NProto::TActionGraph::TControlPlaneAction::
+                kDestroyPlacementGroupRequest: {
                 RunDestroyPlacementGroupAction(action);
                 break;
             }
 
-            case NProto::TActionGraph::TControlPlaneAction::kDescribePlacementGroupRequest:
-            {
+            case NProto::TActionGraph::TControlPlaneAction::
+                kDescribePlacementGroupRequest: {
                 RunDescribePlacementGroupAction(action);
                 break;
             }
 
-            case NProto::TActionGraph::TControlPlaneAction::kDescribeVolumeRequest:
-            {
+            case NProto::TActionGraph::TControlPlaneAction::
+                kDescribeVolumeRequest: {
                 RunDescribeVolumeAction(action);
                 break;
             }
 
-            case NProto::TActionGraph::TControlPlaneAction::kCmsRemoveHostRequest:
-            {
+            case NProto::TActionGraph::TControlPlaneAction::
+                kCmsRemoveHostRequest: {
                 return RunCmsRemoveHostAction(action);
             }
 
-            case NProto::TActionGraph::TControlPlaneAction::kCmsRemoveDeviceRequest:
-            {
+            case NProto::TActionGraph::TControlPlaneAction::
+                kCmsRemoveDeviceRequest: {
                 return RunCmsRemoveDeviceAction(action);
             }
 
-            case NProto::TActionGraph::TControlPlaneAction::kReplaceDevicesRequest:
-            {
+            case NProto::TActionGraph::TControlPlaneAction::
+                kReplaceDevicesRequest: {
                 return RunReplaceDevicesRequest(action);
             }
 
-            case NProto::TActionGraph::TControlPlaneAction::kModifyTagsRequest:
-            {
+            case NProto::TActionGraph::TControlPlaneAction::
+                kModifyTagsRequest: {
                 return RunModifyTagsRequest(action);
             }
 
-            default: Y_ABORT_UNLESS(0);
+            default:
+                Y_ABORT_UNLESS(0);
         }
     } catch (...) {
-        STORAGE_ERROR("Exception during cpa execution: "
-            << CurrentExceptionMessage());
+        STORAGE_ERROR(
+            "Exception during cpa execution: " << CurrentExceptionMessage());
         AppContext.FailedTests.fetch_add(1);
         return EC_CONTROL_PLANE_ACTION_FAILED;
     }
@@ -148,10 +148,8 @@ void TControlPlaneActionRunner::RunCreateVolumeAction(
         "CreateVolume",
         Client->CreateVolume(
             MakeIntrusive<TCallContext>(requestId),
-            std::make_shared<NProto::TCreateVolumeRequest>(request)
-        ),
-        {}
-    );
+            std::make_shared<NProto::TCreateVolumeRequest>(request)),
+        {});
 
     NProtobufJson::Proto2Json(response, TestContext.Result, {});
 }
@@ -167,10 +165,8 @@ void TControlPlaneActionRunner::RunDestroyVolumeAction(
         "DestroyVolume",
         Client->DestroyVolume(
             MakeIntrusive<TCallContext>(requestId),
-            std::make_shared<NProto::TDestroyVolumeRequest>(request)
-        ),
-        {}
-    );
+            std::make_shared<NProto::TDestroyVolumeRequest>(request)),
+        {});
 
     NProtobufJson::Proto2Json(response, TestContext.Result, {});
 }
@@ -187,17 +183,15 @@ void TControlPlaneActionRunner::RunCreateCheckpointAction(
     const auto requestId = GetRequestId(*request);
 
     STORAGE_INFO(
-        "Create checkpoint: " << request->GetCheckpointId() <<
-        " for volume: " << volumeName);
+        "Create checkpoint: " << request->GetCheckpointId()
+                              << " for volume: " << volumeName);
 
     auto response = WaitForCompletion(
         "CreateCheckpoint",
         Client->CreateCheckpoint(
             MakeIntrusive<TCallContext>(requestId),
-            request
-        ),
-        {}
-    );
+            request),
+        {});
 
     NProtobufJson::Proto2Json(response, TestContext.Result, {});
 }
@@ -214,17 +208,15 @@ void TControlPlaneActionRunner::RunResizeVolumeAction(
     const auto requestId = GetRequestId(*request);
 
     STORAGE_INFO(
-        "ResizeVolume to " << request->GetBlocksCount() << " blocks"
-        " for volume: " << volumeName);
+        "ResizeVolume to " << request->GetBlocksCount()
+                           << " blocks"
+                              " for volume: "
+                           << volumeName);
 
     auto response = WaitForCompletion(
         "ResizeVolume",
-        Client->ResizeVolume(
-            MakeIntrusive<TCallContext>(requestId),
-            request
-        ),
-        {}
-    );
+        Client->ResizeVolume(MakeIntrusive<TCallContext>(requestId), request),
+        {});
 
     NProtobufJson::Proto2Json(response, TestContext.Result, {});
 }
@@ -241,17 +233,15 @@ void TControlPlaneActionRunner::RunDeleteCheckpointAction(
     const auto requestId = GetRequestId(*request);
 
     STORAGE_INFO(
-        "Delete checkpoint: " << request->GetCheckpointId() <<
-        " for volume: " << volumeName);
+        "Delete checkpoint: " << request->GetCheckpointId()
+                              << " for volume: " << volumeName);
 
     auto response = WaitForCompletion(
         "DeleteCheckpoint",
         Client->DeleteCheckpoint(
             MakeIntrusive<TCallContext>(requestId),
-            request
-        ),
-        {}
-    );
+            request),
+        {});
 
     NProtobufJson::Proto2Json(response, TestContext.Result, {});
 }
@@ -267,10 +257,8 @@ void TControlPlaneActionRunner::RunStatVolumeAction(
         "StatVolume",
         Client->StatVolume(
             MakeIntrusive<TCallContext>(requestId),
-            std::make_shared<NProto::TStatVolumeRequest>(request)
-        ),
-        {}
-    );
+            std::make_shared<NProto::TStatVolumeRequest>(request)),
+        {});
 
     NProtobufJson::Proto2Json(response, TestContext.Result, {});
 }
@@ -286,10 +274,8 @@ void TControlPlaneActionRunner::RunDiscoverInstancesAction(
         "DiscoverInstances",
         Client->DiscoverInstances(
             MakeIntrusive<TCallContext>(requestId),
-            std::make_shared<NProto::TDiscoverInstancesRequest>(request)
-        ),
-        {}
-    );
+            std::make_shared<NProto::TDiscoverInstancesRequest>(request)),
+        {});
 
     NProtobufJson::Proto2Json(response, TestContext.Result, {});
 }
@@ -305,10 +291,8 @@ void TControlPlaneActionRunner::RunCreatePlacementGroupAction(
         "CreatePlacementGroup",
         Client->CreatePlacementGroup(
             MakeIntrusive<TCallContext>(requestId),
-            std::make_shared<NProto::TCreatePlacementGroupRequest>(request)
-        ),
-        {}
-    );
+            std::make_shared<NProto::TCreatePlacementGroupRequest>(request)),
+        {});
 
     NProtobufJson::Proto2Json(response, TestContext.Result, {});
 }
@@ -324,10 +308,8 @@ void TControlPlaneActionRunner::RunDestroyPlacementGroupAction(
         "DestroyPlacementGroup",
         Client->DestroyPlacementGroup(
             MakeIntrusive<TCallContext>(requestId),
-            std::make_shared<NProto::TDestroyPlacementGroupRequest>(request)
-        ),
-        {}
-    );
+            std::make_shared<NProto::TDestroyPlacementGroupRequest>(request)),
+        {});
 
     NProtobufJson::Proto2Json(response, TestContext.Result, {});
 }
@@ -343,10 +325,8 @@ void TControlPlaneActionRunner::RunDescribePlacementGroupAction(
         "DescribePlacementGroup",
         Client->DescribePlacementGroup(
             MakeIntrusive<TCallContext>(requestId),
-            std::make_shared<NProto::TDescribePlacementGroupRequest>(request)
-        ),
-        {}
-    );
+            std::make_shared<NProto::TDescribePlacementGroupRequest>(request)),
+        {});
 
     NProtobufJson::Proto2Json(response, TestContext.Result, {});
 }
@@ -362,17 +342,16 @@ void TControlPlaneActionRunner::RunDescribeVolumeAction(
         "DescribeVolume",
         Client->DescribeVolume(
             MakeIntrusive<TCallContext>(requestId),
-            std::make_shared<NProto::TDescribeVolumeRequest>(request)
-        ),
-        {}
-    );
+            std::make_shared<NProto::TDescribeVolumeRequest>(request)),
+        {});
 
     NProtobufJson::Proto2Json(response, TestContext.Result, {});
 
     const auto& d = response.GetVolume().GetDevices();
     TVector<TString> agentIds;
     TVector<TDeviceAddress> devices;
-    auto addDevices = [&] (const auto& d) {
+    auto addDevices = [&](const auto& d)
+    {
         for (const auto& device: d) {
             if (Find(agentIds, device.GetAgentId()) == agentIds.end()) {
                 agentIds.push_back(device.GetAgentId());
@@ -417,8 +396,9 @@ int TControlPlaneActionRunner::RunCmsRemoveHostAction(
     }
 
     if (volumeInfo.AgentIds.size() <= agentNo) {
-        STORAGE_WARN("Not enough agents for volume: " << diskId
-            << ", agent count: " << volumeInfo.AgentIds.size());
+        STORAGE_WARN(
+            "Not enough agents for volume: " << diskId << ", agent count: "
+                                             << volumeInfo.AgentIds.size());
         return 1;
     }
 
@@ -434,22 +414,22 @@ int TControlPlaneActionRunner::RunCmsRemoveHostAction(
     STORAGE_INFO("Cms remove host (resolved): " << cmsAction->GetHost());
 
     const auto timeout = TDuration::Seconds(request.GetTimeout());
-    const auto retryTimeout = request.GetRetryTimeout()
-        ? TDuration::Seconds(request.GetRetryTimeout())
-        : TDuration::Seconds(5);
+    const auto retryTimeout =
+        request.GetRetryTimeout()
+            ? TDuration::Seconds(request.GetRetryTimeout())
+            : TDuration::Seconds(5);
     const auto endTime = timeout.ToDeadLine();
 
-    auto cmsActionRequest = std::make_shared<NProto::TCmsActionRequest>(std::move(cmsRequest));
+    auto cmsActionRequest =
+        std::make_shared<NProto::TCmsActionRequest>(std::move(cmsRequest));
 
     for (;;) {
         NProto::TCmsActionResponse response = WaitForCompletion(
             "CmsAction",
             Client->CmsAction(
                 MakeIntrusive<TCallContext>(requestId),
-                cmsActionRequest
-            ),
-            {}
-        );
+                cmsActionRequest),
+            {});
 
         NProtobufJson::Proto2Json(response, TestContext.Result, {});
 
@@ -470,9 +450,10 @@ int TControlPlaneActionRunner::RunCmsRemoveHostAction(
             continue;
         }
 
-        STORAGE_ERROR("Expected != Actual: "
-            << request.GetSuccessExpected() << ", code = "
-            << static_cast<EWellKnownResultCodes>(code));
+        STORAGE_ERROR(
+            "Expected != Actual: " << request.GetSuccessExpected()
+                                   << ", code = "
+                                   << static_cast<EWellKnownResultCodes>(code));
         AppContext.FailedTests.fetch_add(1);
 
         return EC_CONTROL_PLANE_ACTION_FAILED;
@@ -503,11 +484,8 @@ int TControlPlaneActionRunner::CmsRemoveHostHard(
         Client->ExecuteAction(
             MakeIntrusive<TCallContext>(requestId),
             std::make_shared<NProto::TExecuteActionRequest>(
-                std::move(executeAction)
-            )
-        ),
-        {}
-    );
+                std::move(executeAction))),
+        {});
 
     TString log;
     NProtobufJson::Proto2Json(response, log, {});
@@ -536,8 +514,9 @@ int TControlPlaneActionRunner::RunCmsRemoveDeviceAction(
     }
 
     if (volumeInfo.Devices.size() <= deviceNo) {
-        STORAGE_WARN("Not enough devices for volume: " << diskId
-            << ", device count: " << volumeInfo.Devices.size());
+        STORAGE_WARN(
+            "Not enough devices for volume: " << diskId << ", device count: "
+                                              << volumeInfo.Devices.size());
         return 1;
     }
 
@@ -548,13 +527,15 @@ int TControlPlaneActionRunner::RunCmsRemoveDeviceAction(
     *cmsAction->MutableHost() = device.AgentId;
     cmsAction->SetType(NProto::TAction::REMOVE_DEVICE);
 
-    STORAGE_INFO("Cms remove device (resolved): "
-        << device.AgentId << "::" << device.Name);
+    STORAGE_INFO(
+        "Cms remove device (resolved): " << device.AgentId
+                                         << "::" << device.Name);
 
     const auto timeout = TDuration::Seconds(request.GetTimeout());
-    const auto retryTimeout = request.GetRetryTimeout()
-        ? TDuration::Seconds(request.GetRetryTimeout())
-        : TDuration::Seconds(5);
+    const auto retryTimeout =
+        request.GetRetryTimeout()
+            ? TDuration::Seconds(request.GetRetryTimeout())
+            : TDuration::Seconds(5);
     const auto endTime = timeout.ToDeadLine();
 
     STORAGE_INFO("timeout: " << timeout << " retryTimeout: " << retryTimeout);
@@ -564,10 +545,8 @@ int TControlPlaneActionRunner::RunCmsRemoveDeviceAction(
             "CmsAction",
             Client->CmsAction(
                 MakeIntrusive<TCallContext>(requestId),
-                std::make_shared<NProto::TCmsActionRequest>(cmsRequest)
-            ),
-            {}
-        );
+                std::make_shared<NProto::TCmsActionRequest>(cmsRequest)),
+            {});
 
         NProtobufJson::Proto2Json(response, TestContext.Result, {});
 
@@ -590,9 +569,10 @@ int TControlPlaneActionRunner::RunCmsRemoveDeviceAction(
             continue;
         }
 
-        STORAGE_ERROR("Expected != Actual: "
-            << request.GetSuccessExpected() << ", code = "
-            << static_cast<EWellKnownResultCodes>(code));
+        STORAGE_ERROR(
+            "Expected != Actual: " << request.GetSuccessExpected()
+                                   << ", code = "
+                                   << static_cast<EWellKnownResultCodes>(code));
         AppContext.FailedTests.fetch_add(1);
 
         return EC_CONTROL_PLANE_ACTION_FAILED;
@@ -602,7 +582,7 @@ int TControlPlaneActionRunner::RunCmsRemoveDeviceAction(
     changeState.SetMessage("loadtest");
     auto* changeDeviceState = changeState.MutableChangeDeviceState();
     changeDeviceState->SetDeviceUUID(device.DeviceUUID);
-    changeDeviceState->SetState(2); // DEVICE_STATE_ERROR
+    changeDeviceState->SetState(2);   // DEVICE_STATE_ERROR
 
     TStringStream input;
     changeState.PrintJSON(input);
@@ -616,11 +596,8 @@ int TControlPlaneActionRunner::RunCmsRemoveDeviceAction(
         Client->ExecuteAction(
             MakeIntrusive<TCallContext>(requestId),
             std::make_shared<NProto::TExecuteActionRequest>(
-                std::move(executeAction)
-            )
-        ),
-        {}
-    );
+                std::move(executeAction))),
+        {});
 
     TString log;
     NProtobufJson::Proto2Json(response, log, {});

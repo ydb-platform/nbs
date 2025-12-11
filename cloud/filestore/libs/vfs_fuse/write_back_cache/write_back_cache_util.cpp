@@ -28,18 +28,19 @@ TVector<TResult> CalculateDataParts(TVector<TPoint<TEntry>> points)
         return {};
     }
 
-    StableSort(points, [] (const auto& l, const auto& r) {
-        return l.Offset < r.Offset;
-    });
+    StableSort(
+        points,
+        [](const auto& l, const auto& r) { return l.Offset < r.Offset; });
 
     TVector<TResult> res(Reserve(points.size()));
 
-    const auto& heapComparator = [] (const auto& l, const auto& r) {
+    const auto& heapComparator = [](const auto& l, const auto& r)
+    {
         return l.Order < r.Order;
     };
     TVector<TPoint<TEntry>> heap;
 
-    const auto cutTop = [&res, &heap] (auto lastOffset, auto currOffset)
+    const auto cutTop = [&res, &heap](auto lastOffset, auto currOffset)
     {
         if (currOffset <= lastOffset) {
             // Ignore
@@ -52,15 +53,14 @@ TVector<TResult> CalculateDataParts(TVector<TPoint<TEntry>> points)
         Y_DEBUG_ABORT_UNLESS(lastOffset >= top.Entry->GetOffset());
         const auto offsetInSource = lastOffset - top.Entry->GetOffset();
 
-        if (!res.empty() &&
-            res.back().Source == top.Entry &&
+        if (!res.empty() && res.back().Source == top.Entry &&
             res.back().GetEnd() == lastOffset)
         {
             // Extend last entry
             res.back().Length += partLength;
         } else {
             res.emplace_back(
-                top.Entry, // source
+                top.Entry,   // source
                 offsetInSource,
                 lastOffset,
                 partLength);
@@ -150,10 +150,7 @@ auto TWriteBackCache::TUtil::InvertDataParts(
     Y_DEBUG_ABORT_UNLESS(IsSorted(sortedParts));
 
     if (sortedParts.empty()) {
-        return {{
-            .Offset = startingFromOffset,
-            .Length = length
-        }};
+        return {{.Offset = startingFromOffset, .Length = length}};
     }
 
     const ui64 end = startingFromOffset + length;
@@ -162,10 +159,9 @@ auto TWriteBackCache::TUtil::InvertDataParts(
 
     if (sortedParts.front().Offset > startingFromOffset) {
         auto partEnd = Min(sortedParts.front().Offset, end);
-        res.push_back({
-            .Offset = startingFromOffset,
-            .Length = partEnd - startingFromOffset
-        });
+        res.push_back(
+            {.Offset = startingFromOffset,
+             .Length = partEnd - startingFromOffset});
     }
 
     for (size_t i = 1; i < sortedParts.size(); i++) {
@@ -187,18 +183,12 @@ auto TWriteBackCache::TUtil::InvertDataParts(
             continue;
         }
 
-        res.push_back({
-            .Offset = partOffset,
-            .Length = partEnd - partOffset
-        });
+        res.push_back({.Offset = partOffset, .Length = partEnd - partOffset});
     }
 
     if (sortedParts.back().GetEnd() < end) {
         auto partOffset = Max(sortedParts.back().GetEnd(), startingFromOffset);
-        res.push_back({
-            .Offset = partOffset,
-            .Length = end - partOffset
-        });
+        res.push_back({.Offset = partOffset, .Length = end - partOffset});
     }
 
     return res;

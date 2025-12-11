@@ -42,7 +42,8 @@ std::unique_ptr<TEvVolume::TEvAddClientResponse> CreateAddClientResponse(
     response->Record.SetTabletId(tabletId);
     response->Record.SetClientId(std::move(clientId));
     response->Record.SetForceTabletRestart(forceTabletRestart);
-    response->Record.SetVolumeClientMigrationInProgress(volumeClientMigrationInProgress);
+    response->Record.SetVolumeClientMigrationInProgress(
+        volumeClientMigrationInProgress);
 
     const auto& volumeConfig = state.GetMeta().GetVolumeConfig();
     auto* volumeInfo = response->Record.MutableVolume();
@@ -88,10 +89,7 @@ void TVolumeActor::AcquireDisk(
     request->Record.SetMountSeqNumber(mountSeqNumber);
     request->Record.SetVolumeGeneration(Executor()->Generation());
 
-    NCloud::Send(
-        ctx,
-        MakeDiskRegistryProxyServiceId(),
-        std::move(request));
+    NCloud::Send(ctx, MakeDiskRegistryProxyServiceId(), std::move(request));
 }
 
 void TVolumeActor::AddAcquireReleaseDiskRequest(
@@ -127,7 +125,8 @@ void TVolumeActor::AddReleaseDiskRequest(
     AddAcquireReleaseDiskRequest(ctx, std::move(request));
 }
 
-void TVolumeActor::ProcessNextAcquireReleaseDiskRequest(const TActorContext& ctx)
+void TVolumeActor::ProcessNextAcquireReleaseDiskRequest(
+    const TActorContext& ctx)
 {
     if (AcquireReleaseDiskRequests) {
         auto& request = AcquireReleaseDiskRequests.front();
@@ -137,8 +136,7 @@ void TVolumeActor::ProcessNextAcquireReleaseDiskRequest(const TActorContext& ctx
                 ctx,
                 request.ClientId,
                 request.AccessMode,
-                request.MountSeqNumber
-            );
+                request.MountSeqNumber);
         } else {
             ReleaseDisk(ctx, request.ClientId, request.DevicesToRelease);
         }
@@ -163,9 +161,7 @@ void TVolumeActor::AcquireDiskIfNeeded(const TActorContext& ctx)
     );
 }
 
-void TVolumeActor::AcquireDiskImpl(
-    const TActorContext& ctx,
-    bool retriable)
+void TVolumeActor::AcquireDiskImpl(const TActorContext& ctx, bool retriable)
 {
     if (!State->GetClients()) {
         return;
@@ -222,8 +218,7 @@ void TVolumeActor::ScheduleAcquireDiskIfNeeded(const TActorContext& ctx)
 
     ctx.Schedule(
         Config->GetClientRemountPeriod(),
-        new TEvVolumePrivate::TEvAcquireDiskIfNeeded()
-    );
+        new TEvVolumePrivate::TEvAcquireDiskIfNeeded());
 }
 
 void TVolumeActor::HandleAcquireDiskIfNeeded(
@@ -347,7 +342,7 @@ void TVolumeActor::HandleDevicesAcquireFinishedImpl(
     {
         AcquireReleaseDiskRequests.pop_front();
         ProcessNextAcquireReleaseDiskRequest(ctx);
-    };
+    }
 
     if (!clientRequest) {
         return;
@@ -407,10 +402,8 @@ void TVolumeActor::HandleAddClient(
         pipeServerActorId = ev->Recipient;
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     NProto::TVolumeClientInfo clientInfo;
     clientInfo.SetClientId(clientId);
@@ -539,7 +532,8 @@ void TVolumeActor::ExecuteAddClient(
 
     auto now = ctx.Now();
     TString prevWriter = State->GetReadWriteAccessClientId();
-    args.WriterLastActivityTimestamp = State->GetLastActivityTimestamp(prevWriter);
+    args.WriterLastActivityTimestamp =
+        State->GetLastActivityTimestamp(prevWriter);
 
     LOG_INFO(
         ctx,
@@ -561,13 +555,12 @@ void TVolumeActor::ExecuteAddClient(
     args.VolumeClientMigrationInProgress = res.VolumeClientMigrationInProgress;
 
     TVolumeDatabase db(tx.DB);
-    db.WriteHistory(
-        State->LogAddClient(
-            ctx.Now(),
-            args.Info,
-            args.Error,
-            args.PipeServerActorId,
-            args.RequestInfo->Sender));
+    db.WriteHistory(State->LogAddClient(
+        ctx.Now(),
+        args.Info,
+        args.Error,
+        args.PipeServerActorId,
+        args.RequestInfo->Sender));
 
     if (SUCCEEDED(args.Error.GetCode())) {
         // Set flag only with first client
@@ -600,7 +593,8 @@ void TVolumeActor::ExecuteAddClient(
             State->RemoveClient(clientId, TActorId());
             args.RemovedClientIds.emplace_back(clientId);
 
-            auto builder = TStringBuilder() << "Preempted by " << args.Info.GetClientId();
+            auto builder = TStringBuilder()
+                           << "Preempted by " << args.Info.GetClientId();
             db.WriteHistory(
                 State->LogRemoveClient(ctx.Now(), clientId, builder, {}));
         }
@@ -650,7 +644,7 @@ void TVolumeActor::CompleteAddClient(
             PendingClientRequests.pop_front();
             ProcessNextPendingClientRequest(ctx);
         }
-    };
+    }
 
     const auto& clientId = args.Info.GetClientId();
     const auto& diskId = args.DiskId;
@@ -706,9 +700,10 @@ void TVolumeActor::CompleteAddClient(
     const auto mediaKind = State->GetMeta().GetConfig().GetStorageMediaKind();
 
     if (IsReliableDiskRegistryMediaKind(mediaKind)) {
-        const bool shouldResyncDueToInactivity = args.WriterLastActivityTimestamp
-            && (ctx.Now() - args.WriterLastActivityTimestamp)
-                > Config->GetResyncAfterClientInactivityInterval();
+        const bool shouldResyncDueToInactivity =
+            args.WriterLastActivityTimestamp &&
+            (ctx.Now() - args.WriterLastActivityTimestamp) >
+                Config->GetResyncAfterClientInactivityInterval();
 
         if (args.WriterChanged || shouldResyncDueToInactivity) {
             State->SetReadWriteError(MakeError(E_REJECTED, "toggling resync"));
@@ -754,8 +749,7 @@ void TVolumeActor::HandleUpdateReadWriteClientInfo(
         return;
     }
 
-    const auto mediaKind =
-        State->GetMeta().GetConfig().GetStorageMediaKind();
+    const auto mediaKind = State->GetMeta().GetConfig().GetStorageMediaKind();
 
     if (!IsReliableDiskRegistryMediaKind(mediaKind)) {
         return;
@@ -772,10 +766,8 @@ void TVolumeActor::HandleUpdateReadWriteClientInfo(
 
     const auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     ExecuteTx<TUpdateClientInfo>(
         ctx,

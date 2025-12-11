@@ -29,56 +29,56 @@ namespace NCloud::NFileStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_DATA_METHODS_LOCAL_SYNC(xxx, ...)                            \
-    xxx(StatFileStore,                      __VA_ARGS__)                       \
-                                                                               \
-    xxx(SubscribeSession,                   __VA_ARGS__)                       \
-    xxx(GetSessionEvents,                   __VA_ARGS__)                       \
-    xxx(ResetSession,                       __VA_ARGS__)                       \
-                                                                               \
-    xxx(ResolvePath,                        __VA_ARGS__)                       \
-    xxx(CreateNode,                         __VA_ARGS__)                       \
-    xxx(UnlinkNode,                         __VA_ARGS__)                       \
-    xxx(RenameNode,                         __VA_ARGS__)                       \
-    xxx(AccessNode,                         __VA_ARGS__)                       \
-    xxx(ListNodes,                          __VA_ARGS__)                       \
-    xxx(ReadLink,                           __VA_ARGS__)                       \
-                                                                               \
-    xxx(SetNodeAttr,                        __VA_ARGS__)                       \
-    xxx(GetNodeAttr,                        __VA_ARGS__)                       \
-    xxx(SetNodeXAttr,                       __VA_ARGS__)                       \
-    xxx(GetNodeXAttr,                       __VA_ARGS__)                       \
-    xxx(ListNodeXAttr,                      __VA_ARGS__)                       \
-    xxx(RemoveNodeXAttr,                    __VA_ARGS__)                       \
-                                                                               \
-    xxx(CreateHandle,                       __VA_ARGS__)                       \
-    xxx(DestroyHandle,                      __VA_ARGS__)                       \
-                                                                               \
-    xxx(AcquireLock,                        __VA_ARGS__)                       \
-    xxx(ReleaseLock,                        __VA_ARGS__)                       \
-    xxx(TestLock,                           __VA_ARGS__)                       \
-                                                                               \
-    xxx(AllocateData,                       __VA_ARGS__)                       \
-                                                                               \
-    xxx(Fsync,                              __VA_ARGS__)                       \
-    xxx(FsyncDir,                           __VA_ARGS__)                       \
-// FILESTORE_DATA_METHODS_LOCAL_SYNC
+#define FILESTORE_DATA_METHODS_LOCAL_SYNC(xxx, ...) \
+    xxx(StatFileStore, __VA_ARGS__)                 \
+                                                    \
+    xxx(SubscribeSession, __VA_ARGS__)              \
+    xxx(GetSessionEvents, __VA_ARGS__)              \
+    xxx(ResetSession, __VA_ARGS__)                  \
+                                                    \
+    xxx(ResolvePath, __VA_ARGS__)                   \
+    xxx(CreateNode, __VA_ARGS__)                    \
+    xxx(UnlinkNode, __VA_ARGS__)                    \
+    xxx(RenameNode, __VA_ARGS__)                    \
+    xxx(AccessNode, __VA_ARGS__)                    \
+    xxx(ListNodes, __VA_ARGS__)                     \
+    xxx(ReadLink, __VA_ARGS__)                      \
+                                                    \
+    xxx(SetNodeAttr, __VA_ARGS__)                   \
+    xxx(GetNodeAttr, __VA_ARGS__)                   \
+    xxx(SetNodeXAttr, __VA_ARGS__)                  \
+    xxx(GetNodeXAttr, __VA_ARGS__)                  \
+    xxx(ListNodeXAttr, __VA_ARGS__)                 \
+    xxx(RemoveNodeXAttr, __VA_ARGS__)               \
+                                                    \
+    xxx(CreateHandle, __VA_ARGS__)                  \
+    xxx(DestroyHandle, __VA_ARGS__)                 \
+                                                    \
+    xxx(AcquireLock, __VA_ARGS__)                   \
+    xxx(ReleaseLock, __VA_ARGS__)                   \
+    xxx(TestLock, __VA_ARGS__)                      \
+                                                    \
+    xxx(AllocateData, __VA_ARGS__)                  \
+                                                    \
+    xxx(Fsync, __VA_ARGS__)                         \
+    xxx(FsyncDir, __VA_ARGS__)                      \
+    // FILESTORE_DATA_METHODS_LOCAL_SYNC
 
-#define FILESTORE_DATA_METHODS_LOCAL_ASYNC(xxx, ...)                           \
-    xxx(ReadData,                           __VA_ARGS__)                       \
-    xxx(WriteData,                          __VA_ARGS__)                       \
-// FILESTORE_DATA_METHODS_LOCAL_ASYNC
+#define FILESTORE_DATA_METHODS_LOCAL_ASYNC(xxx, ...) \
+    xxx(ReadData, __VA_ARGS__)                       \
+    xxx(WriteData, __VA_ARGS__)                      \
+    // FILESTORE_DATA_METHODS_LOCAL_ASYNC
 
-#define FILESTORE_SERVICE_LOCAL_SYNC(xxx, ...)                                 \
-    xxx(Ping,                               __VA_ARGS__)                       \
-    xxx(PingSession,                        __VA_ARGS__)                       \
-    FILESTORE_SERVICE_METHODS(xxx,          __VA_ARGS__)                       \
-    FILESTORE_DATA_METHODS_LOCAL_SYNC(xxx,  __VA_ARGS__)                       \
-// FILESTORE_SERVICE_LOCAL_SYNC
+#define FILESTORE_SERVICE_LOCAL_SYNC(xxx, ...)          \
+    xxx(Ping, __VA_ARGS__)                              \
+    xxx(PingSession, __VA_ARGS__)                       \
+    FILESTORE_SERVICE_METHODS(xxx, __VA_ARGS__)         \
+    FILESTORE_DATA_METHODS_LOCAL_SYNC(xxx, __VA_ARGS__) \
+    // FILESTORE_SERVICE_LOCAL_SYNC
 
-#define FILESTORE_SERVICE_LOCAL_ASYNC(xxx, ...)                                \
-    FILESTORE_DATA_METHODS_LOCAL_ASYNC(xxx,  __VA_ARGS__)                      \
-// FILESTORE_SERVICE_LOCAL_SYNC
+#define FILESTORE_SERVICE_LOCAL_ASYNC(xxx, ...)          \
+    FILESTORE_DATA_METHODS_LOCAL_ASYNC(xxx, __VA_ARGS__) \
+    // FILESTORE_SERVICE_LOCAL_SYNC
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -120,10 +120,9 @@ public:
         ILoggingServicePtr logging,
         IFileIOServicePtr fileIOService);
 
-#define FILESTORE_DECLARE_METHOD_SYNC(name, ...)                               \
-    NProto::T##name##Response name(                                            \
-        const NProto::T##name##Request& request);                              \
-// FILESTORE_DECLARE_METHOD_SYNC
+#define FILESTORE_DECLARE_METHOD_SYNC(name, ...)                             \
+    NProto::T##name##Response name(const NProto::T##name##Request& request); \
+    // FILESTORE_DECLARE_METHOD_SYNC
 
 #define FILESTORE_DECLARE_METHOD_ASYNC(name, ...)               \
     NThreading::TFuture<NProto::T##name##Response> name##Async( \
@@ -151,7 +150,6 @@ public:
     }
 
 private:
-
     void ScheduleCleanupSessions();
     void CleanupSessions();
 
@@ -165,15 +163,11 @@ private:
         return GetSession(clientId, sessionId, sessionSeqNo);
     }
 
-    TSessionPtr GetSession(
-        const TString& clientId,
-        const TString& sessionId,
-        ui64 seqNo);
+    TSessionPtr
+    GetSession(const TString& clientId, const TString& sessionId, ui64 seqNo);
 
-    TSessionPtr FindSession(
-        const TString& clientId,
-        const TString& sessionId,
-        ui64 seqNo);
+    TSessionPtr
+    FindSession(const TString& clientId, const TString& sessionId, ui64 seqNo);
 
     void RemoveSession(const TString& sessionId, ui64 seqNo);
 };

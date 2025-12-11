@@ -5,7 +5,6 @@
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/libs/service/request.h>
-
 #include <cloud/blockstore/private/api/protos/balancer.pb.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
@@ -32,19 +31,17 @@ struct TEvVolumeBalancer
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TBlockStoreEvents::VOLUME_BALANCER_END,
+    static_assert(
+        EvEnd < (int)TBlockStoreEvents::VOLUME_BALANCER_END,
         "EvEnd expected to be < TBlockStoreEvents::VOLUME_BALANCER_END");
 
     using TEvConfigureVolumeBalancerRequest = TProtoRequestEvent<
         NPrivateProto::TConfigureVolumeBalancerRequest,
-        EvConfigureVolumeBalancerRequest
-    >;
+        EvConfigureVolumeBalancerRequest>;
 
     using TEvConfigureVolumeBalancerResponse = TProtoRequestEvent<
         NPrivateProto::TConfigureVolumeBalancerResponse,
-        EvConfigureVolumeBalancerResponse
-    >;
-
+        EvConfigureVolumeBalancerResponse>;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

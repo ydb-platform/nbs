@@ -22,9 +22,10 @@ using namespace NThreading;
 NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
     const NProto::TCreateHandleRequest& request)
 {
-    STORAGE_TRACE("CreateHandle " << DumpMessage(request)
-        << " flags: " << HandleFlagsToString(request.GetFlags())
-        << " mode: " << request.GetMode());
+    STORAGE_TRACE(
+        "CreateHandle " << DumpMessage(request)
+                        << " flags: " << HandleFlagsToString(request.GetFlags())
+                        << " mode: " << request.GetMode());
 
     auto session = GetSession(request);
     auto node = session->LookupNode(request.GetNodeId());
@@ -36,8 +37,8 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
     if (!Config->GetDirectIoEnabled()) {
         flags &= ~O_DIRECT;
     }
-    const int mode = request.GetMode()
-        ? request.GetMode() : Config->GetDefaultPermissions();
+    const int mode =
+        request.GetMode() ? request.GetMode() : Config->GetDefaultPermissions();
 
     NLowLevel::UnixCredentialsGuard credGuard(
         request.GetUid(),
@@ -149,24 +150,27 @@ TFuture<NProto::TReadDataResponse> TLocalFileSystem::ReadDataAsync(
 
     TArrayRef<char> data(b->Begin(), b->End());
     auto promise = NewPromise<NProto::TReadDataResponse>();
-    FileIOService->AsyncRead(*handle, request.GetOffset(), data).Subscribe(
-        [&logRequest, b = std::move(b), promise] (const TFuture<ui32>& f) mutable {
-            NProto::TReadDataResponse response;
-            try {
-                auto bytesRead = f.GetValue();
-                b->TrimSize(bytesRead);
-                response.SetBufferOffset(b->AlignedDataOffset());
-                response.SetBuffer(b->TakeBuffer());
-            } catch (const TServiceError& e) {
-                *response.MutableError() = MakeError(MAKE_FILESTORE_ERROR(
-                    ErrnoToFileStoreError(STATUS_FROM_CODE(e.GetCode()))));
-            } catch (...) {
-                *response.MutableError() =
-                    MakeError(E_IO, CurrentExceptionMessage());
-            }
-            FinalizeProfileLogRequestInfo(logRequest, response);
-            promise.SetValue(std::move(response));
-        });
+    FileIOService->AsyncRead(*handle, request.GetOffset(), data)
+        .Subscribe(
+            [&logRequest, b = std::move(b), promise](
+                const TFuture<ui32>& f) mutable
+            {
+                NProto::TReadDataResponse response;
+                try {
+                    auto bytesRead = f.GetValue();
+                    b->TrimSize(bytesRead);
+                    response.SetBufferOffset(b->AlignedDataOffset());
+                    response.SetBuffer(b->TakeBuffer());
+                } catch (const TServiceError& e) {
+                    *response.MutableError() = MakeError(MAKE_FILESTORE_ERROR(
+                        ErrnoToFileStoreError(STATUS_FROM_CODE(e.GetCode()))));
+                } catch (...) {
+                    *response.MutableError() =
+                        MakeError(E_IO, CurrentExceptionMessage());
+                }
+                FinalizeProfileLogRequestInfo(logRequest, response);
+                promise.SetValue(std::move(response));
+            });
     return promise;
 }
 
@@ -186,10 +190,7 @@ TFuture<NProto::TWriteDataLocalResponse> TLocalFileSystem::WriteDataLocalAsync(
     auto promise = NewPromise<NProto::TWriteDataLocalResponse>();
     FileIOService->AsyncWriteV(*handle, request.GetOffset(), request.Buffers)
         .Subscribe(
-            [this,
-             &logRequest,
-             promise,
-             bytesExpected = request.BytesToWrite](
+            [this, &logRequest, promise, bytesExpected = request.BytesToWrite](
                 const TFuture<ui32>& f) mutable
             {
                 NProto::TWriteDataLocalResponse response;
@@ -257,8 +258,9 @@ TFuture<NProto::TWriteDataResponse> TLocalFileSystem::WriteDataAsync(
 NProto::TAllocateDataResponse TLocalFileSystem::AllocateData(
     const NProto::TAllocateDataRequest& request)
 {
-    STORAGE_TRACE("AllocateData " << DumpMessage(request)
-        << " flags: " << FallocateFlagsToString(request.GetFlags()));
+    STORAGE_TRACE(
+        "AllocateData " << DumpMessage(request) << " flags: "
+                        << FallocateFlagsToString(request.GetFlags()));
 
     auto session = GetSession(request);
     auto* handle = session->LookupHandle(request.GetHandle());
@@ -273,7 +275,7 @@ NProto::TAllocateDataResponse TLocalFileSystem::AllocateData(
         flags,
         request.GetOffset(),
         request.GetLength());
-    handle->Flush(); // TODO
+    handle->Flush();   // TODO
 
     return {};
 }
@@ -305,7 +307,7 @@ NProto::TFsyncDirResponse TLocalFileSystem::FsyncDir(
         return TErrorResponse(ErrorInvalidTarget(request.GetNodeId()));
     }
 
-    auto handle = node->OpenHandle(O_RDONLY|O_DIRECTORY);
+    auto handle = node->OpenHandle(O_RDONLY | O_DIRECTORY);
     NLowLevel::Fsync(handle, request.GetDataSync());
 
     return {};

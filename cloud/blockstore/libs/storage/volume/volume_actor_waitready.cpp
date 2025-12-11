@@ -39,7 +39,9 @@ void TVolumeActor::HandleWaitReady(
                 ev->Cookie,
                 ev->Get()->CallContext);
 
-            PendingRequests.emplace_back(NActors::IEventHandlePtr(ev.Release()), requestInfo);
+            PendingRequests.emplace_back(
+                NActors::IEventHandlePtr(ev.Release()),
+                requestInfo);
             return;
         }
     }

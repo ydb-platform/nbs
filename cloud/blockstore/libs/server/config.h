@@ -3,8 +3,8 @@
 #include "public.h"
 
 #include <cloud/blockstore/config/server.pb.h>
-
 #include <cloud/blockstore/libs/diagnostics/dumpable.h>
+
 #include <cloud/storage/core/libs/common/affinity.h>
 
 #include <util/datetime/base.h>
@@ -24,8 +24,7 @@ struct TCertificate
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TServerAppConfig
-    : public IDumpable
+class TServerAppConfig: public IDumpable
 {
 private:
     const NProto::TServerAppConfig AppConfig;

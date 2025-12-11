@@ -1,9 +1,10 @@
 #include "part_nonrepl_rdma_actor.h"
+
 #include "part_nonrepl_common.h"
 
 #include <cloud/blockstore/libs/common/block_checksum.h>
-#include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/rdma/iface/protobuf.h>
+#include <cloud/blockstore/libs/rdma/iface/protocol.h>
 #include <cloud/blockstore/libs/service_local/rdma_protocol.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
@@ -116,10 +117,11 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
 {
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo<TEvNonreplPartitionPrivate::TChecksumBlocksMethod>(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo<TEvNonreplPartitionPrivate::TChecksumBlocksMethod>(
+            ev->Sender,
+            ev->Cookie,
+            msg->CallContext);
 
     TRequestScope timer(*requestInfo);
 
@@ -139,8 +141,7 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
         ctx,
         *requestInfo,
         blockRange,
-        &deviceRequests
-    );
+        &deviceRequests);
 
     if (!ok) {
         return;
@@ -191,7 +192,9 @@ void TNonreplicatedPartitionRdmaActor::HandleChecksumBlocks(
             4_KB);
 
         if (HasError(err)) {
-            LOG_ERROR(ctx, TBlockStoreComponents::PARTITION,
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::PARTITION,
                 "Failed to allocate rdma memory for ChecksumDeviceBlocksRequest"
                 ", error: %s",
                 FormatError(err).c_str());

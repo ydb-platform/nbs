@@ -30,9 +30,9 @@ private:
 
 public:
     TMetricsService(
-            const TMetricsServiceConfig& config,
-            ITimerPtr timer,
-            ISchedulerPtr scheduler)
+        const TMetricsServiceConfig& config,
+        ITimerPtr timer,
+        ISchedulerPtr scheduler)
         : Config(config)
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
@@ -77,7 +77,8 @@ private:
         Scheduler->Schedule(
             Timer->Now() + duration,
             [func = std::forward<TFunction>(function),
-             weakPtr = weak_from_this()] () mutable {
+             weakPtr = weak_from_this()]() mutable
+            {
                 auto thisPtr = weakPtr.lock();
                 if (!thisPtr) {
                     return;

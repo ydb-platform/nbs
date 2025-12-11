@@ -384,7 +384,7 @@ Y_UNIT_TEST_SUITE(TRingBufferTest)
         auto ringBuffer = TRingBuffer<int>(3);
 
         UNIT_ASSERT_EQUAL(std::nullopt, ringBuffer.PushFront(1));
-        UNIT_ASSERT_EQUAL(1,  ringBuffer.PopFront());
+        UNIT_ASSERT_EQUAL(1, ringBuffer.PopFront());
         UNIT_ASSERT_EQUAL(std::nullopt, ringBuffer.PopFront());
         UNIT_ASSERT_EQUAL(std::nullopt, ringBuffer.PopBack());
 

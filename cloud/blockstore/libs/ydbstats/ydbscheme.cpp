@@ -18,34 +18,41 @@ TStatsTableSchemeBuilder BuildListOfColumns()
     TStatsTableSchemeBuilder out;
 
     static TVector<std::pair<TString, NYdb::EPrimitiveType>> columns = {
-#define YDB_SIMPLE_STRING_FIELD(name , ...)                                    \
-        { #name, NYdb::EPrimitiveType::String },                               \
+#define YDB_SIMPLE_STRING_FIELD(name, ...)  \
+    {                                       \
+        #name, NYdb::EPrimitiveType::String \
+    }                                       \
+    ,
 
-    YDB_SIMPLE_STRING_COUNTERS(YDB_SIMPLE_STRING_FIELD)
+        YDB_SIMPLE_STRING_COUNTERS(YDB_SIMPLE_STRING_FIELD)
 
 #undef YDB_SIMPLE_STRING_FIELD
 
-#define YDB_SIMPLE_UINT64_FIELD(name , ...)                                    \
-        { #name,  NYdb::EPrimitiveType::Uint64 },                              \
-// YDB_SIMPLE_UINT64_LABEL
+#define YDB_SIMPLE_UINT64_FIELD(name, ...)  \
+    {                                       \
+        #name, NYdb::EPrimitiveType::Uint64 \
+    }                                       \
+    ,   // YDB_SIMPLE_UINT64_LABEL
 
-    YDB_SIMPLE_UINT64_COUNTERS(YDB_SIMPLE_UINT64_FIELD)
+            YDB_SIMPLE_UINT64_COUNTERS(YDB_SIMPLE_UINT64_FIELD)
 
 #undef YDB_SIMPLE_UINT64_FIELD
 
-#define YDB_CUMULATIVE_FIELD(name, ...)                                        \
-        { #name ,        NYdb::EPrimitiveType::Uint64 },                       \
-// YDB_CUMULATIVE_LABEL
+#define YDB_CUMULATIVE_FIELD(name, ...)     \
+    {                                       \
+        #name, NYdb::EPrimitiveType::Uint64 \
+    }                                       \
+    ,   // YDB_CUMULATIVE_LABEL
 
-    YDB_CUMULATIVE_COUNTERS(YDB_DEFINE_CUMULATIVE_COUNTER_STRING)
+                YDB_CUMULATIVE_COUNTERS(YDB_DEFINE_CUMULATIVE_COUNTER_STRING)
 
 #undef YDB_CUMULATIVE_FIELD
 
-#define YDB_PERCENTILE_FIELD(name, ...)                                        \
-        {#name ,    NYdb::EPrimitiveType::Double },                            \
-// YDB_PERCENTILE_LABEL
+#define YDB_PERCENTILE_FIELD(name, ...) \
+    {#name, NYdb::EPrimitiveType::Double},   // YDB_PERCENTILE_LABEL
 
-    YDB_PERCENTILE_COUNTERS(YDB_DEFINE_PERCENTILES_COUNTER_STRING)
+                    YDB_PERCENTILE_COUNTERS(
+                        YDB_DEFINE_PERCENTILES_COUNTER_STRING)
 
 #undef YDB_PERCENTILE_FIELD
     };
@@ -57,7 +64,7 @@ TStatsTableSchemeBuilder BuildListOfColumns()
     return out;
 }
 
-}    // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -113,10 +120,9 @@ TStatsTableSchemePtr CreateBlobLoadMetricsTableScheme()
     TStatsTableSchemeBuilder out;
 
     static const TVector<std::pair<TString, EPrimitiveType>> columns = {
-        { TYdbBlobLoadMetricRow::HostNameName.data(),  EPrimitiveType::String },
-        { TYdbBlobLoadMetricRow::TimestampName.data(), EPrimitiveType::Uint64 },
-        { TYdbBlobLoadMetricRow::LoadDataName.data(),  EPrimitiveType::Json }
-    };
+        {TYdbBlobLoadMetricRow::HostNameName.data(), EPrimitiveType::String},
+        {TYdbBlobLoadMetricRow::TimestampName.data(), EPrimitiveType::Uint64},
+        {TYdbBlobLoadMetricRow::LoadDataName.data(), EPrimitiveType::Json}};
 
     STORAGE_VERIFY_C(
         out.AddColumns(columns),
@@ -125,9 +131,9 @@ TStatsTableSchemePtr CreateBlobLoadMetricsTableScheme()
         "unable to setup fields");
 
     STORAGE_VERIFY_C(
-        out.SetKeyColumns({
-            TYdbBlobLoadMetricRow::HostNameName.data(),
-            TYdbBlobLoadMetricRow::TimestampName.data()}),
+        out.SetKeyColumns(
+            {TYdbBlobLoadMetricRow::HostNameName.data(),
+             TYdbBlobLoadMetricRow::TimestampName.data()}),
         TWellKnownEntityTypes::YDB_TABLE,
         "blob load metrics table",
         "unable to setup key fields");
@@ -135,7 +141,7 @@ TStatsTableSchemePtr CreateBlobLoadMetricsTableScheme()
     out.SetTtl(NTable::TTtlSettings{
         TYdbBlobLoadMetricRow::TimestampName.data(),
         NTable::TTtlSettings::EUnit::Seconds,
-        TYdbBlobLoadMetricRow::TtlDuration });
+        TYdbBlobLoadMetricRow::TtlDuration});
 
     return out.Finish();
 }
@@ -160,11 +166,11 @@ TStatsTableSchemePtr CreateGroupsTableScheme()
         "unable to setup fields");
 
     STORAGE_VERIFY_C(
-        out.SetKeyColumns({
-            TYdbGroupRow::TabletIdName.data(),
-            TYdbGroupRow::ChannelName.data(),
-            TYdbGroupRow::GroupIdName.data(),
-            TYdbGroupRow::GenerationName.data()}),
+        out.SetKeyColumns(
+            {TYdbGroupRow::TabletIdName.data(),
+             TYdbGroupRow::ChannelName.data(),
+             TYdbGroupRow::GroupIdName.data(),
+             TYdbGroupRow::GenerationName.data()}),
         TWellKnownEntityTypes::YDB_TABLE,
         "groups table",
         "unable to setup key fields");
@@ -184,7 +190,8 @@ TStatsTableSchemePtr CreatePartitionsTableScheme()
     TStatsTableSchemeBuilder out;
 
     static const TVector<std::pair<TString, EPrimitiveType>> columns = {
-        {TYdbPartitionRow::PartitionTabletIdName.data(), EPrimitiveType::Uint64},
+        {TYdbPartitionRow::PartitionTabletIdName.data(),
+         EPrimitiveType::Uint64},
         {TYdbPartitionRow::VolumeTabletIdName.data(), EPrimitiveType::Uint64},
         {TYdbPartitionRow::DiskIdName.data(), EPrimitiveType::String},
         {TYdbPartitionRow::TimestampName.data(), EPrimitiveType::Uint64}};

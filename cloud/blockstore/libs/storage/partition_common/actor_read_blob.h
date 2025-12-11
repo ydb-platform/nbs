@@ -7,7 +7,6 @@
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -77,7 +76,7 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleUndelivered(
-        const NActors::TEvents::TEvUndelivered::TPtr &ev,
+        const NActors::TEvents::TEvUndelivered::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandlePoisonPill(

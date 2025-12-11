@@ -30,8 +30,7 @@ void TDiskRegistryActor::HandleMarkReplacementDevice(
         CreateRequestInfo<TEvDiskRegistry::TMarkReplacementDeviceMethod>(
             ev->Sender,
             ev->Cookie,
-            ev->Get()->CallContext
-        ),
+            ev->Get()->CallContext),
         record.GetDiskId(),
         record.GetDeviceId(),
         record.GetIsReplacement());

@@ -1,12 +1,12 @@
 #include "config.h"
 
+#include <library/cpp/json/json_reader.h>
+#include <library/cpp/testing/unittest/registar.h>
+
 #include <util/generic/fwd.h>
 #include <util/generic/size_literals.h>
 #include <util/random/random.h>
 #include <util/system/tempfile.h>
-
-#include <library/cpp/json/json_reader.h>
-#include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NBlockStore {
 
@@ -190,9 +190,11 @@ Y_UNIT_TEST_SUITE(ConfigTest)
     Y_UNIT_TEST(ConfigGenerationWorksAsExpected)
     {
         NJson::TJsonValue expectedConfigJson;
-        UNIT_ASSERT(NJson::ReadJsonTree(expectedConfig, &expectedConfigJson, true));
+        UNIT_ASSERT(
+            NJson::ReadJsonTree(expectedConfig, &expectedConfigJson, true));
 
-        // Test config generation is not deterministic, so we need to set random seed
+        // Test config generation is not deterministic, so we need to set random
+        // seed
         SetRandomSeed(42);
 
         auto configHolder = CreateTestConfig(
@@ -276,13 +278,16 @@ Y_UNIT_TEST_SUITE(ConfigTest)
             output.Write(incompleteConfig);
         }
 
-        // Test config generation is not deterministic, so we need to set random seed
+        // Test config generation is not deterministic, so we need to set random
+        // seed
         SetRandomSeed(42);
 
         auto configHolder = LoadTestConfig(filename);
         auto& config = configHolder->GetConfig();
 
-        UNIT_ASSERT_EQUAL(config.GetRangeBlockCount(), 299573968896 / 4096 / 64);
+        UNIT_ASSERT_EQUAL(
+            config.GetRangeBlockCount(),
+            299573968896 / 4096 / 64);
         UNIT_ASSERT_EQUAL(config.GetRanges().size(), 64);
 
         UNIT_ASSERT_EQUAL(config.GetRanges(0).GetNumberToWrite(), 0);

@@ -11,6 +11,7 @@
 #include <cloud/filestore/libs/server/server.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/init/actorsystem.h>
+
 #include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
@@ -18,13 +19,13 @@
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/daemon/mlock.h>
-#include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
-#include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/diagnostics/trace_processor.h>
+#include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/kikimr/node.h>
 #include <cloud/storage/core/libs/kikimr/proxy.h>
@@ -55,21 +56,20 @@ namespace {
 const TString TraceLoggerId = "st_trace_logger";
 const TString SlowRequestsFilterId = "st_slow_requests_filter";
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TBootstrapCommon::TBootstrapCommon(
-        std::shared_ptr<NKikimr::TModuleFactories> moduleFactories,
-        TString logComponent,
-        TString metricsComponent,
-        std::shared_ptr<NUserStats::IUserCounterSupplier> userCounters)
+    std::shared_ptr<NKikimr::TModuleFactories> moduleFactories,
+    TString logComponent,
+    TString metricsComponent,
+    std::shared_ptr<NUserStats::IUserCounterSupplier> userCounters)
     : MetricsComponent(std::move(metricsComponent))
     , LogComponent(std::move(logComponent))
     , ModuleFactories(std::move(moduleFactories))
     , UserCounters(std::move(userCounters))
-{
-}
+{}
 
 TBootstrapCommon::~TBootstrapCommon()
 {}
@@ -149,18 +149,15 @@ void TBootstrapCommon::Init()
     Timer = CreateWallClockTimer();
     Scheduler = CreateScheduler();
     BackgroundThreadPool = CreateThreadPool("Background", 1);
-    BackgroundScheduler = CreateBackgroundScheduler(
-        Scheduler,
-        BackgroundThreadPool);
+    BackgroundScheduler =
+        CreateBackgroundScheduler(Scheduler, BackgroundThreadPool);
 
     if (Configs->Options->ProfileFile) {
         ProfileLog = CreateProfileLog(
-            {
-                Configs->Options->ProfileFile,
-                Configs->DiagnosticsConfig->GetProfileLogTimeThreshold(),
-                Configs->DiagnosticsConfig->GetProfileLogMaxFlushRecords(),
-                Configs->DiagnosticsConfig->GetProfileLogMaxFrameFlushRecords()
-            },
+            {Configs->Options->ProfileFile,
+             Configs->DiagnosticsConfig->GetProfileLogTimeThreshold(),
+             Configs->DiagnosticsConfig->GetProfileLogMaxFlushRecords(),
+             Configs->DiagnosticsConfig->GetProfileLogMaxFrameFlushRecords()},
             Timer,
             BackgroundScheduler);
     } else {
@@ -171,8 +168,8 @@ void TBootstrapCommon::Init()
 
     Metrics = NMetrics::CreateMetricsService(
         NMetrics::TMetricsServiceConfig{
-            .UpdateInterval = Configs->DiagnosticsConfig->GetMetricsUpdateInterval()
-        },
+            .UpdateInterval =
+                Configs->DiagnosticsConfig->GetMetricsUpdateInterval()},
         Timer,
         BackgroundScheduler);
     STORAGE_INFO("Metrics initialized");
@@ -205,7 +202,10 @@ void TBootstrapCommon::InitDiagnostics()
 
         if (Configs->Options->VerboseLevel) {
             auto level = GetLogLevel(Configs->Options->VerboseLevel);
-            Y_ENSURE(level, "unknown log level: " << Configs->Options->VerboseLevel.Quote());
+            Y_ENSURE(
+                level,
+                "unknown log level: "
+                    << Configs->Options->VerboseLevel.Quote());
 
             logSettings.FiltrationLevel = *level;
         }
@@ -247,8 +247,9 @@ void TBootstrapCommon::InitActorSystem()
     registerOpts.NodeBrokerSecurePort = Configs->Options->NodeBrokerSecurePort;
     registerOpts.InterconnectPort = Configs->Options->InterconnectPort;
     registerOpts.LoadCmsConfigs = Configs->Options->LoadCmsConfigs;
-    registerOpts.UseNodeBrokerSsl = Configs->Options->UseNodeBrokerSsl
-        || Configs->StorageConfig->GetNodeRegistrationUseSsl();
+    registerOpts.UseNodeBrokerSsl =
+        Configs->Options->UseNodeBrokerSsl ||
+        Configs->StorageConfig->GetNodeRegistrationUseSsl();
     registerOpts.Settings = Configs->GetNodeRegistrationSettings();
 
     auto registrant =
@@ -322,11 +323,10 @@ void TBootstrapCommon::InitLogs()
 
 void TBootstrapCommon::RegisterServer(IServerPtr server)
 {
-    StatsRegistry->GetRequestStats()->RegisterIncompleteRequestProvider(std::move(server));
-    RequestStatsUpdater = CreateStatsUpdater(
-        Timer,
-        BackgroundScheduler,
-        StatsRegistry);
+    StatsRegistry->GetRequestStats()->RegisterIncompleteRequestProvider(
+        std::move(server));
+    RequestStatsUpdater =
+        CreateStatsUpdater(Timer, BackgroundScheduler, StatsRegistry);
 
     STORAGE_INFO("Server registered");
 }
@@ -344,8 +344,7 @@ void TBootstrapCommon::InitLWTrace(
     auto traceLog = CreateUnifiedAgentLoggingService(
         Logging,
         Configs->DiagnosticsConfig->GetTracesUnifiedAgentEndpoint(),
-        Configs->DiagnosticsConfig->GetTracesSyslogIdentifier()
-    );
+        Configs->DiagnosticsConfig->GetTracesSyslogIdentifier());
 
     TVector<ITraceReaderPtr> traceReaders;
     if (auto samplingRate = Configs->DiagnosticsConfig->GetSamplingRate()) {
@@ -397,4 +396,4 @@ void TBootstrapCommon::InitLWTrace(
     STORAGE_INFO("LWTrace initialized");
 }
 
-} // namespace NCloud::NFileStore::NDaemon
+}   // namespace NCloud::NFileStore::NDaemon

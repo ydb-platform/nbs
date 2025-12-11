@@ -35,7 +35,8 @@ TRequestGrouping GroupRequests(
     Sort(
         requests.begin(),
         requests.end(),
-        [] (const TRequest& a, const TRequest& b) {
+        [](const TRequest& a, const TRequest& b)
+        {
             const auto& ar = a.Data.Range;
             const auto& br = b.Data.Range;
             if (ar.Start == br.Start) {
@@ -43,8 +44,7 @@ TRequestGrouping GroupRequests(
             }
 
             return ar.Start < br.Start;
-        }
-    );
+        });
 
     TRequestGrouping g;
 
@@ -72,7 +72,8 @@ TRequestGrouping GroupRequests(
 
     TVector<std::pair<TRequest*, ui32>> dedup;
 
-    auto flush = [&] (TRequest* end, TRequest* last) {
+    auto flush = [&](TRequest* end, TRequest* last)
+    {
         g.Groups.emplace_back();
         g.Groups.back().Weight = weight;
 
@@ -105,12 +106,12 @@ TRequestGrouping GroupRequests(
         // minWeight, but flush op does the same thing
         // actually it might be a good idea to unify this code with the
         // logic from flush op and fix this thing
-        const auto rangeSize = cur->Data.Range.End
-            - g.FirstUngrouped->Data.Range.Start;
+        const auto rangeSize =
+            cur->Data.Range.End - g.FirstUngrouped->Data.Range.Start;
 
         if (weight) {
-            if (weight + cur->Weight - lastDiff > maxWeight
-                    || rangeSize > maxRange)
+            if (weight + cur->Weight - lastDiff > maxWeight ||
+                rangeSize > maxRange)
             {
                 flush(cur, last);
 
@@ -122,15 +123,14 @@ TRequestGrouping GroupRequests(
 
         ++it;
 
-        while (it != requests.end()
-                && it->Data.Range.End <= cur->Data.Range.End)
+        while (it != requests.end() &&
+               it->Data.Range.End <= cur->Data.Range.End)
         {
             ++it;
         }
 
         ui32 diff = 0;
-        if (it != requests.end()
-                && it->Data.Range.Start <= cur->Data.Range.End)
+        if (it != requests.end() && it->Data.Range.Start <= cur->Data.Range.End)
         {
             const auto newEnd = it->Data.Range.Start - 1;
             Y_ABORT_UNLESS(cur->Data.Range.Start <= newEnd);

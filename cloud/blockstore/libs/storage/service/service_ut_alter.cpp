@@ -1,7 +1,6 @@
 #include "service_ut.h"
 
 #include <cloud/blockstore/config/storage.pb.h>
-
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
@@ -32,8 +31,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
             512,
             DefaultBlockSize,
             "test_folder",
-            "test_cloud"
-        );
+            "test_cloud");
 
         ui64 creationTs = 0;
         {
@@ -45,35 +43,33 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
 
         service.AlterVolume(DefaultDiskId, "project", "folder", "cloud");
 
-        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(2));
+        env.GetRuntime().DispatchEvents(
+            TDispatchOptions(),
+            TDuration::Seconds(2));
 
         service.SendStatVolumeRequest();
 
         auto response = service.RecvStatVolumeResponse();
         UNIT_ASSERT_C(
             SUCCEEDED(response->GetStatus()),
-            response->GetErrorReason()
-        );
+            response->GetErrorReason());
         UNIT_ASSERT_VALUES_EQUAL(
             "project",
-            response->Record.GetVolume().GetProjectId()
-        );
+            response->Record.GetVolume().GetProjectId());
         UNIT_ASSERT_VALUES_EQUAL(
             "folder",
-            response->Record.GetVolume().GetFolderId()
-        );
+            response->Record.GetVolume().GetFolderId());
         UNIT_ASSERT_VALUES_EQUAL(
             "cloud",
-            response->Record.GetVolume().GetCloudId()
-        );
+            response->Record.GetVolume().GetCloudId());
         UNIT_ASSERT_VALUES_EQUAL(
             creationTs,
-            response->Record.GetVolume().GetCreationTs()
-        );
+            response->Record.GetVolume().GetCreationTs());
         UNIT_ASSERT(response->Record.GetVolume().GetAlterTs() > 0);
     }
 
-    Y_UNIT_TEST(ShouldFailAlterVolumeWithRejectedCodeIfSchemeShardFailsWithVersionMismatch)
+    Y_UNIT_TEST(
+        ShouldFailAlterVolumeWithRejectedCodeIfSchemeShardFailsWithVersionMismatch)
     {
         TTestEnv env;
         ui32 nodeIdx = SetupTestEnv(env);
@@ -84,22 +80,28 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
             512,
             DefaultBlockSize,
             "test_folder",
-            "test_cloud"
-        );
+            "test_cloud");
 
         bool letItPass = false;
 
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
                         if (letItPass) {
                             break;
                         }
                         letItPass = true;
-                        const auto* original = reinterpret_cast<TEvSSProxy::TEvModifySchemeRequest::TPtr*>(&event);
+                        const auto* original = reinterpret_cast<
+                            TEvSSProxy::TEvModifySchemeRequest::TPtr*>(&event);
                         auto modifyScheme = (*original)->Get()->ModifyScheme;
-                        modifyScheme.MutableApplyIf()->Mutable(0)->SetPathVersion(0);
-                        auto msg = std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(std::move(modifyScheme));
+                        modifyScheme.MutableApplyIf()
+                            ->Mutable(0)
+                            ->SetPathVersion(0);
+                        auto msg = std::make_unique<
+                            TEvSSProxy::TEvModifySchemeRequest>(
+                            std::move(modifyScheme));
                         env.GetRuntime().Send(
                             new IEventHandle(
                                 event->Recipient,
@@ -112,9 +114,15 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-        service.SendAlterVolumeRequest(DefaultDiskId, "project", "folder", "cloud");
+        service.SendAlterVolumeRequest(
+            DefaultDiskId,
+            "project",
+            "folder",
+            "cloud");
         auto response = service.RecvAlterVolumeResponse();
-        UNIT_ASSERT_C(FAILED(response->GetStatus()), response->GetErrorReason());
+        UNIT_ASSERT_C(
+            FAILED(response->GetStatus()),
+            response->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldResizeVolume)
@@ -136,36 +144,43 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateVolume(DefaultDiskId, DefaultBlocksCount);
 
-        env.GetRuntime().SetObserverFunc( [nodeIdx, &runtime = env.GetRuntime() ] (TAutoPtr<IEventHandle>& event) {
+        env.GetRuntime().SetObserverFunc(
+            [nodeIdx,
+             &runtime = env.GetRuntime()](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvVolume::EvWaitReadyResponse: {
-                        auto response = std::make_unique<TEvVolume::TEvWaitReadyResponse>(
-                            MakeError(E_FAIL, "waitready failed")
-                        );
-                        runtime.Send(new IEventHandle(
-                            event->Recipient,
-                            event->Sender,
-                            response.release(),
-                            0, // flags
-                            event->Cookie
-                        ), nodeIdx);
+                        auto response =
+                            std::make_unique<TEvVolume::TEvWaitReadyResponse>(
+                                MakeError(E_FAIL, "waitready failed"));
+                        runtime.Send(
+                            new IEventHandle(
+                                event->Recipient,
+                                event->Sender,
+                                response.release(),
+                                0,   // flags
+                                event->Cookie),
+                            nodeIdx);
                         return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
+            });
 
         service.SendResizeVolumeRequest(DefaultDiskId, DefaultBlocksCount * 2);
         auto response = service.RecvResizeVolumeResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_FAIL, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL("waitready failed", response->GetErrorReason());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "waitready failed",
+            response->GetErrorReason());
 
         // retry should fail as well
         service.SendResizeVolumeRequest(DefaultDiskId, DefaultBlocksCount * 2);
         response = service.RecvResizeVolumeResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_FAIL, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL("waitready failed", response->GetErrorReason());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "waitready failed",
+            response->GetErrorReason());
 
         service.DestroyVolume();
     }
@@ -179,7 +194,9 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         service.CreateVolume(DefaultDiskId, DefaultBlocksCount);
 
         ui32 resizeRequests = 0;
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
                         ++resizeRequests;
@@ -213,16 +230,14 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
             DefaultDiskId,
             100_GB / DefaultBlockSize,
             DefaultBlockSize,
-            "", // folderId
-            "", // cloudId
-            mediaKind
-        );
+            "",   // folderId
+            "",   // cloudId
+            mediaKind);
 
         {
             auto request = service.CreateResizeVolumeRequest(
                 DefaultDiskId,
-                150_GB / DefaultBlockSize
-            );
+                150_GB / DefaultBlockSize);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvResizeVolumeResponse();
@@ -232,8 +247,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         {
             auto request = service.CreateResizeVolumeRequest(
                 DefaultDiskId,
-                200_GB / DefaultBlockSize
-            );
+                200_GB / DefaultBlockSize);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvResizeVolumeResponse();
@@ -251,14 +265,12 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
 
     Y_UNIT_TEST(ShouldResizeMirror2Volume)
     {
-        DoTestShouldResizeDiskRegistryVolume(
-            NProto::STORAGE_MEDIA_SSD_MIRROR2);
+        DoTestShouldResizeDiskRegistryVolume(NProto::STORAGE_MEDIA_SSD_MIRROR2);
     }
 
     Y_UNIT_TEST(ShouldResizeMirror3Volume)
     {
-        DoTestShouldResizeDiskRegistryVolume(
-            NProto::STORAGE_MEDIA_SSD_MIRROR3);
+        DoTestShouldResizeDiskRegistryVolume(NProto::STORAGE_MEDIA_SSD_MIRROR3);
     }
 
     Y_UNIT_TEST(ShouldValidateVolumeSize)
@@ -271,8 +283,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         {
             auto request = service.CreateResizeVolumeRequest(
                 DefaultDiskId,
-                MaxVolumeBlocksCount + 1
-            );
+                MaxVolumeBlocksCount + 1);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvResizeVolumeResponse();
@@ -293,14 +304,13 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateVolume(
             DefaultDiskId,
-            1_TB / DefaultBlockSize // 2 partitions
+            1_TB / DefaultBlockSize   // 2 partitions
         );
 
         {
             auto request = service.CreateResizeVolumeRequest(
                 DefaultDiskId,
-                16_TB / DefaultBlockSize
-            );
+                16_TB / DefaultBlockSize);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvResizeVolumeResponse();
@@ -310,8 +320,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         {
             auto request = service.CreateResizeVolumeRequest(
                 DefaultDiskId,
-                32_TB / DefaultBlockSize
-            );
+                32_TB / DefaultBlockSize);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvResizeVolumeResponse();
@@ -346,16 +355,14 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
             DefaultDiskId,
             1_TB / DefaultBlockSize,
             DefaultBlockSize,
-            "", // folderId
-            "", // cloudId
-            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED
-        );
+            "",   // folderId
+            "",   // cloudId
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
 
         {
             auto request = service.CreateResizeVolumeRequest(
                 DefaultDiskId,
-                256_TB / DefaultBlockSize
-            );
+                256_TB / DefaultBlockSize);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvResizeVolumeResponse();
@@ -365,8 +372,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         {
             auto request = service.CreateResizeVolumeRequest(
                 DefaultDiskId,
-                257_TB / DefaultBlockSize
-            );
+                257_TB / DefaultBlockSize);
             service.SendRequest(MakeStorageServiceId(), std::move(request));
 
             auto response = service.RecvResizeVolumeResponse();
@@ -388,21 +394,27 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
 
         bool detectedResizeVolumeRequest = false;
 
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
                         detectedResizeVolumeRequest = true;
-                        auto* msg = event->Get<TEvSSProxy::TEvModifySchemeRequest>();
-                        const auto& alterRequest = msg->ModifyScheme.GetAlterBlockStoreVolume();
-                        const auto& volumeConfig = alterRequest.GetVolumeConfig();
-                        UNIT_ASSERT(volumeConfig.ExplicitChannelProfilesSize() > 4);
+                        auto* msg =
+                            event->Get<TEvSSProxy::TEvModifySchemeRequest>();
+                        const auto& alterRequest =
+                            msg->ModifyScheme.GetAlterBlockStoreVolume();
+                        const auto& volumeConfig =
+                            alterRequest.GetVolumeConfig();
+                        UNIT_ASSERT(
+                            volumeConfig.ExplicitChannelProfilesSize() > 4);
                         break;
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-        service.ResizeVolume(DefaultDiskId, 2*DefaultBlocksCount);
+        service.ResizeVolume(DefaultDiskId, 2 * DefaultBlocksCount);
         UNIT_ASSERT(detectedResizeVolumeRequest);
     }
 
@@ -417,17 +429,19 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
 
         auto error = MakeError(E_ARGUMENT, "Error");
 
-        runtime.SetObserverFunc( [error, nodeIdx, &runtime] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [error, nodeIdx, &runtime](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvDescribeVolumeRequest: {
-                        auto response = std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
-                            error);
+                        auto response = std::make_unique<
+                            TEvSSProxy::TEvDescribeVolumeResponse>(error);
                         runtime.Send(
                             new IEventHandle(
                                 event->Sender,
                                 event->Recipient,
                                 response.release(),
-                                0, // flags
+                                0,   // flags
                                 event->Cookie),
                             nodeIdx);
                         return TTestActorRuntime::EEventAction::DROP;
@@ -436,7 +450,11 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-        service.SendAlterVolumeRequest(DefaultDiskId, "project", "folder", "cloud");
+        service.SendAlterVolumeRequest(
+            DefaultDiskId,
+            "project",
+            "folder",
+            "cloud");
         auto response = service.RecvAlterVolumeResponse();
         UNIT_ASSERT(response->GetStatus() == error.GetCode());
         UNIT_ASSERT(response->GetErrorReason() == error.GetMessage());
@@ -456,7 +474,8 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
     }
 
-    Y_UNIT_TEST(ShouldReturnOriginalErrorIfSchemeShardDetectsSpaceLimitViolation)
+    Y_UNIT_TEST(
+        ShouldReturnOriginalErrorIfSchemeShardDetectsSpaceLimitViolation)
     {
         TTestEnv env;
         ui32 nodeIdx = SetupTestEnv(env);
@@ -465,21 +484,24 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         TServiceClient service(runtime, nodeIdx);
         service.CreateVolume();
 
-        ui32 errCode = MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPreconditionFailed);
+        ui32 errCode =
+            MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPreconditionFailed);
 
-        runtime.SetObserverFunc( [nodeIdx, errCode, &runtime] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [nodeIdx, errCode, &runtime](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
                         auto errStr = "New volume space is over a limit";
-                        auto response =
-                            std::make_unique<TEvSSProxy::TEvModifySchemeResponse>(
-                                MakeError(errCode, errStr));
+                        auto response = std::make_unique<
+                            TEvSSProxy::TEvModifySchemeResponse>(
+                            MakeError(errCode, errStr));
                         runtime.Send(
                             new IEventHandle(
                                 event->Sender,
                                 event->Recipient,
                                 response.release(),
-                                0, // flags
+                                0,   // flags
                                 event->Cookie),
                             nodeIdx);
                         return TTestActorRuntime::EEventAction::DROP;
@@ -488,7 +510,11 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-        service.SendAlterVolumeRequest(DefaultDiskId, "project", "folder", "cloud");
+        service.SendAlterVolumeRequest(
+            DefaultDiskId,
+            "project",
+            "folder",
+            "cloud");
         auto response = service.RecvAlterVolumeResponse();
         UNIT_ASSERT(response->GetStatus() == errCode);
     }
@@ -524,37 +550,45 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
 
         service.ResizeVolume(DefaultDiskId, DefaultBlocksCount * 2, pp);
 
-        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(2));
+        env.GetRuntime().DispatchEvents(
+            TDispatchOptions(),
+            TDuration::Seconds(2));
 
         service.SendStatVolumeRequest();
 
         auto response = service.RecvStatVolumeResponse();
         UNIT_ASSERT_C(
-            SUCCEEDED(response->GetStatus()), response->GetErrorReason());
+            SUCCEEDED(response->GetStatus()),
+            response->GetErrorReason());
 
         const auto& pp2 = response->Record.GetVolume().GetPerformanceProfile();
         UNIT_ASSERT_VALUES_EQUAL(
-            pp.GetMaxReadBandwidth(), pp2.GetMaxReadBandwidth());
+            pp.GetMaxReadBandwidth(),
+            pp2.GetMaxReadBandwidth());
         UNIT_ASSERT_VALUES_EQUAL(
-            pp.GetMaxWriteBandwidth(), pp2.GetMaxWriteBandwidth());
-        UNIT_ASSERT_VALUES_EQUAL(
-            pp.GetMaxReadIops(), pp2.GetMaxReadIops());
-        UNIT_ASSERT_VALUES_EQUAL(
-            pp.GetMaxWriteIops(), pp2.GetMaxWriteIops());
+            pp.GetMaxWriteBandwidth(),
+            pp2.GetMaxWriteBandwidth());
+        UNIT_ASSERT_VALUES_EQUAL(pp.GetMaxReadIops(), pp2.GetMaxReadIops());
+        UNIT_ASSERT_VALUES_EQUAL(pp.GetMaxWriteIops(), pp2.GetMaxWriteIops());
 
         UNIT_ASSERT_VALUES_EQUAL(
-            pp.GetBurstPercentage(), pp2.GetBurstPercentage());
+            pp.GetBurstPercentage(),
+            pp2.GetBurstPercentage());
         UNIT_ASSERT_VALUES_EQUAL(
-            pp.GetMaxPostponedWeight(), pp2.GetMaxPostponedWeight());
+            pp.GetMaxPostponedWeight(),
+            pp2.GetMaxPostponedWeight());
 
         UNIT_ASSERT_VALUES_EQUAL(pp.GetBoostTime(), pp2.GetBoostTime());
         UNIT_ASSERT_VALUES_EQUAL(
-            pp.GetBoostRefillTime(), pp2.GetBoostRefillTime());
+            pp.GetBoostRefillTime(),
+            pp2.GetBoostRefillTime());
         UNIT_ASSERT_VALUES_EQUAL(
-            pp.GetBoostPercentage(), pp2.GetBoostPercentage());
+            pp.GetBoostPercentage(),
+            pp2.GetBoostPercentage());
 
         UNIT_ASSERT_VALUES_EQUAL(
-            pp.GetThrottlingEnabled(), pp2.GetThrottlingEnabled());
+            pp.GetThrottlingEnabled(),
+            pp2.GetThrottlingEnabled());
     }
 
     Y_UNIT_TEST(ShouldNotDecreaseChannelsCount)
@@ -574,24 +608,29 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         ui32 nodeIdx = env.CreateBlockStoreNode(
             "nbs",
             storageConfig,
-            CreateTestDiagnosticsConfig()
-        );
+            CreateTestDiagnosticsConfig());
         TServiceClient service(runtime, nodeIdx);
 
         const ui32 blockCount =
             10ULL * 1024ULL * 1024ULL * 1024ULL / DefaultBlockSize;
 
         ui32 originalChannelsCount = 0;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
-                        auto* msg = event->Get<TEvSSProxy::TEvModifySchemeRequest>();
+                        auto* msg =
+                            event->Get<TEvSSProxy::TEvModifySchemeRequest>();
                         if (msg->ModifyScheme.GetOperationType() ==
                             NKikimrSchemeOp::ESchemeOpCreateBlockStoreVolume)
                         {
-                            const auto& createRequest = msg->ModifyScheme.GetCreateBlockStoreVolume();
-                            const auto& volumeConfig = createRequest.GetVolumeConfig();
-                            originalChannelsCount = volumeConfig.ExplicitChannelProfilesSize();
+                            const auto& createRequest =
+                                msg->ModifyScheme.GetCreateBlockStoreVolume();
+                            const auto& volumeConfig =
+                                createRequest.GetVolumeConfig();
+                            originalChannelsCount =
+                                volumeConfig.ExplicitChannelProfilesSize();
                         }
                         break;
                     }
@@ -603,16 +642,22 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         UNIT_ASSERT_VALUES_EQUAL(14, originalChannelsCount);
 
         ui32 channelsCountOnResize = 0;
-        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
                 switch (event->GetTypeRewrite()) {
                     case TEvSSProxy::EvModifySchemeRequest: {
-                        auto* msg = event->Get<TEvSSProxy::TEvModifySchemeRequest>();
+                        auto* msg =
+                            event->Get<TEvSSProxy::TEvModifySchemeRequest>();
                         if (msg->ModifyScheme.GetOperationType() ==
                             NKikimrSchemeOp::ESchemeOpAlterBlockStoreVolume)
                         {
-                            const auto& alterRequest = msg->ModifyScheme.GetAlterBlockStoreVolume();
-                            const auto& volumeConfig = alterRequest.GetVolumeConfig();
-                            channelsCountOnResize = volumeConfig.ExplicitChannelProfilesSize();
+                            const auto& alterRequest =
+                                msg->ModifyScheme.GetAlterBlockStoreVolume();
+                            const auto& volumeConfig =
+                                alterRequest.GetVolumeConfig();
+                            channelsCountOnResize =
+                                volumeConfig.ExplicitChannelProfilesSize();
                         }
                         break;
                     }
@@ -657,15 +702,20 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
 
         {
             auto response = service.MountVolume(DefaultDiskId);
-            UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == blocksCount);
+            UNIT_ASSERT(
+                response->Record.GetVolume().GetBlocksCount() == blocksCount);
         }
 
         ui64 newBlocksCount = blocksCount * 2;
         service.ResizeVolume(DefaultDiskId, newBlocksCount);
-        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        env.GetRuntime().DispatchEvents(
+            TDispatchOptions(),
+            TDuration::Seconds(1));
         {
             auto response = service.MountVolume(DefaultDiskId);
-            UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == newBlocksCount);
+            UNIT_ASSERT(
+                response->Record.GetVolume().GetBlocksCount() ==
+                newBlocksCount);
         }
     }
 
@@ -677,7 +727,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
             NProto::TStorageServiceConfig config;
             config.SetAllocateSeparateMixedChannels(true);
             config.SetAllocationUnitHDD(1);
-            config.SetMinChannelCount(4); // being explicit
+            config.SetMinChannelCount(4);   // being explicit
             nodeIdx = SetupTestEnv(env, std::move(config));
         }
 
@@ -691,19 +741,16 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
             DefaultBlockSize,
             "",
             "",
-            NCloud::NProto::STORAGE_MEDIA_HYBRID
-        );
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
 
         {
             auto response = service.DescribeVolume(DefaultDiskId);
             UNIT_ASSERT_VALUES_EQUAL(
                 4,
-                response->Record.GetVolume().GetMergedChannelsCount()
-            );
+                response->Record.GetVolume().GetMergedChannelsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 1,
-                response->Record.GetVolume().GetMixedChannelsCount()
-            );
+                response->Record.GetVolume().GetMixedChannelsCount());
         }
 
         ui64 newBlocksCount = blocksCount * 2;
@@ -712,12 +759,10 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
             auto response = service.DescribeVolume(DefaultDiskId);
             UNIT_ASSERT_VALUES_EQUAL(
                 8,
-                response->Record.GetVolume().GetMergedChannelsCount()
-            );
+                response->Record.GetVolume().GetMergedChannelsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 1,
-                response->Record.GetVolume().GetMixedChannelsCount()
-            );
+                response->Record.GetVolume().GetMixedChannelsCount());
         }
     }
 
@@ -738,12 +783,10 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
             auto response = service.DescribeVolume();
             UNIT_ASSERT_VALUES_EQUAL(
                 1,
-                response->Record.GetVolume().GetPartitionsCount()
-            );
+                response->Record.GetVolume().GetPartitionsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 1_GB / DefaultBlockSize,
-                response->Record.GetVolume().GetBlocksCount()
-            );
+                response->Record.GetVolume().GetBlocksCount());
         }
 
         service.ResizeVolume(DefaultDiskId, 3_GB / DefaultBlockSize);
@@ -751,12 +794,10 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
             auto response = service.DescribeVolume();
             UNIT_ASSERT_VALUES_EQUAL(
                 1,
-                response->Record.GetVolume().GetPartitionsCount()
-            );
+                response->Record.GetVolume().GetPartitionsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 3_GB / DefaultBlockSize,
-                response->Record.GetVolume().GetBlocksCount()
-            );
+                response->Record.GetVolume().GetBlocksCount());
         }
     }
 
@@ -778,12 +819,10 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
             auto response = service.DescribeVolume();
             UNIT_ASSERT_VALUES_EQUAL(
                 2,
-                response->Record.GetVolume().GetPartitionsCount()
-            );
+                response->Record.GetVolume().GetPartitionsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 3_GB / DefaultBlockSize,
-                response->Record.GetVolume().GetBlocksCount()
-            );
+                response->Record.GetVolume().GetBlocksCount());
         }
 
         service.ResizeVolume(DefaultDiskId, 10_GB / DefaultBlockSize);
@@ -791,12 +830,10 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
             auto response = service.DescribeVolume();
             UNIT_ASSERT_VALUES_EQUAL(
                 2,
-                response->Record.GetVolume().GetPartitionsCount()
-            );
+                response->Record.GetVolume().GetPartitionsCount());
             UNIT_ASSERT_VALUES_EQUAL(
                 10_GB / DefaultBlockSize,
-                response->Record.GetVolume().GetBlocksCount()
-            );
+                response->Record.GetVolume().GetBlocksCount());
         }
     }
 
@@ -815,7 +852,8 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
 
         {
             auto response = service1.MountVolume(DefaultDiskId);
-            UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == blocksCount);
+            UNIT_ASSERT(
+                response->Record.GetVolume().GetBlocksCount() == blocksCount);
         }
 
         {
@@ -826,22 +864,28 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
                 NProto::IPC_GRPC,
                 NProto::VOLUME_ACCESS_READ_ONLY,
                 NProto::VOLUME_MOUNT_REMOTE);
-            UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == blocksCount);
+            UNIT_ASSERT(
+                response->Record.GetVolume().GetBlocksCount() == blocksCount);
         }
 
         {
             auto response = service1.MountVolume(DefaultDiskId);
-            UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == blocksCount);
+            UNIT_ASSERT(
+                response->Record.GetVolume().GetBlocksCount() == blocksCount);
         }
 
         ui64 newBlocksCount = blocksCount * 2;
         service1.ResizeVolume(DefaultDiskId, newBlocksCount);
 
-        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        env.GetRuntime().DispatchEvents(
+            TDispatchOptions(),
+            TDuration::Seconds(1));
 
         {
             auto response = service1.MountVolume(DefaultDiskId);
-            UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == newBlocksCount);
+            UNIT_ASSERT(
+                response->Record.GetVolume().GetBlocksCount() ==
+                newBlocksCount);
         }
 
         {
@@ -852,7 +896,9 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
                 NProto::IPC_GRPC,
                 NProto::VOLUME_ACCESS_READ_ONLY,
                 NProto::VOLUME_MOUNT_REMOTE);
-            UNIT_ASSERT(response->Record.GetVolume().GetBlocksCount() == newBlocksCount);
+            UNIT_ASSERT(
+                response->Record.GetVolume().GetBlocksCount() ==
+                newBlocksCount);
         }
     }
 
@@ -881,16 +927,14 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
             DefaultDiskId,
             blockCount,
             DefaultBlockSize,
-            TString(),  // folderId
-            "cloud_id"
-        );
+            TString(),   // folderId
+            "cloud_id");
 
         {
             auto response = service1.DescribeVolume();
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
-                response->Record.GetVolume().GetFreshChannelsCount()
-            );
+                response->Record.GetVolume().GetFreshChannelsCount());
         }
 
         service2.ResizeVolume(DefaultDiskId, blockCount + 1);
@@ -899,8 +943,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
             auto response = service2.DescribeVolume();
             UNIT_ASSERT_VALUES_EQUAL(
                 1,
-                response->Record.GetVolume().GetFreshChannelsCount()
-            );
+                response->Record.GetVolume().GetFreshChannelsCount());
         }
     }
 
@@ -912,12 +955,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         ui32 nodeIdx = SetupTestEnv(env, std::move(config));
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateVolume(
-            DefaultDiskId,
-            512,
-            DefaultBlockSize,
-            "folder"
-        );
+        service.CreateVolume(DefaultDiskId, 512, DefaultBlockSize, "folder");
 
         ui64 creationTs = 0;
         {
@@ -930,45 +968,43 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         auto encryptionKeyHash = "encryption_key_hash";
         service.AlterVolume(DefaultDiskId, "", "folder", "", encryptionKeyHash);
 
-        env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(2));
+        env.GetRuntime().DispatchEvents(
+            TDispatchOptions(),
+            TDuration::Seconds(2));
 
         service.SendStatVolumeRequest();
 
         auto response = service.RecvStatVolumeResponse();
         UNIT_ASSERT_C(
             SUCCEEDED(response->GetStatus()),
-            response->GetErrorReason()
-        );
+            response->GetErrorReason());
         UNIT_ASSERT_VALUES_EQUAL(
             encryptionKeyHash,
-            response->Record.GetVolume().GetEncryptionDesc().GetKeyHash()
-        );
+            response->Record.GetVolume().GetEncryptionDesc().GetKeyHash());
         UNIT_ASSERT_VALUES_EQUAL(
             creationTs,
-            response->Record.GetVolume().GetCreationTs()
-        );
+            response->Record.GetVolume().GetCreationTs());
         UNIT_ASSERT(response->Record.GetVolume().GetAlterTs() > 0);
 
         {
             service.AlterVolume(DefaultDiskId, "", "", "", "");
 
-            env.GetRuntime().DispatchEvents(TDispatchOptions(), TDuration::Seconds(2));
+            env.GetRuntime().DispatchEvents(
+                TDispatchOptions(),
+                TDuration::Seconds(2));
 
             service.SendStatVolumeRequest();
 
             auto response = service.RecvStatVolumeResponse();
             UNIT_ASSERT_C(
                 SUCCEEDED(response->GetStatus()),
-                response->GetErrorReason()
-            );
+                response->GetErrorReason());
             UNIT_ASSERT_VALUES_EQUAL(
                 encryptionKeyHash,
-                response->Record.GetVolume().GetEncryptionDesc().GetKeyHash()
-            );
+                response->Record.GetVolume().GetEncryptionDesc().GetKeyHash());
             UNIT_ASSERT_VALUES_EQUAL(
                 creationTs,
-                response->Record.GetVolume().GetCreationTs()
-            );
+                response->Record.GetVolume().GetCreationTs());
             UNIT_ASSERT(response->Record.GetVolume().GetAlterTs() > 0);
         }
     }

@@ -53,8 +53,7 @@ bool IsRootKmsEncryptionForDiskRegistryBasedDiskEnabled(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCreateVolumeActor final
-    : public TActorBootstrapped<TCreateVolumeActor>
+class TCreateVolumeActor final: public TActorBootstrapped<TCreateVolumeActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
@@ -112,10 +111,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TCreateVolumeActor::TCreateVolumeActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
-        NProto::TCreateVolumeRequest request,
-        IRootKmsKeyProviderPtr keyProvider)
+    TRequestInfoPtr requestInfo,
+    TStorageConfigPtr config,
+    NProto::TCreateVolumeRequest request,
+    IRootKmsKeyProviderPtr keyProvider)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , Request(std::move(request))
@@ -138,7 +137,8 @@ ui32 TCreateVolumeActor::GetBlockSize() const
     return blockSize;
 }
 
-NCloud::NProto::EStorageMediaKind TCreateVolumeActor::GetStorageMediaKind() const
+NCloud::NProto::EStorageMediaKind
+TCreateVolumeActor::GetStorageMediaKind() const
 {
     switch (Request.GetStorageMediaKind()) {
         case NCloud::NProto::STORAGE_MEDIA_DEFAULT:
@@ -242,10 +242,8 @@ void TCreateVolumeActor::CreateVolumeImpl(
     NKikimrBlockStore::TVolumeConfig config;
 
     config.SetBlockSize(GetBlockSize());
-    const auto maxBlocksInBlob = CalculateMaxBlocksInBlob(
-        Config->GetMaxBlobSize(),
-        GetBlockSize()
-    );
+    const auto maxBlocksInBlob =
+        CalculateMaxBlocksInBlob(Config->GetMaxBlobSize(), GetBlockSize());
     if (maxBlocksInBlob != MaxBlocksCount) {
         // MaxBlocksInBlob is not equal to the default value
         // => it needs to be stored
@@ -257,10 +255,8 @@ void TCreateVolumeActor::CreateVolumeImpl(
     config.SetCloudId(Request.GetCloudId());
     config.SetProjectId(Request.GetProjectId());
     config.SetTabletVersion(
-        Request.GetTabletVersion()
-        ? Request.GetTabletVersion()
-        : Config->GetDefaultTabletVersion()
-    );
+        Request.GetTabletVersion() ? Request.GetTabletVersion()
+                                   : Config->GetDefaultTabletVersion());
     config.SetStorageMediaKind(GetStorageMediaKind());
     config.SetBaseDiskId(Request.GetBaseDiskId());
     config.SetBaseDiskTabletId(BaseDiskTabletId);
@@ -292,16 +288,15 @@ void TCreateVolumeActor::CreateVolumeImpl(
         volumeParams,
         {},
         Request.GetPerformanceProfile(),
-        config
-    );
+        config);
     config.SetCreationTs(ctx.Now().MicroSeconds());
 
     config.SetPlacementGroupId(Request.GetPlacementGroupId());
     config.SetPlacementPartitionIndex(Request.GetPlacementPartitionIndex());
     if (Request.GetStoragePoolName()) {
         config.SetStoragePoolName(Request.GetStoragePoolName());
-    } else if (volumeParams.MediaKind
-            == NProto::STORAGE_MEDIA_HDD_NONREPLICATED)
+    } else if (
+        volumeParams.MediaKind == NProto::STORAGE_MEDIA_HDD_NONREPLICATED)
     {
         config.SetStoragePoolName(Config->GetNonReplicatedHDDPoolName());
     }
@@ -317,10 +312,12 @@ void TCreateVolumeActor::CreateVolumeImpl(
         *config.MutableEncryptionDesc() = std::move(encryptionDesc);
     }
 
-    auto request = std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(
-        std::move(config));
+    auto request =
+        std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(std::move(config));
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Sending createvolume request for volume %s",
         Request.GetDiskId().Quote().c_str());
 
@@ -353,7 +350,7 @@ void TCreateVolumeActor::HandleCreateEncryptionKeyResponse(
         ctx,
         TBlockStoreComponents::SERVICE,
         "Create volume " << Request.GetDiskId().Quote()
-                            << " with default AES XTS encryption");
+                         << " with default AES XTS encryption");
 
     NKikimrBlockStore::TEncryptionDesc encryptionDesc;
     encryptionDesc.SetMode(NProto::ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY);
@@ -391,8 +388,11 @@ void TCreateVolumeActor::HandleDescribeVolumeResponse(
     const auto& volumeDescr = pathDescr.GetBlockStoreVolumeDescription();
     const auto& tabletId = volumeDescr.GetVolumeTabletId();
 
-    LOG_INFO_S(ctx, TBlockStoreComponents::VOLUME, "Resolved base disk id "
-        << baseDiskId.Quote() << " to tablet id " << tabletId);
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "Resolved base disk id " << baseDiskId.Quote() << " to tablet id "
+                                 << tabletId);
 
     BaseDiskTabletId = tabletId;
 
@@ -421,7 +421,9 @@ void TCreateVolumeActor::HandleCreateVolumeResponse(
         return;
     }
 
-    LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+    LOG_DEBUG(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Sending WaitReady request to volume %s",
         Request.GetDiskId().Quote().c_str());
 
@@ -459,7 +461,8 @@ void TCreateVolumeActor::HandleWaitReadyResponse(
 
     ReplyAndDie(
         ctx,
-        std::make_unique<TEvService::TEvCreateVolumeResponse>(std::move(error)));
+        std::make_unique<TEvService::TEvCreateVolumeResponse>(
+            std::move(error)));
 }
 
 void TCreateVolumeActor::ReplyAndDie(
@@ -508,17 +511,17 @@ NProto::TError ValidateCreateVolumeRequest(
         if (!IsAsciiAlnum(c) && allowedChars.find(c) == TString::npos) {
             return MakeError(
                 E_ARGUMENT,
-                TStringBuilder() << "Bad character at pos "
-                    << i << " in DiskId");
+                TStringBuilder()
+                    << "Bad character at pos " << i << " in DiskId");
         }
     }
 
     if (request.GetTabletVersion() > MaxSupportedTabletVersion) {
         return MakeError(
             E_ARGUMENT,
-            TStringBuilder() << "bad tablet version: "
-                << request.GetTabletVersion()
-                << " < " << MaxSupportedTabletVersion);
+            TStringBuilder()
+                << "bad tablet version: " << request.GetTabletVersion() << " < "
+                << MaxSupportedTabletVersion);
     }
 
     if (request.GetBaseDiskId() && !request.GetBaseDiskCheckpointId()) {
@@ -527,22 +530,22 @@ NProto::TError ValidateCreateVolumeRequest(
             "BaseDiskCheckpointId cannot be empty for overlay disk");
     }
 
-    if (request.GetPartitionsCount() > 1
-            && (request.GetBaseDiskId() || request.GetIsSystem()))
+    if (request.GetPartitionsCount() > 1 &&
+        (request.GetBaseDiskId() || request.GetIsSystem()))
     {
         return MakeError(
             E_ARGUMENT,
             TStringBuilder() << "base and overlay disks with "
-                << request.GetPartitionsCount()
-                << " partitions are not implemented");
+                             << request.GetPartitionsCount()
+                             << " partitions are not implemented");
     }
 
     if (request.GetPartitionsCount() > config.GetMaxPartitionsPerVolume()) {
         return MakeError(
             E_ARGUMENT,
             TStringBuilder() << "too many partitions specified: "
-                << request.GetPartitionsCount() << " > "
-                << config.GetMaxPartitionsPerVolume());
+                             << request.GetPartitionsCount() << " > "
+                             << config.GetMaxPartitionsPerVolume());
     }
 
     const auto mediaKind = request.GetStorageMediaKind();
@@ -550,8 +553,8 @@ NProto::TError ValidateCreateVolumeRequest(
     if (request.GetBlocksCount() > maxBlocks) {
         return MakeError(
             E_ARGUMENT,
-            TStringBuilder() << "disk size for media kind "
-                << MediaKindToString(mediaKind)
+            TStringBuilder()
+                << "disk size for media kind " << MediaKindToString(mediaKind)
                 << " should be <= " << maxBlocks << " blocks");
     }
 
@@ -584,12 +587,14 @@ NProto::TError ValidateCreateVolumeRequest(
                 "AgentIds not allowed for replicated disks");
         }
     } else {
-        const ui64 volumeSize = request.GetBlockSize() * request.GetBlocksCount();
+        const ui64 volumeSize =
+            request.GetBlockSize() * request.GetBlocksCount();
         const ui64 unit = GetAllocationUnit(config, mediaKind);
 
         if (volumeSize % unit != 0) {
             return MakeError(
-                E_ARGUMENT, TStringBuilder()
+                E_ARGUMENT,
+                TStringBuilder()
                     << "volume size should be divisible by " << unit);
         }
     }
@@ -629,7 +634,9 @@ void TServiceActor::HandleCreateVolume(
                 const auto newMediaKind =
                     NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED;
 
-                LOG_WARN(ctx, TBlockStoreComponents::SERVICE,
+                LOG_WARN(
+                    ctx,
+                    TBlockStoreComponents::SERVICE,
                     "Replaced media kind with %d for disk: %s",
                     int(newMediaKind),
                     request.GetDiskId().Quote().c_str());
@@ -637,14 +644,13 @@ void TServiceActor::HandleCreateVolume(
                 request.SetStorageMediaKind(newMediaKind);
                 break;
             }
-            default: break;
+            default:
+                break;
         }
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     const auto error = ValidateCreateVolumeRequest(*Config, request);
     if (HasError(error)) {
@@ -663,7 +669,9 @@ void TServiceActor::HandleCreateVolume(
         return;
     }
 
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
         "Creating volume: %s, %s, %s, %s, %s, %u, %llu, %u, %d",
         request.GetDiskId().Quote().c_str(),
         request.GetProjectId().Quote().c_str(),

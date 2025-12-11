@@ -4,11 +4,11 @@
 
 namespace NCloud::NBlockStore::NRdma {
 
-namespace  {
+namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestNode : TListNode<TTestNode>
+struct TTestNode: TListNode<TTestNode>
 {
     const int Value;
 
@@ -21,123 +21,119 @@ struct TTestNode : TListNode<TTestNode>
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TSimpleListTest)
+Y_UNIT_TEST_SUITE(TSimpleListTest){
+    Y_UNIT_TEST(ShouldDequeueItemsFIFO){TSimpleList<TTestNode> list;
+for (int i = 1; i < 10; ++i) {
+    list.Enqueue(std::make_unique<TTestNode>(i));
+}
+
+for (int i = 1; i < 10; ++i) {
+    auto node = list.Dequeue();
+    UNIT_ASSERT(node);
+    UNIT_ASSERT_EQUAL(node->Value, i);
+}
+
+UNIT_ASSERT(!list.Dequeue());
+}   // namespace NCloud::NBlockStore::NRdma
+
+Y_UNIT_TEST(ShouldAppendLists)
 {
-    Y_UNIT_TEST(ShouldDequeueItemsFIFO)
-    {
-        TSimpleList<TTestNode> list;
-        for (int i = 1; i < 10; ++i) {
-            list.Enqueue(std::make_unique<TTestNode>(i));
-        }
-
-        for (int i = 1; i < 10; ++i) {
-            auto node = list.Dequeue();
-            UNIT_ASSERT(node);
-            UNIT_ASSERT_EQUAL(node->Value, i);
-        }
-
-        UNIT_ASSERT(!list.Dequeue());
+    TSimpleList<TTestNode> list1;
+    for (int i = 1; i < 5; ++i) {
+        list1.Enqueue(std::make_unique<TTestNode>(i));
     }
 
-    Y_UNIT_TEST(ShouldAppendLists)
-    {
-        TSimpleList<TTestNode> list1;
-        for (int i = 1; i < 5; ++i) {
-            list1.Enqueue(std::make_unique<TTestNode>(i));
-        }
-
-        TSimpleList<TTestNode> list2;
-        for (int i = 5; i < 10; ++i) {
-            list2.Enqueue(std::make_unique<TTestNode>(i));
-        }
-
-        TSimpleList<TTestNode> list;
-        list.Append(std::move(list1));
-        list.Append(std::move(list2));
-
-        for (int i = 1; i < 10; ++i) {
-            auto node = list.Dequeue();
-            UNIT_ASSERT(node);
-            UNIT_ASSERT_EQUAL(node->Value, i);
-        }
-
-        UNIT_ASSERT(!list.Dequeue());
+    TSimpleList<TTestNode> list2;
+    for (int i = 5; i < 10; ++i) {
+        list2.Enqueue(std::make_unique<TTestNode>(i));
     }
 
-    Y_UNIT_TEST(ShouldDequeIf)
-    {
-        TSimpleList<TTestNode> even;
-        TSimpleList<TTestNode> odd;
-        TSimpleList<TTestNode> list1;
-        for (int i = 0; i < 10; ++i) {
-            list1.Enqueue(std::make_unique<TTestNode>(i));
-            if (i % 2 == 0) {
-                even.Enqueue(std::make_unique<TTestNode>(i));
-            } else {
-                odd.Enqueue(std::make_unique<TTestNode>(i));
-            }
-        }
+    TSimpleList<TTestNode> list;
+    list.Append(std::move(list1));
+    list.Append(std::move(list2));
 
-        auto onlyEven = list1.DequeueIf([](const auto& node)
-                                        { return node.Value % 2 == 0; });
-
-        while (onlyEven && even) {
-            auto nodeExpected = even.Dequeue();
-            auto nodeActual = onlyEven.Dequeue();
-            UNIT_ASSERT_VALUES_EQUAL(nodeExpected->Value, nodeActual->Value);
-        }
-
-        UNIT_ASSERT(!onlyEven);
-        UNIT_ASSERT(!even);
-
-        while (list1 && odd) {
-            auto nodeExpected = odd.Dequeue();
-            auto nodeActual = list1.Dequeue();
-            UNIT_ASSERT_VALUES_EQUAL(nodeExpected->Value, nodeActual->Value);
-        }
-
-        UNIT_ASSERT(!odd);
-        UNIT_ASSERT(!list1);
+    for (int i = 1; i < 10; ++i) {
+        auto node = list.Dequeue();
+        UNIT_ASSERT(node);
+        UNIT_ASSERT_EQUAL(node->Value, i);
     }
 
-    Y_UNIT_TEST(ShouldIterate)
-    {
-        TSimpleList<TTestNode> list1;
-        for (int i = 0; i < 10; ++i) {
-            list1.Enqueue(std::make_unique<TTestNode>(i));
-        }
+    UNIT_ASSERT(!list.Dequeue());
+}
 
-        int i = 0;
-        for (auto& node: list1) {
-            UNIT_ASSERT_VALUES_EQUAL(i, node.Value);
-            ++i;
+Y_UNIT_TEST(ShouldDequeIf)
+{
+    TSimpleList<TTestNode> even;
+    TSimpleList<TTestNode> odd;
+    TSimpleList<TTestNode> list1;
+    for (int i = 0; i < 10; ++i) {
+        list1.Enqueue(std::make_unique<TTestNode>(i));
+        if (i % 2 == 0) {
+            even.Enqueue(std::make_unique<TTestNode>(i));
+        } else {
+            odd.Enqueue(std::make_unique<TTestNode>(i));
         }
-
-        UNIT_ASSERT_VALUES_EQUAL(10, i);
     }
-};
+
+    auto onlyEven =
+        list1.DequeueIf([](const auto& node) { return node.Value % 2 == 0; });
+
+    while (onlyEven && even) {
+        auto nodeExpected = even.Dequeue();
+        auto nodeActual = onlyEven.Dequeue();
+        UNIT_ASSERT_VALUES_EQUAL(nodeExpected->Value, nodeActual->Value);
+    }
+
+    UNIT_ASSERT(!onlyEven);
+    UNIT_ASSERT(!even);
+
+    while (list1 && odd) {
+        auto nodeExpected = odd.Dequeue();
+        auto nodeActual = list1.Dequeue();
+        UNIT_ASSERT_VALUES_EQUAL(nodeExpected->Value, nodeActual->Value);
+    }
+
+    UNIT_ASSERT(!odd);
+    UNIT_ASSERT(!list1);
+}
+
+Y_UNIT_TEST(ShouldIterate)
+{
+    TSimpleList<TTestNode> list1;
+    for (int i = 0; i < 10; ++i) {
+        list1.Enqueue(std::make_unique<TTestNode>(i));
+    }
+
+    int i = 0;
+    for (auto& node: list1) {
+        UNIT_ASSERT_VALUES_EQUAL(i, node.Value);
+        ++i;
+    }
+
+    UNIT_ASSERT_VALUES_EQUAL(10, i);
+}
+}
+;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TLockFreeListTest)
-{
-    Y_UNIT_TEST(ShouldDequeueItemsFIFO)
-    {
-        TLockFreeList<TTestNode> list;
-        for (int i = 1; i < 10; ++i) {
-            list.Enqueue(std::make_unique<TTestNode>(i));
-        }
+Y_UNIT_TEST_SUITE(TLockFreeListTest){
+    Y_UNIT_TEST(ShouldDequeueItemsFIFO){TLockFreeList<TTestNode> list;
+for (int i = 1; i < 10; ++i) {
+    list.Enqueue(std::make_unique<TTestNode>(i));
+}
 
-        auto items = list.DequeueAll();
+auto items = list.DequeueAll();
 
-        for (int i = 1; i < 10; ++i) {
-            auto node = items.Dequeue();
-            UNIT_ASSERT(node);
-            UNIT_ASSERT_EQUAL(node->Value, i);
-        }
+for (int i = 1; i < 10; ++i) {
+    auto node = items.Dequeue();
+    UNIT_ASSERT(node);
+    UNIT_ASSERT_EQUAL(node->Value, i);
+}
 
-        UNIT_ASSERT(!items.Dequeue());
-    }
-};
+UNIT_ASSERT(!items.Dequeue());
+}
+}
+;
 
 }   // namespace NCloud::NBlockStore::NRdma

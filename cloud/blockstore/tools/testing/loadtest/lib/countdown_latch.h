@@ -31,8 +31,7 @@ public:
     public:
         TGuard(TCountDownLatch& parent)
             : Parent(parent)
-        {
-        }
+        {}
 
         ~TGuard()
         {

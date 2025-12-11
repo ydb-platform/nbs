@@ -149,7 +149,8 @@ using TAtomicStats = TStats<std::atomic<ui64>>;
 using TSimpleStats = TStats<ui64>;
 
 ////////////////////////////////////////////////////////////////////////////////
-struct TCompleteStats {
+struct TCompleteStats
+{
     TSimpleStats SimpleStats;
     TCriticalEvents CriticalEvents;
 };

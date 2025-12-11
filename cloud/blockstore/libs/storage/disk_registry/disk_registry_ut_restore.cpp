@@ -1,4 +1,5 @@
 #include "disk_registry.h"
+
 #include "disk_registry_actor.h"
 
 #include <cloud/blockstore/config/disk.pb.h>
@@ -24,11 +25,9 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-auto GetBackup(TDiskRegistryClient& dr)
-    -> NProto::TDiskRegistryStateBackup
+auto GetBackup(TDiskRegistryClient& dr) -> NProto::TDiskRegistryStateBackup
 {
-    auto response = dr.BackupDiskRegistryState(
-        true // localDB
+    auto response = dr.BackupDiskRegistryState(true   // localDB
     );
 
     return response->Record.GetBackup();
@@ -42,8 +41,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 {
     Y_UNIT_TEST(ShouldRestoreState)
     {
-        auto runtime = TTestRuntimeBuilder()
-            .Build();
+        auto runtime = TTestRuntimeBuilder().Build();
 
         TDiskRegistryClient diskRegistry(*runtime);
         diskRegistry.SetWritableState(true);
@@ -66,26 +64,31 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         TActorId edgeActor = runtime->AllocateEdgeActor();
         auto validatorResponse = std::make_unique<
             TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse>(
-                MakeError(S_OK),
-                CreateRequestInfo(
-                    edgeActor,
-                    0,
-                    MakeIntrusive<TCallContext>(),
-                    {}),
-                snapshot);
+            MakeError(S_OK),
+            CreateRequestInfo(edgeActor, 0, MakeIntrusive<TCallContext>(), {}),
+            snapshot);
         diskRegistry.SendRequest(std::move(validatorResponse));
 
-        runtime->GrabEdgeEvent<TEvDiskRegistry::TEvRestoreDiskRegistryStateResponse>();
+        runtime->GrabEdgeEvent<
+            TEvDiskRegistry::TEvRestoreDiskRegistryStateResponse>();
         {
             auto backup = GetBackup(diskRegistry);
 
             UNIT_ASSERT_VALUES_EQUAL(2, backup.GetDisks().size());
-            UNIT_ASSERT_VALUES_EQUAL("Disk-1", backup.GetDisks()[0].GetDiskId());
-            UNIT_ASSERT_VALUES_EQUAL("Disk-2", backup.GetDisks()[1].GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Disk-1",
+                backup.GetDisks()[0].GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Disk-2",
+                backup.GetDisks()[1].GetDiskId());
 
             UNIT_ASSERT_VALUES_EQUAL(2, backup.GetAgents().size());
-            UNIT_ASSERT_VALUES_EQUAL("Agent-1", backup.GetAgents()[0].GetAgentId());
-            UNIT_ASSERT_VALUES_EQUAL("Agent-2", backup.GetAgents()[1].GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Agent-1",
+                backup.GetAgents()[0].GetAgentId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Agent-2",
+                backup.GetAgents()[1].GetAgentId());
         }
 
         // TODO: test other fields - BrokenDisks, SuspendedDevices, etc.

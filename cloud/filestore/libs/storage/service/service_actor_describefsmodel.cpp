@@ -18,8 +18,9 @@ void TStorageServiceActor::HandleDescribeFileStoreModel(
     const auto& request = ev->Get()->Record;
 
     if (request.GetBlockSize() == 0 || request.GetBlocksCount() == 0) {
-        auto response = std::make_unique<TEvService::TEvDescribeFileStoreModelResponse>(
-            MakeError(E_ARGUMENT, "zero block count or blocks size"));
+        auto response =
+            std::make_unique<TEvService::TEvDescribeFileStoreModelResponse>(
+                MakeError(E_ARGUMENT, "zero block count or blocks size"));
 
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
@@ -31,13 +32,14 @@ void TStorageServiceActor::HandleDescribeFileStoreModel(
     config.SetStorageMediaKind(request.GetStorageMediaKind());
 
     SetupFileStorePerformanceAndChannels(
-        false,  // do not allocate mixed0 channel
+        false,   // do not allocate mixed0 channel
         *StorageConfig,
         config,
-        {}      // clientPerformanceProfile
+        {}   // clientPerformanceProfile
     );
 
-    auto response = std::make_unique<TEvService::TEvDescribeFileStoreModelResponse>();
+    auto response =
+        std::make_unique<TEvService::TEvDescribeFileStoreModelResponse>();
     auto* model = response->Record.MutableFileStoreModel();
     model->SetBlockSize(request.GetBlockSize());
     model->SetBlocksCount(request.GetBlocksCount());

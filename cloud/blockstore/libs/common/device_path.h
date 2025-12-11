@@ -16,10 +16,10 @@ struct DevicePath
     TString Uuid;
 
     DevicePath(
-            const TString protocol,
-            const TString& host = {},
-            ui16 port = 0,
-            const TString& uuid = {})
+        const TString protocol,
+        const TString& host = {},
+        ui16 port = 0,
+        const TString& uuid = {})
         : Protocol(protocol)
         , Host(host)
         , Port(port)

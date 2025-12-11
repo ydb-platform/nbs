@@ -16,10 +16,13 @@ int __attribute__((weak)) DestroyId(rdma_cm_id* id);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define RDMA_DECLARE_PTR(name, type, dereg)                                    \
-    using T##name##Ptr = std::unique_ptr<type, decltype(&dereg)>;              \
-    inline T##name##Ptr WrapPtr(type* ptr) { return { ptr, dereg }; }          \
-// RDMA_DECLARE_PTR
+#define RDMA_DECLARE_PTR(name, type, dereg)                       \
+    using T##name##Ptr = std::unique_ptr<type, decltype(&dereg)>; \
+    inline T##name##Ptr WrapPtr(type* ptr)                        \
+    {                                                             \
+        return {ptr, dereg};                                      \
+    }                                                             \
+    // RDMA_DECLARE_PTR
 
 RDMA_DECLARE_PTR(Context, ibv_context, ibv_close_device);
 RDMA_DECLARE_PTR(DeviceList, ibv_device*, ibv_free_device_list);
@@ -39,9 +42,9 @@ RDMA_DECLARE_PTR(Connection, rdma_cm_id, DestroyId);
 struct TNullPtr
 {
     template <typename T, typename F>
-    operator std::unique_ptr<T, F> () const
+    operator std::unique_ptr<T, F>() const
     {
-        return { nullptr, nullptr };
+        return {nullptr, nullptr};
     }
 };
 
@@ -64,20 +67,17 @@ struct IVerbs
 
     virtual TProtectionDomainPtr CreateProtectionDomain(
         ibv_context* context) = 0;
-    virtual TMemoryRegionPtr RegisterMemoryRegion(
-        ibv_pd* pd,
-        void* addr,
-        size_t length,
-        int flags) = 0;
+    virtual TMemoryRegionPtr
+    RegisterMemoryRegion(ibv_pd* pd, void* addr, size_t length, int flags) = 0;
 
     virtual TCompletionChannelPtr CreateCompletionChannel(
         ibv_context* context) = 0;
     virtual TCompletionQueuePtr CreateCompletionQueue(
-            ibv_context* context,
-            int cqe,
-            void *cq_context,
-            ibv_comp_channel *channel,
-            int comp_vector) = 0;
+        ibv_context* context,
+        int cqe,
+        void* cq_context,
+        ibv_comp_channel* channel,
+        int comp_vector) = 0;
 
     virtual void RequestCompletionEvent(ibv_cq* cq, int solicitedOnly) = 0;
     virtual void* GetCompletionEvent(ibv_cq* cq) = 0;
@@ -92,10 +92,8 @@ struct IVerbs
 
     // connection manager
 
-    virtual TAddressInfoPtr GetAddressInfo(
-        const TString& host,
-        ui32 port,
-        rdma_addrinfo* hints) = 0;
+    virtual TAddressInfoPtr
+    GetAddressInfo(const TString& host, ui32 port, rdma_addrinfo* hints) = 0;
 
     virtual TEventChannelPtr CreateEventChannel() = 0;
     virtual TConnectionEventPtr GetConnectionEvent(
@@ -120,14 +118,13 @@ struct IVerbs
     virtual void Connect(rdma_cm_id* id, rdma_conn_param* param) = 0;
     virtual void Disconnect(rdma_cm_id* id) = 0;
     virtual void Accept(rdma_cm_id* id, rdma_conn_param* param) = 0;
-    virtual void Reject(rdma_cm_id* id,
-        const void* private_data,
-        ui8 private_data_len) = 0;
+    virtual void
+    Reject(rdma_cm_id* id, const void* private_data, ui8 private_data_len) = 0;
 
     virtual void CreateQP(rdma_cm_id* id, ibv_qp_init_attr* attr) = 0;
     virtual void DestroyQP(rdma_cm_id* id) = 0;
 
-    virtual void ModifyQP(ibv_qp *qp, ibv_qp_attr* attr, int mask) = 0;
+    virtual void ModifyQP(ibv_qp* qp, ibv_qp_attr* attr, int mask) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

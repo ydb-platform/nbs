@@ -9,7 +9,6 @@
 #include <cloud/storage/core/libs/kikimr/public.h>
 
 #include <contrib/ydb/core/protos/flat_tx_scheme.pb.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
@@ -62,7 +61,8 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleUpdatePathDescriptionBackup(
-        const TEvSSProxyPrivate::TEvUpdatePathDescriptionBackupRequest::TPtr& ev,
+        const TEvSSProxyPrivate::TEvUpdatePathDescriptionBackupRequest::TPtr&
+            ev,
         const NActors::TActorContext& ctx);
 
     void HandleBackupPathDescriptions(

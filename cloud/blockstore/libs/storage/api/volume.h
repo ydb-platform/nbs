@@ -14,77 +14,77 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_VOLUME_REQUESTS(xxx, ...)                                   \
-    xxx(AddClient,                                                 __VA_ARGS__)\
-    xxx(RemoveClient,                                              __VA_ARGS__)\
-    xxx(WaitReady,                                                 __VA_ARGS__)\
-    xxx(DescribeBlocks,                                            __VA_ARGS__)\
-    xxx(GetPartitionInfo,                                          __VA_ARGS__)\
-    xxx(CompactRange,                                              __VA_ARGS__)\
-    xxx(GetCompactionStatus,                                       __VA_ARGS__)\
-    xxx(ReallocateDisk,                                            __VA_ARGS__)\
-    xxx(GetVolumeLoadInfo,                                         __VA_ARGS__)\
-    xxx(GetUsedBlocks,                                             __VA_ARGS__)\
-    xxx(DeleteCheckpointData,                                      __VA_ARGS__)\
-    xxx(UpdateUsedBlocks,                                          __VA_ARGS__)\
-    xxx(RebuildMetadata,                                           __VA_ARGS__)\
-    xxx(GetRebuildMetadataStatus,                                  __VA_ARGS__)\
-    xxx(ScanDisk,                                                  __VA_ARGS__)\
-    xxx(GetScanDiskStatus,                                         __VA_ARGS__)\
-    xxx(GetVolumeInfo,                                             __VA_ARGS__)\
-    xxx(UpdateVolumeParams,                                        __VA_ARGS__)\
-    xxx(ChangeStorageConfig,                                       __VA_ARGS__)\
-    xxx(GetStorageConfig,                                          __VA_ARGS__)\
-    xxx(GracefulShutdown,                                          __VA_ARGS__)\
-    xxx(LinkLeaderVolumeToFollower,                                __VA_ARGS__)\
-    xxx(UnlinkLeaderVolumeFromFollower,                            __VA_ARGS__)\
-    xxx(UpdateLinkOnFollower,                                      __VA_ARGS__)\
-    xxx(CheckRange,                                                __VA_ARGS__)\
+#define BLOCKSTORE_VOLUME_REQUESTS(xxx, ...)         \
+    xxx(AddClient, __VA_ARGS__)                      \
+    xxx(RemoveClient, __VA_ARGS__)                   \
+    xxx(WaitReady, __VA_ARGS__)                      \
+    xxx(DescribeBlocks, __VA_ARGS__)                 \
+    xxx(GetPartitionInfo, __VA_ARGS__)               \
+    xxx(CompactRange, __VA_ARGS__)                   \
+    xxx(GetCompactionStatus, __VA_ARGS__)            \
+    xxx(ReallocateDisk, __VA_ARGS__)                 \
+    xxx(GetVolumeLoadInfo, __VA_ARGS__)              \
+    xxx(GetUsedBlocks, __VA_ARGS__)                  \
+    xxx(DeleteCheckpointData, __VA_ARGS__)           \
+    xxx(UpdateUsedBlocks, __VA_ARGS__)               \
+    xxx(RebuildMetadata, __VA_ARGS__)                \
+    xxx(GetRebuildMetadataStatus, __VA_ARGS__)       \
+    xxx(ScanDisk, __VA_ARGS__)                       \
+    xxx(GetScanDiskStatus, __VA_ARGS__)              \
+    xxx(GetVolumeInfo, __VA_ARGS__)                  \
+    xxx(UpdateVolumeParams, __VA_ARGS__)             \
+    xxx(ChangeStorageConfig, __VA_ARGS__)            \
+    xxx(GetStorageConfig, __VA_ARGS__)               \
+    xxx(GracefulShutdown, __VA_ARGS__)               \
+    xxx(LinkLeaderVolumeToFollower, __VA_ARGS__)     \
+    xxx(UnlinkLeaderVolumeFromFollower, __VA_ARGS__) \
+    xxx(UpdateLinkOnFollower, __VA_ARGS__)           \
+    xxx(CheckRange, __VA_ARGS__)
 
 // BLOCKSTORE_VOLUME_REQUESTS
 
 // requests forwarded from service to volume
-#define BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE(xxx, ...)                       \
-    xxx(ReadBlocks,           __VA_ARGS__)                                     \
-    xxx(WriteBlocks,          __VA_ARGS__)                                     \
-    xxx(ZeroBlocks,           __VA_ARGS__)                                     \
-    xxx(StatVolume,           __VA_ARGS__)                                     \
-    xxx(CreateCheckpoint,     __VA_ARGS__)                                     \
-    xxx(DeleteCheckpoint,     __VA_ARGS__)                                     \
-    xxx(GetChangedBlocks,     __VA_ARGS__)                                     \
-    xxx(GetCheckpointStatus,  __VA_ARGS__)                                     \
-    xxx(ReadBlocksLocal,      __VA_ARGS__)                                     \
-    xxx(WriteBlocksLocal,     __VA_ARGS__)                                     \
+#define BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE(xxx, ...) \
+    xxx(ReadBlocks, __VA_ARGS__)                         \
+    xxx(WriteBlocks, __VA_ARGS__)                        \
+    xxx(ZeroBlocks, __VA_ARGS__)                         \
+    xxx(StatVolume, __VA_ARGS__)                         \
+    xxx(CreateCheckpoint, __VA_ARGS__)                   \
+    xxx(DeleteCheckpoint, __VA_ARGS__)                   \
+    xxx(GetChangedBlocks, __VA_ARGS__)                   \
+    xxx(GetCheckpointStatus, __VA_ARGS__)                \
+    xxx(ReadBlocksLocal, __VA_ARGS__)                    \
+    xxx(WriteBlocksLocal, __VA_ARGS__)                   \
 // BLOCKSTORE_VOLUME_REQUESTS_FWD_SERVICE
 
 // responses which are forwarded back via volume (volume has handlers for these)
-#define BLOCKSTORE_VOLUME_HANDLED_RESPONSES(xxx, ...)                          \
-    xxx(DescribeBlocks,           __VA_ARGS__)                                 \
-    xxx(GetPartitionInfo,         __VA_ARGS__)                                 \
-    xxx(CompactRange,             __VA_ARGS__)                                 \
-    xxx(GetCompactionStatus,      __VA_ARGS__)                                 \
-    xxx(GetUsedBlocks,            __VA_ARGS__)                                 \
-    xxx(DeleteCheckpointData,     __VA_ARGS__)                                 \
-    xxx(RebuildMetadata,          __VA_ARGS__)                                 \
-    xxx(GetRebuildMetadataStatus, __VA_ARGS__)                                 \
-    xxx(ScanDisk,                 __VA_ARGS__)                                 \
-    xxx(GetScanDiskStatus,        __VA_ARGS__)                                 \
-    xxx(CheckRange,               __VA_ARGS__)                                 \
+#define BLOCKSTORE_VOLUME_HANDLED_RESPONSES(xxx, ...) \
+    xxx(DescribeBlocks, __VA_ARGS__)                  \
+    xxx(GetPartitionInfo, __VA_ARGS__)                \
+    xxx(CompactRange, __VA_ARGS__)                    \
+    xxx(GetCompactionStatus, __VA_ARGS__)             \
+    xxx(GetUsedBlocks, __VA_ARGS__)                   \
+    xxx(DeleteCheckpointData, __VA_ARGS__)            \
+    xxx(RebuildMetadata, __VA_ARGS__)                 \
+    xxx(GetRebuildMetadataStatus, __VA_ARGS__)        \
+    xxx(ScanDisk, __VA_ARGS__)                        \
+    xxx(GetScanDiskStatus, __VA_ARGS__)               \
+    xxx(CheckRange, __VA_ARGS__)                      \
 // BLOCKSTORE_VOLUME_HANDLED_RESPONSES
 
 // responses for the requests forwarded from service which are forwarded back
 // via volume (volume has handlers for these)
-#define BLOCKSTORE_VOLUME_HANDLED_RESPONSES_FWD_SERVICE(xxx, ...)              \
-    xxx(ReadBlocks,           __VA_ARGS__)                                     \
-    xxx(WriteBlocks,          __VA_ARGS__)                                     \
-    xxx(ZeroBlocks,           __VA_ARGS__)                                     \
-    xxx(CreateCheckpoint,     __VA_ARGS__)                                     \
-    xxx(DeleteCheckpoint,     __VA_ARGS__)                                     \
-    xxx(GetChangedBlocks,     __VA_ARGS__)                                     \
-    xxx(GetCheckpointStatus,  __VA_ARGS__)                                     \
-    xxx(ReadBlocksLocal,      __VA_ARGS__)                                     \
-    xxx(WriteBlocksLocal,     __VA_ARGS__)                                     \
-// BLOCKSTORE_VOLUME_HANDLED_RESPONSES_FWD_SERVICE
+#define BLOCKSTORE_VOLUME_HANDLED_RESPONSES_FWD_SERVICE(xxx, ...) \
+    xxx(ReadBlocks, __VA_ARGS__)                                  \
+    xxx(WriteBlocks, __VA_ARGS__)                                 \
+    xxx(ZeroBlocks, __VA_ARGS__)                                  \
+    xxx(CreateCheckpoint, __VA_ARGS__)                            \
+    xxx(DeleteCheckpoint, __VA_ARGS__)                            \
+    xxx(GetChangedBlocks, __VA_ARGS__)                            \
+    xxx(GetCheckpointStatus, __VA_ARGS__)                         \
+    xxx(ReadBlocksLocal, __VA_ARGS__)                             \
+    xxx(WriteBlocksLocal, __VA_ARGS__)                            \
+    // BLOCKSTORE_VOLUME_HANDLED_RESPONSES_FWD_SERVICE
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -107,9 +107,7 @@ struct TEvVolume
         ui64 MigrationIndex;
         ui64 BlockCountToMigrate;
 
-        TUpdateMigrationState(
-                ui64 migrationIndex,
-                ui64 blockCountToMigrate)
+        TUpdateMigrationState(ui64 migrationIndex, ui64 blockCountToMigrate)
             : MigrationIndex(migrationIndex)
             , BlockCountToMigrate(blockCountToMigrate)
         {}
@@ -133,8 +131,7 @@ struct TEvVolume
 
         TRWClientIdChanged(TString rwClientId)
             : RWClientId(std::move(rwClientId))
-        {
-        }
+        {}
     };
 
     //
@@ -149,10 +146,10 @@ struct TEvVolume
         TDuration CpuUsage;
 
         TDiskRegistryBasedPartitionCounters(
-                TPartitionDiskCountersPtr diskCounters,
-                TString diskId,
-                ui64 networkBytes,
-                TDuration cpuUsage)
+            TPartitionDiskCountersPtr diskCounters,
+            TString diskId,
+            ui64 networkBytes,
+            TDuration cpuUsage)
             : DiskCounters(std::move(diskCounters))
             , DiskId(std::move(diskId))
             , NetworkBytes(networkBytes)
@@ -178,8 +175,7 @@ struct TEvVolume
 
         TUpdateResyncState(ui64 resyncIndex)
             : ResyncIndex(resyncIndex)
-        {
-        }
+        {}
     };
 
     //
@@ -257,12 +253,12 @@ struct TEvVolume
         TBlockRangeSet64 FixedPartial;
 
         TScrubberCounters(
-                bool running,
-                TBlockRange64 currentRange,
-                TBlockRangeSet64 minors,
-                TBlockRangeSet64 majors,
-                TBlockRangeSet64 fixed,
-                TBlockRangeSet64 fixedPartial)
+            bool running,
+            TBlockRange64 currentRange,
+            TBlockRangeSet64 minors,
+            TBlockRangeSet64 majors,
+            TBlockRangeSet64 fixed,
+            TBlockRangeSet64 fixedPartial)
             : Running(running)
             , CurrentRange(currentRange)
             , Minors(std::move(minors))
@@ -396,80 +392,55 @@ struct TEvVolume
         EvEnd
     };
 
-    static_assert(EvEnd < (int)TBlockStoreEvents::VOLUME_END,
+    static_assert(
+        EvEnd < (int)TBlockStoreEvents::VOLUME_END,
         "EvEnd expected to be < TBlockStoreEvents::VOLUME_END");
 
     BLOCKSTORE_VOLUME_REQUESTS(BLOCKSTORE_DECLARE_PROTO_EVENTS)
 
-    using TEvReacquireDisk = TRequestEvent<
-        TReacquireDisk,
-        EvReacquireDisk
-    >;
+    using TEvReacquireDisk = TRequestEvent<TReacquireDisk, EvReacquireDisk>;
 
-    using TEvUpdateMigrationState = TRequestEvent<
-        TUpdateMigrationState,
-        EvUpdateMigrationState
-    >;
+    using TEvUpdateMigrationState =
+        TRequestEvent<TUpdateMigrationState, EvUpdateMigrationState>;
 
-    using TEvMigrationStateUpdated = TRequestEvent<
-        TMigrationStateUpdated,
-        EvMigrationStateUpdated
-    >;
+    using TEvMigrationStateUpdated =
+        TRequestEvent<TMigrationStateUpdated, EvMigrationStateUpdated>;
 
-    using TEvRWClientIdChanged = TRequestEvent<
-        TRWClientIdChanged,
-        EvRWClientIdChanged
-    >;
+    using TEvRWClientIdChanged =
+        TRequestEvent<TRWClientIdChanged, EvRWClientIdChanged>;
 
     using TEvDiskRegistryBasedPartitionCounters = TRequestEvent<
         TDiskRegistryBasedPartitionCounters,
-        EvDiskRegistryBasedPartitionCounters
-    >;
+        EvDiskRegistryBasedPartitionCounters>;
 
-    using TEvRdmaUnavailable = TRequestEvent<
-        TRdmaUnavailable,
-        EvRdmaUnavailable
-    >;
+    using TEvRdmaUnavailable =
+        TRequestEvent<TRdmaUnavailable, EvRdmaUnavailable>;
 
-    using TEvUpdateResyncState = TRequestEvent<
-        TUpdateResyncState,
-        EvUpdateResyncState
-    >;
+    using TEvUpdateResyncState =
+        TRequestEvent<TUpdateResyncState, EvUpdateResyncState>;
 
-    using TEvResyncStateUpdated = TRequestEvent<
-        TResyncStateUpdated,
-        EvResyncStateUpdated
-    >;
+    using TEvResyncStateUpdated =
+        TRequestEvent<TResyncStateUpdated, EvResyncStateUpdated>;
 
-    using TEvResyncFinished = TRequestEvent<
-        TResyncFinished,
-        EvResyncFinished
-    >;
+    using TEvResyncFinished = TRequestEvent<TResyncFinished, EvResyncFinished>;
 
-    using TEvMapBaseDiskIdToTabletId = TRequestEvent<
-        TMapBaseDiskIdToTabletId,
-        EvMapBaseDiskIdToTabletId
-    >;
+    using TEvMapBaseDiskIdToTabletId =
+        TRequestEvent<TMapBaseDiskIdToTabletId, EvMapBaseDiskIdToTabletId>;
 
     using TEvClearBaseDiskIdToTabletIdMapping = TRequestEvent<
         TClearBaseDiskIdToTabletIdMapping,
-        EvClearBaseDiskIdToTabletIdMapping
-    >;
+        EvClearBaseDiskIdToTabletIdMapping>;
 
     using TEvPreparePartitionMigrationRequest = TRequestEvent<
         TPreparePartitionMigrationRequest,
-        EvPreparePartitionMigrationRequest
-    >;
+        EvPreparePartitionMigrationRequest>;
 
     using TEvPreparePartitionMigrationResponse = TRequestEvent<
         TPreparePartitionMigrationResponse,
-        EvPreparePartitionMigrationResponse
-    >;
+        EvPreparePartitionMigrationResponse>;
 
     using TEvScrubberCounters =
-        TRequestEvent<TScrubberCounters,
-        EvScrubberCounters
-    >;
+        TRequestEvent<TScrubberCounters, EvScrubberCounters>;
 
     using TEvRetryAcquireReleaseDisk =
         TRequestEvent<TRetryAcquireReleaseDisk, EvRetryAcquireReleaseDisk>;

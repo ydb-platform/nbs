@@ -8,8 +8,7 @@ namespace NVHostUser {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TGetFeature
-    : public IMessage
+class TGetFeature: public IMessage
 {
 private:
     uint64_t Features = 0;
@@ -17,7 +16,7 @@ private:
 public:
     enum EVirtioFeatures
     {
-        //Don't rename these constants. Names are taken from specification
+        // Don't rename these constants. Names are taken from specification
         VHOST_F_LOG_ALL = 26,
         VIRTIO_F_RING_INDIRECT_DESC = 28,
         VHOST_USER_F_PROTOCOL_FEATURES = 30,
@@ -26,8 +25,7 @@ public:
 
     static TString ToString(EVirtioFeatures feature)
     {
-        switch(feature)
-        {
+        switch (feature) {
             case VHOST_F_LOG_ALL:
                 return "VHOST_F_LOG_ALL";
             case VIRTIO_F_RING_INDIRECT_DESC:
@@ -84,4 +82,4 @@ public:
     }
 };
 
-} // namespace NVHostUser
+}   // namespace NVHostUser

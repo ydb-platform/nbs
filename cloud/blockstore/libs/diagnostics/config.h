@@ -15,8 +15,7 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TVolumePerfSettings:
-    public TAtomicRefCount<TVolumePerfSettings>
+struct TVolumePerfSettings: public TAtomicRefCount<TVolumePerfSettings>
 {
     ui32 ReadIops = 0;
     ui64 ReadBandwidth = 0;
@@ -30,11 +29,11 @@ struct TVolumePerfSettings:
     TVolumePerfSettings(const TVolumePerfSettings& rhs) = default;
 
     TVolumePerfSettings(
-            ui32 readIops,
-            ui64 readBandwidth,
-            ui32 writeIops,
-            ui64 writeBandwidth,
-            ui32 criticalFactor)
+        ui32 readIops,
+        ui64 readBandwidth,
+        ui32 writeIops,
+        ui64 writeBandwidth,
+        ui32 criticalFactor)
         : ReadIops(readIops)
         , ReadBandwidth(readBandwidth)
         , WriteIops(writeIops)
@@ -52,22 +51,19 @@ struct TVolumePerfSettings:
 
     bool IsValid() const
     {
-        return ReadIops != 0
-            && ReadBandwidth != 0
-            && WriteIops != 0
-            && WriteBandwidth != 0;
+        return ReadIops != 0 && ReadBandwidth != 0 && WriteIops != 0 &&
+               WriteBandwidth != 0;
     }
 
-    bool operator == (const TVolumePerfSettings& rhs) const
+    bool operator==(const TVolumePerfSettings& rhs) const
     {
-        return ReadIops == rhs.ReadIops
-            && ReadBandwidth == rhs.ReadBandwidth
-            && WriteIops == rhs.WriteIops
-            && WriteBandwidth == rhs.WriteBandwidth
-            && CriticalFactor == rhs.CriticalFactor;
+        return ReadIops == rhs.ReadIops && ReadBandwidth == rhs.ReadBandwidth &&
+               WriteIops == rhs.WriteIops &&
+               WriteBandwidth == rhs.WriteBandwidth &&
+               CriticalFactor == rhs.CriticalFactor;
     }
 
-    bool operator != (const TVolumePerfSettings& rhs) const = default;
+    bool operator!=(const TVolumePerfSettings& rhs) const = default;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

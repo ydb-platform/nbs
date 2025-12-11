@@ -6,6 +6,7 @@
 #include <cloud/filestore/libs/service/endpoint.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/service/request.h>
+
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
@@ -31,19 +32,19 @@ bool IsRetriableError(const NProto::TError& error)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_DECLARE_METHOD(name, proto, ...)                             \
-    struct T##name##Method                                                     \
-    {                                                                          \
-        using TRequest = NProto::T##proto##Request;                            \
-        using TResponse = NProto::T##proto##Response;                          \
-                                                                               \
-        template <typename T, typename ...TArgs>                               \
-        static TFuture<TResponse> Execute(T& client, TArgs&& ...args)          \
-        {                                                                      \
-            return client.proto(std::forward<TArgs>(args)...);                 \
-        }                                                                      \
-    };                                                                         \
-// FILESTORE_DECLARE_METHOD
+#define FILESTORE_DECLARE_METHOD(name, proto, ...)                    \
+    struct T##name##Method                                            \
+    {                                                                 \
+        using TRequest = NProto::T##proto##Request;                   \
+        using TResponse = NProto::T##proto##Response;                 \
+                                                                      \
+        template <typename T, typename... TArgs>                      \
+        static TFuture<TResponse> Execute(T& client, TArgs&&... args) \
+        {                                                             \
+            return client.proto(std::forward<TArgs>(args)...);        \
+        }                                                             \
+    };                                                                \
+    // FILESTORE_DECLARE_METHOD
 
 #define FILESTORE_DECLARE_METHOD_FS(name, ...) \
     FILESTORE_DECLARE_METHOD(name##Fs, name, __VA_ARGS__)
@@ -72,8 +73,8 @@ struct TRequestState
     TPromise<typename T::TResponse> Response;
 
     TRequestState(
-            TCallContextPtr callContext,
-            std::shared_ptr<typename T::TRequest> request)
+        TCallContextPtr callContext,
+        std::shared_ptr<typename T::TRequest> request)
         : CallContext(std::move(callContext))
         , Request(std::move(request))
         , Response(NewPromise<typename T::TResponse>())
@@ -119,11 +120,11 @@ protected:
 
 public:
     TDurableClientBase(
-            ILoggingServicePtr logging,
-            ITimerPtr timer,
-            ISchedulerPtr scheduler,
-            IRetryPolicyPtr retryPolicy,
-            std::shared_ptr<TClient> client)
+        ILoggingServicePtr logging,
+        ITimerPtr timer,
+        ISchedulerPtr scheduler,
+        IRetryPolicyPtr retryPolicy,
+        std::shared_ptr<TClient> client)
         : Logging(std::move(logging))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
@@ -146,18 +147,19 @@ public:
     template <typename T>
     void ExecuteRequest(TRequestStatePtr<T> state)
     {
-        T::Execute(*Client, state->CallContext, state->Request).Subscribe(
-            [state = std::move(state),
-             weakPtr = this->weak_from_this()] (
-                const auto& future) mutable
-            {
-                if (auto self = weakPtr.lock()) {
-                    self->HandleResponse(std::move(state), future);
-                } else {
-                    state->Response.SetValue(
-                        TErrorResponse(E_INVALID_STATE, "request was cancelled"));
-                }
-            });
+        T::Execute(*Client, state->CallContext, state->Request)
+            .Subscribe(
+                [state = std::move(state),
+                 weakPtr = this->weak_from_this()](const auto& future) mutable
+                {
+                    if (auto self = weakPtr.lock()) {
+                        self->HandleResponse(std::move(state), future);
+                    } else {
+                        state->Response.SetValue(TErrorResponse(
+                            E_INVALID_STATE,
+                            "request was cancelled"));
+                    }
+                });
     }
 
 private:
@@ -175,50 +177,51 @@ private:
                 // retry request
                 ++state->Retries;
 
-                STORAGE_WARN(GetRequestInfo(*state->Request)
-                    << " #" << state->CallContext->RequestId
-                    << " retry request"
+                STORAGE_WARN(
+                    GetRequestInfo(*state->Request)
+                    << " #" << state->CallContext->RequestId << " retry request"
                     << " (retries: " << state->Retries
                     << ", timeout: " << FormatDuration(state->Backoff)
-                    << ", error: " << FormatError(error)
-                    << ")");
+                    << ", error: " << FormatError(error) << ")");
 
                 Scheduler->Schedule(
                     Timer->Now() + state->Backoff,
-                    [state, weakPtr = this->weak_from_this()] {
+                    [state, weakPtr = this->weak_from_this()]
+                    {
                         if (auto self = weakPtr.lock()) {
                             self->ExecuteRequest(state);
                         } else {
-                            state->Response.SetValue(
-                                TErrorResponse(E_INVALID_STATE, "request was cancelled"));
+                            state->Response.SetValue(TErrorResponse(
+                                E_INVALID_STATE,
+                                "request was cancelled"));
                         }
                     });
                 return;
             } else if (IsRetriableError(error)) {
                 auto& error = *response.MutableError();
                 error.SetCode(E_RETRY_TIMEOUT);
-                error.SetMessage(TStringBuilder()
-                    << "Retry timeout "
-                    << "(" << error.GetCode() << "). "
+                error.SetMessage(
+                    TStringBuilder()
+                    << "Retry timeout " << "(" << error.GetCode() << "). "
                     << error.GetMessage());
             }
         } else {
             // log successful request
             if (state->Retries) {
                 auto duration = TInstant::Now() - state->Started;
-                STORAGE_INFO(GetRequestInfo(*state->Request)
+                STORAGE_INFO(
+                    GetRequestInfo(*state->Request)
                     << " #" << state->CallContext->RequestId
-                    << " request completed"
-                    << " (retries: " << state->Retries
-                    << ", duration: " << FormatDuration(duration)
-                    << ")");
+                    << " request completed" << " (retries: " << state->Retries
+                    << ", duration: " << FormatDuration(duration) << ")");
             }
         }
 
         try {
             state->Response.SetValue(std::move(response));
         } catch (...) {
-            STORAGE_ERROR(GetRequestInfo(*state->Request)
+            STORAGE_ERROR(
+                GetRequestInfo(*state->Request)
                 << " #" << state->CallContext->RequestId
                 << " exception in callback: " << CurrentExceptionMessage());
         }
@@ -232,19 +235,19 @@ class TDurableFileStoreClient final
 {
     using TDurableClientBase::TDurableClientBase;
 
-#define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request)  override           \
-    {                                                                          \
-        auto state = MakeIntrusive<TRequestState<T##name##Fs##Method>>(        \
-            std::move(callContext),                                            \
-            std::move(request));                                               \
-                                                                               \
-        ExecuteRequest(state);                                                 \
-        return state->Response;                                                \
-    }                                                                          \
-//  FILESTORE_IMPLEMENT_METHOD
+#define FILESTORE_IMPLEMENT_METHOD(name, ...)                           \
+    TFuture<NProto::T##name##Response> name(                            \
+        TCallContextPtr callContext,                                    \
+        std::shared_ptr<NProto::T##name##Request> request) override     \
+    {                                                                   \
+        auto state = MakeIntrusive<TRequestState<T##name##Fs##Method>>( \
+            std::move(callContext),                                     \
+            std::move(request));                                        \
+                                                                        \
+        ExecuteRequest(state);                                          \
+        return state->Response;                                         \
+    }                                                                   \
+    //  FILESTORE_IMPLEMENT_METHOD
 
     FILESTORE_SERVICE(FILESTORE_IMPLEMENT_METHOD);
     FILESTORE_IMPLEMENT_METHOD(ReadDataLocal);
@@ -255,7 +258,8 @@ class TDurableFileStoreClient final
     void GetSessionEventsStream(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TGetSessionEventsRequest> request,
-        IResponseHandlerPtr<NProto::TGetSessionEventsResponse> responseHandler) override
+        IResponseHandlerPtr<NProto::TGetSessionEventsResponse> responseHandler)
+        override
     {
         Client->GetSessionEventsStream(
             std::move(callContext),
@@ -281,19 +285,19 @@ class TDurableEndpointManagerClient final
         return Client->RestoreEndpoints();
     }
 
-#define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
-    TFuture<NProto::T##name##Response> name(                                   \
-        TCallContextPtr callContext,                                           \
-        std::shared_ptr<NProto::T##name##Request> request)  override           \
-    {                                                                          \
-        auto state = MakeIntrusive<TRequestState<T##name##Vhost##Method>>(     \
-            std::move(callContext),                                            \
-            std::move(request));                                               \
-                                                                               \
-        ExecuteRequest(state);                                                 \
-        return state->Response;                                                \
-    }                                                                          \
-//  FILESTORE_IMPLEMENT_METHOD
+#define FILESTORE_IMPLEMENT_METHOD(name, ...)                              \
+    TFuture<NProto::T##name##Response> name(                               \
+        TCallContextPtr callContext,                                       \
+        std::shared_ptr<NProto::T##name##Request> request) override        \
+    {                                                                      \
+        auto state = MakeIntrusive<TRequestState<T##name##Vhost##Method>>( \
+            std::move(callContext),                                        \
+            std::move(request));                                           \
+                                                                           \
+        ExecuteRequest(state);                                             \
+        return state->Response;                                            \
+    }                                                                      \
+    //  FILESTORE_IMPLEMENT_METHOD
 
     FILESTORE_ENDPOINT_SERVICE(FILESTORE_IMPLEMENT_METHOD);
 
@@ -302,8 +306,7 @@ class TDurableEndpointManagerClient final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRetryPolicy final
-    : public IRetryPolicy
+struct TRetryPolicy final: public IRetryPolicy
 {
     TClientConfigPtr Config;
 

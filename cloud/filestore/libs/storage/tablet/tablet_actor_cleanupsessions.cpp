@@ -61,10 +61,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TSyncShardSessionsActor::TSyncShardSessionsActor(
-        TString logTag,
-        TActorId tablet,
-        TVector<TString> shardIds,
-        TRequestInfoPtr requestInfo)
+    TString logTag,
+    TActorId tablet,
+    TVector<TString> shardIds,
+    TRequestInfoPtr requestInfo)
     : LogTag(std::move(logTag))
     , Tablet(tablet)
     , ShardIds(std::move(shardIds))
@@ -95,7 +95,7 @@ void TSyncShardSessionsActor::DescribeSessions(const TActorContext& ctx)
         ctx.Send(
             MakeIndexTabletProxyServiceId(),
             request.release(),
-            {}, // flags
+            {},   // flags
             cookie++);
     }
 }
@@ -108,7 +108,9 @@ void TSyncShardSessionsActor::HandleDescribeSessionsResponse(
 
     TABLET_VERIFY(ev->Cookie < ShardIds.size());
     const auto& shardId = ShardIds[ev->Cookie];
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET_WORKER,
         "%s[%s] sessions described: %lu (error %s)",
         LogTag.c_str(),
         shardId.c_str(),
@@ -153,7 +155,9 @@ void TSyncShardSessionsActor::HandleSyncShardSessionsResponse(
 {
     auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET_WORKER,
         "%s[%s] sessions synced: %lu (error %s)",
         LogTag.c_str(),
         msg->Info.ShardId.c_str(),
@@ -265,10 +269,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TCleanupSessionsActor::TCleanupSessionsActor(
-        TString logTag,
-        TActorId tablet,
-        TRequestInfoPtr requestInfo,
-        TVector<NProto::TSession> sessions)
+    TString logTag,
+    TActorId tablet,
+    TRequestInfoPtr requestInfo,
+    TVector<NProto::TSession> sessions)
     : LogTag(std::move(logTag))
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
@@ -284,7 +288,9 @@ void TCleanupSessionsActor::Bootstrap(const TActorContext& ctx)
 void TCleanupSessionsActor::DestroySessions(const TActorContext& ctx)
 {
     for (size_t i = 0; i < Sessions.size(); ++i) {
-        LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER,
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET_WORKER,
             "%s[%s] initiating session cleanup",
             LogTag.c_str(),
             Sessions[i].GetSessionId().c_str());
@@ -308,7 +314,9 @@ void TCleanupSessionsActor::HandleSessionDestroyed(
     auto* msg = ev->Get();
 
     TABLET_VERIFY(ev->Cookie < Sessions.size());
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET_WORKER,
         "%s[%s] session cleaned: (error %s)",
         LogTag.c_str(),
         Sessions[ev->Cookie].GetSessionId().c_str(),
@@ -353,7 +361,9 @@ STFUNC(TCleanupSessionsActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvIndexTablet::TEvDestroySessionResponse, HandleSessionDestroyed);
+        HFunc(
+            TEvIndexTablet::TEvDestroySessionResponse,
+            HandleSessionDestroyed);
 
         default:
             HandleUnexpectedEvent(
@@ -400,7 +410,9 @@ void TIndexTabletActor::HandleSyncSessions(
         auto response = std::make_unique<TResponse>();
         NCloud::Reply(ctx, *ev, std::move(response));
 
-        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s SyncSessions dud",
             LogTag.c_str());
 
@@ -408,10 +420,8 @@ void TIndexTabletActor::HandleSyncSessions(
         return;
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     auto actor = std::make_unique<TSyncShardSessionsActor>(
@@ -430,14 +440,18 @@ void TIndexTabletActor::HandleSyncSessionsCompleted(
 {
     const auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s SyncSessions completed (%s)",
         LogTag.c_str(),
         FormatError(msg->GetError()).c_str());
 
     ui32 sessionsSynced = 0;
     for (const auto& shardSessionsInfo: msg->ShardSessionsInfos) {
-        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET,
             "%s Synced %lu sessions for shard %s",
             LogTag.c_str(),
             shardSessionsInfo.SessionCount,
@@ -446,7 +460,9 @@ void TIndexTabletActor::HandleSyncSessionsCompleted(
         sessionsSynced += shardSessionsInfo.SessionCount;
     }
 
-    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s Synced %u sessions for %lu shards",
         LogTag.c_str(),
         sessionsSynced,
@@ -476,9 +492,7 @@ void TIndexTabletActor::HandleCleanupSessions(
 
     CleanupSessionsScheduled = false;
 
-    Metrics.SessionCleanupAttempts.fetch_add(
-        1,
-        std::memory_order_relaxed);
+    Metrics.SessionCleanupAttempts.fetch_add(1, std::memory_order_relaxed);
 
     auto sessions = GetTimedOutSessions(ctx.Now());
     if (sessions.empty()) {
@@ -500,10 +514,8 @@ void TIndexTabletActor::HandleCleanupSessions(
         list[i].CopyFrom(*sessions[i]);
     }
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     auto actor = std::make_unique<TCleanupSessionsActor>(
@@ -522,7 +534,9 @@ void TIndexTabletActor::HandleCleanupSessionsCompleted(
 {
     const auto* msg = ev->Get();
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s CleanupSessions completed (%s)",
         LogTag.c_str(),
         FormatError(msg->GetError()).c_str());

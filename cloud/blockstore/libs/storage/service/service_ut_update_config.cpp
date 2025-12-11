@@ -10,7 +10,7 @@ using namespace NActors;
 
 using namespace NKikimr;
 
-namespace  {
+namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -88,23 +88,30 @@ Y_UNIT_TEST_SUITE(TServiceUpdateDiskRegistryConfigTest)
 
         constexpr int configVersion = 0;
 
-        const TVector agents {
-            CreateKnownAgentOld("agent-0002", {"uuid-2.2", "uuid-2.1", "uuid-2.3"}),
+        const TVector agents{
+            CreateKnownAgentOld(
+                "agent-0002",
+                {"uuid-2.2", "uuid-2.1", "uuid-2.3"}),
             CreateKnownAgent("agent-0001", {"uuid-1.1", "uuid-1.2"}),
-            CreateKnownAgent("agent-0003", {"uuid-3.1", "uuid-3.3", "uuid-3.2"})
-        };
+            CreateKnownAgent(
+                "agent-0003",
+                {"uuid-3.1", "uuid-3.3", "uuid-3.2"})};
 
-        const TVector deviceOverrides {
+        const TVector deviceOverrides{
             CreateDeviceOverride("foo", "uuid-1", 42),
             CreateDeviceOverride("bar", "uuid-2", 100),
             CreateDeviceOverride("baz", "uuid-3", 200),
-            CreateDeviceOverride("fuz", "uuid-4", 300)
-        };
+            CreateDeviceOverride("fuz", "uuid-4", 300)};
 
-        const TVector devicePools {
-            CreateDevicePoolConfig("ssd-v1", NProto::DEVICE_POOL_KIND_LOCAL, 100_GB),
-            CreateDevicePoolConfig("ssd-v2", NProto::DEVICE_POOL_KIND_LOCAL, 368_GB)
-        };
+        const TVector devicePools{
+            CreateDevicePoolConfig(
+                "ssd-v1",
+                NProto::DEVICE_POOL_KIND_LOCAL,
+                100_GB),
+            CreateDevicePoolConfig(
+                "ssd-v2",
+                NProto::DEVICE_POOL_KIND_LOCAL,
+                368_GB)};
 
         service.UpdateDiskRegistryConfig(
             configVersion,
@@ -118,7 +125,9 @@ Y_UNIT_TEST_SUITE(TServiceUpdateDiskRegistryConfigTest)
         const auto& r = response->Record;
         UNIT_ASSERT_VALUES_EQUAL(1, r.GetVersion());
         UNIT_ASSERT_VALUES_EQUAL(agents.size(), r.KnownAgentsSize());
-        UNIT_ASSERT_VALUES_EQUAL(deviceOverrides.size(), r.DeviceOverridesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            deviceOverrides.size(),
+            r.DeviceOverridesSize());
         UNIT_ASSERT_VALUES_EQUAL(devicePools.size(), r.KnownDevicePoolsSize());
 
         {
@@ -182,13 +191,10 @@ Y_UNIT_TEST_SUITE(TServiceUpdateDiskRegistryConfigTest)
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
-        const TVector agents1 {
-            CreateKnownAgent("agent-0001", {"uuid-1", "uuid-2"})
-        };
+        const TVector agents1{
+            CreateKnownAgent("agent-0001", {"uuid-1", "uuid-2"})};
 
-        const TVector agents2 {
-            CreateKnownAgent("agent-0001", {"uuid-1"})
-        };
+        const TVector agents2{CreateKnownAgent("agent-0001", {"uuid-1"})};
 
         service.UpdateDiskRegistryConfig(0, agents1);
         service.SendUpdateDiskRegistryConfigRequest(10, agents2);
@@ -203,10 +209,10 @@ Y_UNIT_TEST_SUITE(TServiceUpdateDiskRegistryConfigTest)
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
-        const TVector agents1 {
+        const TVector agents1{
             CreateKnownAgent("agent-0001", {"uuid-1", "uuid-2"})};
 
-        const TVector agents2 {
+        const TVector agents2{
             CreateKnownAgent("agent-0001", {"uuid-1", "uuid-2"}),
             CreateKnownAgent("agent-0002", {"uuid-1"})};
 
@@ -222,9 +228,9 @@ Y_UNIT_TEST_SUITE(TServiceUpdateDiskRegistryConfigTest)
         service.UpdateDiskRegistryConfig(
             10,
             agents2,
-            TVector<NProto::TDeviceOverride> {},
-            TVector<NProto::TKnownDevicePool> {},
-            true    // ignoreVersion
+            TVector<NProto::TDeviceOverride>{},
+            TVector<NProto::TKnownDevicePool>{},
+            true   // ignoreVersion
         );
 
         {
@@ -233,7 +239,7 @@ Y_UNIT_TEST_SUITE(TServiceUpdateDiskRegistryConfigTest)
             UNIT_ASSERT_VALUES_EQUAL(2, r.GetVersion());
             UNIT_ASSERT_VALUES_EQUAL(2, r.KnownAgentsSize());
 
-            TVector ids {
+            TVector ids{
                 r.GetKnownAgents(0).GetAgentId(),
                 r.GetKnownAgents(1).GetAgentId()};
 

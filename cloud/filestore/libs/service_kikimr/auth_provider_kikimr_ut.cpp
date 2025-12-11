@@ -1,8 +1,8 @@
 #include "auth_provider_kikimr.h"
 
 #include <cloud/filestore/libs/service/auth_provider.h>
-#include <cloud/filestore/libs/service/service_auth.h>
 #include <cloud/filestore/libs/service/filestore_test.h>
+#include <cloud/filestore/libs/service/service_auth.h>
 #include <cloud/filestore/libs/service_kikimr/ut/kikimr_test_env.h>
 
 #include <cloud/storage/core/libs/actors/helpers.h>
@@ -21,12 +21,12 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestAuthorizerActor
-    : public TActor<TTestAuthorizerActor>
+class TTestAuthorizerActor: public TActor<TTestAuthorizerActor>
 {
 public:
     std::function<std::unique_ptr<bool>(
-        const TEvAuth::TEvAuthorizationRequest::TPtr&)> AuthorizeHandler;
+        const TEvAuth::TEvAuthorizationRequest::TPtr&)>
+        AuthorizeHandler;
 
 public:
     TTestAuthorizerActor()
@@ -34,10 +34,8 @@ public:
     {}
 
 private:
-    STRICT_STFUNC(
-        StateWork,
-        HFunc(TEvAuth::TEvAuthorizationRequest, HandleAuthorize);
-    )
+    STRICT_STFUNC(StateWork,
+                  HFunc(TEvAuth::TEvAuthorizationRequest, HandleAuthorize);)
 
     void HandleAuthorize(
         const TEvAuth::TEvAuthorizationRequest::TPtr& ev,
@@ -56,7 +54,8 @@ private:
             NCloud::Reply(
                 ctx,
                 *ev,
-                std::make_unique<TEvAuth::TEvAuthorizationResponse>(std::move(error)));
+                std::make_unique<TEvAuth::TEvAuthorizationResponse>(
+                    std::move(error)));
         }
     }
 };
@@ -72,14 +71,14 @@ Y_UNIT_TEST_SUITE(TKikimrAuthProviderTest)
         int volumeHandlerCount = 0;
         auto testService = std::make_shared<TFileStoreTest>();
         testService->CreateFileStoreHandler =
-            [&] (TCallContextPtr callContext,
+            [&](TCallContextPtr callContext,
                 std::shared_ptr<NProto::TCreateFileStoreRequest> request)
-            {
-                Y_UNUSED(callContext);
-                Y_UNUSED(request);
-                ++volumeHandlerCount;
-                return MakeFuture<NProto::TCreateFileStoreResponse>();
-            };
+        {
+            Y_UNUSED(callContext);
+            Y_UNUSED(request);
+            ++volumeHandlerCount;
+            return MakeFuture<NProto::TCreateFileStoreResponse>();
+        };
 
         const TString authToken = "TEST_AUTH_TOKEN";
 
@@ -87,14 +86,15 @@ Y_UNIT_TEST_SUITE(TKikimrAuthProviderTest)
         int authorizeHandlerCount = 0;
         auto authorizerActor = std::make_unique<TTestAuthorizerActor>();
         authorizerActor->AuthorizeHandler =
-            [&] (const TEvAuth::TEvAuthorizationRequest::TPtr& ev) {
-                ++authorizeHandlerCount;
-                UNIT_ASSERT_EQUAL(ev->Get()->Token, authToken);
-                UNIT_ASSERT_EQUAL(
-                    ev->Get()->Permissions,
-                    CreatePermissionList({EPermission::Create}));
-                return std::make_unique<bool>(authorizeResult);
-            };
+            [&](const TEvAuth::TEvAuthorizationRequest::TPtr& ev)
+        {
+            ++authorizeHandlerCount;
+            UNIT_ASSERT_EQUAL(ev->Get()->Token, authToken);
+            UNIT_ASSERT_EQUAL(
+                ev->Get()->Permissions,
+                CreatePermissionList({EPermission::Create}));
+            return std::make_unique<bool>(authorizeResult);
+        };
 
         auto actorSystem = MakeIntrusive<TTestActorSystem>();
         actorSystem->RegisterTestAuthorizer(std::move(authorizerActor));
@@ -107,10 +107,10 @@ Y_UNIT_TEST_SUITE(TKikimrAuthProviderTest)
         // When requiring authorization and failing it, we fail the request.
         {
             auto request = std::make_shared<NProto::TCreateFileStoreRequest>();
-            request->MutableHeaders()->MutableInternal()->
-                SetRequestSource(NProto::SOURCE_SECURE_CONTROL_CHANNEL);
-            request->MutableHeaders()->MutableInternal()->
-                SetAuthToken(authToken);
+            request->MutableHeaders()->MutableInternal()->SetRequestSource(
+                NProto::SOURCE_SECURE_CONTROL_CHANNEL);
+            request->MutableHeaders()->MutableInternal()->SetAuthToken(
+                authToken);
 
             auto callContext = MakeIntrusive<TCallContext>();
             callContext->RequestType = EFileStoreRequest::CreateFileStore;
@@ -129,10 +129,10 @@ Y_UNIT_TEST_SUITE(TKikimrAuthProviderTest)
         // When not requiring authorization, we skip it.
         {
             auto request = std::make_shared<NProto::TCreateFileStoreRequest>();
-            request->MutableHeaders()->MutableInternal()->
-                SetRequestSource(NProto::SOURCE_FD_DATA_CHANNEL);
-            request->MutableHeaders()->MutableInternal()->
-                SetAuthToken(TString());
+            request->MutableHeaders()->MutableInternal()->SetRequestSource(
+                NProto::SOURCE_FD_DATA_CHANNEL);
+            request->MutableHeaders()->MutableInternal()->SetAuthToken(
+                TString());
 
             auto callContext = MakeIntrusive<TCallContext>();
             callContext->RequestType = EFileStoreRequest::CreateFileStore;
@@ -152,10 +152,10 @@ Y_UNIT_TEST_SUITE(TKikimrAuthProviderTest)
         {
             authorizeResult = true;
             auto request = std::make_shared<NProto::TCreateFileStoreRequest>();
-            request->MutableHeaders()->MutableInternal()->
-                SetRequestSource(NProto::SOURCE_SECURE_CONTROL_CHANNEL);
-            request->MutableHeaders()->MutableInternal()->
-                SetAuthToken(authToken);
+            request->MutableHeaders()->MutableInternal()->SetRequestSource(
+                NProto::SOURCE_SECURE_CONTROL_CHANNEL);
+            request->MutableHeaders()->MutableInternal()->SetAuthToken(
+                authToken);
 
             auto callContext = MakeIntrusive<TCallContext>();
             callContext->RequestType = EFileStoreRequest::CreateFileStore;
@@ -176,10 +176,11 @@ Y_UNIT_TEST_SUITE(TKikimrAuthProviderTest)
     {
         auto authorizerActor = std::make_unique<TTestAuthorizerActor>();
         authorizerActor->AuthorizeHandler =
-            [] (const TEvAuth::TEvAuthorizationRequest::TPtr& ev) {
-                Y_UNUSED(ev);
-                return nullptr;
-            };
+            [](const TEvAuth::TEvAuthorizationRequest::TPtr& ev)
+        {
+            Y_UNUSED(ev);
+            return nullptr;
+        };
 
         auto actorSystem = MakeIntrusive<TTestActorSystem>();
         actorSystem->RegisterTestAuthorizer(std::move(authorizerActor));
@@ -191,7 +192,7 @@ Y_UNIT_TEST_SUITE(TKikimrAuthProviderTest)
 
         auto request = std::make_shared<NProto::TCreateFileStoreRequest>();
         auto& headers = *request->MutableHeaders();
-        headers.SetRequestTimeout(100); // ms
+        headers.SetRequestTimeout(100);   // ms
 
         auto callContext = MakeIntrusive<TCallContext>();
         callContext->RequestType = EFileStoreRequest::CreateFileStore;

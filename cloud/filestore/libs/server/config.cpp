@@ -20,36 +20,36 @@ constexpr TDuration Seconds(int s)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_SERVER_CONFIG(xxx)                                           \
-    xxx(Host,                        TString,                   "localhost"   )\
-    xxx(Port,                        ui32,                      9021          )\
-    xxx(MaxMessageSize,              ui32,                      64*1024*1024  )\
-    xxx(MemoryQuotaBytes,            ui32,                      0             )\
-    xxx(PreparedRequestsCount,       ui32,                      10            )\
-    xxx(ThreadsCount,                ui32,                      1             )\
-    xxx(GrpcThreadsLimit,            ui32,                      4             )\
-    xxx(KeepAliveEnabled,            bool,                      false         )\
-    xxx(KeepAliveIdleTimeout,        TDuration,                 {}            )\
-    xxx(KeepAliveProbeTimeout,       TDuration,                 {}            )\
-    xxx(KeepAliveProbesCount,        ui32,                      0             )\
-    xxx(ShutdownTimeout,             TDuration,                 Seconds(30)   )\
-    xxx(SecureHost,                  TString,                   {}            )\
-    xxx(SecurePort,                  ui32,                      0             )\
-    xxx(RootCertsFile,               TString,                   {}            )\
-    xxx(Certs,                       TVector<TCertificate>,     {}            )\
-    xxx(UnixSocketPath,              TString,                   {}            )\
-    xxx(UnixSocketBacklog,           ui32,                      16            )\
-    xxx(UnixSocketAccessMode,        ui32,                      0660          )\
-                                                                               \
-    xxx(ActionsNoAuth,               TVector<TString>,          {}            )\
-                                                                               \
-    xxx(SharedMemoryTransportEnabled, bool,                     false         )\
-    xxx(SharedMemoryBasePath,         TString,                  "/dev/shm"    )\
-// FILESTORE_SERVER_CONFIG
+#define FILESTORE_SERVER_CONFIG(xxx)               \
+    xxx(Host, TString, "localhost")                \
+    xxx(Port, ui32, 9021)                          \
+    xxx(MaxMessageSize, ui32, 64 * 1024 * 1024)    \
+    xxx(MemoryQuotaBytes, ui32, 0)                 \
+    xxx(PreparedRequestsCount, ui32, 10)           \
+    xxx(ThreadsCount, ui32, 1)                     \
+    xxx(GrpcThreadsLimit, ui32, 4)                 \
+    xxx(KeepAliveEnabled, bool, false)             \
+    xxx(KeepAliveIdleTimeout, TDuration, {})       \
+    xxx(KeepAliveProbeTimeout, TDuration, {})      \
+    xxx(KeepAliveProbesCount, ui32, 0)             \
+    xxx(ShutdownTimeout, TDuration, Seconds(30))   \
+    xxx(SecureHost, TString, {})                   \
+    xxx(SecurePort, ui32, 0)                       \
+    xxx(RootCertsFile, TString, {})                \
+    xxx(Certs, TVector<TCertificate>, {})          \
+    xxx(UnixSocketPath, TString, {})               \
+    xxx(UnixSocketBacklog, ui32, 16)               \
+    xxx(UnixSocketAccessMode, ui32, 0660)          \
+                                                   \
+    xxx(ActionsNoAuth, TVector<TString>, {})       \
+                                                   \
+    xxx(SharedMemoryTransportEnabled, bool, false) \
+    xxx(SharedMemoryBasePath, TString, "/dev/shm") \
+    // FILESTORE_SERVER_CONFIG
 
-#define FILESTORE_SERVER_DECLARE_CONFIG(name, type, value)                     \
-    Y_DECLARE_UNUSED static const type Default##name = value;                  \
-// FILESTORE_SERVER_DECLARE_CONFIG
+#define FILESTORE_SERVER_DECLARE_CONFIG(name, type, value)    \
+    Y_DECLARE_UNUSED static const type Default##name = value; \
+    // FILESTORE_SERVER_DECLARE_CONFIG
 
 FILESTORE_SERVER_CONFIG(FILESTORE_SERVER_DECLARE_CONFIG)
 
@@ -71,10 +71,11 @@ TDuration ConvertValue<TDuration, ui32>(const ui32& value)
 
 template <>
 TVector<TCertificate> ConvertValue(
-    const google::protobuf::RepeatedPtrField<NCloud::NProto::TCertificate>& value)
+    const google::protobuf::RepeatedPtrField<NCloud::NProto::TCertificate>&
+        value)
 {
     TVector<TCertificate> v;
-    for (const auto& x : value) {
+    for (const auto& x: value) {
         v.push_back({x.GetCertFile(), x.GetCertPrivateKeyFile()});
     }
     return v;
@@ -85,7 +86,7 @@ TVector<TString> ConvertValue(
     const google::protobuf::RepeatedPtrField<TString>& value)
 {
     TVector<TString> v;
-    for (const auto& x : value) {
+    for (const auto& x: value) {
         v.push_back(x);
     }
     return v;
@@ -110,12 +111,8 @@ void DumpImpl(const TVector<TCertificate>& value, IOutputStream& os)
         if (i) {
             os << ",";
         }
-        os
-          << "{ "
-          << value[i].CertFile
-          << ", "
-          << value[i].CertPrivateKeyFile
-          << " }";
+        os << "{ " << value[i].CertFile << ", " << value[i].CertPrivateKeyFile
+           << " }";
     }
 }
 
@@ -171,7 +168,7 @@ FILESTORE_SERVER_CONFIG(DECLARE_FIELD_CHECKER)
         return IsEmpty##name(ProtoConfig, value) ? Default##name              \
                                                  : ConvertValue<type>(value); \
     }                                                                         \
-// FILESTORE_CONFIG_GETTER
+    // FILESTORE_CONFIG_GETTER
 
 FILESTORE_SERVER_CONFIG(FILESTORE_CONFIG_GETTER)
 
@@ -179,11 +176,11 @@ FILESTORE_SERVER_CONFIG(FILESTORE_CONFIG_GETTER)
 
 void TServerConfig::Dump(IOutputStream& out) const
 {
-#define FILESTORE_CONFIG_DUMP(name, ...)                                       \
-    out << #name << ": ";                                                      \
-    DumpImpl(Get##name(), out);                                                \
-    out << Endl;                                                               \
-// FILESTORE_CONFIG_DUMP
+#define FILESTORE_CONFIG_DUMP(name, ...) \
+    out << #name << ": ";                \
+    DumpImpl(Get##name(), out);          \
+    out << Endl;                         \
+    // FILESTORE_CONFIG_DUMP
 
     FILESTORE_SERVER_CONFIG(FILESTORE_CONFIG_DUMP);
 
@@ -192,16 +189,21 @@ void TServerConfig::Dump(IOutputStream& out) const
 
 void TServerConfig::DumpHtml(IOutputStream& out) const
 {
-#define FILESTORE_CONFIG_DUMP(name, ...)                                       \
-    TABLER() {                                                                 \
-        TABLED() { out << #name; }                                             \
-        TABLED() { DumpImpl(Get##name(), out); }                               \
-    }                                                                          \
-// FILESTORE_CONFIG_DUMP
+#define FILESTORE_CONFIG_DUMP(name, ...) \
+    TABLER () {                          \
+        TABLED () {                      \
+            out << #name;                \
+        }                                \
+        TABLED () {                      \
+            DumpImpl(Get##name(), out);  \
+        }                                \
+    }                                    \
+    // FILESTORE_CONFIG_DUMP
 
-    HTML(out) {
-        TABLE_CLASS("table table-condensed") {
-            TABLEBODY() {
+    HTML (out) {
+        TABLE_CLASS ("table table-condensed") {
+            TABLEBODY()
+            {
                 FILESTORE_SERVER_CONFIG(FILESTORE_CONFIG_DUMP);
             }
         }

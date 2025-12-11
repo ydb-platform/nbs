@@ -65,11 +65,9 @@ bool ShouldTryNewBinding(
 
 }   // namespace
 
-
 ////////////////////////////////////////////////////////////////////////////////
 
-TVolumeInfo::TVolumeInfo(
-        TString diskId)
+TVolumeInfo::TVolumeInfo(TString diskId)
     : DiskId(std::move(diskId))
     , SessionId(CreateGuidAsString())
 {}
@@ -115,9 +113,7 @@ TClientInfo* TVolumeInfo::AddClientInfo(const TString& clientId)
         }
     }
 
-    auto info = std::make_unique<TClientInfo>(
-        clientId,
-        DiskId);
+    auto info = std::make_unique<TClientInfo>(clientId, DiskId);
 
     ClientInfos.PushBack(info.get());
     ClientInfosByClientId.emplace(clientId, info.get());
@@ -133,7 +129,9 @@ void TVolumeInfo::RemoveClientInfo(TClientInfo* info)
 
 void TVolumeInfo::RemoveClientInfo(const TString& clientId)
 {
-    if (auto it = ClientInfosByClientId.find(clientId); it != ClientInfosByClientId.end()) {
+    if (auto it = ClientInfosByClientId.find(clientId);
+        it != ClientInfosByClientId.end())
+    {
         auto* info = it->second;
         std::unique_ptr<TClientInfo> deleter(info);
         ClientInfosByClientId.erase(info->ClientId);
@@ -235,15 +233,11 @@ NProto::EVolumeBinding TVolumeInfo::OnMountStarted(
     NProto::EVolumeMountMode clientMode,
     bool applyLocalVolumesLimit)
 {
-    auto bindingType = CalcVolumeBinding(
-        preemptionSource,
-        explicitBindingType,
-        clientMode);
+    auto bindingType =
+        CalcVolumeBinding(preemptionSource, explicitBindingType, clientMode);
 
-    if (applyLocalVolumesLimit &&
-        bindingType != BindingType &&
-        bindingType == NProto::BINDING_LOCAL &&
-        !SharedCountersLockAcquired)
+    if (applyLocalVolumesLimit && bindingType != BindingType &&
+        bindingType == NProto::BINDING_LOCAL && !SharedCountersLockAcquired)
     {
         if (!sharedCounters.TryAcquireLocalVolume()) {
             bindingType = NProto::BINDING_REMOTE;
@@ -264,8 +258,8 @@ void TVolumeInfo::UpdatePreemptionSource(NProto::EPreemptionSource candidate)
 
     if (ShouldChangePreemptionType(PreemptionSource, candidate)) {
         PreemptionSource = candidate;
-    } else if (!SharedCountersLockAcquired &&
-        candidate == NProto::SOURCE_MANUAL)
+    } else if (
+        !SharedCountersLockAcquired && candidate == NProto::SOURCE_MANUAL)
     {
         PreemptionSource = NProto::SOURCE_INITIAL_MOUNT;
     }
@@ -320,8 +314,7 @@ void TVolumeInfo::OnMountFinished(
     }
 }
 
-void TVolumeInfo::OnClientRemoved(
-    TSharedServiceCounters& sharedCounters)
+void TVolumeInfo::OnClientRemoved(TSharedServiceCounters& sharedCounters)
 {
     if (!IsLocallyMounted() && SharedCountersLockAcquired) {
         sharedCounters.ReleaseLocalVolume();
@@ -361,8 +354,10 @@ NProto::EVolumeBinding TVolumeInfo::CalcVolumeBinding(
     }
 
     const bool isLocallyMounted = IsLocallyMounted();
-    const bool alreadyRunsLocally = isLocallyMounted && BindingType != NProto::BINDING_REMOTE;
-    const bool isMountIncomplete = PreemptionSource == NProto::SOURCE_INITIAL_MOUNT;
+    const bool alreadyRunsLocally =
+        isLocallyMounted && BindingType != NProto::BINDING_REMOTE;
+    const bool isMountIncomplete =
+        PreemptionSource == NProto::SOURCE_INITIAL_MOUNT;
     const bool needsLocalMount = !isLocallyMounted || isMountIncomplete;
 
     if (alreadyRunsLocally || !needsLocalMount) {
@@ -374,9 +369,7 @@ NProto::EVolumeBinding TVolumeInfo::CalcVolumeBinding(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TClientInfo::TClientInfo(
-      TString clientId,
-      TString diskId)
+TClientInfo::TClientInfo(TString clientId, TString diskId)
     : ClientId(std::move(clientId))
     , DiskId(std::move(diskId))
 {}
@@ -384,10 +377,9 @@ TClientInfo::TClientInfo(
 ////////////////////////////////////////////////////////////////////////////////
 
 TServiceState::TServiceState(
-        TManuallyPreemptedVolumesPtr manuallyPreemptedVolumes)
+    TManuallyPreemptedVolumesPtr manuallyPreemptedVolumes)
     : ManuallyPreemptedVolumes(std::move(manuallyPreemptedVolumes))
-{
-}
+{}
 
 void TServiceState::RemoveVolume(TVolumeInfoPtr volume)
 {
@@ -422,12 +414,12 @@ TVolumeInfoPtr TServiceState::GetOrAddVolume(const TString& diskId)
 
 bool TSharedServiceCounters::TryAcquireLocalVolume()
 {
-    for(;;) {
+    for (;;) {
         auto val = AtomicGet(LocalVolumeCount);
         if (val >= Config->GetMaxLocalVolumes()) {
             return false;
         }
-        if (AtomicCas(&LocalVolumeCount, val+1, val)) {
+        if (AtomicCas(&LocalVolumeCount, val + 1, val)) {
             return true;
         }
     }

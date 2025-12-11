@@ -11,8 +11,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFiles
-    : public NUnitTest::TBaseFixture
+struct TFiles: public NUnitTest::TBaseFixture
 {
     const TFsPath Nvme1 = TFsPath(GetWorkPath()) / "nvme1";
     const TFsPath Nvme1n1 = TFsPath(GetWorkPath()) / "nvme1n1";
@@ -150,7 +149,9 @@ Y_UNIT_TEST_SUITE(TDeviceGuardTest)
         UNIT_ASSERT(locker2.Lock(Nvme1n1p2));
     }
 
-    Y_UNIT_TEST_F(ShouldCorrectlyUnlockRecursivelyLockedPathsWithCommonPrefix, TFiles)
+    Y_UNIT_TEST_F(
+        ShouldCorrectlyUnlockRecursivelyLockedPathsWithCommonPrefix,
+        TFiles)
     {
         TDeviceGuard locker1;
         UNIT_ASSERT(locker1.Lock(Nvme1n1p1));

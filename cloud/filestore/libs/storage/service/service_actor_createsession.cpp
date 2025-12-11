@@ -8,7 +8,6 @@
 #include <cloud/filestore/libs/storage/api/tablet.h>
 
 #include <contrib/ydb/core/base/tablet_pipe.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/datetime/base.h>
@@ -27,7 +26,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::pair<ui64, ui64> GetSeqNo(const NProto::TGetSessionEventsResponse& response)
+std::pair<ui64, ui64> GetSeqNo(
+    const NProto::TGetSessionEventsResponse& response)
 {
     size_t numEvents = response.EventsSize();
     Y_ABORT_UNLESS(numEvents);
@@ -40,8 +40,7 @@ std::pair<ui64, ui64> GetSeqNo(const NProto::TGetSessionEventsResponse& response
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCreateSessionActor final
-    : public TActorBootstrapped<TCreateSessionActor>
+class TCreateSessionActor final: public TActorBootstrapped<TCreateSessionActor>
 {
 private:
     const TStorageConfigPtr Config;
@@ -158,7 +157,8 @@ private:
 
     TString LogTag()
     {
-        return Sprintf("[f:%s][c:%s][s:%s][a:%s]",
+        return Sprintf(
+            "[f:%s][c:%s][s:%s][a:%s]",
             FileSystemId.Quote().c_str(),
             ClientId.Quote().c_str(),
             SessionId.Quote().c_str(),
@@ -169,17 +169,17 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TCreateSessionActor::TCreateSessionActor(
-        TStorageConfigPtr config,
-        TRequestInfoPtr requestInfo,
-        TString clientId,
-        TString fileSystemId,
-        TString sessionId,
-        TString checkpointId,
-        TString originFqdn,
-        ui64 seqNo,
-        bool readOnly,
-        bool restoreClientSession,
-        TActorId owner)
+    TStorageConfigPtr config,
+    TRequestInfoPtr requestInfo,
+    TString clientId,
+    TString fileSystemId,
+    TString sessionId,
+    TString checkpointId,
+    TString originFqdn,
+    ui64 seqNo,
+    bool readOnly,
+    bool restoreClientSession,
+    TActorId owner)
     : Config(std::move(config))
     , RequestInfo(std::move(requestInfo))
     , ClientId(std::move(clientId))
@@ -202,8 +202,8 @@ void TCreateSessionActor::Bootstrap(const TActorContext& ctx)
 
 void TCreateSessionActor::DescribeFileStore(const TActorContext& ctx)
 {
-    auto request = std::make_unique<TEvSSProxy::TEvDescribeFileStoreRequest>(
-        FileSystemId);
+    auto request =
+        std::make_unique<TEvSSProxy::TEvDescribeFileStoreRequest>(FileSystemId);
 
     NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request));
 }
@@ -244,7 +244,9 @@ void TCreateSessionActor::HandleDescribeFileStoreResponse(
 
 void TCreateSessionActor::CreatePipe(const TActorContext& ctx)
 {
-    LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::SERVICE_WORKER,
         "%s creating pipe for tablet %lu, last reset at %lu",
         LogTag().c_str(),
         TabletId,
@@ -266,7 +268,9 @@ void TCreateSessionActor::HandleConnect(
     auto* msg = ev->Get();
 
     if (msg->Status != NKikimrProto::OK) {
-        LOG_ERROR(ctx, TFileStoreComponents::SERVICE_WORKER,
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::SERVICE_WORKER,
             "%s failed to connect to %lu: %s",
             LogTag().c_str(),
             TabletId,
@@ -277,7 +281,9 @@ void TCreateSessionActor::HandleConnect(
         return;
     }
 
-    LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::SERVICE_WORKER,
         "%s pipe connected to %lu",
         LogTag().c_str(),
         TabletId);
@@ -292,7 +298,9 @@ void TCreateSessionActor::HandleDisconnect(
     TEvTabletPipe::TEvClientDestroyed::TPtr&,
     const TActorContext& ctx)
 {
-    LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::SERVICE_WORKER,
         "%s pipe disconnected",
         LogTag().c_str(),
         TabletId);
@@ -318,7 +326,9 @@ void TCreateSessionActor::HandleCreateSession(
 {
     auto* msg = ev->Get();
 
-    LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::SERVICE_WORKER,
         "%s got create session: seqno %lu ro %u",
         LogTag().c_str(),
         msg->SessionSeqNo,
@@ -346,13 +356,16 @@ void TCreateSessionActor::RejectCreateSession(
 
     auto error = MakeError(E_REJECTED, "TCreateSessionActor: shutting down");
 
-    LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::SERVICE_WORKER,
         "%s reject create session: seqno %lu error %s",
         LogTag().c_str(),
         msg->SessionSeqNo,
         FormatError(error).c_str());
 
-    auto response = std::make_unique<TEvServicePrivate::TEvSessionCreated>(error);
+    auto response =
+        std::make_unique<TEvServicePrivate::TEvSessionCreated>(error);
     response->ClientId = msg->ClientId;
     response->SessionId = msg->SessionId;
     response->SessionSeqNo = msg->SessionSeqNo;
@@ -377,7 +390,9 @@ void TCreateSessionActor::CreateSession(const TActorContext& ctx)
     headers->SetSessionSeqNo(SeqNo);
     headers->SetOriginFqdn(OriginFqdn);
 
-    LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::SERVICE_WORKER,
         "%s do creating session: %s",
         LogTag().c_str(),
         DumpMessage(request->Record).c_str());
@@ -403,14 +418,13 @@ void TCreateSessionActor::HandleCreateSessionResponse(
     if (!sessionId) {
         ReportMissingSessionId();
 
-        return Notify(
-            ctx,
-            MakeError(E_FAIL, "empty session id"),
-            false);
+        return Notify(ctx, MakeError(E_FAIL, "empty session id"), false);
     }
 
     if (sessionId != SessionId) {
-        LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::SERVICE_WORKER,
             "%s restored session id: actual id %s, state(%lu)",
             LogTag().c_str(),
             sessionId.Quote().c_str(),
@@ -418,7 +432,9 @@ void TCreateSessionActor::HandleCreateSessionResponse(
 
         SessionId = sessionId;
     } else {
-        LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::SERVICE_WORKER,
             "%s session established: %s, state(%lu)",
             LogTag().c_str(),
             FormatError(msg->GetError()).c_str(),
@@ -457,7 +473,9 @@ void TCreateSessionActor::HandleGetSessionEvents(
     Y_ABORT_UNLESS(SessionId);
 
     if (ev->Cookie == TEvService::StreamCookie) {
-        LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::SERVICE_WORKER,
             "%s subscribe event listener (%s)",
             LogTag().c_str(),
             ToString(EventListener).c_str());
@@ -480,7 +498,9 @@ void TCreateSessionActor::HandleGetSessionEventsResponse(
     const auto* msg = ev->Get();
 
     const auto [firstSeqNo, lastSeqNo] = GetSeqNo(msg->Record);
-    LOG_ERROR(ctx, TFileStoreComponents::SERVICE_WORKER,
+    LOG_ERROR(
+        ctx,
+        TFileStoreComponents::SERVICE_WORKER,
         "%s got session events (seqNo: %lu-%lu)",
         LogTag().c_str(),
         firstSeqNo,
@@ -499,8 +519,11 @@ void TCreateSessionActor::HandleGetSessionEventsResponse(
             StoredEvents.Add()->CopyFrom(event);
         } else {
             // number of stored events exceeded
-            LOG_WARN(ctx, TFileStoreComponents::SERVICE_WORKER,
-                "%s not enough space - session events will be lost (seqNo: %lu-%lu)",
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::SERVICE_WORKER,
+                "%s not enough space - session events will be lost (seqNo: "
+                "%lu-%lu)",
                 LogTag().c_str(),
                 event.GetSeqNo(),
                 lastSeqNo);
@@ -522,7 +545,9 @@ void TCreateSessionActor::HandleWakeup(
 
     auto idleTimeout = Config->GetIdleSessionTimeout();
     if (LastPing + idleTimeout < ctx.Now()) {
-        LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::SERVICE_WORKER,
             "%s closing idle session, last ping at %s",
             LogTag().c_str(),
             LastPing.ToStringUpToSeconds().c_str());
@@ -532,12 +557,17 @@ void TCreateSessionActor::HandleWakeup(
 
     auto connectTimeout = Config->GetEstablishSessionTimeout();
     if (LastPipeResetTime && LastPipeResetTime + connectTimeout < ctx.Now()) {
-        LOG_WARN(ctx, TFileStoreComponents::SERVICE_WORKER,
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::SERVICE_WORKER,
             "%s create timeouted, couldn't connect from %s",
             LogTag().c_str(),
             LastPipeResetTime.ToStringUpToSeconds().c_str());
         Become(&TThis::StateShutdown);
-        return Notify(ctx, MakeError(E_TIMEOUT, "failed to connect to fs"), true);
+        return Notify(
+            ctx,
+            MakeError(E_TIMEOUT, "failed to connect to fs"),
+            true);
     }
 
     if (!PipeClient) {
@@ -553,7 +583,9 @@ void TCreateSessionActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::SERVICE_WORKER,
         "%s session poisoned, dying %s -> %s",
         LogTag().c_str(),
         ToString(ev->Sender).c_str(),
@@ -573,13 +605,16 @@ void TCreateSessionActor::Notify(
     bool shutdown)
 {
     Y_ABORT_UNLESS(SessionId);
-    LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::SERVICE_WORKER,
         "%s session notify %lu (%s)",
         LogTag().c_str(),
         SeqNo,
         FormatError(error).c_str());
 
-    auto response = std::make_unique<TEvServicePrivate::TEvSessionCreated>(error);
+    auto response =
+        std::make_unique<TEvServicePrivate::TEvSessionCreated>(error);
     response->ClientId = ClientId;
     response->SessionId = SessionId;
     response->SessionState = SessionState;
@@ -608,7 +643,9 @@ STFUNC(TCreateSessionActor::StateResolve)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvServicePrivate::TEvPingSession, HandlePingSession);
-        HFunc(TEvSSProxy::TEvDescribeFileStoreResponse, HandleDescribeFileStoreResponse);
+        HFunc(
+            TEvSSProxy::TEvDescribeFileStoreResponse,
+            HandleDescribeFileStoreResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -629,10 +666,14 @@ STFUNC(TCreateSessionActor::StateWork)
         HFunc(TEvTabletPipe::TEvClientDestroyed, HandleDisconnect);
 
         HFunc(TEvServicePrivate::TEvCreateSession, HandleCreateSession);
-        HFunc(TEvIndexTablet::TEvCreateSessionResponse, HandleCreateSessionResponse);
+        HFunc(
+            TEvIndexTablet::TEvCreateSessionResponse,
+            HandleCreateSessionResponse);
         HFunc(TEvServicePrivate::TEvPingSession, HandlePingSession);
         HFunc(TEvService::TEvGetSessionEventsRequest, HandleGetSessionEvents);
-        HFunc(TEvService::TEvGetSessionEventsResponse, HandleGetSessionEventsResponse);
+        HFunc(
+            TEvService::TEvGetSessionEventsResponse,
+            HandleGetSessionEventsResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -699,7 +740,8 @@ void TStorageServiceActor::HandleCreateSession(
     auto sessionId = GetSessionId(msg->Record);
     auto seqNo = GetSessionSeqNo(msg->Record);
 
-    auto reply = [&] (auto* session, auto error) {
+    auto reply = [&](auto* session, auto error)
+    {
         auto response =
             std::make_unique<TEvService::TEvCreateSessionResponse>(error);
         session->GetInfo(
@@ -709,46 +751,45 @@ void TStorageServiceActor::HandleCreateSession(
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
-    auto proceed = [&] (auto actorId) {
-        LOG_INFO(ctx, TFileStoreComponents::SERVICE,
+    auto proceed = [&](auto actorId)
+    {
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::SERVICE,
             "%s forward create session to actor %s",
             LogTag(fileSystemId, clientId, sessionId, seqNo).c_str(),
             ToString(actorId).c_str());
 
-        auto requestInfo = CreateRequestInfo(
-            SelfId(),
-            cookie,
-            msg->CallContext);
+        auto requestInfo =
+            CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
         auto request = std::make_unique<TEvServicePrivate::TEvCreateSession>();
         request->ClientId = clientId;
         request->FileSystemId = fileSystemId;
         request->SessionId = sessionId;
         request->CheckpointId = checkpointId;
-        request->ReadOnly =  msg->Record.GetReadOnly();
+        request->ReadOnly = msg->Record.GetReadOnly();
         request->RestoreClientSession = msg->Record.GetRestoreClientSession();
-        request->SessionSeqNo =  msg->Record.GetMountSeqNumber();
+        request->SessionSeqNo = msg->Record.GetMountSeqNumber();
         request->RequestInfo = std::move(requestInfo);
 
         NCloud::Send(ctx, std::move(actorId), std::move(request));
     };
 
-    auto* session =
-        State->FindSession(sessionId, GetSessionSeqNo(msg->Record));
+    auto* session = State->FindSession(sessionId, GetSessionSeqNo(msg->Record));
 
     if (session) {
         if (session->ClientId != clientId) {
             auto error = MakeError(
                 E_FS_INVALID_SESSION,
-                TStringBuilder() <<
-                    "Wrong session: " << sessionId <<
-                    " for client: " << clientId);
+                TStringBuilder() << "Wrong session: " << sessionId
+                                 << " for client: " << clientId);
             reply(session, std::move(error));
             return;
         }
 
-        if (session->CreateDestroyState
-                != ESessionCreateDestroyState::STATE_NONE)
+        if (session->CreateDestroyState !=
+            ESessionCreateDestroyState::STATE_NONE)
         {
             auto error = MakeError(
                 E_REJECTED,
@@ -773,10 +814,7 @@ void TStorageServiceActor::HandleCreateSession(
         originFqdn = GetFQDNHostName();
     }
 
-    auto requestInfo = CreateRequestInfo(
-        SelfId(),
-        cookie,
-        msg->CallContext);
+    auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
     auto actor = std::make_unique<TCreateSessionActor>(
         StorageConfig,
@@ -793,7 +831,9 @@ void TStorageServiceActor::HandleCreateSession(
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
 
-    LOG_INFO(ctx, TFileStoreComponents::SERVICE,
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::SERVICE,
         "%s create session %s self %s",
         LogTag(fileSystemId, clientId, sessionId, seqNo).c_str(),
         ToString(actorId).c_str(),
@@ -807,7 +847,9 @@ bool TStorageServiceActor::RemoveSession(
 {
     if (auto* session = State->FindSession(sessionId, seqNo); session) {
         if (State->IsLastSubSession(sessionId, seqNo)) {
-            LOG_INFO(ctx, TFileStoreComponents::SERVICE,
+            LOG_INFO(
+                ctx,
+                TFileStoreComponents::SERVICE,
                 "[s:%s][n:%lu] remove subsession %s self %s",
                 sessionId.Quote().c_str(),
                 seqNo,
@@ -824,7 +866,9 @@ void TStorageServiceActor::RemoveSession(
     const TActorContext& ctx)
 {
     if (auto* session = State->FindSession(sessionId); session) {
-        LOG_INFO(ctx, TFileStoreComponents::SERVICE,
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::SERVICE,
             "[s:%s]remove session %s self %s",
             sessionId.Quote().c_str(),
             ToString(session->SessionActor).c_str(),
@@ -845,8 +889,7 @@ void TStorageServiceActor::HandleSessionCreated(
         // in case of vhost restart we don't know session id
         // so inevitably will create new actor
         auto actorId = ev->Sender;
-        if (session &&
-            session->SessionActor &&
+        if (session && session->SessionActor &&
             session->SessionActor != ev->Sender)
         {
             ctx.Send(ev->Sender, new TEvents::TEvPoisonPill());
@@ -854,13 +897,16 @@ void TStorageServiceActor::HandleSessionCreated(
         }
 
         if (!session) {
-            LOG_INFO(ctx, TFileStoreComponents::SERVICE,
+            LOG_INFO(
+                ctx,
+                TFileStoreComponents::SERVICE,
                 "%s session created (%s), state(%lu)",
                 LogTag(
                     msg->FileStore.GetFileSystemId(),
                     msg->ClientId,
                     msg->SessionId,
-                    msg->SessionSeqNo).c_str(),
+                    msg->SessionSeqNo)
+                    .c_str(),
                 FormatError(msg->GetError()).c_str(),
                 msg->SessionState.size());
 
@@ -887,9 +933,7 @@ void TStorageServiceActor::HandleSessionCreated(
 
             Y_ABORT_UNLESS(session);
         } else {
-            session->UpdateSessionState(
-                msg->SessionState,
-                msg->FileStore);
+            session->UpdateSessionState(msg->SessionState, msg->FileStore);
             session->AddSubSession(msg->SessionSeqNo, msg->ReadOnly);
             session->SessionActor = actorId;
         }
@@ -898,13 +942,16 @@ void TStorageServiceActor::HandleSessionCreated(
         session->CreateDestroyState = ESessionCreateDestroyState::STATE_NONE;
         if (session->SessionActor == ev->Sender) {
             // e.g. pipe failed or smth. client will have to restore it
-            LOG_WARN(ctx, TFileStoreComponents::SERVICE,
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::SERVICE,
                 "%s session failed (%s)",
                 LogTag(
                     msg->FileStore.GetFileSystemId(),
                     msg->ClientId,
                     msg->SessionId,
-                    msg->SessionSeqNo).c_str(),
+                    msg->SessionSeqNo)
+                    .c_str(),
                 FormatError(msg->GetError()).c_str());
 
             if (msg->Shutdown) {
@@ -917,13 +964,16 @@ void TStorageServiceActor::HandleSessionCreated(
             }
         }
     } else {
-        LOG_ERROR(ctx, TFileStoreComponents::SERVICE,
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::SERVICE,
             "%s session creation failed (%s)",
             LogTag(
                 msg->FileStore.GetFileSystemId(),
                 msg->ClientId,
                 msg->SessionId,
-                msg->SessionSeqNo).c_str(),
+                msg->SessionSeqNo)
+                .c_str(),
             FormatError(msg->GetError()).c_str());
 
         if (msg->Shutdown) {
@@ -938,13 +988,16 @@ void TStorageServiceActor::HandleSessionCreated(
     if (msg->RequestInfo) {
         auto* inflight = FindInFlightRequest(msg->RequestInfo->Cookie);
         if (!inflight) {
-            LOG_CRIT(ctx, TFileStoreComponents::SERVICE,
+            LOG_CRIT(
+                ctx,
+                TFileStoreComponents::SERVICE,
                 "%s failed complete CreateSession: invalid cookie (%lu)",
                 LogTag(
                     msg->FileStore.GetFileSystemId(),
                     msg->ClientId,
                     msg->SessionId,
-                    msg->SessionSeqNo).c_str(),
+                    msg->SessionSeqNo)
+                    .c_str(),
                 msg->RequestInfo->Cookie);
             return;
         }

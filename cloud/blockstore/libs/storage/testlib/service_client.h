@@ -54,10 +54,8 @@ public:
         const NActors::TActorId& recipient,
         std::unique_ptr<TRequest> request)
     {
-        auto* ev = new NActors::IEventHandle(
-            recipient,
-            Sender,
-            request.release());
+        auto* ev =
+            new NActors::IEventHandle(recipient, Sender, request.release());
 
         Runtime.Send(ev, NodeIdx);
     }
@@ -67,30 +65,37 @@ public:
     {
         TAutoPtr<NActors::IEventHandle> handle;
         Runtime.GrabEdgeEventRethrow<TResponse>(handle);
-        return std::unique_ptr<TResponse>(handle->Release<TResponse>().Release());
+        return std::unique_ptr<TResponse>(
+            handle->Release<TResponse>().Release());
     }
 
     template <typename TRequest>
     void PrepareRequestHeaders(TRequest& request)
     {
         request.Record.MutableHeaders()->SetClientId(ClientId);
-        request.Record.MutableHeaders()->MutableInternal()->SetRequestSource(RequestSource);
+        request.Record.MutableHeaders()->MutableInternal()->SetRequestSource(
+            RequestSource);
     }
 
     template <typename TRequest>
-    void PrepareRequestHeaders(TRequest& request, NProto::EControlRequestSource source)
+    void PrepareRequestHeaders(
+        TRequest& request,
+        NProto::EControlRequestSource source)
     {
         PrepareRequestHeaders(request);
-        request.Record.MutableHeaders()->MutableInternal()->SetControlSource(source);
+        request.Record.MutableHeaders()->MutableInternal()->SetControlSource(
+            source);
     }
 
-    std::unique_ptr<TEvService::TEvCreateVolumeRequest> CreateCreateVolumeRequest(
+    std::unique_ptr<TEvService::TEvCreateVolumeRequest>
+    CreateCreateVolumeRequest(
         const TString& diskId = DefaultDiskId,
         ui64 blocksCount = DefaultBlocksCount,
         ui32 blockSize = DefaultBlockSize,
         const TString& folderId = "",
         const TString& cloudId = "",
-        NCloud::NProto::EStorageMediaKind mediaKind = NCloud::NProto::STORAGE_MEDIA_DEFAULT,
+        NCloud::NProto::EStorageMediaKind mediaKind =
+            NCloud::NProto::STORAGE_MEDIA_DEFAULT,
         const NProto::TVolumePerformanceProfile& pp = {},
         const TString& placementGroupId = {},
         ui32 placementPartitionIndex = 0,
@@ -101,14 +106,16 @@ public:
         const TString& baseDiskCheckpointId = TString(),
         ui64 fillGeneration = 0);
 
-    std::unique_ptr<TEvService::TEvDestroyVolumeRequest> CreateDestroyVolumeRequest(
+    std::unique_ptr<TEvService::TEvDestroyVolumeRequest>
+    CreateDestroyVolumeRequest(
         const TString& diskId = DefaultDiskId,
         bool destroyIfBroken = false,
         bool sync = false,
         ui64 fillGeneration = 0,
         bool exactDiskIdMatch = false);
 
-    std::unique_ptr<TEvService::TEvAssignVolumeRequest> CreateAssignVolumeRequest(
+    std::unique_ptr<TEvService::TEvAssignVolumeRequest>
+    CreateAssignVolumeRequest(
         const TString& diskId = DefaultDiskId,
         const TString& instanceId = {},
         const TString& token = {},
@@ -119,18 +126,21 @@ public:
         const TString& diskId = DefaultDiskId,
         bool exactDiskIdmatch = false);
 
-    std::unique_ptr<TEvService::TEvDescribeVolumeModelRequest> CreateDescribeVolumeModelRequest(
+    std::unique_ptr<TEvService::TEvDescribeVolumeModelRequest>
+    CreateDescribeVolumeModelRequest(
         ui64 blocksCount,
         NCloud::NProto::EStorageMediaKind mediaKind);
 
-    std::unique_ptr<TEvService::TEvListVolumesRequest> CreateListVolumesRequest();
+    std::unique_ptr<TEvService::TEvListVolumesRequest>
+    CreateListVolumesRequest();
 
     std::unique_ptr<TEvService::TEvMountVolumeRequest> CreateMountVolumeRequest(
         const TString& diskId = DefaultDiskId,
         const TString& instanceId = {},
         const TString& token = {},
         const NProto::EClientIpcType ipcType = NProto::IPC_GRPC,
-        const NProto::EVolumeAccessMode accessMode = NProto::VOLUME_ACCESS_READ_WRITE,
+        const NProto::EVolumeAccessMode accessMode =
+            NProto::VOLUME_ACCESS_READ_WRITE,
         const NProto::EVolumeMountMode mountMode = NProto::VOLUME_MOUNT_LOCAL,
         const ui32 mountFlags = 0,
         const ui64 mountSeqNumber = 0,
@@ -138,11 +148,13 @@ public:
         const ui64 fillSeqNumber = 0,
         const ui64 fillGeneration = 0);
 
-    std::unique_ptr<TEvService::TEvUnmountVolumeRequest> CreateUnmountVolumeRequest(
+    std::unique_ptr<TEvService::TEvUnmountVolumeRequest>
+    CreateUnmountVolumeRequest(
         const TString& diskId = DefaultDiskId,
         const TString& sessionId = {});
 
-    std::unique_ptr<TEvService::TEvUnmountVolumeRequest> CreateUnmountVolumeRequest(
+    std::unique_ptr<TEvService::TEvUnmountVolumeRequest>
+    CreateUnmountVolumeRequest(
         const TString& diskId,
         const TString& sessionId,
         NProto::EControlRequestSource source);
@@ -151,7 +163,8 @@ public:
         const TString& diskId = DefaultDiskId,
         const TVector<TString>& storageConfigFields = {});
 
-    std::unique_ptr<TEvService::TEvResizeVolumeRequest> CreateResizeVolumeRequest(
+    std::unique_ptr<TEvService::TEvResizeVolumeRequest>
+    CreateResizeVolumeRequest(
         const TString& diskId = DefaultDiskId,
         ui64 blocksCount = DefaultBlocksCount,
         const NProto::TVolumePerformanceProfile& pp = {});
@@ -163,7 +176,7 @@ public:
         char fill = 0);
 
     std::unique_ptr<TEvService::TEvReadBlocksRequest> CreateReadBlocksRequest(
-       const TString& diskId,
+        const TString& diskId,
         ui32 blockIndex,
         const TString& sessionId,
         const TString& checkpointId = {});
@@ -173,7 +186,8 @@ public:
         ui32 blockIndex,
         const TString& sessionId);
 
-    std::unique_ptr<TEvService::TEvReadBlocksLocalRequest> CreateReadBlocksLocalRequest(
+    std::unique_ptr<TEvService::TEvReadBlocksLocalRequest>
+    CreateReadBlocksLocalRequest(
         const TString& diskId,
         ui32 blockIndex,
         TGuardedSgList sglist,
@@ -187,7 +201,8 @@ public:
         const TString& cloudId,
         const TString& encryptionKeyHash = "");
 
-    std::unique_ptr<TEvService::TEvGetChangedBlocksRequest> CreateGetChangedBlocksRequest(
+    std::unique_ptr<TEvService::TEvGetChangedBlocksRequest>
+    CreateGetChangedBlocksRequest(
         const TString& diskId,
         ui64 startIndex,
         ui32 blocksCount,
@@ -200,7 +215,7 @@ public:
         TVector<NProto::TDeviceOverride> deviceOverrides = {},
         TVector<NProto::TKnownDevicePool> devicePools = {},
         bool ignoreVersion = false)
-            -> std::unique_ptr<TEvService::TEvUpdateDiskRegistryConfigRequest>;
+        -> std::unique_ptr<TEvService::TEvUpdateDiskRegistryConfigRequest>;
 
     auto CreateDescribeDiskRegistryConfigRequest()
         -> std::unique_ptr<TEvService::TEvDescribeDiskRegistryConfigRequest>;
@@ -214,42 +229,47 @@ public:
         const TString& path,
         const TString& folderId = "yc.nbs",
         const TString& cloudId = "yc.nbs-test")
-            -> std::unique_ptr<TEvService::TEvCreateVolumeFromDeviceRequest>;
+        -> std::unique_ptr<TEvService::TEvCreateVolumeFromDeviceRequest>;
 
     auto CreateResumeDeviceRequest(const TString& agentId, const TString& path)
         -> std::unique_ptr<TEvService::TEvResumeDeviceRequest>;
 
-    std::unique_ptr<TEvService::TEvCreatePlacementGroupRequest> CreateCreatePlacementGroupRequest(
+    std::unique_ptr<TEvService::TEvCreatePlacementGroupRequest>
+    CreateCreatePlacementGroupRequest(
         const TString& groupId,
         const NProto::EPlacementStrategy placementStrategy,
         const ui32 placementPartitionCount);
 
-    std::unique_ptr<TEvService::TEvDestroyPlacementGroupRequest> CreateDestroyPlacementGroupRequest(
-        const TString& groupId);
+    std::unique_ptr<TEvService::TEvDestroyPlacementGroupRequest>
+    CreateDestroyPlacementGroupRequest(const TString& groupId);
 
-    std::unique_ptr<TEvService::TEvAlterPlacementGroupMembershipRequest> CreateAlterPlacementGroupMembershipRequest(
+    std::unique_ptr<TEvService::TEvAlterPlacementGroupMembershipRequest>
+    CreateAlterPlacementGroupMembershipRequest(
         const TString& groupId,
         const TVector<TString>& toAdd,
         const TVector<TString>& toRemove);
 
-    std::unique_ptr<TEvService::TEvListPlacementGroupsRequest> CreateListPlacementGroupsRequest();
+    std::unique_ptr<TEvService::TEvListPlacementGroupsRequest>
+    CreateListPlacementGroupsRequest();
 
-    std::unique_ptr<TEvService::TEvDescribePlacementGroupRequest> CreateDescribePlacementGroupRequest(
-        const TString& groupId);
+    std::unique_ptr<TEvService::TEvDescribePlacementGroupRequest>
+    CreateDescribePlacementGroupRequest(const TString& groupId);
 
-    std::unique_ptr<TEvService::TEvExecuteActionRequest> CreateExecuteActionRequest(
-        const TString& action,
-        const TString& input);
+    std::unique_ptr<TEvService::TEvExecuteActionRequest>
+    CreateExecuteActionRequest(const TString& action, const TString& input);
 
-    std::unique_ptr<TEvService::TEvCreateCheckpointRequest> CreateCreateCheckpointRequest(
+    std::unique_ptr<TEvService::TEvCreateCheckpointRequest>
+    CreateCreateCheckpointRequest(
         const TString& diskId,
         const TString& checkpointId);
 
-    std::unique_ptr<TEvService::TEvDeleteCheckpointRequest> CreateDeleteCheckpointRequest(
+    std::unique_ptr<TEvService::TEvDeleteCheckpointRequest>
+    CreateDeleteCheckpointRequest(
         const TString& diskId,
         const TString& checkpointId);
 
-    std::unique_ptr<TEvService::TEvGetVolumeStatsRequest> CreateGetVolumeStatsRequest();
+    std::unique_ptr<TEvService::TEvGetVolumeStatsRequest>
+    CreateGetVolumeStatsRequest();
 
     std::unique_ptr<TEvService::TEvAddTagsRequest> CreateAddTagsRequest(
         const TString& diskId,
@@ -267,32 +287,32 @@ public:
 
     void WaitForVolume(const TString& diskId = DefaultDiskId);
 
-#define BLOCKSTORE_DECLARE_METHOD(name, ns)                                    \
-    template <typename... Args>                                                \
-    void Send##name##Request(Args&&... args)                                   \
-    {                                                                          \
-        auto request = Create##name##Request(std::forward<Args>(args)...);     \
-        SendRequest(MakeStorageServiceId(), std::move(request));               \
-    }                                                                          \
-                                                                               \
-    std::unique_ptr<ns::TEv##name##Response> Recv##name##Response()            \
-    {                                                                          \
-        return RecvResponse<ns::TEv##name##Response>();                        \
-    }                                                                          \
-                                                                               \
-    template <typename... Args>                                                \
-    std::unique_ptr<ns::TEv##name##Response> name(Args&&... args)              \
-    {                                                                          \
-        auto request = Create##name##Request(std::forward<Args>(args)...);     \
-        SendRequest(MakeStorageServiceId(), std::move(request));               \
-                                                                               \
-        auto response = RecvResponse<ns::TEv##name##Response>();               \
-        UNIT_ASSERT_C(                                                         \
-            SUCCEEDED(response->GetStatus()),                                  \
-            response->GetErrorReason());                                       \
-        return response;                                                       \
-    }                                                                          \
-// BLOCKSTORE_DECLARE_METHOD
+#define BLOCKSTORE_DECLARE_METHOD(name, ns)                                \
+    template <typename... Args>                                            \
+    void Send##name##Request(Args&&... args)                               \
+    {                                                                      \
+        auto request = Create##name##Request(std::forward<Args>(args)...); \
+        SendRequest(MakeStorageServiceId(), std::move(request));           \
+    }                                                                      \
+                                                                           \
+    std::unique_ptr<ns::TEv##name##Response> Recv##name##Response()        \
+    {                                                                      \
+        return RecvResponse<ns::TEv##name##Response>();                    \
+    }                                                                      \
+                                                                           \
+    template <typename... Args>                                            \
+    std::unique_ptr<ns::TEv##name##Response> name(Args&&... args)          \
+    {                                                                      \
+        auto request = Create##name##Request(std::forward<Args>(args)...); \
+        SendRequest(MakeStorageServiceId(), std::move(request));           \
+                                                                           \
+        auto response = RecvResponse<ns::TEv##name##Response>();           \
+        UNIT_ASSERT_C(                                                     \
+            SUCCEEDED(response->GetStatus()),                              \
+            response->GetErrorReason());                                   \
+        return response;                                                   \
+    }                                                                      \
+    // BLOCKSTORE_DECLARE_METHOD
 
     BLOCKSTORE_STORAGE_SERVICE(BLOCKSTORE_DECLARE_METHOD, TEvService)
     BLOCKSTORE_SERVICE_REQUESTS(BLOCKSTORE_DECLARE_METHOD, TEvService)

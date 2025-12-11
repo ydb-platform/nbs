@@ -33,8 +33,7 @@ struct TModuleFactories
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TBootstrap final
-    : public IClientFactory
+class TBootstrap final: public IClientFactory
 {
 private:
     const TOptionsPtr Options;

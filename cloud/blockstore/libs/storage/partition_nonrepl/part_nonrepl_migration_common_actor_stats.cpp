@@ -19,7 +19,9 @@ void TNonreplicatedPartitionMigrationCommonActor::HandlePartCounters(
     } else if (ev->Sender == DstActorId) {
         DstCounters = std::move(msg->DiskCounters);
     } else {
-        LOG_INFO(ctx, TBlockStoreComponents::PARTITION,
+        LOG_INFO(
+            ctx,
+            TBlockStoreComponents::PARTITION,
             "Partition %s for disk %s counters not found",
             ToString(ev->Sender).c_str(),
             DiskId.Quote().c_str());
@@ -54,12 +56,12 @@ void TNonreplicatedPartitionMigrationCommonActor::SendStats(
     if (SrcCounters && DstActorId && DstCounters) {
         // for some counters default AggregateWith logic is suboptimal for
         // mirrored partitions
-        stats->Simple.BytesCount.Value = Max(
-            SrcCounters->Simple.BytesCount.Value,
-            DstCounters->Simple.BytesCount.Value);
-        stats->Simple.IORequestsInFlight.Value = Max(
-            SrcCounters->Simple.IORequestsInFlight.Value,
-            DstCounters->Simple.IORequestsInFlight.Value);
+        stats->Simple.BytesCount.Value =
+            Max(SrcCounters->Simple.BytesCount.Value,
+                DstCounters->Simple.BytesCount.Value);
+        stats->Simple.IORequestsInFlight.Value =
+            Max(SrcCounters->Simple.IORequestsInFlight.Value,
+                DstCounters->Simple.IORequestsInFlight.Value);
     }
 
     stats->AggregateWith(*MigrationCounters);

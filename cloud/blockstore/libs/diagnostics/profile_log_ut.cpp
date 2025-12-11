@@ -20,8 +20,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEventProcessor
-    : TProtobufEventProcessor
+struct TEventProcessor: TProtobufEventProcessor
 {
     TVector<TString> FlatMessages;
 
@@ -136,8 +135,8 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
                  .RequestType = EBlockStoreRequest::WriteBlocks,
                  .BlockInfos =
                      {
-                         {.BlockIndex=10, .Checksum=111},
-                         {.BlockIndex=15, .Checksum=222},
+                         {.BlockIndex = 10, .Checksum = 111},
+                         {.BlockIndex = 15, .Checksum = 222},
                      },
                  .CommitId = 100500}});
         env.ProfileLog->Write(
@@ -235,53 +234,53 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
 
         UNIT_ASSERT_VALUES_EQUAL(12, env.EventProcessor.FlatMessages.size());
         UNIT_ASSERT_VALUES_EQUAL(
-            "1970-01-01T00:00:01.000000Z\tdisk1\t0\tMountVolume\tR\t100000\t0,0\n",
-            env.EventProcessor.FlatMessages[0]
-        );
+            "1970-01-01T00:00:01.000000Z\tdisk1\t0\tMountVolume\tR\t100000\t0,"
+            "0\n",
+            env.EventProcessor.FlatMessages[0]);
         UNIT_ASSERT_VALUES_EQUAL(
-            "1970-01-01T00:00:02.000000Z\tdisk1\t0\tWriteBlocks\tB\t100500\t10:111 15:222\n",
-            env.EventProcessor.FlatMessages[1]
-        );
+            "1970-01-01T00:00:02.000000Z\tdisk1\t0\tWriteBlocks\tB\t100500\t10:"
+            "111 15:222\n",
+            env.EventProcessor.FlatMessages[1]);
         UNIT_ASSERT_VALUES_EQUAL(
-            "1970-01-01T00:00:02.000000Z\tdisk1\t0\tWriteBlocks\tR\t200000\t10,20\n",
-            env.EventProcessor.FlatMessages[2]
-        );
+            "1970-01-01T00:00:02.000000Z\tdisk1\t0\tWriteBlocks\tR\t200000\t10,"
+            "20\n",
+            env.EventProcessor.FlatMessages[2]);
         UNIT_ASSERT_VALUES_EQUAL(
-            "1970-01-01T00:00:02.000000Z\tdisk2\t0\tZeroBlocks\tR\t400000\t5,10\n",
-            env.EventProcessor.FlatMessages[3]
-        );
+            "1970-01-01T00:00:02.000000Z\tdisk2\t0\tZeroBlocks\tR\t400000\t5,"
+            "10\n",
+            env.EventProcessor.FlatMessages[3]);
         UNIT_ASSERT_VALUES_EQUAL(
-            "1970-01-01T00:00:03.000000Z\tdisk1\t0\tWriteBlocks\tR\t150000\t50,10\n",
-            env.EventProcessor.FlatMessages[4]
-        );
+            "1970-01-01T00:00:03.000000Z\tdisk1\t0\tWriteBlocks\tR\t150000\t50,"
+            "10\n",
+            env.EventProcessor.FlatMessages[4]);
         UNIT_ASSERT_VALUES_EQUAL(
-            "1970-01-01T00:00:04.000000Z\tdisk1\t0\tReadBlocks\tR\t500000\t0,100\n",
-            env.EventProcessor.FlatMessages[5]
-        );
+            "1970-01-01T00:00:04.000000Z\tdisk1\t0\tReadBlocks\tR\t500000\t0,"
+            "100\n",
+            env.EventProcessor.FlatMessages[5]);
         UNIT_ASSERT_VALUES_EQUAL(
-            "1970-01-01T00:00:05.000000Z\tdisk1\t0\tFlush\tB\t100501\t11:333 15:444 33:555\n",
-            env.EventProcessor.FlatMessages[6]
-        );
+            "1970-01-01T00:00:05.000000Z\tdisk1\t0\tFlush\tB\t100501\t11:333 "
+            "15:444 33:555\n",
+            env.EventProcessor.FlatMessages[6]);
         UNIT_ASSERT_VALUES_EQUAL(
-            "1970-01-01T00:00:05.000000Z\tdisk1\t0\tFlush\tR\t300000\t10,10,30,5\n",
-            env.EventProcessor.FlatMessages[7]
-        );
+            "1970-01-01T00:00:05.000000Z\tdisk1\t0\tFlush\tR\t300000\t10,10,30,"
+            "5\n",
+            env.EventProcessor.FlatMessages[7]);
         UNIT_ASSERT_VALUES_EQUAL(
-            "1970-01-01T00:00:05.500000Z\tdisk1\t0\tCompaction\tB\t100502\t11:777\n",
-            env.EventProcessor.FlatMessages[8]
-        );
+            "1970-01-01T00:00:05.500000Z\tdisk1\t0\tCompaction\tB\t100502\t11:"
+            "777\n",
+            env.EventProcessor.FlatMessages[8]);
         UNIT_ASSERT_VALUES_EQUAL(
-            "1970-01-01T00:00:05.500000Z\tdisk1\t0\tCompaction\tR\t700000\t0,1024\n",
-            env.EventProcessor.FlatMessages[9]
-        );
+            "1970-01-01T00:00:05.500000Z\tdisk1\t0\tCompaction\tR\t700000\t0,"
+            "1024\n",
+            env.EventProcessor.FlatMessages[9]);
         UNIT_ASSERT_VALUES_EQUAL(
-            "1970-01-01T00:00:05.700000Z\tdisk1\t0\tCleanup\tR\t300000\t1024,4096\n",
-            env.EventProcessor.FlatMessages[10]
-        );
+            "1970-01-01T00:00:05.700000Z\tdisk1\t0\tCleanup\tR\t300000\t1024,"
+            "4096\n",
+            env.EventProcessor.FlatMessages[10]);
         UNIT_ASSERT_VALUES_EQUAL(
-            "1970-01-01T00:00:06.000000Z\tdisk1\t0\tUnmountVolume\tR\t50000\t0,0\n",
-            env.EventProcessor.FlatMessages[11]
-        );
+            "1970-01-01T00:00:06.000000Z\tdisk1\t0\tUnmountVolume\tR\t50000\t0,"
+            "0\n",
+            env.EventProcessor.FlatMessages[11]);
 
         env.ProfileLog->Write(
             {.DiskId = "disk2",
@@ -303,13 +302,13 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
 
         UNIT_ASSERT_VALUES_EQUAL(14, env.EventProcessor.FlatMessages.size());
         UNIT_ASSERT_VALUES_EQUAL(
-            "1970-01-01T00:00:08.000000Z\tdisk2\t0\tUnmountVolume\tR\t500000\t0,0\n",
-            env.EventProcessor.FlatMessages[12]
-        );
+            "1970-01-01T00:00:08."
+            "000000Z\tdisk2\t0\tUnmountVolume\tR\t500000\t0,0\n",
+            env.EventProcessor.FlatMessages[12]);
         UNIT_ASSERT_VALUES_EQUAL(
-            "1970-01-01T00:00:09.000000Z\tdisk2\t0\tDescribeBlocks\tR\t70000\t17,91\n",
-            env.EventProcessor.FlatMessages[13]
-        );
+            "1970-01-01T00:00:09."
+            "000000Z\tdisk2\t0\tDescribeBlocks\tR\t70000\t17,91\n",
+            env.EventProcessor.FlatMessages[13]);
     }
 
     Y_UNIT_TEST(TestSmoke)
@@ -333,7 +332,9 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
         }
 
         env.ProcessLog();
-        UNIT_ASSERT_VALUES_EQUAL(100000, env.EventProcessor.FlatMessages.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            100000,
+            env.EventProcessor.FlatMessages.size());
     }
 
     Y_UNIT_TEST(TestStoresPostponedTime)
@@ -351,9 +352,9 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
         env.ProcessLog();
         UNIT_ASSERT_VALUES_EQUAL(1, env.EventProcessor.FlatMessages.size());
         UNIT_ASSERT_VALUES_EQUAL(
-            "1970-01-01T00:00:02.000000Z\tdisk1\t0\tWriteBlocks\tR\t200000\t10,20\n",
-            env.EventProcessor.FlatMessages[0]
-        );
+            "1970-01-01T00:00:02.000000Z\tdisk1\t0\tWriteBlocks\tR\t200000\t10,"
+            "20\n",
+            env.EventProcessor.FlatMessages[0]);
     }
 
     Y_UNIT_TEST(TestFlushOnDestruct)
@@ -372,7 +373,8 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
         env.ProcessLog(false);
         UNIT_ASSERT_VALUES_EQUAL(1, env.EventProcessor.FlatMessages.size());
         UNIT_ASSERT_VALUES_EQUAL(
-            "1970-01-01T00:00:03.000000Z\tdisk2\t0\tWriteBlocks\tR\t300000\t10,20\n",
+            "1970-01-01T00:00:03.000000Z\tdisk2\t0\tWriteBlocks\tR\t300000\t10,"
+            "20\n",
             env.EventProcessor.FlatMessages[0]);
     }
 
@@ -427,13 +429,17 @@ Y_UNIT_TEST_SUITE(TProfileLogTest)
         env.ProcessLog(false);
         UNIT_ASSERT_VALUES_EQUAL(3, env.EventProcessor.FlatMessages.size());
         UNIT_ASSERT_VALUES_EQUAL(
-            "1970-01-01T00:00:03.000000Z\tdisk3\t0\tResyncChecksum\tR\t100000\t10,10{\"2\":[100]}\n",
+            "1970-01-01T00:00:03."
+            "000000Z\tdisk3\t0\tResyncChecksum\tR\t100000\t10,10{\"2\":[100]}"
+            "\n",
             env.EventProcessor.FlatMessages[0]);
         UNIT_ASSERT_VALUES_EQUAL(
-            "1970-01-01T00:00:04.000000Z\tdisk3\t0\tResyncRead\tR\t100000\t10,10{\"2\":[1000,2000,3000]}\n",
+            "1970-01-01T00:00:04.000000Z\tdisk3\t0\tResyncRead\tR\t100000\t10,"
+            "10{\"2\":[1000,2000,3000]}\n",
             env.EventProcessor.FlatMessages[1]);
         UNIT_ASSERT_VALUES_EQUAL(
-            "1970-01-01T00:00:05.000000Z\tdisk3\t0\tResyncWrite\tR\t100000\t10,10{\"2\":[1000,2000,3000]}\n",
+            "1970-01-01T00:00:05.000000Z\tdisk3\t0\tResyncWrite\tR\t100000\t10,"
+            "10{\"2\":[1000,2000,3000]}\n",
             env.EventProcessor.FlatMessages[2]);
     }
 }

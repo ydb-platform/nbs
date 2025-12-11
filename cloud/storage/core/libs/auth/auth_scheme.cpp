@@ -36,7 +36,7 @@ TPermissionList CreatePermissionList(
     std::initializer_list<EPermission> permissions)
 {
     TPermissionList result;
-    for (EPermission permission : permissions) {
+    for (EPermission permission: permissions) {
         result.Set(static_cast<size_t>(permission));
     }
     return result;
@@ -45,10 +45,11 @@ TPermissionList CreatePermissionList(
 TVector<TString> GetPermissionStrings(const TPermissionList& permissions)
 {
     TVector<TString> result;
-    Y_FOR_EACH_BIT(permission, permissions) {
+    Y_FOR_EACH_BIT(permission, permissions)
+    {
         result.push_back(ToString(static_cast<EPermission>(permission)));
     }
     return result;
 }
 
-}  // namespace NCloud
+}   // namespace NCloud

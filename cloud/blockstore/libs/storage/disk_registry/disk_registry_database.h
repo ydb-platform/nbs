@@ -18,9 +18,7 @@ struct TDeviceMigration
     TString SourceDeviceId;
 
     TDeviceMigration() = default;
-    TDeviceMigration(
-            TString diskId,
-            TString sourceDeviceId)
+    TDeviceMigration(TString diskId, TString sourceDeviceId)
         : DiskId(std::move(diskId))
         , SourceDeviceId(std::move(sourceDeviceId))
     {}
@@ -44,8 +42,7 @@ struct TLaggingDevice
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDiskRegistryDatabase
-    : public NKikimr::NIceDb::TNiceDb
+class TDiskRegistryDatabase: public NKikimr::NIceDb::TNiceDb
 {
 public:
     TDiskRegistryDatabase(NKikimr::NTable::TDatabase& database)
@@ -111,7 +108,8 @@ public:
     void DeleteOutdatedVolumeConfig(const TString& diskId);
     bool ReadOutdatedVolumeConfigs(TVector<TString>& diskIds);
 
-    bool ReadSuspendedDevices(TVector<NProto::TSuspendedDevice>& suspendedDevices);
+    bool ReadSuspendedDevices(
+        TVector<NProto::TSuspendedDevice>& suspendedDevices);
     void UpdateSuspendedDevice(const NProto::TSuspendedDevice& device);
     void DeleteSuspendedDevice(const TString& uuid);
 
@@ -127,8 +125,11 @@ public:
         TDeque<TAutomaticallyReplacedDeviceInfo>& deviceInfos);
     void DeleteAutomaticallyReplacedDevice(const TString& deviceId);
 
-    void AddDiskRegistryAgentListParams(const TString& agentId, const NProto::TDiskRegistryAgentParams& params);
-    bool ReadDiskRegistryAgentListParams(THashMap<TString, NProto::TDiskRegistryAgentParams>& params);
+    void AddDiskRegistryAgentListParams(
+        const TString& agentId,
+        const NProto::TDiskRegistryAgentParams& params);
+    bool ReadDiskRegistryAgentListParams(
+        THashMap<TString, NProto::TDiskRegistryAgentParams>& params);
     void DeleteDiskRegistryAgentListParams(const TString& agentId);
 
 private:

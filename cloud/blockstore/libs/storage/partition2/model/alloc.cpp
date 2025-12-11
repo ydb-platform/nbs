@@ -12,4 +12,4 @@ TProfilingAllocator* GetAllocatorByTag(EAllocatorTag tag)
     return r->GetAllocator(tag);
 }
 
-}   // NCloud::NBlockStore::NStorage::NPartition2
+}   // namespace NCloud::NBlockStore::NStorage::NPartition2

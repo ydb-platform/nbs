@@ -24,7 +24,8 @@ static const ui8 TEST_DATA[] = {
 #include "data.inc"
 };
 
-static TArchiveReader ArchiveReader(TBlob::NoCopy(TEST_DATA, sizeof(TEST_DATA)));
+static TArchiveReader ArchiveReader(
+    TBlob::NoCopy(TEST_DATA, sizeof(TEST_DATA)));
 
 TVector<TBlockList> ReadBlockLists(const TString& key)
 {
@@ -41,12 +42,10 @@ TVector<TBlockList> ReadBlockLists(const TString& key)
 
         auto blocks = FromStringBuf(
             Base64Decode(encodedBlocks),
-            TDefaultAllocator::Instance()
-        );
+            TDefaultAllocator::Instance());
         auto deletedBlocks = FromStringBuf(
             Base64Decode(encodedDeletedBlocks),
-            TDefaultAllocator::Instance()
-        );
+            TDefaultAllocator::Instance());
 
         blockLists.emplace_back(std::move(blocks), std::move(deletedBlocks));
     }
@@ -65,11 +64,7 @@ TVector<TBlock> GetSeqBlocks(size_t blocksCount = MaxBlocksCount)
 
     TVector<TBlock> blocks(Reserve(blocksCount));
     for (size_t i = 0; i < blocksCount; ++i) {
-        blocks.emplace_back(
-            blockIndex + i,
-            commitId,
-            InvalidCommitId,
-            false);
+        blocks.emplace_back(blockIndex + i, commitId, InvalidCommitId, false);
     }
 
     return blocks;
