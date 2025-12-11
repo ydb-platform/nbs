@@ -17,6 +17,22 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TGroupRange
+{
+    ui64 FromCommit = 0;
+    ui64 ToCommit = 0;
+    ui32 GroupId = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+TVector<TGroupRange> BuildGroupRequestsForChannel(
+    const TVector<NKikimr::TTabletChannelInfo::THistoryEntry>& history,
+    ui64 tabletId,
+    ui64 trimFreshLogToCommitId);
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TLoadFreshBlobsActor final
     : public NActors::TActorBootstrapped<TLoadFreshBlobsActor>
 {
