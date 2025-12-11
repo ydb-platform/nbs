@@ -10,8 +10,8 @@ def analyze_profile_log(profile_tool_bin_path, profile_log_path, fs_name, node_n
          "--fs-id", fs_name])
 
     type_dict = {}
-    for line in proc.stdout.decode('utf-8').splitlines():
-        request_type = re.split(r'\t+', line.rstrip())[2]
+    for line in proc.stdout.decode("utf-8").splitlines():
+        request_type = line.rstrip().split("\t")[2]
 
         if node_name and not f"node_name={node_name}" in line:
             continue
