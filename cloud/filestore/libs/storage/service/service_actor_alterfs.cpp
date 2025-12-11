@@ -42,7 +42,7 @@ class TAlterFileStoreActor final
     : public TActorBootstrapped<TAlterFileStoreActor>
 {
 private:
-    const TStorageConfigPtr StorageConfig;
+    TStorageConfigPtr StorageConfig;
     const TRequestInfoPtr RequestInfo;
     const TString FileSystemId;
     const NProto::TFileStorePerformanceProfile PerformanceProfile;
@@ -95,6 +95,7 @@ private:
     void ConfigureShards(const TActorContext& ctx);
     void ConfigureMainFileStore(const TActorContext& ctx);
 
+    void PatchStorageConfig();
     void FillMultiShardFileStoreConfig(const TActorContext& ctx);
 
     void HandleDescribeFileStoreForAlterResponse(
@@ -303,7 +304,17 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
     GetFileSystemTopology(ctx);
 }
 
-void TAlterFileStoreActor::FillMultiShardFileStoreConfig(const TActorContext& ctx)
+void TAlterFileStoreActor::PatchStorageConfig()
+{
+    NProto::TStorageConfig protoConfig;
+    protoConfig.SetStrictFileSystemSizeEnforcementEnabled(
+        StrictFileSystemSizeEnforcementEnabled);
+    protoConfig.SetMaxShardCount(MaxShardCount);
+    StorageConfig->Merge(protoConfig);
+}
+
+void TAlterFileStoreActor::FillMultiShardFileStoreConfig(
+    const TActorContext& ctx)
 {
     NKikimrFileStore::TConfig currentConfig = MainFileStoreOriginalConfig;
 
@@ -337,8 +348,7 @@ void TAlterFileStoreActor::FillMultiShardFileStoreConfig(const TActorContext& ct
             *StorageConfig,
             currentConfig,
             PerformanceProfile,
-            ExplicitShardCount,
-            MaxShardCount);
+            ExplicitShardCount);
     } else {
         SetupFileStorePerformanceAndChannels(
             allocateMixed0,
@@ -462,6 +472,7 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
         msg->Record.GetStrictFileSystemSizeEnforcementEnabled();
     MaxShardCount = msg->Record.GetMaxShardCount();
 
+    PatchStorageConfig();
     FillMultiShardFileStoreConfig(ctx);
 
     for (auto& shardId: *msg->Record.MutableShardFileSystemIds()) {
@@ -484,8 +495,7 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
                 *StorageConfig,
                 FileStoreConfig.MainFileSystemConfig,
                 PerformanceProfile,
-                ExistingShardIds.size(),
-                MaxShardCount);
+                ExistingShardIds.size());
         }
     }
 
