@@ -601,7 +601,8 @@ void TPartitionActor::HandleCollectGarbage(
         "CollectGarbage",
         static_cast<ui32>(PartitionConfig.GetStorageMediaKind()),
         requestInfo->CallContext->RequestId,
-        PartitionConfig.GetDiskId());
+        PartitionConfig.GetDiskId(),
+        TInstant::Now().MicroSeconds());
 
     auto replyError = [=] (
         const TActorContext& ctx,

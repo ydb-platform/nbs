@@ -150,7 +150,7 @@ void TLoadFreshBlobsActor::DiscoverBlobs(const TActorContext& ctx)
                 ctx,
                 cur->GroupID,
                 request.release(),
-                RangeRequestsInFlight++);  // cookie
+                RangeRequestsInFlight++);   // cookie
 
             if (next == end) {
                 break;
