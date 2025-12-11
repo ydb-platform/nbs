@@ -434,9 +434,17 @@ func (c *testingClient) ValidateCrc32WithEncryption(
 	actualBlockCrc32s := actualDiskContentInfo.BlockCrc32s
 	expectedBlockCrc32s := expectedDiskContentInfo.BlockCrc32s
 
+	if len(expectedBlockCrc32s) == 0 && actualCrc32 != expectedCrc32 {
+		return fmt.Errorf(
+			"%v crc32 doesn't match, expected %v, actual %v",
+			diskID,
+			expectedCrc32,
+			actualCrc32,
+		)
+	}
+
 	if len(actualBlockCrc32s) != len(expectedBlockCrc32s) {
-		logging.Debug(
-			ctx,
+		return fmt.Errorf(
 			"%v blocksCrc32 length doesn't match, expected %v, actual %v",
 			diskID,
 			len(expectedBlockCrc32s),
@@ -445,8 +453,7 @@ func (c *testingClient) ValidateCrc32WithEncryption(
 	} else {
 		for i := range expectedDiskContentInfo.BlockCrc32s {
 			if actualBlockCrc32s[i] != expectedBlockCrc32s[i] {
-				logging.Debug(
-					ctx,
+				return fmt.Errorf(
 					"%v block with index %v crc32 doesn't match, expected %v, actual %v",
 					diskID,
 					i,
@@ -455,15 +462,6 @@ func (c *testingClient) ValidateCrc32WithEncryption(
 				)
 			}
 		}
-	}
-
-	if actualCrc32 != expectedCrc32 {
-		return fmt.Errorf(
-			"%v crc32 doesn't match, expected %v, actual %v",
-			diskID,
-			expectedCrc32,
-			actualCrc32,
-		)
 	}
 
 	return nil

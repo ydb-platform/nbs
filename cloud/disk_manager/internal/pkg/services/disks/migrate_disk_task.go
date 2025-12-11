@@ -100,7 +100,7 @@ func (t *migrateDiskTask) Run(
 				if execCtx.HasEvent(
 					ctx,
 					int64(protos.MigrateDiskTaskEvents_FINISH_MIGRATION),
-				) {
+				) || t.request.IsMigrationBetweenCells {
 					t.state.Status = protos.MigrationStatus_Finishing
 					err := execCtx.SaveState(ctx)
 					if err != nil {
@@ -342,7 +342,8 @@ func (t *migrateDiskTask) scheduleReplicateTask(
 			},
 			FillGeneration: t.state.FillGeneration,
 			// Performs full copy of base disk if |IgnoreBaseDisk == false|.
-			IgnoreBaseDisk: len(t.state.RelocateInfo.TargetBaseDiskID) != 0,
+			IgnoreBaseDisk:            len(t.state.RelocateInfo.TargetBaseDiskID) != 0,
+			IsReplicationBetweenCells: t.request.IsMigrationBetweenCells,
 		},
 	)
 	if err != nil {
