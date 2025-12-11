@@ -300,21 +300,21 @@ func (s *Driver) Run(socketPath string) error {
 
 func GetVolumeId(req interface{}) string {
 	switch r := req.(type) {
-	case csi.NodeStageVolumeRequest:
+	case *csi.NodeStageVolumeRequest:
 		return r.VolumeId
-	case csi.NodeUnstageVolumeRequest:
+	case *csi.NodeUnstageVolumeRequest:
 		return r.VolumeId
-	case csi.NodePublishVolumeRequest:
+	case *csi.NodePublishVolumeRequest:
 		return r.VolumeId
-	case csi.NodeUnpublishVolumeRequest:
+	case *csi.NodeUnpublishVolumeRequest:
 		return r.VolumeId
-	case csi.NodeExpandVolumeRequest:
+	case *csi.NodeExpandVolumeRequest:
 		return r.VolumeId
-	case csi.CreateVolumeRequest:
+	case *csi.CreateVolumeRequest:
 		// Per CSI spec, the VolumeId is provided in the Name field
 		// https://github.com/container-storage-interface/spec/blob/release-1.12/csi.proto#L350
 		return r.Name
-	case csi.DeleteVolumeRequest:
+	case *csi.DeleteVolumeRequest:
 		return r.VolumeId
 	default:
 		return ""
