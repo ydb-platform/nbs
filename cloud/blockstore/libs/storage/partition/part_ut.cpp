@@ -1688,7 +1688,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldStoreBlocksInFreshChannel)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -1992,7 +1991,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldRecoverBlocksOnRebootFromFreshChannel)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -2041,7 +2039,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         InitLogSettings(runtime);
 
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         {
@@ -2296,7 +2293,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldFlushBlocksFromFreshChannelAsNewBlob)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -2383,7 +2379,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(4_MB);
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -2424,7 +2419,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetWriteBlobThreshold(4_MB);
         config.SetFreshBlobCountFlushThreshold(4);
         config.SetFreshBlobByteCountFlushThreshold(999999999);
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -2474,7 +2468,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetWriteBlobThreshold(4_MB);
         config.SetFreshBlobCountFlushThreshold(999999);
         config.SetFreshBlobByteCountFlushThreshold(15_MB);
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -2522,7 +2515,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldAutomaticallyTrimFreshLogOnFlush)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -2575,7 +2567,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldAutomaticallyTrimFreshBlobsFromPreviousGeneration)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -2635,7 +2626,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldTrimUpToTheFirstUnflushedBlockCommitId)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -2752,7 +2742,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig(4_MB);
         config.SetWriteBlobThreshold(4_MB);
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config, 2048);
@@ -3637,7 +3626,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldZeroBlocksWrittenToFreshChannelAfterReboot)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -7664,7 +7652,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldNotTrimInFlightBlocks)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -7730,7 +7717,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldNotTrimUnflushedBlocksWhileThereIsFlushedBlockWithLargerCommitId)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -7797,7 +7783,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldReleaseTrimBarrierOnBlockDeletion)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -7829,7 +7814,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldNotReleaseTrimBarriersOnFlushError)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
         config.SetMaxWriteBlobErrorsBeforeSuicide(10);
 
@@ -7879,7 +7863,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldHandleFlushCorrectlyWhileBlockFromFreshChannelIsBeingDeleted)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -7919,7 +7902,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldHandleFlushCorrectlyWhileBlockFromDbIsBeingDeleted)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(0);
+        config.SetFreshChannelCountSSD(0);
         config.SetFreshChannelWriteRequestsEnabled(false);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -8009,7 +7992,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldHandleBSErrorsOnInitFreshBlocksFromChannel)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -8255,7 +8237,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldHandleCorruptedFreshBlobOnInitFreshBlocks)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -8341,7 +8322,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldUpdateUsedBlocksMapWhenFlushingBlocksFromFreshChannel)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -9250,7 +9230,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         NProto::TStorageServiceConfig config;
         config.SetFreshByteCountHardLimit(8_KB);
         config.SetFlushThreshold(4_MB);
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
         auto runtime = PrepareTestActorRuntime(config);
 
@@ -10127,7 +10106,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto config = DefaultConfig();
         config.SetBlobCompressionRate(1);
         config.SetWriteBlobThreshold(writeBlobThreshold);
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -11107,7 +11085,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetFlushThreshold(1_GB);
         // enabling fresh channel writes to make stats check a bit more
         // convenient
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
         auto runtime = PrepareTestActorRuntime(config, blockCount);
 
@@ -12967,7 +12944,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         constexpr ui32 FreshChannelId = 4;
 
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFlushThreshold(4_MB);
         config.SetFreshChannelWriteRequestsEnabled(true);
         config.SetTrimFreshLogTimeout(TDuration::Seconds(1).MilliSeconds());
@@ -13036,7 +13012,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         constexpr ui32 FreshChannelId = 4;
 
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -13134,7 +13109,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldReleaseTrimFreshLogBarrierInCaseOfWriteBlobError)
     {
         auto config = DefaultConfig();
-        config.SetFreshChannelCount(1);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);

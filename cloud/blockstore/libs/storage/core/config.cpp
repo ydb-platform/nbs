@@ -371,7 +371,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(ChannelFreeSpaceThreshold,                      ui32,   25            )\
     xxx(ChannelMinFreeSpace,                            ui32,   10            )\
     xxx(MinChannelCount,                                ui32,   4             )\
-    xxx(FreshChannelCount,                              ui32,   1             )\
+    xxx(FreshChannelCountSSD,                           ui32,   1             )\
+    xxx(FreshChannelCountHDD,                           ui32,   1             )\
                                                                                \
     xxx(ZoneBlockCount,                            ui32,   32 * MaxBlocksCount)\
     xxx(HotZoneRequestCountFactor,                 ui32,   10                 )\
