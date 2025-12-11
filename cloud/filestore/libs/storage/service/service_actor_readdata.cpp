@@ -775,8 +775,12 @@ void TStorageServiceActor::HandleReadData(
         }
     }
 
+    const ui32 twoStageReadThreshold =
+        filestore.GetFeatures().GetTwoStageReadThreshold()
+        ? filestore.GetFeatures().GetTwoStageReadThreshold()
+        : StorageConfig->GetTwoStageReadThreshold();
     const bool useTwoStageRead = IsTwoStageReadEnabled(filestore)
-        && msg->Record.GetLength() >= StorageConfig->GetTwoStageReadThreshold();
+        && msg->Record.GetLength() >= twoStageReadThreshold;
 
     LOG_DEBUG(
         ctx,
