@@ -233,17 +233,19 @@ private:
     TVector<TBaseDynamicCounters> BaseCounters;
     const size_t HistogramSize;
     TIntrusivePtr<TExplicitHistogramSnapshot> Histogram;
-    EMetricType Type = EMetricType::UNKNOWN;
+    const EMetricType Type = EMetricType::HIST_RATE;
+    const EHistogramCounterOptions HistogramCounterOptions;
 
 public:
     TUserSumHistogramWrapper(
         const TBucketsWithUnits& buckets,
-        const TVector<TBaseDynamicCounters>& baseCounters)
+        const TVector<TBaseDynamicCounters>& baseCounters,
+        EHistogramCounterOptions histogramCounterOptions)
         : Buckets(buckets.first)
         , Units(buckets.second)
         , HistogramSize(Buckets.size() - MergeFirstBucketsCount)
         , Histogram(TExplicitHistogramSnapshot::New(HistogramSize))
-        , Type(EMetricType::HIST_RATE)
+        , HistogramCounterOptions(histogramCounterOptions)
     {
         for (size_t i = 0; i < HistogramSize; ++i) {
             (*Histogram)[i].first = Buckets[i + MergeFirstBucketsCount].Bound;
@@ -301,23 +303,30 @@ public:
                 continue;
             }
 
-            const auto histogram = baseCounter->FindHistogram(name);
-            if (histogram) {
-                // ReportHistogramAsSingleCounter option is on
-                const auto snapshot = histogram->Snapshot();
-                const size_t count =
-                    Min<size_t>(Buckets.size(), snapshot->Count());
-                for (size_t i = 0; i < count; ++i) {
-                    IncrementHistogram(snapshot->Value(i), i);
+            if (HistogramCounterOptions &
+                EHistogramCounterOption::ReportSingleCounter)
+            {
+                const auto histogram = baseCounter->FindHistogram(name);
+                if (histogram) {
+                    const auto snapshot = histogram->Snapshot();
+                    const size_t count =
+                        Min<size_t>(Buckets.size(), snapshot->Count());
+                    for (size_t i = 0; i < count; ++i) {
+                        IncrementHistogram(snapshot->Value(i), i);
+                    }
+                    continue;
                 }
-                continue;
             }
 
-            // only ReportHistogramAsMultipleCounters option is on
-            for (size_t i = 0; i < Buckets.size(); ++i) {
-                const auto counter = baseCounter->FindCounter(Buckets[i].Name);
-                if (counter) {
-                    IncrementHistogram(counter->Val(), i);
+            if (HistogramCounterOptions &
+                EHistogramCounterOption::ReportMultipleCounters)
+            {
+                for (size_t i = 0; i < Buckets.size(); ++i) {
+                    const auto counter =
+                        baseCounter->FindCounter(Buckets[i].Name);
+                    if (counter) {
+                        IncrementHistogram(counter->Val(), i);
+                    }
                 }
             }
         }
@@ -345,10 +354,13 @@ void AddHistogramUserMetric(
     IUserCounterSupplier& dsc,
     const TLabels& commonLabels,
     const TVector<TBaseDynamicCounters>& baseCounters,
-    TStringBuf newName)
+    TStringBuf newName,
+    EHistogramCounterOptions histogramCounterOptions)
 {
-    auto wrapper =
-        std::make_shared<TUserSumHistogramWrapper>(buckets, baseCounters);
+    auto wrapper = std::make_shared<TUserSumHistogramWrapper>(
+        buckets,
+        baseCounters,
+        histogramCounterOptions);
 
     dsc.AddUserMetric(commonLabels, newName, TUserCounter(wrapper));
 }
